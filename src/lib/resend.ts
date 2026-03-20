@@ -2,7 +2,8 @@ import { Resend } from 'resend';
 
 export const resend = new Resend(process.env.RESEND_API_KEY);
 
-export const FROM_EMAIL = 'LifeAdminAI <hello@lifeadmin-ai.vercel.app>';
+// Using Resend sandbox domain until a custom domain is verified at resend.com/domains
+export const FROM_EMAIL = 'LifeAdminAI <onboarding@resend.dev>';
 export const REPLY_TO = 'lifeadminai@gmail.com';
 
 export async function sendWaitlistConfirmation(name: string, email: string) {
