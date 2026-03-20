@@ -3,7 +3,8 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History } from 'lucide-react';
 import UpgradeModal from '@/components/UpgradeModal';
 
@@ -17,12 +18,13 @@ interface Task {
   agent_runs: Array<{ output_data: any; created_at: string }>;
 }
 
-export default function ComplaintsPage() {
+function ComplaintsPageInner() {
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
-    companyName: '',
-    issueDescription: '',
+    companyName: searchParams.get('company') || '',
+    issueDescription: searchParams.get('issue') || '',
     desiredOutcome: '',
-    amount: '',
+    amount: searchParams.get('amount') || '',
     accountNumber: '',
     incidentDate: '',
     previousContact: '',
@@ -405,5 +407,13 @@ export default function ComplaintsPage() {
         </div>
       </div>}
     </div>
+  );
+}
+
+export default function ComplaintsPage() {
+  return (
+    <Suspense>
+      <ComplaintsPageInner />
+    </Suspense>
   );
 }

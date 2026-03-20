@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 import {
   ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
   Sparkles, Mail, CheckCircle2, RefreshCw, Loader2,
@@ -35,6 +36,7 @@ export default function ScannerPage() {
   const [filter, setFilter] = useState<'all' | 'new' | 'reviewing'>('all');
   const [error, setError] = useState<string | null>(null);
   const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     // Check URL params for OAuth result
@@ -286,10 +288,23 @@ export default function ScannerPage() {
                               <span className="text-sm font-semibold text-white">{opp.confidence}%</span>
                             </div>
                             <div className="flex gap-3">
-                              <button className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-2 rounded-lg transition-all text-sm">
-                                Take Action
+                              <button
+                                onClick={() => {
+                                  const params = new URLSearchParams({
+                                    company: opp.provider,
+                                    issue: opp.description,
+                                    amount: opp.amount > 0 ? String(opp.amount) : '',
+                                  });
+                                  router.push(`/dashboard/complaints?${params}`);
+                                }}
+                                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-2 rounded-lg transition-all text-sm"
+                              >
+                                Raise Complaint
                               </button>
-                              <button className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg transition-all text-sm">
+                              <button
+                                onClick={() => setOpportunities((prev) => prev.filter((o) => o.id !== opp.id))}
+                                className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg transition-all text-sm"
+                              >
                                 Dismiss
                               </button>
                             </div>
