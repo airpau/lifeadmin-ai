@@ -59,6 +59,7 @@ export default function ScannerPage() {
   const [scanDebug, setScanDebug] = useState<{ emailsFound: number; emailsScanned: number } | null>(null);
   const [filter, setFilter] = useState<'all' | 'new' | 'reviewing'>('all');
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null); // opp.id being acted on
   const supabase = createClient();
   const router = useRouter();
 
@@ -385,23 +386,35 @@ export default function ScannerPage() {
                         <div className="flex flex-wrap gap-2">
                           {opp.type === 'forgotten_subscription' ? (
                             <button
+                              disabled={actionLoading === opp.id}
                               onClick={async () => {
-                                await fetch('/api/subscriptions', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    provider_name: opp.provider,
-                                    category: 'other',
-                                    amount: opp.amount || 0,
-                                    billing_cycle: 'monthly',
-                                    usage_frequency: 'rarely',
-                                  }),
-                                });
-                                router.push('/dashboard/subscriptions');
+                                setActionLoading(opp.id);
+                                try {
+                                  const res = await fetch('/api/subscriptions', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      provider_name: opp.provider,
+                                      category: 'other',
+                                      amount: opp.amount ?? 0,
+                                      billing_cycle: 'monthly',
+                                      usage_frequency: 'rarely',
+                                    }),
+                                  });
+                                  if (!res.ok) {
+                                    const d = await res.json();
+                                    throw new Error(d.error || 'Failed to save subscription');
+                                  }
+                                } catch (err: any) {
+                                  setError(`Track failed: ${err.message}`);
+                                } finally {
+                                  setActionLoading(null);
+                                  router.push('/dashboard/subscriptions');
+                                }
                               }}
-                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
+                              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
                             >
-                              Track & Cancel
+                              {actionLoading === opp.id ? 'Saving...' : 'Track & Cancel'}
                             </button>
                           ) : (
                             <button

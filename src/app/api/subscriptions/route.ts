@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    if (!body.provider_name || !body.amount || !body.billing_cycle) {
+    if (!body.provider_name || body.amount === undefined || body.amount === null || !body.billing_cycle) {
       return NextResponse.json(
         { error: 'Missing required fields: provider_name, amount, billing_cycle' },
         { status: 400 }
