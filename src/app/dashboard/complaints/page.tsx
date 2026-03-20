@@ -5,7 +5,7 @@ export const runtime = 'edge';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw } from 'lucide-react';
+import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw, X, ThumbsUp, Pencil } from 'lucide-react';
 import UpgradeModal from '@/components/UpgradeModal';
 
 interface Task {
@@ -16,6 +16,127 @@ interface Task {
   status: string;
   created_at: string;
   agent_runs: Array<{ output_data: any; created_at: string }>;
+}
+
+interface LetterModalProps {
+  task: Task;
+  onClose: () => void;
+}
+
+function LetterModal({ task, onClose }: LetterModalProps) {
+  const [copied, setCopied] = useState(false);
+  const letter = task.agent_runs?.[0]?.output_data?.letter || '';
+  const legalRefs = task.agent_runs?.[0]?.output_data?.legalReferences || [];
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(letter);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handlePDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Complaint Letter — ${task.provider_name || task.title}</title>
+        <style>
+          body { font-family: 'Times New Roman', serif; max-width: 800px; margin: 40px auto; padding: 0 40px; line-height: 1.8; color: #000; }
+          pre { white-space: pre-wrap; font-family: 'Times New Roman', serif; font-size: 13px; line-height: 1.8; }
+          h1 { font-size: 16px; margin-bottom: 24px; }
+          .refs { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; font-size: 11px; color: #555; }
+          @media print { body { margin: 20mm 25mm; } }
+        </style>
+      </head>
+      <body>
+        <pre>${letter.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
+        <script>window.onload = () => { window.print(); }<\/script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+        {/* Modal header */}
+        <div className="flex items-start justify-between p-6 border-b border-slate-800 flex-shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-white">{task.title}</h2>
+            <div className="flex items-center gap-3 mt-1">
+              {task.provider_name && (
+                <span className="text-slate-400 text-sm">{task.provider_name}</span>
+              )}
+              {task.disputed_amount && (
+                <span className="text-amber-500 text-sm font-semibold">£{task.disputed_amount}</span>
+              )}
+              <span className="text-slate-500 text-xs flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {new Date(task.created_at).toLocaleDateString('en-GB', {
+                  day: 'numeric', month: 'short', year: 'numeric',
+                })}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-all p-1 ml-4 flex-shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Letter body */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {letter ? (
+            <>
+              <div className="bg-slate-950 rounded-xl p-6 border border-slate-800 mb-4">
+                <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
+                  {letter}
+                </pre>
+              </div>
+
+              {legalRefs.length > 0 && (
+                <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Legal References</h3>
+                  <ul className="text-xs text-slate-400 space-y-1">
+                    {legalRefs.map((ref: string, i: number) => (
+                      <li key={i}>• {ref}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-12 text-slate-500">No letter content available</div>
+          )}
+        </div>
+
+        {/* Modal actions */}
+        <div className="flex gap-3 p-6 border-t border-slate-800 flex-shrink-0">
+          <button
+            onClick={handleCopy}
+            className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all font-medium"
+          >
+            {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+            {copied ? 'Copied!' : 'Copy Letter'}
+          </button>
+          <button
+            onClick={handlePDF}
+            className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-lg transition-all font-semibold"
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ComplaintsPageInner() {
@@ -34,9 +155,11 @@ function ComplaintsPageInner() {
   const [regenerating, setRegenerating] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [feedback, setFeedback] = useState('');
+  const [showFeedback, setShowFeedback] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; used: number; limit: number; tier: string }>({
     open: false, used: 0, limit: 3, tier: 'free',
   });
@@ -52,19 +175,21 @@ function ComplaintsPageInner() {
       }
     };
     fetchTasks();
-  }, [result]); // refetch after generating
+  }, [result]);
 
   useEffect(() => {
     fetch('/api/complaints/usage')
       .then((r) => r.json())
       .then((data) => { if (!data.error) setUsageInfo(data); })
       .catch(() => {});
-  }, [result]); // refresh after each generation
+  }, [result]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGenerating(true);
     setResult(null);
+    setShowFeedback(false);
+    setFeedback('');
 
     try {
       const res = await fetch('/api/complaints/generate', {
@@ -81,7 +206,6 @@ function ComplaintsPageInner() {
       }
 
       if (!res.ok) throw new Error(data.error || 'Failed to generate letter');
-
       setResult(data);
     } catch (error) {
       console.error('Error:', error);
@@ -98,6 +222,7 @@ function ComplaintsPageInner() {
     });
     setResult(null);
     setFeedback('');
+    setShowFeedback(false);
   };
 
   const handleRegenerate = async () => {
@@ -116,6 +241,7 @@ function ComplaintsPageInner() {
       if (!res.ok) throw new Error(data.error || 'Failed to regenerate');
       setResult(data);
       setFeedback('');
+      setShowFeedback(false);
     } catch (error) {
       console.error('Regenerate error:', error);
       alert('Failed to regenerate. Please try again.');
@@ -132,18 +258,30 @@ function ComplaintsPageInner() {
     }
   };
 
-  const handleDownload = () => {
-    if (result?.letter) {
-      const blob = new Blob([result.letter], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `complaint-${formData.companyName.toLowerCase().replace(/\s+/g, '-')}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+  const handlePDF = () => {
+    if (!result?.letter) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Complaint Letter — ${formData.companyName}</title>
+        <style>
+          body { font-family: 'Times New Roman', serif; max-width: 800px; margin: 40px auto; padding: 0 40px; line-height: 1.8; color: #000; }
+          pre { white-space: pre-wrap; font-family: 'Times New Roman', serif; font-size: 13px; line-height: 1.8; }
+          .refs { margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; font-size: 11px; color: #555; }
+          @media print { body { margin: 20mm 25mm; } }
+        </style>
+      </head>
+      <body>
+        <pre>${result.letter.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        ${result.legalReferences?.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${result.legalReferences.join(' · ')}</div>` : ''}
+        <script>window.onload = () => { window.print(); }<\/script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const getStatusBadge = (status: string) => {
@@ -164,6 +302,11 @@ function ComplaintsPageInner() {
 
   return (
     <div className="max-w-5xl">
+      {/* Letter detail modal */}
+      {selectedTask && (
+        <LetterModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+      )}
+
       <UpgradeModal
         open={upgradeModal.open}
         onClose={() => setUpgradeModal((m) => ({ ...m, open: false }))}
@@ -171,12 +314,11 @@ function ComplaintsPageInner() {
         limit={upgradeModal.limit}
         tier={upgradeModal.tier}
       />
+
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-4xl font-bold text-white mb-2">Complaints</h1>
-        <p className="text-slate-400">
-          AI-powered complaint letters citing UK consumer law
-        </p>
+        <p className="text-slate-400">AI-powered complaint letters citing UK consumer law</p>
       </div>
 
       {/* Tabs */}
@@ -201,295 +343,308 @@ function ComplaintsPageInner() {
         </button>
       </div>
 
+      {/* History tab */}
       {activeTab === 'history' && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {tasks.length === 0 ? (
             <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-12 text-center">
               <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400">No complaints generated yet</p>
             </div>
           ) : (
-            tasks.map((task) => (
-              <div key={task.id} className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="text-white font-semibold mb-1">{task.title}</h3>
-                    {task.provider_name && (
-                      <p className="text-slate-400 text-sm">{task.provider_name}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {task.disputed_amount && (
-                      <span className="text-amber-500 font-semibold">£{task.disputed_amount}</span>
-                    )}
-                    {getStatusBadge(task.status)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Clock className="h-3 w-3" />
-                  {new Date(task.created_at).toLocaleDateString('en-GB', {
-                    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                  })}
-                </div>
-                {task.agent_runs?.[0]?.output_data?.letter && (
-                  <details className="mt-4">
-                    <summary className="text-sm text-slate-400 cursor-pointer hover:text-white transition-all">
-                      View generated letter
-                    </summary>
-                    <div className="mt-3 bg-slate-950 rounded-lg p-4 border border-slate-800 max-h-64 overflow-y-auto">
-                      <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono">
-                        {task.agent_runs[0].output_data.letter}
-                      </pre>
+            tasks.map((task) => {
+              const hasLetter = !!task.agent_runs?.[0]?.output_data?.letter;
+              return (
+                <button
+                  key={task.id}
+                  onClick={() => hasLetter && setSelectedTask(task)}
+                  disabled={!hasLetter}
+                  className={`w-full text-left bg-slate-900/50 backdrop-blur-sm border rounded-2xl p-6 transition-all ${
+                    hasLetter
+                      ? 'border-slate-800 hover:border-amber-500/50 hover:bg-slate-900/80 cursor-pointer'
+                      : 'border-slate-800 opacity-60 cursor-default'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white font-semibold mb-1 truncate">{task.title}</h3>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {task.provider_name && (
+                          <span className="text-slate-400 text-sm">{task.provider_name}</span>
+                        )}
+                        <span className="text-slate-500 text-xs flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {new Date(task.created_at).toLocaleDateString('en-GB', {
+                            day: 'numeric', month: 'short', year: 'numeric',
+                          })}
+                        </span>
+                      </div>
                     </div>
-                  </details>
-                )}
-              </div>
-            ))
+                    <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+                      {task.disputed_amount && (
+                        <span className="text-amber-500 font-semibold">£{task.disputed_amount}</span>
+                      )}
+                      {getStatusBadge(task.status)}
+                      {hasLetter && (
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <FileText className="h-3 w-3" />
+                          View
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
           )}
         </div>
       )}
 
-      {activeTab === 'generate' && <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Form */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-amber-500" />
-            Complaint Details
-          </h2>
+      {/* Generate tab */}
+      {activeTab === 'generate' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Form */}
+          <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-amber-500" />
+              Complaint Details
+            </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Company Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.companyName}
-                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                placeholder="e.g. British Gas, Sky, Virgin Media"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Describe the Issue *
-              </label>
-              <textarea
-                required
-                rows={4}
-                value={formData.issueDescription}
-                onChange={(e) => setFormData({ ...formData, issueDescription: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                placeholder="Explain what went wrong, when it happened, and any impact on you..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                What Outcome Do You Want? *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.desiredOutcome}
-                onChange={(e) => setFormData({ ...formData, desiredOutcome: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                placeholder="e.g. Full refund, £200 compensation, contract cancellation"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Amount (£)
-                </label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Company Name *</label>
                 <input
                   type="text"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  required
+                  value={formData.companyName}
+                  onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                  placeholder="150.00"
+                  placeholder="e.g. British Gas, Sky, Virgin Media"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Account Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.accountNumber}
-                  onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
+                <label className="block text-sm font-medium text-slate-300 mb-2">Describe the Issue *</label>
+                <textarea
+                  required
+                  rows={4}
+                  value={formData.issueDescription}
+                  onChange={(e) => setFormData({ ...formData, issueDescription: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                  placeholder="12345678"
+                  placeholder="Explain what went wrong, when it happened, and any impact on you..."
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Incident Date
-              </label>
-              <input
-                type="date"
-                value={formData.incidentDate}
-                onChange={(e) => setFormData({ ...formData, incidentDate: e.target.value })}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">What Outcome Do You Want? *</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.desiredOutcome}
+                  onChange={(e) => setFormData({ ...formData, desiredOutcome: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  placeholder="e.g. Full refund, £200 compensation, contract cancellation"
+                />
+              </div>
 
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={clearForm}
-                className="flex items-center gap-2 px-4 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Clear
-              </button>
-              <button
-                type="submit"
-                disabled={generating}
-                className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {generating ? (
-                  <>Generating with AI...</>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5" />
-                    Generate Complaint Letter
-                  </>
-                )}
-              </button>
-            </div>
-
-            {usageInfo && usageInfo.limit !== null && (
-              <p className="text-xs text-slate-500 text-right">
-                {usageInfo.used} of {usageInfo.limit} letters used this month
-                {usageInfo.used >= usageInfo.limit && (
-                  <span className="text-amber-500 ml-1">— upgrade for unlimited</span>
-                )}
-              </p>
-            )}
-          </form>
-        </div>
-
-        {/* Result */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6">Generated Letter</h2>
-
-          {!result ? (
-            <div className="text-center py-12">
-              <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">
-                Fill in the form and click Generate to create your complaint letter
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Success Rate */}
-              <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-400">Estimated Success Rate</span>
-                  <span className="text-2xl font-bold text-green-500">
-                    {result.estimatedSuccess}%
-                  </span>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Amount (£)</label>
+                  <input
+                    type="text"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    placeholder="150.00"
+                  />
                 </div>
-                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-green-500 to-green-400"
-                    style={{ width: `${result.estimatedSuccess}%` }}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Account Number</label>
+                  <input
+                    type="text"
+                    value={formData.accountNumber}
+                    onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    placeholder="12345678"
                   />
                 </div>
               </div>
 
-              {/* Letter */}
-              <div className="bg-slate-950 rounded-lg p-6 border border-slate-800 max-h-96 overflow-y-auto">
-                <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
-                  {result.letter}
-                </pre>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Incident Date</label>
+                <input
+                  type="date"
+                  value={formData.incidentDate}
+                  onChange={(e) => setFormData({ ...formData, incidentDate: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                />
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3">
                 <button
-                  onClick={handleCopy}
-                  className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all"
+                  type="button"
+                  onClick={clearForm}
+                  className="flex items-center gap-2 px-4 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all"
                 >
-                  {copied ? (
-                    <>
-                      <CheckCircle className="h-5 w-5" />
-                      Copied!
-                    </>
+                  <RotateCcw className="h-4 w-4" />
+                  Clear
+                </button>
+                <button
+                  type="submit"
+                  disabled={generating}
+                  className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {generating ? (
+                    <>Generating with AI...</>
                   ) : (
                     <>
-                      <Copy className="h-5 w-5" />
-                      Copy
+                      <Sparkles className="h-5 w-5" />
+                      Generate Complaint Letter
                     </>
                   )}
                 </button>
-                <button
-                  onClick={handleDownload}
-                  className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-3 rounded-lg transition-all"
-                >
-                  <Download className="h-5 w-5" />
-                  Download
-                </button>
               </div>
 
-              {/* Feedback + Regenerate */}
-              <div className="border-t border-slate-800 pt-4">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Feedback (optional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="e.g. Make it more formal, add more urgency, emphasise the billing error more..."
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 mb-2"
-                />
-                <button
-                  onClick={handleRegenerate}
-                  disabled={regenerating}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                  <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
-                  {regenerating ? 'Regenerating...' : 'Regenerate with Feedback'}
-                </button>
+              {usageInfo && usageInfo.limit !== null && (
+                <p className="text-xs text-slate-500 text-right">
+                  {usageInfo.used} of {usageInfo.limit} letters used this month
+                  {usageInfo.used >= usageInfo.limit && (
+                    <span className="text-amber-500 ml-1">— upgrade for unlimited</span>
+                  )}
+                </p>
+              )}
+            </form>
+          </div>
+
+          {/* Result panel */}
+          <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6">Generated Letter</h2>
+
+            {!result ? (
+              <div className="text-center py-12">
+                <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+                <p className="text-slate-400">Fill in the form and click Generate to create your complaint letter</p>
               </div>
-
-              {/* Legal References */}
-              {result.legalReferences?.length > 0 && (
+            ) : (
+              <div className="space-y-4">
+                {/* Success Rate */}
                 <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
-                  <h3 className="text-sm font-semibold text-white mb-2">Legal References</h3>
-                  <ul className="text-xs text-slate-400 space-y-1">
-                    {result.legalReferences.map((ref: string, i: number) => (
-                      <li key={i}>• {ref}</li>
-                    ))}
-                  </ul>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-slate-400">Estimated Success Rate</span>
+                    <span className="text-2xl font-bold text-green-500">{result.estimatedSuccess}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-green-500 to-green-400"
+                      style={{ width: `${result.estimatedSuccess}%` }}
+                    />
+                  </div>
                 </div>
-              )}
 
-              {/* Next Steps */}
-              {result.nextSteps?.length > 0 && (
-                <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
-                  <h3 className="text-sm font-semibold text-white mb-2">Next Steps</h3>
-                  <ul className="text-xs text-slate-400 space-y-1">
-                    {result.nextSteps.map((step: string, i: number) => (
-                      <li key={i}>
-                        {i + 1}. {step}
-                      </li>
-                    ))}
-                  </ul>
+                {/* Letter */}
+                <div className="bg-slate-950 rounded-lg p-6 border border-slate-800 max-h-80 overflow-y-auto">
+                  <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
+                    {result.letter}
+                  </pre>
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Copy + PDF */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCopy}
+                    className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all"
+                  >
+                    {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={handlePDF}
+                    className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-3 rounded-lg transition-all"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download PDF
+                  </button>
+                </div>
+
+                {/* Satisfaction prompt */}
+                {!showFeedback ? (
+                  <div className="border border-slate-800 rounded-xl p-4">
+                    <p className="text-sm text-slate-300 font-medium mb-3">Happy with this letter?</p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowFeedback(false)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 py-2.5 rounded-lg transition-all text-sm font-medium"
+                      >
+                        <ThumbsUp className="h-4 w-4" />
+                        Yes, it&apos;s great
+                      </button>
+                      <button
+                        onClick={() => setShowFeedback(true)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-lg transition-all text-sm font-medium"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Request changes
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border border-slate-700 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-slate-300 font-medium">What would you like changed?</p>
+                      <button
+                        onClick={() => { setShowFeedback(false); setFeedback(''); }}
+                        className="text-slate-500 hover:text-white transition-all"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={feedback}
+                      onChange={(e) => setFeedback(e.target.value)}
+                      placeholder="e.g. Make it more formal, add more urgency about the billing error, mention the 8-week Ombudsman deadline..."
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    />
+                    <p className="text-xs text-slate-500">Note: regenerating counts as 1 letter from your monthly quota.</p>
+                    <button
+                      onClick={handleRegenerate}
+                      disabled={regenerating || !feedback.trim()}
+                      className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-2.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
+                      {regenerating ? 'Regenerating...' : 'Regenerate with Changes'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Legal References */}
+                {result.legalReferences?.length > 0 && (
+                  <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                    <h3 className="text-sm font-semibold text-white mb-2">Legal References</h3>
+                    <ul className="text-xs text-slate-400 space-y-1">
+                      {result.legalReferences.map((ref: string, i: number) => (
+                        <li key={i}>• {ref}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Next Steps */}
+                {result.nextSteps?.length > 0 && (
+                  <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                    <h3 className="text-sm font-semibold text-white mb-2">Next Steps</h3>
+                    <ul className="text-xs text-slate-400 space-y-1">
+                      {result.nextSteps.map((step: string, i: number) => (
+                        <li key={i}>{i + 1}. {step}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>}
+      )}
     </div>
   );
 }
