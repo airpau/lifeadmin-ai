@@ -36,17 +36,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 400 });
     }
 
-    // Insert into DB
-    const { error: insertError } = await supabase
+    // Insert into DB (emails_sent starts empty — updated after confirmed send)
+    const { data: inserted, error: insertError } = await supabase
       .from('waitlist_signups')
-      .insert({ email: email.toLowerCase(), full_name: name, emails_sent: ['welcome'] });
+      .insert({ email: email.toLowerCase(), full_name: name, emails_sent: [] })
+      .select('id')
+      .single();
 
     if (insertError) throw insertError;
 
-    // Send Day 0 welcome email (non-blocking)
-    sendSequenceEmail(email, name, 'welcome').catch((err) =>
-      console.error('Welcome email failed (non-fatal):', err)
-    );
+    // Send Day 0 welcome email and mark as sent only if successful
+    sendSequenceEmail(email, name, 'welcome')
+      .then((sent) => {
+        if (sent) {
+          supabase
+            .from('waitlist_signups')
+            .update({ emails_sent: ['welcome'] })
+            .eq('id', inserted.id)
+            .then(({ error }) => {
+              if (error) console.error('Failed to mark welcome email sent:', error);
+            });
+        } else {
+          console.error(`Welcome email not sent to ${email} — Resend returned false`);
+        }
+      })
+      .catch((err) => console.error('Welcome email error:', err));
 
     // Get total count
     const { count } = await supabase
