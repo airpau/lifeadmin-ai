@@ -355,23 +355,45 @@ export default function ScannerPage() {
                           </div>
                           <span className="text-sm font-semibold text-white">{opp.confidence}%</span>
                         </div>
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => {
-                              const params = new URLSearchParams({
-                                company: opp.provider,
-                                issue: opp.description,
-                                amount: opp.amount > 0 ? String(opp.amount) : '',
-                              });
-                              router.push(`/dashboard/complaints?${params}`);
-                            }}
-                            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-2 rounded-lg transition-all text-sm"
-                          >
-                            Raise Complaint
-                          </button>
+                        <div className="flex flex-wrap gap-2">
+                          {opp.type === 'forgotten_subscription' ? (
+                            <button
+                              onClick={async () => {
+                                await fetch('/api/subscriptions', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    provider_name: opp.provider,
+                                    category: 'other',
+                                    amount: opp.amount || 0,
+                                    billing_cycle: 'monthly',
+                                    usage_frequency: 'rarely',
+                                  }),
+                                });
+                                router.push('/dashboard/subscriptions');
+                              }}
+                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Track & Cancel
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  company: opp.provider,
+                                  issue: opp.description,
+                                  amount: opp.amount > 0 ? String(opp.amount) : '',
+                                });
+                                router.push(`/dashboard/complaints?${params}`);
+                              }}
+                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Raise Complaint
+                            </button>
+                          )}
                           <button
                             onClick={() => setOpportunities((prev) => prev.filter((o) => o.id !== opp.id))}
-                            className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg transition-all text-sm"
+                            className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-lg transition-all text-sm"
                           >
                             Dismiss
                           </button>

@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2 } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles } from 'lucide-react';
 
 interface Subscription {
   id: string;
@@ -37,6 +37,8 @@ export default function SubscriptionsPage() {
   const [copied, setCopied] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addingSubscription, setAddingSubscription] = useState(false);
+  const [detectingFromInbox, setDetectingFromInbox] = useState(false);
+  const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
   const [newSub, setNewSub] = useState({
     provider_name: '',
     category: 'streaming',
@@ -73,6 +75,45 @@ export default function SubscriptionsPage() {
       if (s.billing_cycle === 'quarterly') return sum + s.amount / 3;
       return sum;
     }, 0);
+
+  const handleDetectFromInbox = async () => {
+    setDetectingFromInbox(true);
+    setDetectedSubs([]);
+    try {
+      const res = await fetch('/api/gmail/detect-subscriptions', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        // Filter out already-tracked ones
+        const tracked = subscriptions.map((s) => s.provider_name.toLowerCase());
+        const novel = (data.subscriptions || []).filter(
+          (s: any) => !tracked.includes(s.provider_name.toLowerCase())
+        );
+        setDetectedSubs(novel);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDetectingFromInbox(false);
+    }
+  };
+
+  const handleAddDetected = async (detected: any) => {
+    const res = await fetch('/api/subscriptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider_name: detected.provider_name,
+        category: detected.category || 'other',
+        amount: detected.amount || 0,
+        billing_cycle: detected.billing_cycle || 'monthly',
+        usage_frequency: 'sometimes',
+      }),
+    });
+    if (res.ok) {
+      setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
+      await fetchSubscriptions();
+    }
+  };
 
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,19 +222,67 @@ export default function SubscriptionsPage() {
   return (
     <div className="max-w-7xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Subscriptions</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Subscriptions</h1>
           <p className="text-slate-400">Track and cancel subscriptions costing you money</p>
         </div>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-3 rounded-lg transition-all"
-        >
-          <Plus className="h-5 w-5" />
-          Add Subscription
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleDetectFromInbox}
+            disabled={detectingFromInbox}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-medium px-4 py-3 rounded-lg transition-all text-sm"
+          >
+            {detectingFromInbox
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Inbox className="h-4 w-4" />}
+            {detectingFromInbox ? 'Scanning...' : 'Detect from Inbox'}
+          </button>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-3 rounded-lg transition-all text-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </button>
+        </div>
       </div>
+
+      {/* Detected subscriptions from inbox */}
+      {detectedSubs.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/30 rounded-2xl p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="h-5 w-5 text-amber-400" />
+            <h2 className="text-white font-semibold">Detected from your inbox ({detectedSubs.length})</h2>
+          </div>
+          <div className="space-y-3">
+            {detectedSubs.map((s) => (
+              <div key={s.provider_name} className="flex items-center justify-between bg-slate-900/60 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-white font-medium">{s.provider_name}</p>
+                  <p className="text-slate-400 text-sm capitalize">
+                    {s.category} · £{s.amount > 0 ? s.amount.toFixed(2) : '?'}/{s.billing_cycle}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleAddDetected(s)}
+                    className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all"
+                  >
+                    Track
+                  </button>
+                  <button
+                    onClick={() => setDetectedSubs((prev) => prev.filter((d) => d.provider_name !== s.provider_name))}
+                    className="text-slate-500 hover:text-slate-300 px-2 py-2 text-sm"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
