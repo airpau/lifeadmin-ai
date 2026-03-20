@@ -3,11 +3,11 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, Sparkles } from 'lucide-react';
+import { Mail, Lock, User, Sparkles, CheckCircle2 } from 'lucide-react';
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('');
@@ -15,8 +15,14 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [verifyMode, setVerifyMode] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  useEffect(() => {
+    if (searchParams.get('verify') === 'true') setVerifyMode(true);
+  }, [searchParams]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,21 +30,26 @@ export default function SignupPage() {
     setError('');
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            full_name: fullName,
-          },
+          data: { full_name: fullName },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
       if (error) throw error;
 
-      router.push('/dashboard');
-      router.refresh();
+      // If session is present, email confirmation is disabled — go straight to dashboard
+      if (data.session) {
+        router.push('/dashboard');
+        router.refresh();
+      } else {
+        // Email confirmation required — show message instead of bouncing
+        setError('');
+        router.push('/auth/signup?verify=true');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to create account');
     } finally {
@@ -63,6 +74,21 @@ export default function SignupPage() {
 
         {/* Signup Form */}
         <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 shadow-2xl">
+          {verifyMode ? (
+            <div className="text-center py-6">
+              <div className="bg-green-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="h-8 w-8 text-green-500" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Check your email</h2>
+              <p className="text-slate-400 text-sm mb-6">
+                We sent a confirmation link to <span className="text-white font-medium">{email}</span>.
+                Click it to activate your account.
+              </p>
+              <Link href="/auth/login" className="text-amber-500 hover:text-amber-400 text-sm font-medium">
+                Back to sign in
+              </Link>
+            </div>
+          ) : (
           <form onSubmit={handleSignup} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -130,7 +156,6 @@ export default function SignupPage() {
             >
               {loading ? 'Creating account...' : 'Create account'}
             </button>
-          </form>
 
           <div className="mt-6 text-center">
             <p className="text-slate-400 text-sm">
@@ -146,6 +171,8 @@ export default function SignupPage() {
               By creating an account, you agree to our Terms of Service and Privacy Policy
             </p>
           </div>
+          </form>
+          )}
         </div>
       </div>
     </div>
