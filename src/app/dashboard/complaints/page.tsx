@@ -5,6 +5,7 @@ export const runtime = 'edge';
 
 import { useState, useEffect } from 'react';
 import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History } from 'lucide-react';
+import UpgradeModal from '@/components/UpgradeModal';
 
 interface Task {
   id: string;
@@ -32,6 +33,9 @@ export default function ComplaintsPage() {
   const [copied, setCopied] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
+  const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; used: number; limit: number; tier: string }>({
+    open: false, used: 0, limit: 3, tier: 'free',
+  });
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -57,9 +61,15 @@ export default function ComplaintsPage() {
         body: JSON.stringify(formData),
       });
 
-      if (!res.ok) throw new Error('Failed to generate letter');
-
       const data = await res.json();
+
+      if (res.status === 403 && data.upgradeRequired) {
+        setUpgradeModal({ open: true, used: data.used, limit: data.limit, tier: data.tier });
+        return;
+      }
+
+      if (!res.ok) throw new Error(data.error || 'Failed to generate letter');
+
       setResult(data);
     } catch (error) {
       console.error('Error:', error);
@@ -109,6 +119,13 @@ export default function ComplaintsPage() {
 
   return (
     <div className="max-w-5xl">
+      <UpgradeModal
+        open={upgradeModal.open}
+        onClose={() => setUpgradeModal((m) => ({ ...m, open: false }))}
+        used={upgradeModal.used}
+        limit={upgradeModal.limit}
+        tier={upgradeModal.tier}
+      />
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-4xl font-bold text-white mb-2">Complaints</h1>

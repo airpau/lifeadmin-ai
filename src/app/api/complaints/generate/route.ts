@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
+import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +11,21 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check plan limits
+    const usageCheck = await checkUsageLimit(user.id, 'complaint_generated');
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: 'Monthly limit reached',
+          upgradeRequired: true,
+          used: usageCheck.used,
+          limit: usageCheck.limit,
+          tier: usageCheck.tier,
+        },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
@@ -63,6 +79,9 @@ export async function POST(request: NextRequest) {
         completed_at: new Date().toISOString(),
       });
     }
+
+    // Increment usage after successful generation
+    await incrementUsage(user.id, 'complaint_generated');
 
     return NextResponse.json(result);
   } catch (error: any) {
