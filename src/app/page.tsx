@@ -81,13 +81,21 @@ export default function Home() {
 
             {/* Headline */}
             <h1 className="text-5xl md:text-7xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
-              Paybacker — Save Money on Your Bills & Get Your Money Back
+              Your AI-Powered Money Assistant
             </h1>
 
             {/* Subheadline */}
             <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-              AI agents that find you better deals on energy, broadband & insurance — plus dispute bills, write complaints, and cancel forgotten subscriptions
+              Cancel forgotten subscriptions. Dispute unfair bills. Find better deals on energy, broadband and insurance — automatically.
             </p>
+
+            {/* Trust bar */}
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-10 text-sm text-slate-400">
+              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> Cites Consumer Rights Act 2015</span>
+              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> UK consumer law trained</span>
+              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> Legislation-backed complaints</span>
+              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> GDPR compliant · Read-only access</span>
+            </div>
 
             {/* Hero CTAs */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
@@ -106,37 +114,29 @@ export default function Home() {
             </div>
 
             {/* Benefits */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-24">
-              <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <TrendingUp className="h-6 w-6 text-amber-500" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Dispute overcharges and billing errors</h3>
-                <p className="text-slate-400 text-sm">Our AI finds overcharges, disputes errors, and claims refunds you didn't know you were owed</p>
-              </div>
-
+            <div className="grid md:grid-cols-3 gap-6 mb-24">
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <Shield className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Cancel forgotten subscriptions</h3>
-                <p className="text-slate-400 text-sm">Detect unused subscriptions from your inbox. Generate cancellation emails ready to send in seconds.</p>
+                <h3 className="text-lg font-semibold text-white mb-2">Cancel Subscriptions</h3>
+                <p className="text-slate-400 text-sm">Stop paying for services you don't use. Our AI scans your inbox, finds forgotten subscriptions, and drafts cancellation emails — citing your legal right to cancel.</p>
               </div>
 
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <CheckCircle className="h-6 w-6 text-amber-500" />
+                  <TrendingUp className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Letters citing UK consumer law</h3>
-                <p className="text-slate-400 text-sm">Professional complaint letters citing the Consumer Rights Act 2015 — written in seconds, ready to copy and send</p>
+                <h3 className="text-lg font-semibold text-white mb-2">Dispute Bills</h3>
+                <p className="text-slate-400 text-sm">AI-generated complaints that get results. Every letter cites specific UK legislation — Consumer Rights Act 2015, Ofcom rules, FCA regulations — making companies take notice.</p>
               </div>
 
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <Scale className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Compare & Switch</h3>
-                <p className="text-slate-400 text-sm">Find better deals on energy, broadband, insurance and more. We compare the market so you don't have to.</p>
+                <h3 className="text-lg font-semibold text-white mb-2">Find Better Deals</h3>
+                <p className="text-slate-400 text-sm">Compare and switch to save money on energy, broadband, insurance and more. We identify where you're overpaying and surface better options automatically.</p>
               </div>
             </div>
 
@@ -263,7 +263,7 @@ export default function Home() {
 
             {/* Trust indicators */}
             <div className="mt-16 text-center">
-              <p className="text-slate-500 text-sm">UK consumer protection · GDPR compliant · Read-only email access</p>
+              <p className="text-slate-500 text-sm">UK consumer law trained · GDPR compliant · Read-only email access · Not legal advice</p>
             </div>
           </div>
         </main>
@@ -276,7 +276,7 @@ export default function Home() {
               <Link href="/legal/terms" className="hover:text-white transition-all">Terms of Service</Link>
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
             </div>
-            <p>© 2026 Paybacker LTD. UK consumer protection powered by AI.</p>
+            <p>© 2026 Paybacker LTD. UK consumer law. Automated.</p>
           </div>
         </footer>
       </div>
