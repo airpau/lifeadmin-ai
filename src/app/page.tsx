@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale } from 'lucide-react';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -81,12 +81,12 @@ export default function Home() {
 
             {/* Headline */}
             <h1 className="text-5xl md:text-7xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
-              Paybacker — Get Your Money Back
+              Paybacker — Save Money on Your Bills & Get Your Money Back
             </h1>
 
             {/* Subheadline */}
             <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-              AI agents that dispute bills, write complaints, and cancel forgotten subscriptions — on your behalf
+              AI agents that find you better deals on energy, broadband & insurance — plus dispute bills, write complaints, and cancel forgotten subscriptions
             </p>
 
             {/* Hero CTAs */}
@@ -106,7 +106,7 @@ export default function Home() {
             </div>
 
             {/* Benefits */}
-            <div className="grid md:grid-cols-3 gap-6 mb-24">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-24">
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <TrendingUp className="h-6 w-6 text-amber-500" />
@@ -129,6 +129,14 @@ export default function Home() {
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Letters citing UK consumer law</h3>
                 <p className="text-slate-400 text-sm">Professional complaint letters citing the Consumer Rights Act 2015 — written in seconds, ready to copy and send</p>
+              </div>
+
+              <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
+                <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <Scale className="h-6 w-6 text-amber-500" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">Compare & Switch</h3>
+                <p className="text-slate-400 text-sm">Find better deals on energy, broadband, insurance and more. We compare the market so you don't have to.</p>
               </div>
             </div>
 
