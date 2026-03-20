@@ -114,11 +114,33 @@ RESEND_API_KEY=
 - Competitors: DoNotPay (US-focused), Resolver (manual process)
 - Advantage: Fully automated with AI, UK-specific regulations
 
-## Next Steps (Waitlist Phase)
+## Build Progress
+
+### Phase 1: Foundation ✅
 - [x] Scaffold Next.js app
 - [x] Install dependencies
-- [ ] Create waitlist landing page
-- [ ] Deploy to Vercel
-- [ ] Set up domain (lifeadmin.ai or similar)
+- [x] Create waitlist landing page
+- [x] Supabase project live (id: kcxxlesishltdmfctlmo, eu-west-2)
+- [x] Full DB schema deployed (profiles, waitlist_signups, tasks, agent_runs, subscriptions)
+- [x] Auth (login/signup) pages
+- [x] Dashboard layout + sidebar navigation
+
+### Phase 2: Core Features ✅
+- [x] Complaints AI agent (Claude 3.5 Sonnet, UK consumer law, saves to DB)
+- [x] Complaints page with generate + history tabs
+- [x] Opportunity Scanner page (mock data - needs Gmail integration)
+- [x] Subscriptions page — real Supabase data, add/delete, AI cancellation emails
+- [x] Dashboard overview (stats from DB)
+- [x] Profile page
+- [x] Pricing page (3 tiers: Free / Essential £9.99/mo / Pro £19.99/mo)
+- [x] Stripe checkout + webhook API routes (need real price IDs)
+- [x] Tasks history API (/api/tasks)
+- [x] Subscriptions CRUD API (/api/subscriptions, /api/subscriptions/[id])
+- [x] AI cancellation email API (/api/subscriptions/cancellation-email)
+
+### Phase 3: Next Up
+- [ ] Set ANTHROPIC_API_KEY in .env.local (required for complaints + cancellation emails)
+- [ ] Set real Stripe price IDs (currently placeholders)
+- [ ] Gmail OAuth integration (inbox scanner - real data)
+- [ ] Deploy to Vercel + set up custom domain
 - [ ] Launch waitlist campaign
-- [ ] Build MVP dashboard + first AI agent (bill dispute)

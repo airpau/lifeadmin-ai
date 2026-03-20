@@ -3,8 +3,18 @@
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
-import { useState } from 'react';
-import { FileText, Sparkles, Download, Copy, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History } from 'lucide-react';
+
+interface Task {
+  id: string;
+  title: string;
+  provider_name: string | null;
+  disputed_amount: number | null;
+  status: string;
+  created_at: string;
+  agent_runs: Array<{ output_data: any; created_at: string }>;
+}
 
 export default function ComplaintsPage() {
   const [formData, setFormData] = useState({
@@ -20,6 +30,20 @@ export default function ComplaintsPage() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const res = await fetch('/api/tasks?type=complaint_letter');
+        if (res.ok) setTasks(await res.json());
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchTasks();
+  }, [result]); // refetch after generating
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,17 +91,103 @@ export default function ComplaintsPage() {
     }
   };
 
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, { label: string; className: string }> = {
+      pending_review: { label: 'Pending', className: 'bg-amber-500/10 text-amber-500' },
+      in_progress: { label: 'In Progress', className: 'bg-blue-500/10 text-blue-400' },
+      awaiting_response: { label: 'Awaiting Response', className: 'bg-purple-500/10 text-purple-400' },
+      resolved_success: { label: 'Resolved', className: 'bg-green-500/10 text-green-500' },
+      resolved_failed: { label: 'Failed', className: 'bg-red-500/10 text-red-400' },
+    };
+    const config = map[status] || { label: status, className: 'bg-slate-500/10 text-slate-400' };
+    return (
+      <span className={`text-xs px-2 py-1 rounded font-medium ${config.className}`}>
+        {config.label}
+      </span>
+    );
+  };
+
   return (
     <div className="max-w-5xl">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Complaint Generator</h1>
+      <div className="mb-6">
+        <h1 className="text-4xl font-bold text-white mb-2">Complaints</h1>
         <p className="text-slate-400">
           AI-powered complaint letters citing UK consumer law
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setActiveTab('generate')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'generate' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
+          }`}
+        >
+          <Sparkles className="h-4 w-4" />
+          Generate Letter
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'history' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
+          }`}
+        >
+          <History className="h-4 w-4" />
+          History ({tasks.length})
+        </button>
+      </div>
+
+      {activeTab === 'history' && (
+        <div className="space-y-4">
+          {tasks.length === 0 ? (
+            <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-12 text-center">
+              <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+              <p className="text-slate-400">No complaints generated yet</p>
+            </div>
+          ) : (
+            tasks.map((task) => (
+              <div key={task.id} className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="text-white font-semibold mb-1">{task.title}</h3>
+                    {task.provider_name && (
+                      <p className="text-slate-400 text-sm">{task.provider_name}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {task.disputed_amount && (
+                      <span className="text-amber-500 font-semibold">£{task.disputed_amount}</span>
+                    )}
+                    {getStatusBadge(task.status)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Clock className="h-3 w-3" />
+                  {new Date(task.created_at).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                  })}
+                </div>
+                {task.agent_runs?.[0]?.output_data?.letter && (
+                  <details className="mt-4">
+                    <summary className="text-sm text-slate-400 cursor-pointer hover:text-white transition-all">
+                      View generated letter
+                    </summary>
+                    <div className="mt-3 bg-slate-950 rounded-lg p-4 border border-slate-800 max-h-64 overflow-y-auto">
+                      <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono">
+                        {task.agent_runs[0].output_data.letter}
+                      </pre>
+                    </div>
+                  </details>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {activeTab === 'generate' && <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Form */}
         <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
@@ -276,7 +386,7 @@ export default function ComplaintsPage() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
