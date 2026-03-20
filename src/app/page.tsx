@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp } from 'lucide-react';
 
 export default function Home() {
@@ -44,11 +45,25 @@ export default function Home() {
 
       <div className="relative">
         {/* Header */}
-        <header className="container mx-auto px-6 py-6">
+        <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="h-6 w-6 text-amber-500" />
               <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">Backer</span></span>
+            </div>
+            <div className="flex items-center gap-2 md:gap-3">
+              <Link
+                href="/auth/login"
+                className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/auth/signup"
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+              >
+                Get Started
+              </Link>
             </div>
           </div>
         </header>
@@ -60,19 +75,35 @@ export default function Home() {
             <div className="flex justify-center mb-8">
               <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20">
                 <Sparkles className="h-4 w-4" />
-                <span>AI-Powered Money Recovery — Coming Soon</span>
+                <span>AI-Powered Money Recovery — Now in Early Access</span>
               </div>
             </div>
 
             {/* Headline */}
             <h1 className="text-5xl md:text-7xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
-              The AI that gets your money back
+              PayBacker — Get Your Money Back
             </h1>
 
             {/* Subheadline */}
-            <p className="text-xl md:text-2xl text-center text-slate-300 mb-12 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
               AI agents that dispute bills, write complaints, and cancel forgotten subscriptions — on your behalf
             </p>
+
+            {/* Hero CTAs */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+              <Link
+                href="/auth/signup"
+                className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg"
+              >
+                Create Free Account
+              </Link>
+              <Link
+                href="/auth/login"
+                className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white font-medium px-8 py-4 rounded-xl transition-all text-center text-lg"
+              >
+                Sign In
+              </Link>
+            </div>
 
             {/* Benefits */}
             <div className="grid md:grid-cols-3 gap-6 mb-24">
@@ -215,7 +246,7 @@ export default function Home() {
                     </button>
 
                     <p className="text-center text-sm text-slate-500 mt-4">
-                      Join <span className="font-semibold text-amber-500">2,847</span> people on the waitlist
+                      Free to join · No credit card required
                     </p>
                   </form>
                 )}
@@ -224,15 +255,7 @@ export default function Home() {
 
             {/* Trust indicators */}
             <div className="mt-16 text-center">
-              <p className="text-slate-500 text-sm mb-4">Trusted by consumers across the UK</p>
-              <div className="flex justify-center items-center gap-2">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 border-2 border-slate-900" />
-                  ))}
-                </div>
-                <span className="text-slate-400 text-sm ml-2">and 2,842 others</span>
-              </div>
+              <p className="text-slate-500 text-sm">UK consumer protection · GDPR compliant · Read-only email access</p>
             </div>
           </div>
         </main>
