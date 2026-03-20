@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendWaitlistConfirmation } from '@/lib/resend';
+import { sendSequenceEmail } from '@/lib/email/waitlist-sequence';
 
 // Service role — no RLS, safe for server-only route
 function getAdmin() {
@@ -39,16 +39,14 @@ export async function POST(request: NextRequest) {
     // Insert into DB
     const { error: insertError } = await supabase
       .from('waitlist_signups')
-      .insert({ email: email.toLowerCase(), full_name: name });
+      .insert({ email: email.toLowerCase(), full_name: name, emails_sent: ['welcome'] });
 
     if (insertError) throw insertError;
 
-    // Send confirmation email (non-blocking — don't fail signup if email fails)
-    try {
-      await sendWaitlistConfirmation(name, email);
-    } catch (emailErr) {
-      console.error('Waitlist email failed (non-fatal):', emailErr);
-    }
+    // Send Day 0 welcome email (non-blocking)
+    sendSequenceEmail(email, name, 'welcome').catch((err) =>
+      console.error('Welcome email failed (non-fatal):', err)
+    );
 
     // Get total count
     const { count } = await supabase
