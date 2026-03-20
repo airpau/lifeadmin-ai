@@ -6,18 +6,21 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 60;
 
-const SUBSCRIPTION_QUERY = [
-  'subject:("your subscription" OR "subscription renewed" OR "payment received" OR "thank you for your payment")',
-  'subject:("your order" OR "receipt" OR "invoice" OR "billing" OR "auto-renew" OR "membership" OR "plan renewed" OR "trial ended")',
-  'subject:(subscription OR renewal OR "direct debit" OR "standing order" OR "recurring payment")',
-  'from:(netflix OR spotify OR amazon OR apple OR google OR microsoft OR adobe OR dropbox)',
-  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee)',
-  'from:(gym OR david-lloyd OR puregym OR anytime OR nuffield)',
-  'from:(disney OR paramount OR apple OR peacock OR britbox OR nowtv)',
-  'from:(lastpass OR dashlane OR nordvpn OR expressvpn OR proton)',
-  'from:(linkedin OR canva OR grammarly OR notion OR slack OR zoom)',
-  'from:(britishgas OR eon OR edf OR octopus OR bulb OR shell)',
-].join(' OR ') + ' newer_than:365d';
+// Two focused queries instead of one giant OR — Gmail handles shorter queries more reliably
+const SUBJECT_QUERY =
+  'subject:(subscription OR renewal OR "direct debit" OR "standing order" OR "recurring payment" OR invoice OR receipt OR membership OR "auto-renew" OR "payment received" OR "thank you for your payment" OR "plan renewed" OR "trial ended" OR "billing statement") newer_than:365d';
+
+const PROVIDER_QUERY =
+  'from:(netflix OR spotify OR amazon OR apple OR google OR microsoft OR adobe OR dropbox OR sky OR virginmedia OR bt.com OR talktalk OR vodafone OR o2.co.uk OR three.co.uk OR ee.co.uk OR davidlloyd OR puregym OR anytime OR nuffield OR disney OR britbox OR nowtv OR nordvpn OR expressvpn OR proton.me OR linkedin OR canva OR grammarly OR notion OR slack OR zoom OR britishgas OR edfenergy OR octopusenergy OR bulb OR shell OR hulu OR paramount OR peacock OR duolingo OR headspace OR calm OR audible OR kindle OR icloud OR onedrive OR dropbox OR lastpass OR dashlane OR mcafee OR norton OR avast OR github OR figma OR loom OR miro OR airtable OR hubspot OR mailchimp OR squarespace OR wix OR godaddy OR namecheap OR cloudflare OR heroku OR aws OR azure OR deliveroo OR hellofresh OR gousto OR mindful OR peloton OR classpass OR strava OR garmin OR myprotein) newer_than:365d';
+
+async function fetchMessageIds(query: string, accessToken: string, maxResults = 50): Promise<string[]> {
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  return (data.messages || []).map((m: { id: string }) => m.id);
+}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -48,20 +51,20 @@ export async function POST(request: NextRequest) {
     }).eq('user_id', user.id);
   }
 
-  // Fetch subscription-related emails
-  const listRes = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(SUBSCRIPTION_QUERY)}&maxResults=50`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const listData = await listRes.json();
-  const messages = listData.messages || [];
-  if (!messages.length) return NextResponse.json({ subscriptions: [] });
+  // Run both queries in parallel and deduplicate by message ID
+  const [subjectIds, providerIds] = await Promise.all([
+    fetchMessageIds(SUBJECT_QUERY, accessToken, 50),
+    fetchMessageIds(PROVIDER_QUERY, accessToken, 50),
+  ]);
 
-  // Fetch email details in parallel
+  const allIds = Array.from(new Set([...subjectIds, ...providerIds]));
+  if (!allIds.length) return NextResponse.json({ subscriptions: [] });
+
+  // Fetch up to 40 email details for Claude (more coverage)
   const details = await Promise.allSettled(
-    messages.slice(0, 25).map(async (m: { id: string }) => {
+    allIds.slice(0, 40).map(async (id: string) => {
       const res = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       const msg = await res.json();
@@ -79,20 +82,27 @@ export async function POST(request: NextRequest) {
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
-    system: `You are a subscription detection assistant. Analyse these emails and identify recurring subscriptions.
-Return a JSON array of detected subscriptions. Each must have:
-- provider_name: company/service name (string)
-- amount: monthly cost in GBP as a number (estimate from email; 0 if unknown)
-- billing_cycle: "monthly" | "yearly" | "quarterly" (best guess)
-- category: "streaming" | "software" | "fitness" | "news" | "shopping" | "gaming" | "other"
-- confidence: 0-100 (how confident this is a recurring subscription)
+    max_tokens: 2000,
+    system: `You are a subscription detection assistant for UK consumers. Analyse these emails and identify recurring subscriptions.
 
-Include subscriptions with confidence >= 40. Be thorough — it's better to surface candidates the user can dismiss than to miss real subscriptions. No duplicates. Return [] only if genuinely nothing found.
-Return ONLY the JSON array, no markdown.`,
+Return a JSON array of detected subscriptions. Each object must have:
+- provider_name: clean company/service name (e.g. "Netflix", "Spotify", "Adobe Creative Cloud")
+- amount: cost in GBP as a number. Extract from snippet/subject if visible (e.g. "£9.99" → 9.99). For yearly plans divide by 12 for monthly equivalent. Use 0 if truly unknown.
+- billing_cycle: "monthly" | "yearly" | "quarterly" — infer from context ("annual", "per year" → yearly; "per month", "monthly" → monthly)
+- category: "streaming" | "software" | "fitness" | "news" | "shopping" | "gaming" | "utilities" | "other"
+- confidence: 0-100
+
+Rules:
+- Include anything with confidence >= 35. Better to surface candidates the user can dismiss than to miss real subscriptions.
+- Deduplicate: if multiple emails are from the same provider, list it once with the most recent/accurate amount.
+- Infer provider from the "From" email domain if the subject doesn't name it (e.g. "noreply@netflix.com" → "Netflix").
+- Common UK amounts to watch: Spotify £10.99, Netflix £4.99–17.99, Amazon Prime £8.99/mo, iCloud £0.99–6.99, Microsoft 365 £5.99–12.99, Adobe £54.98/mo or £599/yr, Sky £25+, broadband £20–50.
+- Do NOT include one-off purchases (Amazon order confirmations for physical goods, etc.) unless there are clear subscription signals.
+
+Return ONLY the JSON array, no markdown, no explanation.`,
     messages: [{
       role: 'user',
-      content: `Detect subscriptions from these emails:\n\n${emails.map((e, i) =>
+      content: `Detect subscriptions from these ${emails.length} emails:\n\n${emails.map((e, i) =>
         `${i + 1}. From: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nPreview: ${e.snippet}`
       ).join('\n\n')}`,
     }],

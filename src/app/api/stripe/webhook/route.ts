@@ -11,10 +11,15 @@ function getAdminClient() {
   );
 }
 
+const PRICE_ID_TO_TIER: Record<string, string> = {
+  'price_1TD5440Vgfu778nlLrs7RXrS': 'essential', // essential monthly
+  'price_1TD5440Vgfu778nlCozaO1Oz': 'essential', // essential yearly
+  'price_1TD5440Vgfu778nlP3GzMuQG': 'pro',        // pro monthly
+  'price_1TD5450Vgfu778nljBU1F1uN': 'pro',        // pro yearly
+};
+
 function getPlanTier(priceId: string): string {
-  if (priceId.includes('pro')) return 'pro';
-  if (priceId.includes('essential')) return 'essential';
-  return 'free';
+  return PRICE_ID_TO_TIER[priceId] ?? 'essential';
 }
 
 export async function POST(request: NextRequest) {

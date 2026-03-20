@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil } from 'lucide-react';
 
 interface Subscription {
   id: string;
@@ -40,6 +40,16 @@ export default function SubscriptionsPage() {
   const [detectingFromInbox, setDetectingFromInbox] = useState(false);
   const [cancellationError, setCancellationError] = useState<string | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
+  const [editSub, setEditSub] = useState<Subscription | null>(null);
+  const [editForm, setEditForm] = useState({
+    provider_name: '',
+    category: 'other',
+    amount: '',
+    billing_cycle: 'monthly',
+    next_billing_date: '',
+    account_email: '',
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [newSub, setNewSub] = useState({
     provider_name: '',
     category: 'streaming',
@@ -180,6 +190,46 @@ export default function SubscriptionsPage() {
       setCancellationError(error.message || 'Failed to generate cancellation email. Please try again.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const openEditModal = (sub: Subscription) => {
+    setEditSub(sub);
+    setEditForm({
+      provider_name: sub.provider_name,
+      category: sub.category || 'other',
+      amount: sub.amount.toString(),
+      billing_cycle: sub.billing_cycle,
+      next_billing_date: sub.next_billing_date ? sub.next_billing_date.split('T')[0] : '',
+      account_email: sub.account_email || '',
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editSub) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/subscriptions/${editSub.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_name: editForm.provider_name,
+          category: editForm.category,
+          amount: parseFloat(editForm.amount),
+          billing_cycle: editForm.billing_cycle,
+          next_billing_date: editForm.next_billing_date || null,
+          account_email: editForm.account_email || null,
+        }),
+      });
+      if (res.ok) {
+        await fetchSubscriptions();
+        setEditSub(null);
+      }
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -377,9 +427,20 @@ export default function SubscriptionsPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        openEditModal(sub);
+                      }}
+                      className="text-slate-600 hover:text-amber-400 transition-all"
+                      title="Edit"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleDeleteSubscription(sub.id);
                       }}
                       className="text-slate-600 hover:text-red-400 transition-all"
+                      title="Delete"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -481,6 +542,100 @@ export default function SubscriptionsPage() {
           )}
         </div>
       </div>
+
+      {/* Edit subscription modal */}
+      {editSub && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-white">Edit Subscription</h2>
+              <button onClick={() => setEditSub(null)} className="text-slate-400 hover:text-white transition-all">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Provider Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.provider_name}
+                  onChange={(e) => setEditForm({ ...editForm, provider_name: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Amount (£) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={editForm.amount}
+                    onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    placeholder="9.99"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Billing Cycle *</label>
+                  <select
+                    value={editForm.billing_cycle}
+                    onChange={(e) => setEditForm({ ...editForm, billing_cycle: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {BILLING_CYCLES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Category</label>
+                  <select
+                    value={editForm.category}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Next Billing Date</label>
+                  <input
+                    type="date"
+                    value={editForm.next_billing_date}
+                    onChange={(e) => setEditForm({ ...editForm, next_billing_date: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Support Email</label>
+                <input
+                  type="email"
+                  value={editForm.account_email}
+                  onChange={(e) => setEditForm({ ...editForm, account_email: e.target.value })}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  placeholder="support@provider.com"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingEdit}
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold py-4 rounded-lg transition-all flex items-center justify-center gap-2"
+              >
+                {savingEdit ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save Changes'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add subscription modal */}
       {showAddForm && (
