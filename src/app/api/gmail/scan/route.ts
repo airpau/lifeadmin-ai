@@ -44,7 +44,11 @@ export async function POST(request: NextRequest) {
     }).eq('user_id', user.id);
   }
 
-  const opportunities = await scanEmailsForOpportunities(accessToken);
-
-  return NextResponse.json({ opportunities, scannedAt: new Date().toISOString() });
+  try {
+    const { opportunities, emailsFound, emailsScanned } = await scanEmailsForOpportunities(accessToken);
+    return NextResponse.json({ opportunities, emailsFound, emailsScanned, scannedAt: new Date().toISOString() });
+  } catch (err: any) {
+    console.error('Gmail scan error:', err);
+    return NextResponse.json({ error: err.message || 'Scan failed', opportunities: [], emailsFound: 0, emailsScanned: 0 }, { status: 500 });
+  }
 }

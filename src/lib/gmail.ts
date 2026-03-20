@@ -159,21 +159,25 @@ export interface Opportunity {
   emailId: string;
 }
 
-// UK bill/subscription providers to scan for
+// Search last 365 days — broad subject/keyword query that works for any UK inbox.
+// We rely on Claude to filter relevance, not the query.
 const SCAN_QUERY = [
-  'from:(britishgas OR edf OR octopus OR eon OR npower OR bulb OR shell)',
-  'from:(sky OR virginmedia OR bt.com OR talktalk OR vodafone OR ee.com OR o2.com OR three)',
-  'from:(netflix OR spotify OR amazon OR adobe OR microsoft OR apple)',
-  'subject:(bill OR invoice OR statement OR renewal OR "price increase" OR overdue OR "direct debit")',
-].join(' OR ');
+  'subject:(bill OR invoice OR statement OR renewal OR "price increase" OR overdue OR "direct debit" OR subscription OR payment OR charge OR receipt)',
+  'from:(britishgas OR edf OR octopus OR eon OR npower OR shell OR bulb)',
+  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee)',
+  'from:(netflix OR spotify OR amazon OR disney OR apple OR adobe OR microsoft OR google)',
+  'from:(barclays OR lloyds OR hsbc OR natwest OR monzo OR starling OR revolut OR halifax)',
+].join(' OR ') + ' newer_than:365d';
 
-export async function scanEmailsForOpportunities(accessToken: string): Promise<Opportunity[]> {
-  const messages = await fetchEmailList(accessToken, SCAN_QUERY, 30);
-  if (!messages.length) return [];
+export async function scanEmailsForOpportunities(
+  accessToken: string
+): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
+  const messages = await fetchEmailList(accessToken, SCAN_QUERY, 50);
+  if (!messages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Fetch up to 15 in parallel (rate limit friendly)
+  // Fetch up to 20 in parallel (rate limit friendly)
   const details = await Promise.allSettled(
-    messages.slice(0, 15).map((m) => fetchEmailDetail(accessToken, m.id))
+    messages.slice(0, 20).map((m) => fetchEmailDetail(accessToken, m.id))
   );
 
   const emails = details
@@ -204,21 +208,22 @@ Return a JSON array of opportunities. Each must have:
 - detected: today's date ${new Date().toISOString().split('T')[0]}
 - status: "new"
 
-Only include genuine opportunities with confidence >= 50. Return [] if none found.
+Include opportunities with confidence >= 30. Be generous — it's better to surface something for the user to review than to miss it. Return [] only if there is genuinely nothing relevant.
 Return ONLY the JSON array, no markdown.`,
     messages: [{ role: 'user', content: `Analyse these emails:\n\n${emailSummaries}` }],
   });
 
   const content = message.content[0];
-  if (content.type !== 'text') return [];
+  if (content.type !== 'text') return { opportunities: [], emailsFound: messages.length, emailsScanned: emails.length };
 
   try {
     const raw = content.text.trim();
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
+    if (!jsonMatch) return { opportunities: [], emailsFound: messages.length, emailsScanned: emails.length };
     const parsed: Opportunity[] = JSON.parse(jsonMatch[0]);
-    return parsed.map((o) => ({ ...o, status: 'new' as const }));
+    const opportunities = parsed.map((o) => ({ ...o, status: 'new' as const }));
+    return { opportunities, emailsFound: messages.length, emailsScanned: emails.length };
   } catch {
-    return [];
+    return { opportunities: [], emailsFound: messages.length, emailsScanned: emails.length };
   }
 }

@@ -56,6 +56,7 @@ export default function ScannerPage() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scannedAt, setScannedAt] = useState<string | null>(null);
+  const [scanDebug, setScanDebug] = useState<{ emailsFound: number; emailsScanned: number } | null>(null);
   const [filter, setFilter] = useState<'all' | 'new' | 'reviewing'>('all');
   const [error, setError] = useState<string | null>(null);
   const supabase = createClient();
@@ -120,12 +121,19 @@ export default function ScannerPage() {
         const endpoint = acct.provider === 'gmail' ? '/api/gmail/scan' : '/api/outlook/scan';
         return fetch(endpoint, { method: 'POST' })
           .then((r) => r.json())
-          .then((d) => d.opportunities || [])
-          .catch(() => []);
+          .then((d) => {
+            if (d.error) throw new Error(`${acct.provider}: ${d.error}`);
+            return d;
+          });
       });
 
       const results = await Promise.all(scans);
-      const all: Opportunity[] = results.flat();
+      const all: Opportunity[] = results.flatMap((d) => d.opportunities || []);
+
+      // Aggregate debug info
+      const totalFound = results.reduce((s, d) => s + (d.emailsFound || 0), 0);
+      const totalScanned = results.reduce((s, d) => s + (d.emailsScanned || 0), 0);
+      setScanDebug({ emailsFound: totalFound, emailsScanned: totalScanned });
 
       // Deduplicate by title+provider in case both inboxes have same email
       const seen = new Set<string>();
@@ -139,7 +147,7 @@ export default function ScannerPage() {
       setOpportunities(deduped);
       setScannedAt(new Date().toISOString());
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Scan failed. Try disconnecting and reconnecting your inbox.');
     } finally {
       setScanning(false);
     }
@@ -298,8 +306,18 @@ export default function ScannerPage() {
       {!scanning && scannedAt && opportunities.length === 0 && (
         <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
           <CheckCircle2 className="h-16 w-16 text-green-500/40 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-white mb-2">All clear!</h3>
-          <p className="text-slate-400">No opportunities found in your recent emails. Check back after new bills arrive.</p>
+          <h3 className="text-xl font-semibold text-white mb-2">No opportunities found</h3>
+          {scanDebug && (
+            <p className="text-slate-500 text-sm mb-2">
+              Scanned {scanDebug.emailsScanned} of {scanDebug.emailsFound} matching emails
+            </p>
+          )}
+          {scanDebug && scanDebug.emailsFound === 0 && (
+            <p className="text-amber-400 text-sm mb-4">
+              No billing emails matched — try disconnecting and reconnecting your inbox to refresh permissions.
+            </p>
+          )}
+          <p className="text-slate-400 text-sm">Check back after new bills or subscription emails arrive.</p>
         </div>
       )}
 
@@ -307,6 +325,7 @@ export default function ScannerPage() {
       {scannedAt && opportunities.length > 0 && (
         <p className="text-slate-500 text-sm mb-4">
           Last scanned {new Date(scannedAt).toLocaleTimeString('en-GB')} · {connectedAccounts.length} inbox{connectedAccounts.length > 1 ? 'es' : ''}
+          {scanDebug && ` · ${scanDebug.emailsScanned} emails analysed`}
         </p>
       )}
 
