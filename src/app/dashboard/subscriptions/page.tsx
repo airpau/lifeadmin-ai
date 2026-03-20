@@ -38,6 +38,7 @@ export default function SubscriptionsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addingSubscription, setAddingSubscription] = useState(false);
   const [detectingFromInbox, setDetectingFromInbox] = useState(false);
+  const [cancellationError, setCancellationError] = useState<string | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
   const [newSub, setNewSub] = useState({
     provider_name: '',
@@ -153,6 +154,7 @@ export default function SubscriptionsPage() {
     setSelectedSub(subscription);
     setGenerating(true);
     setCancellationEmail(null);
+    setCancellationError(null);
 
     try {
       const res = await fetch('/api/subscriptions/cancellation-email', {
@@ -167,13 +169,15 @@ export default function SubscriptionsPage() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json();
+      if (!res.ok) {
+        setCancellationError(data.error || 'Failed to generate cancellation email. Please try again.');
+      } else {
         setCancellationEmail(data);
         await fetchSubscriptions();
       }
-    } catch (error) {
-      console.error('Error generating cancellation email:', error);
+    } catch (error: any) {
+      setCancellationError(error.message || 'Failed to generate cancellation email. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -408,10 +412,16 @@ export default function SubscriptionsPage() {
             Cancellation Email
           </h2>
 
+          {cancellationError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 mb-4 text-red-400 text-sm">
+              {cancellationError}
+            </div>
+          )}
+
           {generating ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-10 w-10 text-amber-500 animate-spin mb-4" />
-              <p className="text-slate-400">Writing your cancellation email with AI...</p>
+              <p className="text-slate-400">Writing your cancellation email...</p>
             </div>
           ) : cancellationEmail ? (
             <div className="space-y-4">

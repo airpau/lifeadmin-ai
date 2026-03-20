@@ -8,9 +8,16 @@ export const maxDuration = 60;
 
 const SUBSCRIPTION_QUERY = [
   'subject:("your subscription" OR "subscription renewed" OR "payment received" OR "thank you for your payment")',
-  'subject:("your order" OR "receipt" OR "invoice" OR "billing" OR "auto-renew")',
-  'from:(netflix OR spotify OR amazon OR apple OR google OR microsoft OR adobe OR dropbox OR sky OR virginmedia)',
-].join(' OR ');
+  'subject:("your order" OR "receipt" OR "invoice" OR "billing" OR "auto-renew" OR "membership" OR "plan renewed" OR "trial ended")',
+  'subject:(subscription OR renewal OR "direct debit" OR "standing order" OR "recurring payment")',
+  'from:(netflix OR spotify OR amazon OR apple OR google OR microsoft OR adobe OR dropbox)',
+  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee)',
+  'from:(gym OR david-lloyd OR puregym OR anytime OR nuffield)',
+  'from:(disney OR paramount OR apple OR peacock OR britbox OR nowtv)',
+  'from:(lastpass OR dashlane OR nordvpn OR expressvpn OR proton)',
+  'from:(linkedin OR canva OR grammarly OR notion OR slack OR zoom)',
+  'from:(britishgas OR eon OR edf OR octopus OR bulb OR shell)',
+].join(' OR ') + ' newer_than:365d';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -43,7 +50,7 @@ export async function POST(request: NextRequest) {
 
   // Fetch subscription-related emails
   const listRes = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(SUBSCRIPTION_QUERY)}&maxResults=25`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(SUBSCRIPTION_QUERY)}&maxResults=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const listData = await listRes.json();
@@ -52,7 +59,7 @@ export async function POST(request: NextRequest) {
 
   // Fetch email details in parallel
   const details = await Promise.allSettled(
-    messages.slice(0, 15).map(async (m: { id: string }) => {
+    messages.slice(0, 25).map(async (m: { id: string }) => {
       const res = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -81,7 +88,7 @@ Return a JSON array of detected subscriptions. Each must have:
 - category: "streaming" | "software" | "fitness" | "news" | "shopping" | "gaming" | "other"
 - confidence: 0-100 (how confident this is a recurring subscription)
 
-Only include clear subscriptions (confidence >= 60). No duplicates. Return [] if none found.
+Include subscriptions with confidence >= 40. Be thorough — it's better to surface candidates the user can dismiss than to miss real subscriptions. No duplicates. Return [] only if genuinely nothing found.
 Return ONLY the JSON array, no markdown.`,
     messages: [{
       role: 'user',
