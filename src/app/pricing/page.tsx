@@ -10,7 +10,7 @@ const plans = [
   {
     name: 'Free',
     price: { monthly: 0, yearly: 0 },
-    description: 'Perfect for trying out PayBacker',
+    description: 'Perfect for trying out Paybacker',
     features: [
       '3 AI complaint letters per month',
       'Basic bill scanner',
@@ -110,7 +110,7 @@ export default function PricingPage() {
           <Link href="/" className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-amber-500" />
             <span className="text-xl font-bold text-white">
-              Pay<span className="text-amber-500">Backer</span>
+              Pay<span className="text-amber-500">backer</span>
             </span>
           </Link>
         </header>
@@ -249,7 +249,7 @@ export default function PricingPage() {
         {/* Footer */}
         <footer className="container mx-auto px-6 py-8 mt-16 border-t border-slate-800">
           <div className="text-center text-slate-500 text-sm">
-            <p>© 2026 PayBacker. All prices exclude VAT.</p>
+            <p>© 2026 Paybacker LTD. All prices exclude VAT.</p>
           </div>
         </footer>
       </div>

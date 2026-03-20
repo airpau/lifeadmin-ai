@@ -27,12 +27,12 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'welcome',
     dayOffset: 0,
-    subject: "You're on the PayBacker waitlist 🎉",
+    subject: "You're on the Paybacker waitlist 🎉",
     html: (name) => `
       <div style="${baseStyle}">
         <h1 style="${h1Style}">You're on the list, ${name}!</h1>
         <p style="${pStyle}">
-          Thanks for joining PayBacker. We're building an AI that fights your bills, cancels forgotten subscriptions, and gets your money back — automatically.
+          Thanks for joining Paybacker. We're building an AI that fights your bills, cancels forgotten subscriptions, and gets your money back — automatically.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 15px;">What to expect:</p>
@@ -45,9 +45,9 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         <p style="${pStyle}">
           The average UK adult overpays on bills and forgotten subscriptions every year. We're going to fix that.
         </p>
-        <p style="${pStyle}">— Paul, PayBacker</p>
+        <p style="${pStyle}">— Paul, Paybacker</p>
         <p style="${footerStyle}">
-          You're receiving this because you joined the PayBacker waitlist.
+          You're receiving this because you joined the Paybacker waitlist.
           Reply to this email to unsubscribe.
         </p>
       </div>
@@ -56,12 +56,12 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'day2_education',
     dayOffset: 2,
-    subject: 'How PayBacker finds money hiding in your inbox',
+    subject: 'How Paybacker finds money hiding in your inbox',
     html: (name) => `
       <div style="${baseStyle}">
         <h1 style="${h1Style}">How we find money in your inbox, ${name}</h1>
         <p style="${pStyle}">
-          Here's exactly what PayBacker does when you connect your Gmail — and why it works so well.
+          Here's exactly what Paybacker does when you connect your Gmail — and why it works so well.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 15px;">🔍 Step 1: Your inbox scanner runs</p>
@@ -77,7 +77,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         </div>
         <p style="${pStyle}">Early access is opening soon. You're already on the list.</p>
         <p style="${footerStyle}">
-          PayBacker waitlist — reply to unsubscribe.
+          Paybacker waitlist — reply to unsubscribe.
         </p>
       </div>
     `,
@@ -93,7 +93,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           Most complaint letters fail because they sound frustrated instead of legally informed. Here's what makes ours different.
         </p>
         <p style="${pStyle}">
-          When PayBacker writes a complaint, it:
+          When Paybacker writes a complaint, it:
         </p>
         <div style="${boxStyle}">
           <ul style="color: #94a3b8; padding-left: 20px; line-height: 2.2; margin: 0;">
@@ -106,8 +106,8 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         <p style="${pStyle}">
           The difference is knowing exactly what to say, and how to say it — citing the right section of the Consumer Rights Act 2015, naming the correct Ombudsman, setting the right deadline. That's what the AI does for you.
         </p>
-        <p style="${pStyle}">— Paul, PayBacker</p>
-        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+        <p style="${pStyle}">— Paul, Paybacker</p>
+        <p style="${footerStyle}">Paybacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },
@@ -141,8 +141,8 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 8px;">5. You can cite the law by name in your complaint</p>
           <p style="color: #94a3b8; margin: 0; line-height: 1.7; font-size: 15px;">A letter citing "Consumer Rights Act 2015, s.54" lands very differently than "I'm unhappy with my bill." The legal reference signals you know what you're doing.</p>
         </div>
-        <p style="${pStyle}">PayBacker writes letters that cite all of this — automatically.</p>
-        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+        <p style="${pStyle}">Paybacker writes letters that cite all of this — automatically.</p>
+        <p style="${footerStyle}">Paybacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },
@@ -154,7 +154,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <div style="${baseStyle}">
         <h1 style="${h1Style}">Found: £47/month in forgotten subscriptions, ${name}</h1>
         <p style="${pStyle}">
-          When someone connects their Gmail to PayBacker, the subscriptions agent runs immediately. Here's the kind of thing it typically finds.
+          When someone connects their Gmail to Paybacker, the subscriptions agent runs immediately. Here's the kind of thing it typically finds.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px;">What the AI looks for:</p>
@@ -173,7 +173,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           Most people are surprised by at least one thing. The average? Around £40–60/month in subscriptions they'd genuinely forgotten about.
         </p>
         <p style="${pStyle}">Your early access invite is coming soon.</p>
-        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+        <p style="${footerStyle}">Paybacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },
@@ -185,7 +185,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <div style="${baseStyle}">
         <h1 style="${h1Style}">Early access is almost here, ${name}</h1>
         <p style="${pStyle}">
-          We're opening PayBacker to our first users very soon. As a waitlist member, you're at the front of the queue — and you get something our regular users won't.
+          We're opening Paybacker to our first users very soon. As a waitlist member, you're at the front of the queue — and you get something our regular users won't.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 17px;">Your early access benefits:</p>
@@ -205,7 +205,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         <a href="https://paybacker.co.uk" style="${ctaStyle}">
           Preview the app →
         </a>
-        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+        <p style="${footerStyle}">Paybacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },
@@ -228,12 +228,12 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           </ul>
         </div>
         <p style="${pStyle}">
-          PayBacker's inbox scanner detects upcoming renewals automatically — so you never miss the window to act.
+          Paybacker's inbox scanner detects upcoming renewals automatically — so you never miss the window to act.
         </p>
         <p style="${pStyle}">
           Early access is almost here. Keep an eye on your inbox.
         </p>
-        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+        <p style="${footerStyle}">Paybacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },
@@ -245,7 +245,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <div style="${baseStyle}">
         <h1 style="${h1Style}">Early access is open, ${name} — and your first month is free</h1>
         <p style="${pStyle}">
-          PayBacker is now in early access. As a waitlist member, you get your first month free on any paid plan — no questions asked.
+          Paybacker is now in early access. As a waitlist member, you get your first month free on any paid plan — no questions asked.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 17px;">What you get from day one:</p>
@@ -266,7 +266,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         <p style="color: #64748b; font-size: 13px; margin-top: 16px;">
           Use code <strong style="color: #f59e0b;">WAITLIST</strong> at checkout for your free first month.
         </p>
-        <p style="${footerStyle}">PayBacker — reply to unsubscribe.</p>
+        <p style="${footerStyle}">Paybacker — reply to unsubscribe.</p>
       </div>
     `,
   },

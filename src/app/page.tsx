@@ -49,7 +49,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="h-6 w-6 text-amber-500" />
-              <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">Backer</span></span>
+              <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
             </div>
             <div className="flex items-center gap-2 md:gap-3">
               <Link
@@ -81,7 +81,7 @@ export default function Home() {
 
             {/* Headline */}
             <h1 className="text-5xl md:text-7xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
-              PayBacker — Get Your Money Back
+              Paybacker — Get Your Money Back
             </h1>
 
             {/* Subheadline */}
@@ -268,7 +268,7 @@ export default function Home() {
               <Link href="/legal/terms" className="hover:text-white transition-all">Terms of Service</Link>
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
             </div>
-            <p>© 2026 PayBacker. UK consumer protection powered by AI.</p>
+            <p>© 2026 Paybacker LTD. UK consumer protection powered by AI.</p>
           </div>
         </footer>
       </div>

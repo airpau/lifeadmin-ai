@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
 
 export const metadata = {
-  title: 'Terms of Service — PayBacker',
-  description: 'Terms and conditions for using PayBacker.',
+  title: 'Terms of Service — Paybacker LTD',
+  description: 'Terms and conditions for using Paybacker LTD.',
 };
 
 export default function TermsPage() {
@@ -23,11 +23,11 @@ export default function TermsPage() {
         <div className="space-y-10 text-slate-300 leading-relaxed text-sm">
 
           <section>
-            <h2 className="text-2xl font-bold text-white mb-4">1. About PayBacker</h2>
+            <h2 className="text-2xl font-bold text-white mb-4">1. About Paybacker LTD</h2>
             <p>
-              PayBacker (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) provides an AI-powered tool that helps UK consumers
+              Paybacker LTD (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) provides an AI-powered tool that helps UK consumers
               identify billing errors, draft complaint letters, and cancel unwanted subscriptions.
-              By using PayBacker, you agree to these Terms of Service.
+              By using Paybacker LTD, you agree to these Terms of Service.
             </p>
           </section>
 
@@ -36,10 +36,10 @@ export default function TermsPage() {
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-5 mb-4">
               <p className="font-semibold text-amber-400 mb-2">Important disclaimer</p>
               <p>
-                PayBacker generates complaint letters and cancellation emails using AI. This content is
+                Paybacker LTD generates complaint letters and cancellation emails using AI. This content is
                 provided as a <strong className="text-white">drafting tool only</strong> and does not
                 constitute legal advice. You are responsible for reviewing all content before sending it.
-                PayBacker is not a law firm and is not regulated by the Solicitors Regulation Authority (SRA).
+                Paybacker LTD is not a law firm and is not regulated by the Solicitors Regulation Authority (SRA).
               </p>
             </div>
             <p>
@@ -51,7 +51,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-white mb-4">3. Your account</h2>
             <ul className="list-disc pl-6 space-y-2">
-              <li>You must be 18 or older to use PayBacker.</li>
+              <li>You must be 18 or older to use Paybacker LTD.</li>
               <li>You are responsible for maintaining the security of your account credentials.</li>
               <li>You must provide accurate information when creating your account.</li>
               <li>One account per person. Do not share accounts.</li>
@@ -62,11 +62,11 @@ export default function TermsPage() {
             <h2 className="text-2xl font-bold text-white mb-4">4. Email and data access</h2>
             <ul className="list-disc pl-6 space-y-2">
               <li>
-                Gmail and Outlook connections are <strong className="text-white">read-only</strong>. PayBacker
+                Gmail and Outlook connections are <strong className="text-white">read-only</strong>. Paybacker LTD
                 cannot send emails, delete messages, or modify your inbox in any way.
               </li>
               <li>
-                PayBacker will never send an email on your behalf without your explicit approval of each individual message.
+                Paybacker LTD will never send an email on your behalf without your explicit approval of each individual message.
               </li>
               <li>You can disconnect any email integration at any time from the Scanner page.</li>
             </ul>
@@ -96,7 +96,7 @@ export default function TermsPage() {
 
           <section>
             <h2 className="text-2xl font-bold text-white mb-4">7. Acceptable use</h2>
-            <p>You must not use PayBacker to:</p>
+            <p>You must not use Paybacker LTD to:</p>
             <ul className="list-disc pl-6 space-y-2 mt-3">
               <li>Submit fraudulent or misleading complaint letters</li>
               <li>Harass or threaten companies or individuals</li>
@@ -110,7 +110,7 @@ export default function TermsPage() {
             <h2 className="text-2xl font-bold text-white mb-4">8. Intellectual property</h2>
             <p>
               AI-generated complaint letters and cancellation emails are provided to you for your personal use.
-              PayBacker retains no ownership rights over content you generate. The PayBacker platform, design,
+              Paybacker LTD retains no ownership rights over content you generate. The Paybacker LTD platform, design,
               and underlying code are owned by us and may not be copied or reproduced.
             </p>
           </section>
@@ -118,7 +118,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-white mb-4">9. Limitation of liability</h2>
             <p>
-              PayBacker provides a drafting tool, not a guaranteed outcome. We are not liable for:
+              Paybacker LTD provides a drafting tool, not a guaranteed outcome. We are not liable for:
             </p>
             <ul className="list-disc pl-6 space-y-2 mt-3">
               <li>The outcome of any complaint or cancellation you send</li>

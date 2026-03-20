@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
 
 export const metadata = {
-  title: 'Privacy Policy — PayBacker',
-  description: 'How PayBacker collects, uses, and protects your personal data.',
+  title: 'Privacy Policy — Paybacker LTD',
+  description: 'How Paybacker LTD collects, uses, and protects your personal data.',
 };
 
 export default function PrivacyPolicyPage() {
@@ -25,7 +25,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-2xl font-bold text-white mb-4">1. Who we are</h2>
             <p>
-              PayBacker (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) is a UK-based service that helps consumers dispute bills,
+              Paybacker LTD (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) is a UK-based service that helps consumers dispute bills,
               cancel subscriptions, and exercise their rights under UK consumer law. Our website is{' '}
               <a href="https://paybacker.co.uk" className="text-amber-400 hover:underline">paybacker.co.uk</a>.
             </p>
@@ -68,7 +68,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-2xl font-bold text-white mb-4">3. How we use your data</h2>
             <ul className="list-disc pl-6 space-y-2 text-sm">
-              <li>To provide the PayBacker service — scanning, letter generation, subscription tracking</li>
+              <li>To provide the Paybacker LTD service — scanning, letter generation, subscription tracking</li>
               <li>To send you transactional emails (account, billing, complaint status)</li>
               <li>To enforce plan limits and prevent abuse</li>
               <li>To improve our AI models and service quality (anonymised and aggregated only)</li>

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PayBacker — Get Your Money Back",
+  title: "Paybacker — Get Your Money Back",
   description: "AI agents that dispute bills, write complaints, and cancel forgotten subscriptions — on your behalf. UK consumer rights, automated.",
 };
 

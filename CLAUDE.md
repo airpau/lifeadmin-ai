@@ -1,7 +1,7 @@
-# PayBacker — AI-Powered Money Recovery for UK Consumers
+# Paybacker LTD — AI-Powered Money Recovery for UK Consumers
 
 ## Product Vision
-PayBacker is an AI-powered service that helps UK consumers get money back and reduce admin burden. Our AI agents automatically:
+Paybacker is an AI-powered service that helps UK consumers get money back and reduce admin burden. Our AI agents automatically:
 - Dispute incorrect bills (energy, council tax, broadband, etc.)
 - Write formal complaints to service providers
 - Cancel forgotten subscriptions
