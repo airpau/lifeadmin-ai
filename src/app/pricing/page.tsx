@@ -33,8 +33,8 @@ const plans = [
     cta: 'Start Essential',
     highlighted: true,
     priceIds: {
-      monthly: 'price_essential_monthly',
-      yearly: 'price_essential_yearly',
+      monthly: 'price_1TD5440Vgfu778nlLrs7RXrS',
+      yearly:  'price_1TD5440Vgfu778nlCozaO1Oz',
     },
   },
   {
@@ -52,8 +52,8 @@ const plans = [
     cta: 'Start Pro',
     highlighted: false,
     priceIds: {
-      monthly: 'price_pro_monthly',
-      yearly: 'price_pro_yearly',
+      monthly: 'price_1TD5440Vgfu778nlP3GzMuQG',
+      yearly:  'price_1TD5450Vgfu778nljBU1F1uN',
     },
   },
 ];
