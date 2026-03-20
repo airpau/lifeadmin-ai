@@ -3,6 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 
+// Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     // Verify authentication
