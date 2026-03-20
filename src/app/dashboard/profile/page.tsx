@@ -1,0 +1,241 @@
+'use client';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
+
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+
+interface Profile {
+  email: string;
+  full_name: string | null;
+  subscription_status: string | null;
+  subscription_tier: string | null;
+  total_money_recovered: number;
+  total_tasks_completed: number;
+  total_agents_run: number;
+  created_at: string;
+}
+
+export default function ProfilePage() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const supabase = createClient();
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+          if (data) {
+            setProfile({
+              email: data.email,
+              full_name: data.full_name,
+              subscription_status: data.subscription_status,
+              subscription_tier: data.subscription_tier,
+              total_money_recovered: data.total_money_recovered || 0,
+              total_tasks_completed: data.total_tasks_completed || 0,
+              total_agents_run: data.total_agents_run || 0,
+              created_at: data.created_at,
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [supabase]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-slate-400">Loading profile...</div>
+      </div>
+    );
+  }
+
+  const memberSince = profile?.created_at 
+    ? new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    : 'Unknown';
+
+  const subscriptionBadge = () => {
+    const tier = profile?.subscription_tier || 'free';
+    const colors = {
+      free: 'bg-slate-500/10 text-slate-400 border-slate-500/30',
+      essential: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+      pro: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    };
+
+    return (
+      <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${colors[tier as keyof typeof colors]}`}>
+        {tier.charAt(0).toUpperCase() + tier.slice(1)}
+      </span>
+    );
+  };
+
+  return (
+    <div className="max-w-4xl">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-white mb-2">Profile</h1>
+        <p className="text-slate-400">Manage your account and view your stats</p>
+      </div>
+
+      {/* Account Info */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 mb-6">
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-full flex items-center justify-center">
+              <User className="h-8 w-8 text-slate-950" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">{profile?.full_name || 'User'}</h2>
+              <p className="text-slate-400 flex items-center gap-2 mt-1">
+                <Mail className="h-4 w-4" />
+                {profile?.email}
+              </p>
+            </div>
+          </div>
+          {subscriptionBadge()}
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-slate-800">
+          <div>
+            <p className="text-sm text-slate-500 mb-1">Member since</p>
+            <p className="text-white font-semibold">{memberSince}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-500 mb-1">Subscription status</p>
+            <p className="text-white font-semibold capitalize">{profile?.subscription_status || 'Free'}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid md:grid-cols-3 gap-6 mb-6">
+        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+          <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+            <TrendingUp className="h-6 w-6 text-green-500" />
+          </div>
+          <h3 className="text-3xl font-bold text-white mb-1">
+            £{profile?.total_money_recovered?.toFixed(2) || '0.00'}
+          </h3>
+          <p className="text-slate-400 text-sm">Money recovered</p>
+        </div>
+
+        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+          <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+            <CheckCircle2 className="h-6 w-6 text-blue-500" />
+          </div>
+          <h3 className="text-3xl font-bold text-white mb-1">
+            {profile?.total_tasks_completed || 0}
+          </h3>
+          <p className="text-slate-400 text-sm">Tasks completed</p>
+        </div>
+
+        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+          <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+            <Clock className="h-6 w-6 text-purple-500" />
+          </div>
+          <h3 className="text-3xl font-bold text-white mb-1">
+            {profile?.total_agents_run || 0}
+          </h3>
+          <p className="text-slate-400 text-sm">AI agents run</p>
+        </div>
+      </div>
+
+      {/* Connected Accounts */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 mb-6">
+        <h2 className="text-xl font-bold text-white mb-6">Connected Accounts</h2>
+        
+        <div className="space-y-4">
+          {/* Gmail - Coming Soon */}
+          <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
+                <Mail className="h-6 w-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Gmail</h3>
+                <p className="text-sm text-slate-400">Scan emails for bills and subscriptions</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+                Coming Soon
+              </span>
+            </div>
+          </div>
+
+          {/* Bank - Coming Soon */}
+          <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                <CreditCard className="h-6 w-6 text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Bank Account</h3>
+                <p className="text-sm text-slate-400">Automatic transaction categorization</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+                Coming Soon
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Subscription Management */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8">
+        <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
+        
+        {profile?.subscription_tier === 'free' ? (
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">Upgrade to unlock more</h3>
+            <p className="text-slate-400 mb-6">
+              Get unlimited complaints, scanning, and lower success fees
+            </p>
+            <a
+              href="/pricing"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-6 py-3 rounded-lg transition-all"
+            >
+              View Plans
+            </a>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg">
+              <div>
+                <h3 className="text-white font-semibold capitalize">{profile?.subscription_tier} Plan</h3>
+                <p className="text-sm text-slate-400">
+                  {profile?.subscription_tier === 'essential' ? '£9.99/month' : '£19.99/month'}
+                </p>
+              </div>
+              <button className="text-sm text-red-400 hover:text-red-300 transition-all">
+                Cancel subscription
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Your subscription will renew automatically. Cancel anytime.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

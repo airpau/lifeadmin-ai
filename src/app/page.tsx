@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckCircle, Sparkles, TrendingUp, Shield } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp } from 'lucide-react';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -75,7 +75,7 @@ export default function Home() {
             </p>
 
             {/* Benefits */}
-            <div className="grid md:grid-cols-3 gap-6 mb-16">
+            <div className="grid md:grid-cols-3 gap-6 mb-24">
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <TrendingUp className="h-6 w-6 text-amber-500" />
@@ -98,6 +98,64 @@ export default function Home() {
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">82% complaint success rate</h3>
                 <p className="text-slate-400 text-sm">Professional complaint letters citing UK consumer law — written and sent automatically</p>
+              </div>
+            </div>
+
+            {/* How It Works */}
+            <div className="mb-24">
+              <div className="text-center mb-12">
+                <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">How it works</h2>
+                <p className="text-slate-400 text-lg">Three simple steps to start saving money</p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-8">
+                {/* Step 1 */}
+                <div className="relative">
+                  <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 text-center h-full">
+                    <div className="bg-gradient-to-br from-amber-500 to-amber-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <Mail className="h-8 w-8 text-slate-950" />
+                    </div>
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                      1
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-3">Connect your accounts</h3>
+                    <p className="text-slate-400">
+                      Securely link your email and bank accounts. Our AI scans for bills, subscriptions, and transactions.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div className="relative">
+                  <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 text-center h-full">
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <ScanSearch className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                      2
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-3">AI scans for opportunities</h3>
+                    <p className="text-slate-400">
+                      Our AI detects overcharges, forgotten subscriptions, and renewal dates. Get alerts about every savings opportunity.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 3 */}
+                <div className="relative">
+                  <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 text-center h-full">
+                    <div className="bg-gradient-to-br from-green-500 to-green-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <ThumbsUp className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                      3
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-3">Approve and we handle it</h3>
+                    <p className="text-slate-400">
+                      Review AI-generated complaints and cancellations. One click to approve, and we'll send it on your behalf.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
