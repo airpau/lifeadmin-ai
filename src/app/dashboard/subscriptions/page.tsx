@@ -1,5 +1,8 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
+
 import { useState } from 'react';
 import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle } from 'lucide-react';
 

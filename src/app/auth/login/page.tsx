@@ -1,5 +1,7 @@
-export const dynamic = 'force-dynamic';
 'use client';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -15,6 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [useMagicLink, setUseMagicLink] = useState(false);
   const router = useRouter();
+  
   const supabase = createClient();
 
   const handleEmailLogin = async (e: React.FormEvent) => {
