@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { Check, Sparkles, TrendingUp, Zap } from 'lucide-react';
 
 const plans = [
@@ -61,11 +63,19 @@ const plans = [
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [loading, setLoading] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createClient();
 
   const handleSubscribe = async (priceId: string | undefined, planName: string) => {
     if (!priceId) {
-      // Free plan - redirect to signup
-      window.location.href = '/auth/signup';
+      router.push('/auth/signup');
+      return;
+    }
+
+    // Verify user is logged in before calling checkout
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push(`/auth/login?redirect=/pricing`);
       return;
     }
 
@@ -75,10 +85,7 @@ export default function PricingPage() {
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          priceId,
-          billingCycle,
-        }),
+        body: JSON.stringify({ priceId, billingCycle }),
       });
 
       const data = await res.json();
@@ -86,11 +93,11 @@ export default function PricingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        throw new Error('No checkout URL returned');
+        throw new Error(data.error || 'No checkout URL returned');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Subscription error:', error);
-      alert('Failed to start subscription. Please try again.');
+      alert(error.message || 'Failed to start subscription. Please try again.');
       setLoading(null);
     }
   };
@@ -222,9 +229,9 @@ export default function PricingPage() {
 
               <div className="text-center">
                 <TrendingUp className="h-8 w-8 text-green-500 mx-auto mb-3" />
-                <h3 className="text-lg font-semibold text-white mb-2">82% Success Rate</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">Legally Grounded</h3>
                 <p className="text-slate-400 text-sm">
-                  Our AI complaints are upheld by UK companies 82% of the time.
+                  Every letter cites the exact UK consumer law that applies — Consumer Rights Act 2015, Ofcom, FCA rules.
                 </p>
               </div>
 

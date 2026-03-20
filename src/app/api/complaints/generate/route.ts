@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         task_id: task.id,
         user_id: user.id,
         agent_type: 'complaint_writer',
-        model_name: 'claude-3-5-sonnet-20241022',
+        model_name: 'claude-sonnet-4-6',
         status: 'completed',
         input_data: body,
         output_data: result,

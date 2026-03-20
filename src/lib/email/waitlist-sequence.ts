@@ -104,10 +104,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           </ul>
         </div>
         <p style="${pStyle}">
-          Our current success rate: <strong style="color: #f59e0b;">82% of complaints upheld</strong>. The national average for self-written complaints is around 45%.
-        </p>
-        <p style="${pStyle}">
-          The difference is knowing exactly what to say, and how to say it. That's what the AI does for you.
+          The difference is knowing exactly what to say, and how to say it — citing the right section of the Consumer Rights Act 2015, naming the correct Ombudsman, setting the right deadline. That's what the AI does for you.
         </p>
         <p style="${pStyle}">— Paul, LifeAdminAI</p>
         <p style="${footerStyle}">LifeAdminAI waitlist — reply to unsubscribe.</p>

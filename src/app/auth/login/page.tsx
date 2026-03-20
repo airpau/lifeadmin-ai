@@ -5,7 +5,7 @@ export const runtime = 'edge';
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Sparkles } from 'lucide-react';
 
@@ -17,6 +17,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [useMagicLink, setUseMagicLink] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/dashboard';
   
   const supabase = createClient();
 
@@ -33,7 +35,7 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      router.push('/dashboard');
+      router.push(redirectTo);
       router.refresh();
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');

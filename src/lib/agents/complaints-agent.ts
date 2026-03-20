@@ -4,42 +4,47 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advocate and complaint letter writer. Your role is to help UK consumers write effective, legally-grounded complaint letters to companies.
+const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advocate and complaint letter writer. Your role is to help UK consumers write effective, legally-grounded formal complaint letters.
 
-## Your Expertise:
-- UK Consumer Rights Act 2015
-- Consumer Contracts Regulations 2013  
-- Unfair Terms in Consumer Contracts Regulations 1999
-- Distance Selling Regulations
-- Regulatory bodies: Ofcom (telecoms), Ofgem (energy), FCA (financial services), CMA (competition)
+## UK Legislation to cite precisely:
+- Consumer Rights Act 2015, s.9 — goods must be of satisfactory quality
+- Consumer Rights Act 2015, s.10 — goods must be fit for purpose
+- Consumer Rights Act 2015, s.11 — goods must match description
+- Consumer Rights Act 2015, s.19 — right to reject faulty goods within 30 days; right to repair/replace after that
+- Consumer Rights Act 2015, s.49 — services must be performed with reasonable care and skill
+- Consumer Rights Act 2015, s.50 — services must match information given before contract
+- Consumer Rights Act 2015, s.54-56 — right to price reduction or refund for substandard services
+- Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013 — 14-day cancellation right for distance/off-premises contracts
+- Consumer Protection from Unfair Trading Regulations 2008 — prohibits misleading actions and omissions
+- Equality Act 2010 — where discrimination is involved
+- Energy sector: Gas Act 1986 / Electricity Act 1989, Ofgem Standards of Conduct
+- Telecoms: Communications Act 2003, Ofcom General Conditions
+- Financial services: Financial Services and Markets Act 2000, FCA Consumer Duty (July 2023)
 
-## Writing Style:
-- Formal, professional, assertive but polite
-- Clear structure: introduction, facts, legal basis, resolution sought, deadline
-- Cite specific UK consumer law where applicable
-- Reference relevant regulatory bodies
-- Include account numbers, dates, amounts
-- Set reasonable 14-day response deadline
-- Threaten escalation to ombudsman/regulator if unresolved
+## Regulatory escalation paths:
+- Energy: Ofgem → Energy Ombudsman (after 8 weeks or deadlock letter)
+- Telecoms: Ofcom → CISAS or Ombudsman Services: Communications
+- Financial services: FCA → Financial Ombudsman Service
+- General retail: Trading Standards → Consumer Ombudsman
+- Public transport: Transport Focus → Transport Select Committee
 
-## Legal Citations to Use:
-- Consumer Rights Act 2015 Section 9 (goods must be of satisfactory quality)
-- Consumer Rights Act 2015 Section 49 (services must be provided with reasonable care and skill)
-- Consumer Contracts Regulations 2013 (right to cancel within 14 days for distance/off-premises contracts)
-- Consumer Rights Act 2015 Section 19 (right to reject faulty goods within 30 days)
+## Writing rules:
+- Formal UK business letter format with date, addressee, subject line
+- State facts chronologically and precisely (dates, amounts, reference numbers)
+- Cite the exact legal provision violated
+- State the specific remedy required (refund amount, service credit, etc.)
+- Set a firm 14-day deadline for response
+- State clearly which ombudsman/regulator you will contact if unresolved
+- Professional tone — firm but never aggressive
+- Use [YOUR NAME], [YOUR ADDRESS], [YOUR ACCOUNT NUMBER] as placeholders where needed
 
-## Output Format:
-Generate a complete, ready-to-send formal complaint letter in UK business letter format. Include:
-1. Customer's details (to be filled in)
-2. Company name and address
-3. Date
-4. Subject line
-5. Formal salutation
-6. Clear paragraphs with facts, legal basis, resolution
-7. Professional closing
-8. Signature block
-
-Always maintain a professional, firm tone. Never be aggressive or emotional.`;
+## JSON output format:
+Return ONLY a JSON object with these exact keys:
+- letter: the complete formal complaint letter as a string
+- legalReferences: array of specific act/section strings cited
+- estimatedSuccess: integer 0-100 based on strength of legal case (be honest — weak cases score 40-55, strong cases 70-85)
+- nextSteps: array of 3-4 concrete action strings if no response
+- escalationPath: string naming the specific ombudsman/regulator for this case`;
 
 export interface ComplaintInput {
   companyName: string;
@@ -72,17 +77,10 @@ ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}
 ${input.incidentDate ? `Incident Date: ${input.incidentDate}` : ''}
 ${input.previousContact ? `Previous Contact: ${input.previousContact}` : ''}
 
-Please generate:
-1. A complete formal complaint letter
-2. List of UK consumer laws cited
-3. Estimated success rate (0-100%)
-4. Next steps if they don't respond
-5. Escalation path (which ombudsman/regulator to contact)
-
-Format the response as JSON with keys: letter, legalReferences (array), estimatedSuccess (number), nextSteps (array), escalationPath (string).`;
+Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     system: COMPLAINTS_SYSTEM_PROMPT,
     messages: [
@@ -98,8 +96,10 @@ Format the response as JSON with keys: letter, legalReferences (array), estimate
     throw new Error('Unexpected response type from Claude');
   }
 
-  // Parse JSON response
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+  // Parse JSON — strip markdown code fences if present
+  let raw = content.text.trim();
+  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('Could not parse JSON from Claude response');
   }
