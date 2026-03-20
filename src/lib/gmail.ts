@@ -159,25 +159,43 @@ export interface Opportunity {
   emailId: string;
 }
 
-// Search last 365 days — broad subject/keyword query that works for any UK inbox.
-// We rely on Claude to filter relevance, not the query.
-const SCAN_QUERY = [
-  'subject:(bill OR invoice OR statement OR renewal OR "price increase" OR overdue OR "direct debit" OR subscription OR payment OR charge OR receipt)',
-  'from:(britishgas OR edf OR octopus OR eon OR npower OR shell OR bulb)',
-  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee)',
-  'from:(netflix OR spotify OR amazon OR disney OR apple OR adobe OR microsoft OR google)',
-  'from:(barclays OR lloyds OR hsbc OR natwest OR monzo OR starling OR revolut OR halifax)',
-].join(' OR ') + ' newer_than:365d';
+// Two focused queries run in parallel — Gmail handles shorter queries more reliably than one giant OR.
+// Query A: subject/keyword based (catches billing emails from any provider)
+const SCAN_QUERY_SUBJECT =
+  'subject:(bill OR invoice OR statement OR renewal OR "price increase" OR "price change" OR overdue OR "direct debit" OR subscription OR "payment failed" OR "payment due" OR "payment received" OR charge OR receipt OR "notice of" OR "important update" OR "your account" OR "action required" OR "outstanding balance" OR refund OR overcharge OR "final notice" OR "increased" OR "tariff") newer_than:730d';
+
+// Query B: sender-based (catches emails from known billing domains)
+const SCAN_QUERY_SENDERS = [
+  'from:(britishgas OR edfenergy OR octopusenergy OR eon OR npower OR shell OR bulb OR sse OR scottishpower OR utilita)',
+  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee OR plusnet OR smarty)',
+  'from:(netflix OR spotify OR amazon OR disney OR apple OR adobe OR microsoft OR google OR dropbox)',
+  'from:(barclays OR lloyds OR hsbc OR natwest OR monzo OR starling OR revolut OR halifax OR santander OR tsb)',
+  'from:(council OR gov.uk OR hmrc OR dvla OR nhs)',
+  'from:(insurethebox OR admiral OR aviva OR directline OR comparethemarket OR gocompare OR confused)',
+  'from:(aa OR rac OR greenflag OR breakdown)',
+].join(' OR ') + ' newer_than:730d';
 
 export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
-  const messages = await fetchEmailList(accessToken, SCAN_QUERY, 50);
-  if (!messages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
+  // Run both queries in parallel, deduplicate by message ID
+  const [subjectMessages, senderMessages] = await Promise.all([
+    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 50),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS, 50),
+  ]);
 
-  // Fetch up to 20 in parallel (rate limit friendly)
+  const seen = new Set<string>();
+  const allMessages = [...subjectMessages, ...senderMessages].filter((m) => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+
+  if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
+
+  // Fetch up to 30 full emails (format=full gives Claude the body to extract amounts/dates)
   const details = await Promise.allSettled(
-    messages.slice(0, 20).map((m) => fetchEmailDetail(accessToken, m.id))
+    allMessages.slice(0, 30).map((m) => fetchEmailDetail(accessToken, m.id))
   );
 
   const emails = details
@@ -195,35 +213,48 @@ export async function scanEmailsForOpportunities(
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
-    system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities.
+    system: `You are a UK consumer finance assistant. Analyse these emails and identify money-saving opportunities.
+
 Return a JSON array of opportunities. Each must have:
-- id: unique string
+- id: unique string (e.g. "opp_1")
 - emailId: the email id it came from
 - type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase"
-- title: short title (max 60 chars)
-- description: 1-2 sentences explaining the opportunity
-- amount: estimated GBP amount at risk or saveable (number, 0 if unknown)
-- confidence: 0-100 (how confident you are this is a real opportunity)
-- provider: company name
-- detected: today's date ${new Date().toISOString().split('T')[0]}
+- title: short actionable title (max 60 chars, e.g. "British Gas price increase — dispute available")
+- description: 1-2 sentences explaining the opportunity and what the user can do
+- amount: estimated GBP amount at risk or saveable (number, 0 if unknown) — extract from email body/snippet where possible
+- confidence: 0-100
+- provider: company name (clean, e.g. "British Gas" not "britishgas@email.britishgas.co.uk")
+- detected: "${new Date().toISOString().split('T')[0]}"
 - status: "new"
 
-Include opportunities with confidence >= 30. Be generous — it's better to surface something for the user to review than to miss it. Return [] only if there is genuinely nothing relevant.
+What to flag:
+- Price increases or tariff changes (dispute under Consumer Rights Act 2015)
+- Billing errors or unexpected charges
+- Upcoming renewals where user may be auto-rolled onto a worse rate
+- Failed payments that could lead to service disruption
+- Overcharges vs agreed contract price
+- Forgotten or unused subscriptions still charging
+- Refund opportunities (e.g. service outages, missed SLA)
+- Broadband/energy/insurance renewals (user likely paying loyalty premium)
+
+Confidence guide: 70+ = clear opportunity, 50-69 = likely worth reviewing, 35-49 = possible but uncertain.
+Include opportunities with confidence >= 35. Be generous — better to surface candidates the user can dismiss than to miss real savings.
+Deduplicate: one entry per provider even if multiple emails exist.
 Return ONLY the JSON array, no markdown.`,
     messages: [{ role: 'user', content: `Analyse these emails:\n\n${emailSummaries}` }],
   });
 
   const content = message.content[0];
-  if (content.type !== 'text') return { opportunities: [], emailsFound: messages.length, emailsScanned: emails.length };
+  if (content.type !== 'text') return { opportunities: [], emailsFound: allMessages.length, emailsScanned: emails.length };
 
   try {
     const raw = content.text.trim();
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return { opportunities: [], emailsFound: messages.length, emailsScanned: emails.length };
+    if (!jsonMatch) return { opportunities: [], emailsFound: allMessages.length, emailsScanned: emails.length };
     const parsed: Opportunity[] = JSON.parse(jsonMatch[0]);
     const opportunities = parsed.map((o) => ({ ...o, status: 'new' as const }));
-    return { opportunities, emailsFound: messages.length, emailsScanned: emails.length };
+    return { opportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
   } catch {
-    return { opportunities: [], emailsFound: messages.length, emailsScanned: emails.length };
+    return { opportunities: [], emailsFound: allMessages.length, emailsScanned: emails.length };
   }
 }

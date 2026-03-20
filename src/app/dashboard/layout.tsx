@@ -29,10 +29,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const supabase = createClient();
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUserEmail(user?.email || null));
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserEmail(user?.email || null);
+      // Try profile first, fall back to auth metadata
+      if (user) {
+        supabase.from('profiles').select('first_name, full_name').eq('id', user.id).single().then(({ data }) => {
+          const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
+          setFirstName(name);
+        });
+      }
+    });
   }, [supabase]);
 
   // Close sidebar on route change
@@ -76,8 +86,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="pt-6 border-t border-slate-800 mt-6">
         <div className="mb-3">
-          <p className="text-xs text-slate-500 mb-1">Signed in as</p>
-          <p className="text-sm text-white truncate">{userEmail}</p>
+          {firstName && (
+            <p className="text-sm font-semibold text-white mb-0.5">Welcome, {firstName}</p>
+          )}
+          <p className="text-xs text-slate-500 truncate">{userEmail}</p>
         </div>
         <button
           onClick={handleSignOut}

@@ -120,7 +120,7 @@ export default function Home() {
                   <Shield className="h-6 w-6 text-amber-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Cancel forgotten subscriptions</h3>
-                <p className="text-slate-400 text-sm">Automatically cancel unused subscriptions and negotiate better deals on your behalf</p>
+                <p className="text-slate-400 text-sm">Detect unused subscriptions from your inbox. Generate cancellation emails ready to send in seconds.</p>
               </div>
 
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
@@ -128,7 +128,7 @@ export default function Home() {
                   <CheckCircle className="h-6 w-6 text-amber-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Letters citing UK consumer law</h3>
-                <p className="text-slate-400 text-sm">Professional complaint letters citing UK consumer law — written and sent automatically</p>
+                <p className="text-slate-400 text-sm">Professional complaint letters citing the Consumer Rights Act 2015 — written in seconds, ready to copy and send</p>
               </div>
             </div>
 
@@ -181,9 +181,9 @@ export default function Home() {
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
                       3
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-3">Approve and we handle it</h3>
+                    <h3 className="text-xl font-bold text-white mb-3">Review, approve, and send</h3>
                     <p className="text-slate-400">
-                      Review AI-generated complaints and cancellations. One click to approve, and we'll send it on your behalf.
+                      Review the AI-generated letter, make any edits, then send it directly from your own email — in under a minute.
                     </p>
                   </div>
                 </div>
