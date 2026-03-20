@@ -50,6 +50,8 @@ export async function POST(request: NextRequest) {
       accountNumber: body.accountNumber,
       incidentDate: body.incidentDate,
       previousContact: body.previousContact,
+      feedback: body.feedback,
+      previousLetter: body.previousLetter,
     });
 
     // Save task to database

@@ -10,7 +10,7 @@ const plans = [
   {
     name: 'Free',
     price: { monthly: 0, yearly: 0 },
-    description: 'Perfect for trying out LifeAdminAI',
+    description: 'Perfect for trying out PayBacker',
     features: [
       '3 AI complaint letters per month',
       'Basic bill scanner',
@@ -30,7 +30,7 @@ const plans = [
       'Unlimited subscription tracking',
       'Auto-cancellation emails',
       'Priority email support',
-      '20% success fee on recovered money',
+      'AI complaint letters citing Consumer Rights Act 2015',
     ],
     cta: 'Start Essential',
     highlighted: true,
@@ -49,7 +49,7 @@ const plans = [
       'Phone support',
       'Dedicated account manager',
       'Advanced analytics dashboard',
-      '15% success fee on recovered money',
+      'Solicitor-quality letter generation in seconds',
     ],
     cta: 'Start Pro',
     highlighted: false,
@@ -110,7 +110,7 @@ export default function PricingPage() {
           <Link href="/" className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-amber-500" />
             <span className="text-xl font-bold text-white">
-              LifeAdmin<span className="text-amber-500">AI</span>
+              Pay<span className="text-amber-500">Backer</span>
             </span>
           </Link>
         </header>
@@ -119,7 +119,7 @@ export default function PricingPage() {
         <div className="container mx-auto px-6 py-16 text-center">
           <div className="inline-flex items-center gap-2 bg-amber-500/10 px-4 py-2 rounded-full text-amber-400 text-sm mb-6">
             <TrendingUp className="h-4 w-4" />
-            Save an average of £847/year
+            AI-powered consumer rights for UK households
           </div>
 
           <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
@@ -249,7 +249,7 @@ export default function PricingPage() {
         {/* Footer */}
         <footer className="container mx-auto px-6 py-8 mt-16 border-t border-slate-800">
           <div className="text-center text-slate-500 text-sm">
-            <p>© 2026 LifeAdminAI. All prices exclude VAT.</p>
+            <p>© 2026 PayBacker. All prices exclude VAT.</p>
           </div>
         </footer>
       </div>

@@ -48,7 +48,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="h-6 w-6 text-amber-500" />
-              <span className="text-xl font-bold text-white">LifeAdmin<span className="text-amber-500">AI</span></span>
+              <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">Backer</span></span>
             </div>
           </div>
         </header>
@@ -60,7 +60,7 @@ export default function Home() {
             <div className="flex justify-center mb-8">
               <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20">
                 <Sparkles className="h-4 w-4" />
-                <span>AI-Powered Life Admin — Coming Soon</span>
+                <span>AI-Powered Money Recovery — Coming Soon</span>
               </div>
             </div>
 
@@ -80,7 +80,7 @@ export default function Home() {
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <TrendingUp className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Average £847/year recovered</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">Dispute overcharges and billing errors</h3>
                 <p className="text-slate-400 text-sm">Our AI finds overcharges, disputes errors, and claims refunds you didn't know you were owed</p>
               </div>
 
@@ -88,7 +88,7 @@ export default function Home() {
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <Shield className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Save £200+ on subscriptions</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">Cancel forgotten subscriptions</h3>
                 <p className="text-slate-400 text-sm">Automatically cancel unused subscriptions and negotiate better deals on your behalf</p>
               </div>
 
@@ -96,7 +96,7 @@ export default function Home() {
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <CheckCircle className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">82% complaint success rate</h3>
+                <h3 className="text-lg font-semibold text-white mb-2">Letters citing UK consumer law</h3>
                 <p className="text-slate-400 text-sm">Professional complaint letters citing UK consumer law — written and sent automatically</p>
               </div>
             </div>
@@ -240,7 +240,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="container mx-auto px-6 py-8 mt-16 border-t border-slate-800">
           <div className="text-center text-slate-500 text-sm">
-            <p>© 2026 LifeAdminAI. UK consumer protection powered by AI.</p>
+            <p>© 2026 PayBacker. UK consumer protection powered by AI.</p>
           </div>
         </footer>
       </div>

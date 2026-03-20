@@ -75,7 +75,7 @@ export default function LoginPage() {
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
             <Sparkles className="h-8 w-8 text-amber-500" />
             <span className="text-2xl font-bold text-white">
-              LifeAdmin<span className="text-amber-500">AI</span>
+              Pay<span className="text-amber-500">Backer</span>
             </span>
           </Link>
           <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>

@@ -49,7 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Link href="/dashboard" className="flex items-center gap-2 mb-8">
         <Sparkles className="h-6 w-6 text-amber-500" />
         <span className="text-xl font-bold text-white">
-          LifeAdmin<span className="text-amber-500">AI</span>
+          Pay<span className="text-amber-500">Backer</span>
         </span>
       </Link>
 
@@ -97,7 +97,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Link href="/dashboard" className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-amber-500" />
           <span className="text-lg font-bold text-white">
-            LifeAdmin<span className="text-amber-500">AI</span>
+            Pay<span className="text-amber-500">Backer</span>
           </span>
         </Link>
         <button

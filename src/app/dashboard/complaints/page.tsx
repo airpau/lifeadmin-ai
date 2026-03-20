@@ -5,7 +5,7 @@ export const runtime = 'edge';
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History } from 'lucide-react';
+import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw } from 'lucide-react';
 import UpgradeModal from '@/components/UpgradeModal';
 
 interface Task {
@@ -31,13 +31,16 @@ function ComplaintsPageInner() {
   });
 
   const [generating, setGenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [feedback, setFeedback] = useState('');
   const [copied, setCopied] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
   const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; used: number; limit: number; tier: string }>({
     open: false, used: 0, limit: 3, tier: 'free',
   });
+  const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number | null; tier: string } | null>(null);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -50,6 +53,13 @@ function ComplaintsPageInner() {
     };
     fetchTasks();
   }, [result]); // refetch after generating
+
+  useEffect(() => {
+    fetch('/api/complaints/usage')
+      .then((r) => r.json())
+      .then((data) => { if (!data.error) setUsageInfo(data); })
+      .catch(() => {});
+  }, [result]); // refresh after each generation
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +88,39 @@ function ComplaintsPageInner() {
       alert('Failed to generate complaint letter. Please try again.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const clearForm = () => {
+    setFormData({
+      companyName: '', issueDescription: '', desiredOutcome: '',
+      amount: '', accountNumber: '', incidentDate: '', previousContact: '',
+    });
+    setResult(null);
+    setFeedback('');
+  };
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const res = await fetch('/api/complaints/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, feedback, previousLetter: result?.letter }),
+      });
+      const data = await res.json();
+      if (res.status === 403 && data.upgradeRequired) {
+        setUpgradeModal({ open: true, used: data.used, limit: data.limit, tier: data.tier });
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || 'Failed to regenerate');
+      setResult(data);
+      setFeedback('');
+    } catch (error) {
+      console.error('Regenerate error:', error);
+      alert('Failed to regenerate. Please try again.');
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -297,20 +340,39 @@ function ComplaintsPageInner() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={generating}
-              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {generating ? (
-                <>Generating with AI...</>
-              ) : (
-                <>
-                  <Sparkles className="h-5 w-5" />
-                  Generate Complaint Letter
-                </>
-              )}
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={clearForm}
+                className="flex items-center gap-2 px-4 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Clear
+              </button>
+              <button
+                type="submit"
+                disabled={generating}
+                className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {generating ? (
+                  <>Generating with AI...</>
+                ) : (
+                  <>
+                    <Sparkles className="h-5 w-5" />
+                    Generate Complaint Letter
+                  </>
+                )}
+              </button>
+            </div>
+
+            {usageInfo && usageInfo.limit !== null && (
+              <p className="text-xs text-slate-500 text-right">
+                {usageInfo.used} of {usageInfo.limit} letters used this month
+                {usageInfo.used >= usageInfo.limit && (
+                  <span className="text-amber-500 ml-1">— upgrade for unlimited</span>
+                )}
+              </p>
+            )}
           </form>
         </div>
 
@@ -374,6 +436,28 @@ function ComplaintsPageInner() {
                 >
                   <Download className="h-5 w-5" />
                   Download
+                </button>
+              </div>
+
+              {/* Feedback + Regenerate */}
+              <div className="border-t border-slate-800 pt-4">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Feedback (optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="e.g. Make it more formal, add more urgency, emphasise the billing error more..."
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 mb-2"
+                />
+                <button
+                  onClick={handleRegenerate}
+                  disabled={regenerating}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
+                  {regenerating ? 'Regenerating...' : 'Regenerate with Feedback'}
                 </button>
               </div>
 

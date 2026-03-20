@@ -27,12 +27,12 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'welcome',
     dayOffset: 0,
-    subject: "You're on the LifeAdminAI waitlist 🎉",
+    subject: "You're on the PayBacker waitlist 🎉",
     html: (name) => `
       <div style="${baseStyle}">
         <h1 style="${h1Style}">You're on the list, ${name}!</h1>
         <p style="${pStyle}">
-          Thanks for joining LifeAdminAI. We're building an AI that fights your bills, cancels forgotten subscriptions, and gets your money back — automatically.
+          Thanks for joining PayBacker. We're building an AI that fights your bills, cancels forgotten subscriptions, and gets your money back — automatically.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 15px;">What to expect:</p>
@@ -43,11 +43,11 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           </ul>
         </div>
         <p style="${pStyle}">
-          The average UK adult overpays <strong style="color: #f59e0b;">£560/year</strong> on bills and forgotten subscriptions. We're going to fix that.
+          The average UK adult overpays on bills and forgotten subscriptions every year. We're going to fix that.
         </p>
-        <p style="${pStyle}">— Paul, LifeAdminAI</p>
+        <p style="${pStyle}">— Paul, PayBacker</p>
         <p style="${footerStyle}">
-          You're receiving this because you joined the LifeAdminAI waitlist.
+          You're receiving this because you joined the PayBacker waitlist.
           Reply to this email to unsubscribe.
         </p>
       </div>
@@ -56,12 +56,12 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'day2_education',
     dayOffset: 2,
-    subject: 'How LifeAdminAI finds £500+ hiding in your inbox',
+    subject: 'How PayBacker finds money hiding in your inbox',
     html: (name) => `
       <div style="${baseStyle}">
-        <h1 style="${h1Style}">How we find £500+ in your inbox, ${name}</h1>
+        <h1 style="${h1Style}">How we find money in your inbox, ${name}</h1>
         <p style="${pStyle}">
-          Here's exactly what LifeAdminAI does when you connect your Gmail — and why it works so well.
+          Here's exactly what PayBacker does when you connect your Gmail — and why it works so well.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 15px;">🔍 Step 1: Your inbox scanner runs</p>
@@ -77,7 +77,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         </div>
         <p style="${pStyle}">Early access is opening soon. You're already on the list.</p>
         <p style="${footerStyle}">
-          LifeAdminAI waitlist — reply to unsubscribe.
+          PayBacker waitlist — reply to unsubscribe.
         </p>
       </div>
     `,
@@ -93,7 +93,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           Most complaint letters fail because they sound frustrated instead of legally informed. Here's what makes ours different.
         </p>
         <p style="${pStyle}">
-          When LifeAdminAI writes a complaint, it:
+          When PayBacker writes a complaint, it:
         </p>
         <div style="${boxStyle}">
           <ul style="color: #94a3b8; padding-left: 20px; line-height: 2.2; margin: 0;">
@@ -106,8 +106,8 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         <p style="${pStyle}">
           The difference is knowing exactly what to say, and how to say it — citing the right section of the Consumer Rights Act 2015, naming the correct Ombudsman, setting the right deadline. That's what the AI does for you.
         </p>
-        <p style="${pStyle}">— Paul, LifeAdminAI</p>
-        <p style="${footerStyle}">LifeAdminAI waitlist — reply to unsubscribe.</p>
+        <p style="${pStyle}">— Paul, PayBacker</p>
+        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },
@@ -119,7 +119,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <div style="${baseStyle}">
         <h1 style="${h1Style}">Early access is almost here, ${name}</h1>
         <p style="${pStyle}">
-          We're opening LifeAdminAI to our first users very soon. As a waitlist member, you're at the front of the queue — and you get something our regular users won't.
+          We're opening PayBacker to our first users very soon. As a waitlist member, you're at the front of the queue — and you get something our regular users won't.
         </p>
         <div style="${boxStyle}">
           <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 17px;">Your early access benefits:</p>
@@ -136,10 +136,10 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
         <p style="${pStyle}">
           Keep an eye on your inbox. Your invite is coming.
         </p>
-        <a href="https://lifeadmin-ai.vercel.app" style="${ctaStyle}">
+        <a href="https://paybacker.co.uk" style="${ctaStyle}">
           Preview the app →
         </a>
-        <p style="${footerStyle}">LifeAdminAI waitlist — reply to unsubscribe.</p>
+        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
       </div>
     `,
   },

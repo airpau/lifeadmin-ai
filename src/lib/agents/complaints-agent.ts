@@ -54,6 +54,8 @@ export interface ComplaintInput {
   accountNumber?: string;
   incidentDate?: string;
   previousContact?: string;
+  feedback?: string;
+  previousLetter?: string;
 }
 
 export interface ComplaintOutput {
@@ -76,6 +78,8 @@ ${input.amount ? `Amount Involved: £${input.amount}` : ''}
 ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}
 ${input.incidentDate ? `Incident Date: ${input.incidentDate}` : ''}
 ${input.previousContact ? `Previous Contact: ${input.previousContact}` : ''}
+${input.feedback ? `\nUser feedback on previous version: ${input.feedback}` : ''}
+${input.previousLetter ? `\nPrevious letter to improve upon:\n${input.previousLetter}` : ''}
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 
