@@ -262,7 +262,12 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="container mx-auto px-6 py-8 mt-16 border-t border-slate-800">
-          <div className="text-center text-slate-500 text-sm">
+          <div className="text-center text-slate-500 text-sm space-y-3">
+            <div className="flex justify-center gap-6">
+              <Link href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</Link>
+              <Link href="/legal/terms" className="hover:text-white transition-all">Terms of Service</Link>
+              <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
+            </div>
             <p>© 2026 PayBacker. UK consumer protection powered by AI.</p>
           </div>
         </footer>

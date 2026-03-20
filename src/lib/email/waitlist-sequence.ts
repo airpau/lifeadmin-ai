@@ -112,6 +112,72 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     `,
   },
   {
+    id: 'day5_education',
+    dayOffset: 5,
+    subject: '5 things your energy company hopes you never find out',
+    html: (name) => `
+      <div style="${baseStyle}">
+        <h1 style="${h1Style}">5 things your energy company hopes you never find out, ${name}</h1>
+        <p style="${pStyle}">
+          UK energy companies collected £1.5 billion in excess profit in 2023. Some of that came from customers who simply didn't know their rights. Here's what they'd rather you didn't know.
+        </p>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 8px;">1. You can claim backdated refunds</p>
+          <p style="color: #94a3b8; margin: 0; line-height: 1.7; font-size: 15px;">If you were overcharged, you're entitled to a refund going back up to 6 years. They won't volunteer this information.</p>
+        </div>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 8px;">2. A formal complaint triggers a legal clock</p>
+          <p style="color: #94a3b8; margin: 0; line-height: 1.7; font-size: 15px;">Once you send a formal complaint, they have 8 weeks to resolve it — or you can escalate to the Energy Ombudsman, which costs them far more than just paying you.</p>
+        </div>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 8px;">3. "Price increases" have rules they must follow</p>
+          <p style="color: #94a3b8; margin: 0; line-height: 1.7; font-size: 15px;">Under Ofgem rules, they must notify you in writing before increasing prices. If they didn't, you may have grounds for a complaint.</p>
+        </div>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 8px;">4. Exit fees are often unenforceable</p>
+          <p style="color: #94a3b8; margin: 0; line-height: 1.7; font-size: 15px;">If they changed your tariff without consent, exit fees may not apply. Consumer Rights Act 2015, s.50 covers this.</p>
+        </div>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 8px;">5. You can cite the law by name in your complaint</p>
+          <p style="color: #94a3b8; margin: 0; line-height: 1.7; font-size: 15px;">A letter citing "Consumer Rights Act 2015, s.54" lands very differently than "I'm unhappy with my bill." The legal reference signals you know what you're doing.</p>
+        </div>
+        <p style="${pStyle}">PayBacker writes letters that cite all of this — automatically.</p>
+        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+      </div>
+    `,
+  },
+  {
+    id: 'day8_feature',
+    dayOffset: 8,
+    subject: 'The subscriptions agent: finding £47/month in forgotten charges',
+    html: (name) => `
+      <div style="${baseStyle}">
+        <h1 style="${h1Style}">Found: £47/month in forgotten subscriptions, ${name}</h1>
+        <p style="${pStyle}">
+          When someone connects their Gmail to PayBacker, the subscriptions agent runs immediately. Here's the kind of thing it typically finds.
+        </p>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px;">What the AI looks for:</p>
+          <ul style="color: #94a3b8; padding-left: 20px; line-height: 2.2; margin: 0;">
+            <li>Recurring charges from services you forgot you signed up for</li>
+            <li>Free trials that quietly converted to paid plans</li>
+            <li>Duplicate subscriptions (two music services, two cloud storage plans)</li>
+            <li>Annual renewals hitting your account without warning</li>
+            <li>Services you cancelled in your head but never actually cancelled</li>
+          </ul>
+        </div>
+        <p style="${pStyle}">
+          For every subscription it finds, the AI drafts a cancellation email. Professional, polite, and legally grounded. You approve. We send it.
+        </p>
+        <p style="${pStyle}">
+          Most people are surprised by at least one thing. The average? Around £40–60/month in subscriptions they'd genuinely forgotten about.
+        </p>
+        <p style="${pStyle}">Your early access invite is coming soon.</p>
+        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+      </div>
+    `,
+  },
+  {
     id: 'day14_urgency',
     dayOffset: 14,
     subject: 'Early access is opening soon — here\'s what you get',
@@ -140,6 +206,67 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
           Preview the app →
         </a>
         <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+      </div>
+    `,
+  },
+  {
+    id: 'day21_renewal',
+    dayOffset: 21,
+    subject: 'Your energy contract might be renewing soon — here\'s what to do',
+    html: (name) => `
+      <div style="${baseStyle}">
+        <h1 style="${h1Style}">Is your energy contract renewing soon, ${name}?</h1>
+        <p style="${pStyle}">
+          Most energy and broadband contracts auto-renew into a more expensive tariff. The provider is required to notify you — but the notice is usually buried in a boring email most people ignore.
+        </p>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 15px;">What happens at renewal (and what you can do):</p>
+          <ul style="color: #94a3b8; padding-left: 20px; line-height: 2.2; margin: 0;">
+            <li><strong style="color: #e2e8f0;">30 days before:</strong> Contact them to negotiate. You have the most leverage here.</li>
+            <li><strong style="color: #e2e8f0;">On renewal day:</strong> You can still cancel within 14 days under the Consumer Contracts Regulations 2013.</li>
+            <li><strong style="color: #e2e8f0;">After renewal:</strong> If they raised the price without adequate notice, you have a complaint.</li>
+          </ul>
+        </div>
+        <p style="${pStyle}">
+          PayBacker's inbox scanner detects upcoming renewals automatically — so you never miss the window to act.
+        </p>
+        <p style="${pStyle}">
+          Early access is almost here. Keep an eye on your inbox.
+        </p>
+        <p style="${footerStyle}">PayBacker waitlist — reply to unsubscribe.</p>
+      </div>
+    `,
+  },
+  {
+    id: 'day28_upgrade',
+    dayOffset: 28,
+    subject: 'Early access is here — your first month is on us',
+    html: (name) => `
+      <div style="${baseStyle}">
+        <h1 style="${h1Style}">Early access is open, ${name} — and your first month is free</h1>
+        <p style="${pStyle}">
+          PayBacker is now in early access. As a waitlist member, you get your first month free on any paid plan — no questions asked.
+        </p>
+        <div style="${boxStyle}">
+          <p style="color: #f59e0b; font-weight: 700; margin: 0 0 12px; font-size: 17px;">What you get from day one:</p>
+          <ul style="color: #94a3b8; padding-left: 20px; line-height: 2.2; margin: 0;">
+            <li>✅ Connect Gmail — inbox scanner runs immediately</li>
+            <li>✅ See every overcharge, forgotten subscription, and renewal alert</li>
+            <li>✅ Generate complaint letters citing the Consumer Rights Act 2015</li>
+            <li>✅ AI-drafted cancellation emails for every unwanted subscription</li>
+            <li>✅ One-click approve — we handle the rest</li>
+          </ul>
+        </div>
+        <p style="${pStyle}">
+          The Essential plan is £9.99/month — less than most forgotten subscriptions we find in the first scan.
+        </p>
+        <a href="https://paybacker.co.uk/auth/signup" style="${ctaStyle}">
+          Claim your free month →
+        </a>
+        <p style="color: #64748b; font-size: 13px; margin-top: 16px;">
+          Use code <strong style="color: #f59e0b;">WAITLIST</strong> at checkout for your free first month.
+        </p>
+        <p style="${footerStyle}">PayBacker — reply to unsubscribe.</p>
       </div>
     `,
   },

@@ -71,8 +71,12 @@ export default function ScannerPage() {
       const messages: Record<string, string> = {
         outlook_not_configured: 'Outlook integration not yet configured — contact support.',
         outlook_connection_failed: 'Failed to connect Outlook. Please try again.',
+        access_denied: 'Gmail access was denied. Please try again and allow the requested permissions.',
+        connection_failed: 'Connection failed. If this keeps happening, try disconnecting and reconnecting your inbox.',
+        missing_params: 'OAuth callback missing required parameters. Please try connecting again.',
+        invalid_state: 'Security check failed. Please try connecting again.',
       };
-      setError(messages[errParam] || `Connection failed: ${errParam}`);
+      setError(messages[errParam] || `Connection failed: ${errParam}. Please try again.`);
       window.history.replaceState({}, '', '/dashboard/scanner');
     }
     checkConnections();

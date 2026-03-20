@@ -3,12 +3,20 @@ const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 
-const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`;
+// GOOGLE_REDIRECT_URI takes precedence — set this in Vercel when domain changes.
+// Fallback: NEXT_PUBLIC_APP_URL (embedded at build time).
+// Both must match an authorised redirect URI in Google Cloud Console.
+function getRedirectUri(): string {
+  return (
+    process.env.GOOGLE_REDIRECT_URI ||
+    `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback/google`
+  );
+}
 
 export function getGoogleAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: getRedirectUri(),
     response_type: 'code',
     scope: GMAIL_SCOPES,
     access_type: 'offline',
@@ -31,7 +39,7 @@ export async function exchangeCodeForTokens(code: string): Promise<{
       code,
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: getRedirectUri(),
       grant_type: 'authorization_code',
     }),
   });
@@ -181,7 +189,7 @@ export async function scanEmailsForOpportunities(accessToken: string): Promise<O
     .join('\n\n');
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities.
 Return a JSON array of opportunities. Each must have:

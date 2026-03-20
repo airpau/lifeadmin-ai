@@ -4,8 +4,9 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 
 interface Profile {
   email: string;
@@ -21,7 +22,10 @@ interface Profile {
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const supabase = createClient();
+  const router = useRouter();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -57,6 +61,19 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, [supabase]);
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/account/delete', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      await supabase.auth.signOut();
+      router.push('/?deleted=true');
+    } catch {
+      alert('Failed to delete account. Please contact hello@paybacker.co.uk');
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -199,6 +216,12 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Legal links */}
+      <div className="flex gap-4 text-xs text-slate-500 mb-6">
+        <a href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</a>
+        <a href="/legal/terms" className="hover:text-white transition-all">Terms of Service</a>
+      </div>
+
       {/* Subscription Management */}
       <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8">
         <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
@@ -233,6 +256,47 @@ export default function ProfilePage() {
             <p className="text-xs text-slate-500">
               Your subscription will renew automatically. Cancel anytime.
             </p>
+          </div>
+        )}
+      </div>
+      {/* Danger Zone — Delete Account */}
+      <div className="bg-slate-900/50 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+          <Trash2 className="h-5 w-5 text-red-400" />
+          Delete Account
+        </h2>
+        <p className="text-slate-400 text-sm mb-6">
+          Permanently delete your account and all associated data — complaint letters, subscription history,
+          email connections, and usage logs. This action cannot be undone.
+        </p>
+
+        {!deleteConfirm ? (
+          <button
+            onClick={() => setDeleteConfirm(true)}
+            className="bg-red-900/30 hover:bg-red-900/50 border border-red-800 text-red-400 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+          >
+            Delete my account and all data
+          </button>
+        ) : (
+          <div className="bg-red-950/50 border border-red-800 rounded-xl p-5">
+            <p className="text-red-300 font-semibold mb-4">
+              Are you sure? This will permanently delete all your data and cannot be reversed.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Yes, delete everything'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-lg transition-all text-sm"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>
