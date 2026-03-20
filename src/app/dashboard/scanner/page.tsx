@@ -167,7 +167,10 @@ export default function ScannerPage() {
           <ScanSearch className="h-10 w-10 text-amber-500" />
           Opportunity Scanner
         </h1>
-        <p className="text-slate-400">AI scans your inbox for overcharges, renewals, and forgotten subscriptions</p>
+        <p className="text-slate-400">
+          AI scans your inbox for overcharges, renewals, and forgotten subscriptions
+          <span className="text-slate-600 ml-2 text-sm">· Last 12 months of emails</span>
+        </p>
       </div>
 
       {error && (
@@ -283,7 +286,8 @@ export default function ScannerPage() {
         <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
           <Sparkles className="h-16 w-16 text-amber-500/40 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">Ready to scan</h3>
-          <p className="text-slate-400 mb-6">Click "Scan All" to analyse your inbox for savings opportunities</p>
+          <p className="text-slate-400 mb-2">Click "Scan All" to analyse your inbox for savings opportunities</p>
+          <p className="text-slate-600 text-sm mb-6">Covers the last 12 months of emails</p>
           <button
             onClick={handleScan}
             className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-8 py-3 rounded-lg transition-all"
@@ -298,7 +302,7 @@ export default function ScannerPage() {
         <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
           <Loader2 className="h-16 w-16 text-amber-500 mx-auto mb-4 animate-spin" />
           <h3 className="text-xl font-semibold text-white mb-2">Scanning your inbox...</h3>
-          <p className="text-slate-400">Claude is reading your bills and subscription emails</p>
+          <p className="text-slate-400">Paybacker is scanning your bills and subscription emails</p>
         </div>
       )}
 
