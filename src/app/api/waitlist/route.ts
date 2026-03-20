@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { createClient } from '@supabase/supabase-js';
+import { sendWaitlistConfirmation } from '@/lib/resend';
 
-const WAITLIST_FILE = path.join(process.cwd(), 'waitlist.json');
-
-interface WaitlistEntry {
-  name: string;
-  email: string;
-  timestamp: string;
+// Service role — no RLS, safe for server-only route
+function getAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -15,77 +15,61 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, email } = body;
 
-    // Validation
     if (!name || !email) {
-      return NextResponse.json(
-        { error: 'Name and email are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email address' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
 
-    // Read existing waitlist
-    let waitlist: WaitlistEntry[] = [];
+    const supabase = getAdmin();
+
+    // Check for duplicate
+    const { data: existing } = await supabase
+      .from('waitlist_signups')
+      .select('id')
+      .eq('email', email.toLowerCase())
+      .single();
+
+    if (existing) {
+      return NextResponse.json({ error: 'Email already registered' }, { status: 400 });
+    }
+
+    // Insert into DB
+    const { error: insertError } = await supabase
+      .from('waitlist_signups')
+      .insert({ email: email.toLowerCase(), full_name: name });
+
+    if (insertError) throw insertError;
+
+    // Send confirmation email (non-blocking — don't fail signup if email fails)
     try {
-      const data = await fs.readFile(WAITLIST_FILE, 'utf-8');
-      waitlist = JSON.parse(data);
-    } catch (error) {
-      // File doesn't exist yet, start with empty array
-      waitlist = [];
+      await sendWaitlistConfirmation(name, email);
+    } catch (emailErr) {
+      console.error('Waitlist email failed (non-fatal):', emailErr);
     }
 
-    // Check for duplicate email
-    if (waitlist.some((entry) => entry.email.toLowerCase() === email.toLowerCase())) {
-      return NextResponse.json(
-        { error: 'Email already registered' },
-        { status: 400 }
-      );
-    }
+    // Get total count
+    const { count } = await supabase
+      .from('waitlist_signups')
+      .select('*', { count: 'exact', head: true });
 
-    // Add new entry
-    const newEntry: WaitlistEntry = {
-      name,
-      email,
-      timestamp: new Date().toISOString(),
-    };
-
-    waitlist.push(newEntry);
-
-    // Write back to file
-    await fs.writeFile(WAITLIST_FILE, JSON.stringify(waitlist, null, 2));
-
-    return NextResponse.json(
-      { 
-        success: true, 
-        message: 'Successfully joined waitlist',
-        count: waitlist.length 
-      },
-      { status: 201 }
-    );
-  } catch (error) {
+    return NextResponse.json({ success: true, message: 'Successfully joined waitlist', count }, { status: 201 });
+  } catch (error: any) {
     console.error('Waitlist API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function GET() {
   try {
-    const data = await fs.readFile(WAITLIST_FILE, 'utf-8');
-    const waitlist = JSON.parse(data);
-    
-    return NextResponse.json({
-      count: waitlist.length,
-    });
-  } catch (error) {
+    const supabase = getAdmin();
+    const { count } = await supabase
+      .from('waitlist_signups')
+      .select('*', { count: 'exact', head: true });
+    return NextResponse.json({ count: count ?? 0 });
+  } catch {
     return NextResponse.json({ count: 0 });
   }
 }
