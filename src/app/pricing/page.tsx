@@ -99,14 +99,23 @@ export default function PricingPage() {
     setLoading(planName);
 
     try {
+      console.log('Stripe checkout: sending request', { priceId, billingCycle });
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priceId, billingCycle }),
       });
 
-      const data = await res.json();
-      console.log('Stripe checkout response:', res.status, data);
+      console.log('Stripe checkout: response status', res.status);
+      const text = await res.text();
+      console.log('Stripe checkout: response body', text);
+
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Server returned invalid response (status ${res.status}): ${text.substring(0, 200)}`);
+      }
 
       if (data.url) {
         window.location.href = data.url;

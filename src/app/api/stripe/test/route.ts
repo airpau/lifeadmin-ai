@@ -1,33 +1,71 @@
 import { NextResponse } from 'next/server';
-import { getStripeClient } from '@/lib/stripe';
+
+export const runtime = 'nodejs';
+
+const STRIPE_BASE = 'https://api.stripe.com/v1';
 
 export async function GET() {
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     stripe_key_set: !!process.env.STRIPE_SECRET_KEY,
     stripe_key_prefix: process.env.STRIPE_SECRET_KEY?.substring(0, 7) || 'NOT SET',
+    stripe_key_length: process.env.STRIPE_SECRET_KEY?.length || 0,
     supabase_url_set: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     app_url: process.env.NEXT_PUBLIC_APP_URL || 'NOT SET',
+    node_version: process.version,
   };
 
-  try {
-    const stripe = getStripeClient();
-    results.stripe_client = 'OK';
-
-    // Try listing prices to confirm API connectivity
-    const prices = await stripe.prices.list({ limit: 5, active: true });
-    results.prices_found = prices.data.length;
-    results.prices = prices.data.map((p) => ({
-      id: p.id,
-      amount: p.unit_amount,
-      currency: p.currency,
-      recurring: p.recurring?.interval || 'one-time',
-      product: p.product,
-    }));
-  } catch (err: any) {
-    results.stripe_error = err.message;
-    results.stripe_error_type = err.type || 'unknown';
+  if (!process.env.STRIPE_SECRET_KEY) {
+    results.error = 'STRIPE_SECRET_KEY not set';
+    return NextResponse.json(results);
   }
+
+  // Test 1: List prices via raw fetch (same method as checkout route)
+  try {
+    const res = await fetch(`${STRIPE_BASE}/prices?limit=5&active=true`, {
+      headers: { 'Authorization': `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      results.stripe_api_error = data.error;
+    } else {
+      results.prices_found = data.data?.length || 0;
+      results.prices = data.data?.map((p: any) => ({
+        id: p.id,
+        amount: p.unit_amount,
+        currency: p.currency,
+        interval: p.recurring?.interval || 'one-time',
+      }));
+    }
+    results.stripe_fetch_status = res.status;
+  } catch (err: any) {
+    results.stripe_fetch_error = err.message;
+  }
+
+  // Test 2: Check the specific price IDs from TASK.md
+  const expectedPrices = [
+    'price_1TDVvS7qw7mEWYpyN80zzAXM',
+    'price_1TDVvS7qw7mEWYpynfpI5x9M',
+    'price_1TDVvT7qw7mEWYpySmjZJTpG',
+    'price_1TDVvT7qw7mEWYpyrLHr6L45',
+  ];
+
+  const priceChecks: Record<string, unknown> = {};
+  for (const priceId of expectedPrices) {
+    try {
+      const res = await fetch(`${STRIPE_BASE}/prices/${priceId}`, {
+        headers: { 'Authorization': `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+      });
+      const data = await res.json();
+      priceChecks[priceId] = data.error
+        ? { status: 'ERROR', message: data.error.message }
+        : { status: 'OK', amount: data.unit_amount, currency: data.currency, active: data.active };
+    } catch (err: any) {
+      priceChecks[priceId] = { status: 'FETCH_ERROR', message: err.message };
+    }
+  }
+  results.price_checks = priceChecks;
 
   return NextResponse.json(results);
 }
