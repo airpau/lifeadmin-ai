@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { TrendingUp, Clock, CheckCircle, Sparkles } from 'lucide-react';
 
@@ -21,7 +22,24 @@ export default function DashboardPage() {
   });
   const [recentWins, setRecentWins] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const supabase = createClient();
+  const searchParams = useSearchParams();
+
+  // Sync subscription after Stripe checkout redirect
+  useEffect(() => {
+    if (searchParams.get('success') === 'true' || searchParams.get('upgraded')) {
+      fetch('/api/stripe/sync', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.synced && data.tier && data.tier !== 'free') {
+            setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
+            setTimeout(() => setSyncMessage(null), 5000);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -80,6 +98,14 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl">
+      {/* Subscription sync message */}
+      {syncMessage && (
+        <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
+          <CheckCircle className="h-4 w-4" />
+          {syncMessage}
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2">Overview</h1>
