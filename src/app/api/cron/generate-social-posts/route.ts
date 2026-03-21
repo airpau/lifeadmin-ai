@@ -82,6 +82,8 @@ Platform rules: ${PLATFORM_RULES[platform]}
 
 Brand voice: Smart, trustworthy, slightly bold. Never preachy. Always specific (use £ amounts, real law names, real companies when relevant). Target audience: UK professionals aged 25–45.
 
+IMPORTANT — PRE-LAUNCH CONTEXT: Paybacker is launching soon. Every post MUST include a pre-launch CTA directing people to join the waitlist at paybacker.co.uk. Use phrases like "Join the waitlist", "Sign up for early access", "Be first in line", "Launching soon". ALWAYS use paybacker.co.uk (NOT paybacker.com). Never mention a free trial — say "early access" or "join the waitlist" instead.
+
 Generate the post content. Return a JSON object with exactly these three keys:
 - "content": the post text (follow platform rules strictly)
 - "hashtags": a string of 3–6 relevant hashtags separated by spaces
