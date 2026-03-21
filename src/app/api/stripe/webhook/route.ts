@@ -12,10 +12,10 @@ function getAdminClient() {
 }
 
 const PRICE_ID_TO_TIER: Record<string, string> = {
-  'price_1TD5440Vgfu778nlLrs7RXrS': 'essential', // essential monthly
-  'price_1TD5440Vgfu778nlCozaO1Oz': 'essential', // essential yearly
-  'price_1TD5440Vgfu778nlP3GzMuQG': 'pro',        // pro monthly
-  'price_1TD5450Vgfu778nljBU1F1uN': 'pro',        // pro yearly
+  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential', // essential monthly
+  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential', // essential yearly
+  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',        // pro monthly
+  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',        // pro yearly
 };
 
 function getPlanTier(priceId: string): string {

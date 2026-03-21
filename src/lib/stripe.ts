@@ -17,10 +17,10 @@ export const stripe = process.env.STRIPE_SECRET_KEY
   : null as any;
 
 export const PRICE_IDS = {
-  essential_monthly: 'price_1TD5440Vgfu778nlLrs7RXrS',
-  essential_yearly:  'price_1TD5440Vgfu778nlCozaO1Oz',
-  pro_monthly:       'price_1TD5440Vgfu778nlP3GzMuQG',
-  pro_yearly:        'price_1TD5450Vgfu778nljBU1F1uN',
+  essential_monthly: 'price_1TDPoH8FbRNalJNU4KeEPNs7',
+  essential_yearly:  'price_1TDPoI8FbRNalJNUSVBFOpyA',
+  pro_monthly:       'price_1TDPoI8FbRNalJNUDAepvxYt',
+  pro_yearly:        'price_1TDPoI8FbRNalJNUEVzsBMvB',
 };
 
 export const PLANS = {
