@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { PRICE_IDS } from '@/lib/stripe';
 import { Check, Sparkles, TrendingUp, Zap } from 'lucide-react';
 
 const plans = [
@@ -17,8 +18,9 @@ const plans = [
       'Subscription tracker (up to 10)',
       'Email support',
     ],
-    cta: 'Get Started',
+    cta: 'Get started free',
     highlighted: false,
+    trial: false,
   },
   {
     name: 'Essential',
@@ -32,11 +34,12 @@ const plans = [
       'Priority email support',
       'AI complaint letters citing Consumer Rights Act 2015',
     ],
-    cta: 'Start Essential',
+    cta: 'Start 7-day free trial',
     highlighted: true,
+    trial: true,
     priceIds: {
-      monthly: 'price_1TD5440Vgfu778nlLrs7RXrS',
-      yearly:  'price_1TD5440Vgfu778nlCozaO1Oz',
+      monthly: PRICE_IDS.essential_monthly,
+      yearly:  PRICE_IDS.essential_yearly,
     },
   },
   {
@@ -51,11 +54,12 @@ const plans = [
       'Advanced analytics dashboard',
       'Solicitor-quality letter generation in seconds',
     ],
-    cta: 'Start Pro',
+    cta: 'Start 7-day free trial',
     highlighted: false,
+    trial: true,
     priceIds: {
-      monthly: 'price_1TD5440Vgfu778nlP3GzMuQG',
-      yearly:  'price_1TD5450Vgfu778nljBU1F1uN',
+      monthly: PRICE_IDS.pro_monthly,
+      yearly:  PRICE_IDS.pro_yearly,
     },
   },
 ];
@@ -172,7 +176,14 @@ export default function PricingPage() {
                   )}
 
                   <div className="mb-6">
-                    <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
+                      {plan.trial && (
+                        <span className="bg-green-500/15 text-green-400 text-xs font-medium px-2 py-0.5 rounded-full border border-green-500/30">
+                          7-day free trial
+                        </span>
+                      )}
+                    </div>
                     <p className="text-slate-400 text-sm mb-4">{plan.description}</p>
                     
                     <div className="flex items-baseline gap-1 mb-1">
@@ -194,7 +205,7 @@ export default function PricingPage() {
                   <button
                     onClick={() => handleSubscribe(priceId, plan.name)}
                     disabled={loading === plan.name}
-                    className={`w-full py-3 rounded-lg font-semibold transition-all mb-6 ${
+                    className={`w-full py-3 rounded-lg font-semibold transition-all ${
                       plan.highlighted
                         ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950'
                         : 'bg-slate-800 hover:bg-slate-700 text-white'
@@ -202,6 +213,12 @@ export default function PricingPage() {
                   >
                     {loading === plan.name ? 'Loading...' : plan.cta}
                   </button>
+                  {plan.trial && (
+                    <p className="text-xs text-slate-500 text-center mt-2 mb-4">
+                      No card required during trial. Cancel anytime.
+                    </p>
+                  )}
+                  {!plan.trial && <div className="mb-6" />}
 
                   <ul className="space-y-3">
                     {plan.features.map((feature, i) => (
