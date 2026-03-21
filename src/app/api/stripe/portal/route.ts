@@ -28,6 +28,8 @@ export async function POST() {
 
   const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/profile`;
 
+  // No `configuration` parameter — portal behaviour (cancel, update, etc.) is
+  // controlled via the Stripe Dashboard > Billing > Customer portal settings.
   const session = await stripe.billingPortal.sessions.create({
     customer: profile.stripe_customer_id,
     return_url: returnUrl,

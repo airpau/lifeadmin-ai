@@ -62,6 +62,12 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         billing_cycle: billingCycle,
       },
+      subscription_data: {
+        trial_period_days: 7,
+        metadata: {
+          user_id: user.id,
+        },
+      },
     });
 
     return NextResponse.json({ sessionId: session.id, url: session.url });

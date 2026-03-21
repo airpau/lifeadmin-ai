@@ -99,6 +99,35 @@ export async function POST(request: NextRequest) {
       break;
     }
 
+    case 'customer.subscription.created': {
+      const subscription = event.data.object as Stripe.Subscription;
+      const customerId = subscription.customer as string;
+      const userId = subscription.metadata?.user_id;
+
+      if (subscription.status === 'trialing') {
+        const priceId = subscription.items.data[0]?.price.id || '';
+        const tier = getPlanTier(priceId);
+
+        const updateQuery = supabase
+          .from('profiles')
+          .update({
+            subscription_tier: tier,
+            subscription_status: 'trialing',
+            stripe_subscription_id: subscription.id,
+            updated_at: new Date().toISOString(),
+          });
+
+        // Match by user_id metadata if available, otherwise by stripe_customer_id
+        if (userId) {
+          await updateQuery.eq('id', userId);
+        } else {
+          await updateQuery.eq('stripe_customer_id', customerId);
+        }
+      }
+
+      break;
+    }
+
     case 'customer.subscription.deleted': {
       const subscription = event.data.object as Stripe.Subscription;
       const customerId = subscription.customer as string;
@@ -109,6 +138,22 @@ export async function POST(request: NextRequest) {
           subscription_tier: 'free',
           subscription_status: 'canceled',
           stripe_subscription_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('stripe_customer_id', customerId);
+
+      break;
+    }
+
+    case 'customer.subscription.paused': {
+      const subscription = event.data.object as Stripe.Subscription;
+      const customerId = subscription.customer as string;
+
+      // Keep tier but mark paused — plan-limits will block access via Stripe verification
+      await supabase
+        .from('profiles')
+        .update({
+          subscription_status: 'paused',
           updated_at: new Date().toISOString(),
         })
         .eq('stripe_customer_id', customerId);
@@ -127,6 +172,24 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('stripe_customer_id', customerId);
+
+      break;
+    }
+
+    case 'invoice.payment_succeeded': {
+      const invoice = event.data.object as Stripe.Invoice;
+      const customerId = invoice.customer as string;
+
+      // Re-activate after past_due recovery (only for subscription invoices)
+      if (invoice.billing_reason && invoice.billing_reason.startsWith('subscription')) {
+        await supabase
+          .from('profiles')
+          .update({
+            subscription_status: 'active',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('stripe_customer_id', customerId);
+      }
 
       break;
     }

@@ -13,6 +13,7 @@ interface Profile {
   full_name: string | null;
   subscription_status: string | null;
   subscription_tier: string | null;
+  stripe_subscription_id: string | null;
   total_money_recovered: number;
   total_tasks_completed: number;
   total_agents_run: number;
@@ -47,6 +48,7 @@ export default function ProfilePage() {
               full_name: data.full_name,
               subscription_status: data.subscription_status,
               subscription_tier: data.subscription_tier,
+              stripe_subscription_id: data.stripe_subscription_id,
               total_money_recovered: data.total_money_recovered || 0,
               total_tasks_completed: data.total_tasks_completed || 0,
               total_agents_run: data.total_agents_run || 0,
@@ -107,8 +109,13 @@ export default function ProfilePage() {
     ? new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : 'Unknown';
 
+  const hasActiveStripe = profile?.stripe_subscription_id &&
+    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+  const effectiveTier = (profile?.subscription_tier && profile.subscription_tier !== 'free' && hasActiveStripe)
+    ? profile.subscription_tier
+    : 'free';
+
   const subscriptionBadge = () => {
-    const tier = profile?.subscription_tier || 'free';
     const colors = {
       free: 'bg-slate-500/10 text-slate-400 border-slate-500/30',
       essential: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
@@ -116,10 +123,36 @@ export default function ProfilePage() {
     };
 
     return (
-      <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${colors[tier as keyof typeof colors]}`}>
-        {tier.charAt(0).toUpperCase() + tier.slice(1)}
+      <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${colors[effectiveTier as keyof typeof colors]}`}>
+        {effectiveTier.charAt(0).toUpperCase() + effectiveTier.slice(1)}
       </span>
     );
+  };
+
+  const subscriptionStatusLabel = () => {
+    const tier = profile?.subscription_tier;
+    const status = profile?.subscription_status;
+    const tierLabel = tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : 'Free';
+
+    if (!tier || tier === 'free' || !hasActiveStripe) {
+      return <span className="text-white font-semibold">Free Plan</span>;
+    }
+    if (status === 'active') {
+      return <span className="text-white font-semibold">{tierLabel} — Active</span>;
+    }
+    if (status === 'trialing') {
+      return <span className="text-white font-semibold">{tierLabel} — Trial</span>;
+    }
+    if (status === 'past_due') {
+      return <span className="text-red-400 font-semibold">{tierLabel} — Payment overdue</span>;
+    }
+    if (status === 'canceled') {
+      return <span className="text-slate-400 font-semibold">{tierLabel} — Cancelled</span>;
+    }
+    if (status === 'paused') {
+      return <span className="text-slate-400 font-semibold">{tierLabel} — Paused</span>;
+    }
+    return <span className="text-white font-semibold capitalize">{status || 'Free'}</span>;
   };
 
   return (
@@ -155,7 +188,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <p className="text-sm text-slate-500 mb-1">Subscription status</p>
-            <p className="text-white font-semibold capitalize">{profile?.subscription_status || 'Free'}</p>
+            {subscriptionStatusLabel()}
           </div>
         </div>
       </div>
@@ -246,7 +279,7 @@ export default function ProfilePage() {
       <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8">
         <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
         
-        {!profile?.subscription_tier || profile.subscription_tier === 'free' ? (
+        {effectiveTier === 'free' ? (
           <div className="text-center py-8">
             <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-white mb-2">Upgrade to unlock more</h3>
@@ -264,9 +297,9 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg">
               <div>
-                <h3 className="text-white font-semibold capitalize">{profile?.subscription_tier} Plan</h3>
+                <h3 className="text-white font-semibold capitalize">{effectiveTier} Plan</h3>
                 <p className="text-sm text-slate-400">
-                  {profile?.subscription_tier === 'essential' ? '£9.99/month' : '£19.99/month'}
+                  {effectiveTier === 'essential' ? '£9.99/month' : '£19.99/month'}
                 </p>
               </div>
               <button
