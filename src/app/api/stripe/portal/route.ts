@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { stripe } from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 export async function POST() {
   const supabase = await createClient();
@@ -30,6 +33,7 @@ export async function POST() {
 
   // No `configuration` parameter — portal behaviour (cancel, update, etc.) is
   // controlled via the Stripe Dashboard > Billing > Customer portal settings.
+  const stripe = getStripeClient();
   const session = await stripe.billingPortal.sessions.create({
     customer: profile.stripe_customer_id,
     return_url: returnUrl,
