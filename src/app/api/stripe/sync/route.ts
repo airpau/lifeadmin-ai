@@ -20,7 +20,6 @@ async function stripeGet(path: string) {
   return res.json();
 }
 
-// Called by dashboard/profile to sync subscription state from Stripe
 export async function POST() {
   try {
     const supabase = await createClient();
@@ -61,27 +60,35 @@ export async function POST() {
       return NextResponse.json({ synced: true, tier: 'free' });
     }
 
-    const sub = allSubs[0];
-    const currentPriceId = sub.items.data[0]?.price.id || '';
+    // Get the full subscription details directly (list may omit some fields)
+    const subId = allSubs[0].id;
+    const sub = await stripeGet(`/subscriptions/${subId}`);
+
+    const currentPriceId = sub.items?.data?.[0]?.price?.id || '';
     const currentTier = PRICE_ID_TO_TIER[currentPriceId] || 'essential';
 
-    // Check for pending changes (scheduled downgrade/cancel)
+    console.log(`Sync: sub=${sub.id} status=${sub.status} cancel_at_period_end=${sub.cancel_at_period_end} cancel_at=${sub.cancel_at} current_period_end=${sub.current_period_end}`);
+
+    // Check for pending changes
     let pendingChange: { type: string; tier?: string; date: string } | null = null;
 
-    // Check if subscription is set to cancel at period end OR at a specific date
     if (sub.cancel_at_period_end) {
-      const cancelDate = new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
-        day: 'numeric', month: 'long', year: 'numeric',
-      });
-      pendingChange = { type: 'cancel', date: cancelDate };
+      pendingChange = {
+        type: 'cancel',
+        date: new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric',
+        }),
+      };
     } else if (sub.cancel_at) {
-      const cancelDate = new Date(sub.cancel_at * 1000).toLocaleDateString('en-GB', {
-        day: 'numeric', month: 'long', year: 'numeric',
-      });
-      pendingChange = { type: 'cancel', date: cancelDate };
+      pendingChange = {
+        type: 'cancel',
+        date: new Date(sub.cancel_at * 1000).toLocaleDateString('en-GB', {
+          day: 'numeric', month: 'long', year: 'numeric',
+        }),
+      };
     }
 
-    // Check for a scheduled plan change via subscription schedule
+    // Check for scheduled plan change
     if (sub.schedule) {
       const schedule = await stripeGet(`/subscription_schedules/${sub.schedule}`);
       if (schedule.phases && schedule.phases.length > 1) {
@@ -89,25 +96,33 @@ export async function POST() {
         const nextPriceId = nextPhase.items?.[0]?.price;
         const nextTier = PRICE_ID_TO_TIER[nextPriceId] || null;
         if (nextTier && nextTier !== currentTier) {
-          const changeDate = new Date(nextPhase.start_date * 1000).toLocaleDateString('en-GB', {
-            day: 'numeric', month: 'long', year: 'numeric',
-          });
-          pendingChange = { type: 'downgrade', tier: nextTier, date: changeDate };
+          pendingChange = {
+            type: 'downgrade',
+            tier: nextTier,
+            date: new Date(nextPhase.start_date * 1000).toLocaleDateString('en-GB', {
+              day: 'numeric', month: 'long', year: 'numeric',
+            }),
+          };
         }
       }
     }
 
-    // Check for pending update on the subscription itself (Stripe portal sets this)
+    // Check for pending_update
     if (sub.pending_update) {
       const pendingPriceId = sub.pending_update.subscription_items?.[0]?.price;
       const pendingTier = pendingPriceId ? PRICE_ID_TO_TIER[pendingPriceId] : null;
       if (pendingTier && pendingTier !== currentTier) {
-        const changeDate = new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric',
-        });
-        pendingChange = { type: 'downgrade', tier: pendingTier, date: changeDate };
+        pendingChange = {
+          type: 'downgrade',
+          tier: pendingTier,
+          date: new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'long', year: 'numeric',
+          }),
+        };
       }
     }
+
+    console.log(`Sync: tier=${currentTier} pendingChange=${JSON.stringify(pendingChange)}`);
 
     // Update profile
     const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -118,12 +133,18 @@ export async function POST() {
       updated_at: new Date().toISOString(),
     }).eq('id', user.id);
 
+    const periodEnd = sub.current_period_end
+      ? new Date(sub.current_period_end * 1000).toISOString()
+      : sub.cancel_at
+        ? new Date(sub.cancel_at * 1000).toISOString()
+        : null;
+
     return NextResponse.json({
       synced: true,
       tier: currentTier,
       status: sub.status,
       pendingChange,
-      currentPeriodEnd: new Date(sub.current_period_end * 1000).toISOString(),
+      currentPeriodEnd: periodEnd,
     });
   } catch (err: any) {
     console.error('Stripe sync error:', err.message);
