@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getAccessToken, fetchAccounts, fetchTransactions, BankConnection } from '@/lib/truelayer';
 import { detectRecurring } from '@/lib/detect-recurring';
+import { getUserPlan } from '@/lib/get-user-plan';
 
 export const maxDuration = 60;
 
@@ -11,6 +12,15 @@ export async function POST() {
 
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Block free-tier users at API level
+  const plan = await getUserPlan(user.id);
+  if (plan.tier === 'free') {
+    return NextResponse.json(
+      { error: 'Upgrade to Essential to use this feature', upgradeRequired: true },
+      { status: 403 }
+    );
   }
 
   // Fetch active bank connections

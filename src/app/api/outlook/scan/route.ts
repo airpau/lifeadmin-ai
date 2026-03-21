@@ -6,6 +6,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
+import { getUserPlan } from '@/lib/get-user-plan';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -13,6 +14,15 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Block free-tier users at API level
+  const plan = await getUserPlan(user.id);
+  if (plan.tier === 'free') {
+    return NextResponse.json(
+      { error: 'Upgrade to Essential to use this feature', upgradeRequired: true },
+      { status: 403 }
+    );
   }
 
   // Check plan limit

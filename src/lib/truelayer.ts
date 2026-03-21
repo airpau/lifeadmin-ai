@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { encrypt, decrypt } from '@/lib/encrypt';
 
 const TRUELAYER_AUTH_URL = process.env.TRUELAYER_AUTH_URL || 'https://auth.truelayer.com';
 const TRUELAYER_API_URL = process.env.TRUELAYER_API_URL || 'https://api.truelayer.com';
@@ -58,7 +59,7 @@ export async function getAccessToken(connection: BankConnection): Promise<string
     }
   }
 
-  return connection.access_token;
+  return decrypt(connection.access_token);
 }
 
 /**
@@ -76,7 +77,7 @@ export async function refreshToken(connection: BankConnection): Promise<string> 
       grant_type: 'refresh_token',
       client_id: process.env.TRUELAYER_CLIENT_ID!,
       client_secret: process.env.TRUELAYER_CLIENT_SECRET!,
-      refresh_token: connection.refresh_token,
+      refresh_token: decrypt(connection.refresh_token),
     }),
   });
 
@@ -87,13 +88,13 @@ export async function refreshToken(connection: BankConnection): Promise<string> 
   const data = await res.json();
   const expiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
 
-  // Update in DB
+  // Encrypt tokens before storing in DB
   const supabase = await createClient();
   await supabase
     .from('bank_connections')
     .update({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token || connection.refresh_token,
+      access_token: encrypt(data.access_token),
+      refresh_token: data.refresh_token ? encrypt(data.refresh_token) : encrypt(decrypt(connection.refresh_token)),
       token_expires_at: expiresAt,
       updated_at: new Date().toISOString(),
     })
