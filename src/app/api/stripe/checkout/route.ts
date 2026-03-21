@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       await supabase.from('profiles').update({ stripe_customer_id: customerId }).eq('id', user.id);
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+    const appUrl = 'https://paybacker.co.uk';
 
     const session = await stripePost('/checkout/sessions', {
       customer: customerId,
@@ -81,8 +81,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (session.error) {
-      console.error('Stripe session error:', session.error);
+      console.error('Stripe session error:', JSON.stringify(session.error));
       return NextResponse.json({ error: session.error.message }, { status: 400 });
+    }
+
+    if (!session.url) {
+      console.error('Stripe session missing URL:', JSON.stringify(session));
+      return NextResponse.json({ error: 'Checkout session created but no URL returned' }, { status: 500 });
     }
 
     return NextResponse.json({ sessionId: session.id, url: session.url });
