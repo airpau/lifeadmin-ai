@@ -117,8 +117,15 @@ export default function PricingPage() {
         throw new Error(`Server returned invalid response (status ${res.status}): ${text.substring(0, 200)}`);
       }
 
-      if (data.url) {
+      if (data.upgraded) {
+        // Plan was upgraded in-place, redirect to dashboard
         window.location.href = data.url;
+      } else if (data.url) {
+        // New subscription, redirect to Stripe checkout
+        window.location.href = data.url;
+      } else if (data.alreadySubscribed) {
+        alert('You are already on this plan.');
+        setLoading(null);
       } else {
         throw new Error(data.error || `No checkout URL returned (status ${res.status})`);
       }
