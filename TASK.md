@@ -1,93 +1,73 @@
-# TASK: Complaints Page — 3 Bug Fixes
+# TASK: Google OAuth App Verification Prep + Final Pre-Launch Polish
 
-## Bug 1: "Yes, it's great" button does nothing
+## Context
+Paybacker is almost launch-ready. Google OAuth currently works in test mode (limited to approved test users). To allow real users to connect Gmail, the app needs to be submitted for Google verification.
 
-In src/app/dashboard/complaints/page.tsx, the "Yes, it's great" button currently calls:
-`onClick={() => setShowFeedback(false)}`
+## TASK 1: Google OAuth — Prepare Verification Assets
 
-This does nothing useful — showFeedback is already false at that point.
+Google requires a privacy policy URL, homepage URL, and an authorised domain. Check the current Google OAuth config in src/app/api/auth/google/route.ts and src/app/api/auth/callback/google/route.ts.
 
-**Fix:** The button should:
-1. Mark the task/letter as confirmed/approved in the database — update the task status to 'approved' in the tasks table (add a PATCH /api/complaints/[id]/approve route if needed, or use the existing tasks table to set status='approved')
-2. Show a success state in the UI — replace the satisfaction prompt with a green confirmation: "✅ Letter saved to your history" 
-3. The confirmed state should persist — if the user closes and reopens the letter modal, it should show as already confirmed (check task.status === 'approved')
+Ensure the OAuth consent screen metadata in the code is correct:
+- App name: Paybacker
+- Homepage: https://paybacker.co.uk
+- Privacy policy: https://paybacker.co.uk/legal/privacy
+- Authorized redirect URI: https://paybacker.co.uk/api/auth/callback/google
 
-Create src/app/api/complaints/[id]/approve/route.ts:
-- PATCH endpoint
-- Authenticate user
-- Update tasks table: set status='approved', updated_at=now() where id=[id] AND user_id=[user_id]
-- Return { ok: true }
+Create a file at docs/GOOGLE_OAUTH_CHECKLIST.md documenting exactly what Paul needs to do in Google Cloud Console to submit for verification:
+1. Go to console.cloud.google.com → APIs & Services → OAuth consent screen
+2. App name: Paybacker
+3. User support email: hello@paybacker.co.uk
+4. App homepage: https://paybacker.co.uk
+5. App privacy policy: https://paybacker.co.uk/legal/privacy
+6. App terms of service: https://paybacker.co.uk/legal/terms
+7. Authorised domains: paybacker.co.uk
+8. Developer contact: hello@paybacker.co.uk
+9. Scopes needed: gmail.readonly (for inbox scanning), userinfo.email, userinfo.profile
+10. Submit for verification — attach a demo video showing the Gmail scan flow
 
-## Bug 2: History tab — letters not editable / amendable
+## TASK 2: Soft-launch waitlist email
 
-When clicking a letter in the History tab, it opens the LetterModal which is READ ONLY. Users should be able to amend the content.
+Create src/app/api/cron/launch-announcement/route.ts — an endpoint that sends a launch announcement email to all waitlist signups using Resend.
 
-**Fix:** Add an edit mode to LetterModal:
-- Add an "Edit Letter" button (pencil icon) in the modal header
-- When clicked, replace the `<pre>` display with a `<textarea>` containing the letter text
-- Add "Save Changes" button that:
-  - PATCHes to /api/complaints/[id]/letter with the new letter text
-  - Saves the updated letter back to agent_runs output_data.letter in Supabase
-  - Shows "Saved ✓" confirmation
-  - Returns to read mode
-- Add "Cancel" button to discard edits
+Email content:
+- Subject: "Paybacker is live — you're in 🎉"
+- From: Paybacker <hello@paybacker.co.uk>
+- Body (HTML):
+  - Hero: "You're one of the first. Paybacker is now live."
+  - CTA button: "Claim your free account" → https://paybacker.co.uk/auth/signup
+  - What's waiting for them: AI complaint letters, subscription tracker, deal finder
+  - PS: "Your first 7 days are free — no card required to start"
+- Fetch all emails from waitlist_signups table (where unsubscribed IS NULL or false)
+- Send in batches of 50 (Resend rate limit)
+- Log sends to a sent_emails table or just console.log for now
+- Protect with CRON_SECRET Bearer auth
+- Add to vercel.json crons: NOT scheduled (manual trigger only — path /api/cron/launch-announcement)
 
-Create src/app/api/complaints/[id]/letter/route.ts:
-- PATCH endpoint
-- Authenticate user
-- Verify task belongs to user
-- Update agent_runs table: set output_data = jsonb_set(output_data, '{letter}', $letter) where task_id=[id]
-- Return { ok: true }
+## TASK 3: Pre-launch smoke test page
 
-## Bug 3: Plan gating not enforced on complaints — free users can generate unlimited letters
+Create src/app/dashboard/admin/page.tsx — a simple admin page (only accessible if email = 'aireypaul@googlemail.com') that shows:
+- Current Stripe price IDs with amounts
+- Count of waitlist signups
+- Count of registered users  
+- Count of complaints generated
+- Count of subscriptions tracked
+- TrueLayer: connected bank accounts count
+- Last deployment info
 
-The usage check exists in /api/complaints/usage but the generate endpoint isn't properly blocking users who've hit their limit. Also the Supabase function `increment_usage` may not exist.
+This gives Paul a quick health check dashboard.
 
-**Fix:**
+## TASK 4: Fix git committer name
 
-1. Check if the `usage_logs` table and `increment_usage` RPC function exist in Supabase. If not, create a migration:
-
-Create supabase/migrations/20260321140000_usage_logs.sql:
-```sql
-CREATE TABLE IF NOT EXISTS usage_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  action TEXT NOT NULL,
-  year_month TEXT NOT NULL, -- format: YYYY-MM
-  count INTEGER DEFAULT 1,
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, action, year_month)
-);
-
-ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users view own usage" ON usage_logs FOR SELECT USING (auth.uid() = user_id);
-
--- Atomic increment function (upsert)
-CREATE OR REPLACE FUNCTION increment_usage(p_user_id UUID, p_action TEXT, p_year_month TEXT)
-RETURNS void AS $$
-BEGIN
-  INSERT INTO usage_logs (user_id, action, year_month, count)
-  VALUES (p_user_id, p_action, p_year_month, 1)
-  ON CONFLICT (user_id, action, year_month)
-  DO UPDATE SET count = usage_logs.count + 1, updated_at = NOW();
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+The git commits are showing "Paul-Ops <paul-ops@Mac.communityfibre.co.uk>". Set proper git config:
+```bash
+git config --global user.name "Paul Airey"
+git config --global user.email "aireypaul@googlemail.com"
 ```
-
-2. In src/app/api/complaints/generate/route.ts — check the usage check is actually enforced BEFORE generating the letter:
-- Call checkUsageLimit at the START of the POST handler
-- If !result.allowed, return 403 with { upgradeRequired: true, used: result.used, limit: result.limit, tier: result.tier }
-- Only call incrementUsage AFTER successful generation
-
-3. Apply the migration using the Supabase connection:
-```
-PGPASSWORD='[REDACTED-DB-PASS]' psql "postgresql://postgres@db.kcxxlesishltdmfctlmo.supabase.co:5432/postgres" -f supabase/migrations/20260321140000_usage_logs.sql
-```
+Run this as a bash command.
 
 ## NOTES
-- TypeScript throughout, follow existing patterns  
-- The tasks table is the source of truth for complaints — check its schema before writing queries
-- Run `npm run build` when done to confirm no errors
+- TypeScript throughout
+- Run `npm run build` when done
 - Commit all changes
 
-When completely finished, run: openclaw system event --text "Done: Paybacker complaints fixes — approve button, editable history, plan gating enforced" --mode now
+When completely finished, run: openclaw system event --text "Done: Google OAuth prep, launch email, admin dashboard, git config fixed" --mode now
