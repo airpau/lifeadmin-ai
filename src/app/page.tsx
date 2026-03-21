@@ -18,8 +18,8 @@ export default function Home() {
     if (WAITLIST_MODE) {
       fetch('/api/waitlist')
         .then((res) => res.json())
-        .then((data) => { if (data.count) setWaitlistCount(data.count); })
-        .catch(() => {});
+        .then((data) => { setWaitlistCount(data.count ?? 0); })
+        .catch(() => { setWaitlistCount(0); });
     }
   }, []);
 
@@ -95,11 +95,6 @@ export default function Home() {
         {/* Hero Section */}
         <main className="container mx-auto px-6 py-16 md:py-24">
           <div className="max-w-4xl mx-auto">
-            {/* Logo in hero */}
-            <div className="flex justify-center mb-6">
-              <Image src="/logo.png" alt="Paybacker" width={64} height={64} />
-            </div>
-
             {/* Badge */}
             <div className="flex justify-center mb-8">
               <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20">
@@ -246,10 +241,14 @@ export default function Home() {
             <div id="waitlist" className="max-w-xl mx-auto scroll-mt-24">
               <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 shadow-2xl">
                 {/* Social proof counter */}
-                {WAITLIST_MODE && waitlistCount && waitlistCount > 0 && (
+                {WAITLIST_MODE && (
                   <div className="flex items-center justify-center gap-2 mb-6 text-sm text-slate-400">
                     <Users className="h-4 w-4 text-amber-500" />
-                    <span>Join <span className="text-white font-semibold">{waitlistCount.toLocaleString()}</span> {waitlistCount === 1 ? 'other' : 'others'} on the waitlist</span>
+                    {waitlistCount && waitlistCount > 0 ? (
+                      <span>Join <span className="text-white font-semibold">{waitlistCount.toLocaleString()}</span> {waitlistCount === 1 ? 'other' : 'others'} on the waitlist</span>
+                    ) : (
+                      <span>Be the first on the waitlist</span>
+                    )}
                   </div>
                 )}
 
