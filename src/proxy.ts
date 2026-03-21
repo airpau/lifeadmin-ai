@@ -43,6 +43,23 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
+  // Plan-gating: block free/null tier from scanner and deals pages
+  if (user && (
+    request.nextUrl.pathname.startsWith('/dashboard/scanner') ||
+    request.nextUrl.pathname.startsWith('/dashboard/deals')
+  )) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('id', user.id)
+      .single();
+
+    const tier = profile?.subscription_tier;
+    if (!tier || tier === 'free') {
+      return NextResponse.redirect(new URL('/pricing?upgrade=true', request.url));
+    }
+  }
+
   return supabaseResponse;
 }
 
