@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { generateSocialImage, buildBrandedPrompt } from '@/lib/generate-image';
 
 // Runs daily at 8am (see vercel.json)
 // Generates one post per platform across rotating pillars, saves as drafts for review
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const PLATFORMS = ['twitter', 'linkedin', 'instagram', 'tiktok'] as const;
+// facebook and instagram get images; twitter and linkedin are text-only (APIs not set up yet)
+const PLATFORMS = ['twitter', 'facebook', 'instagram', 'linkedin'] as const;
 type Platform = typeof PLATFORMS[number];
+
+const IMAGE_PLATFORMS: Platform[] = ['facebook', 'instagram'];
 
 const PILLARS = ['money_tip', 'complaint_win', 'product_feature', 'consumer_rights'] as const;
 type Pillar = typeof PILLARS[number];
@@ -27,12 +31,12 @@ const PILLAR_CONTEXT: Record<Pillar, string> = {
 const PLATFORM_RULES: Record<Platform, string> = {
   twitter:
     'Max 280 characters. Punchy, conversational. Use 1–2 emojis max. End with a hook or question if appropriate. No markdown.',
-  linkedin:
-    '150–300 words. Professional but approachable tone. Use line breaks for readability. Include a brief story or stat. Call to action at end.',
+  facebook:
+    '100–200 words. Friendly, informative tone. Use emojis sparingly. Include a clear call to action at the end.',
   instagram:
     '100–150 words of caption. Warm, friendly tone. Use emojis. 3–5 hashtags inline. End with a question to drive comments.',
-  tiktok:
-    'Write a 30–60 second spoken script for a talking-head video. Conversational, energetic UK tone. Include a hook in the first 3 seconds. End with a clear CTA.',
+  linkedin:
+    '150–300 words. Professional but approachable tone. Use line breaks for readability. Include a brief story or stat. Call to action at end.',
 };
 
 // Topic rotation — cycles daily so content stays varied
@@ -117,12 +121,28 @@ export async function GET(request: NextRequest) {
   );
 
   const topic = getDailyTopic();
-  const results: Array<{ platform: string; pillar: string; ok: boolean; error?: string }> = [];
+  const results: Array<{ platform: string; pillar: string; ok: boolean; imageGenerated?: boolean; error?: string }> = [];
 
   for (const platform of PLATFORMS) {
     const pillar = getDailyPillarForPlatform(platform);
     try {
       const post = await generatePost(platform, pillar, topic);
+
+      // Generate image for facebook and instagram
+      let imageData: string | null = null;
+      let imageGeneratedAt: string | null = null;
+
+      if (IMAGE_PLATFORMS.includes(platform)) {
+        try {
+          const brandedPrompt = buildBrandedPrompt(post.image_prompt);
+          const { imageBase64 } = await generateSocialImage(brandedPrompt);
+          imageData = imageBase64;
+          imageGeneratedAt = new Date().toISOString();
+        } catch (imgErr: any) {
+          // Image generation failure must not block text post
+          console.error(`Image generation failed for ${platform} post:`, imgErr.message);
+        }
+      }
 
       const { error } = await supabase.from('social_posts').insert({
         platform,
@@ -130,11 +150,13 @@ export async function GET(request: NextRequest) {
         content: post.content,
         hashtags: post.hashtags,
         image_prompt: post.image_prompt,
+        image_data: imageData,
+        image_generated_at: imageGeneratedAt,
         status: 'draft',
       });
 
       if (error) throw new Error(error.message);
-      results.push({ platform, pillar, ok: true });
+      results.push({ platform, pillar, ok: true, imageGenerated: imageData !== null });
     } catch (err: any) {
       console.error(`Failed to generate ${platform} post:`, err.message);
       results.push({ platform, pillar, ok: false, error: err.message });
@@ -142,7 +164,10 @@ export async function GET(request: NextRequest) {
   }
 
   const failed = results.filter((r) => !r.ok).length;
-  console.log(`generate-social-posts: topic="${topic}" generated=${results.length - failed} failed=${failed}`);
+  const imagesGenerated = results.filter((r) => r.imageGenerated).length;
+  console.log(
+    `generate-social-posts: topic="${topic}" generated=${results.length - failed} failed=${failed} images=${imagesGenerated}`
+  );
 
   return NextResponse.json({ ok: true, topic, results });
 }

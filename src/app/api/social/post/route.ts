@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { postToFacebook, postToInstagram } from '@/lib/meta-social';
+import { uploadImageToStorage } from '@/lib/storage';
 
 export async function POST(request: NextRequest) {
   if (!process.env.META_ACCESS_TOKEN) {
@@ -42,12 +43,24 @@ export async function POST(request: NextRequest) {
 
   try {
     if (post.platform === 'facebook' || post.platform === 'both') {
-      const { postId } = await postToFacebook(post.content, post.hashtags ?? '');
+      const { postId } = await postToFacebook(
+        post.content,
+        post.hashtags ?? '',
+        post.image_data ?? undefined,
+        'image/png'
+      );
       platformPostIds.facebook = postId;
     }
 
     if (post.platform === 'instagram' || post.platform === 'both') {
-      const { postId } = await postToInstagram(post.content, post.hashtags ?? '');
+      // For Instagram, if we have image_data, upload to Supabase Storage for a public URL
+      // The postToInstagram function handles the upload internally when imageBase64 is passed
+      const { postId } = await postToInstagram(
+        post.content,
+        post.hashtags ?? '',
+        post.image_data ?? undefined,
+        'image/png'
+      );
       platformPostIds.instagram = postId;
     }
   } catch (err: any) {
