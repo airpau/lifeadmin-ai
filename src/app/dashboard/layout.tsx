@@ -8,6 +8,7 @@ import {
   ScanSearch,
   FileText,
   CreditCard,
+  Tag,
   User,
   LogOut,
   Sparkles,
@@ -21,6 +22,7 @@ const navItems = [
   { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
   { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
+  { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 

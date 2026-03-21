@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
 interface Subscription {
   id: string;
@@ -18,6 +19,14 @@ interface Subscription {
   status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired';
   account_email: string | null;
   cancel_requested_at: string | null;
+  source?: 'manual' | 'email' | 'bank' | 'bank_and_email';
+}
+
+interface BankConnection {
+  id: string;
+  status: string;
+  last_synced_at: string | null;
+  connected_at: string;
 }
 
 interface CancellationEmail {
@@ -29,6 +38,7 @@ const CATEGORIES = ['streaming', 'software', 'fitness', 'news', 'shopping', 'gam
 const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
 
 export default function SubscriptionsPage() {
+  const searchParams = useSearchParams();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
@@ -59,6 +69,11 @@ export default function SubscriptionsPage() {
     account_email: '',
     usage_frequency: 'sometimes',
   });
+  const [bankConnection, setBankConnection] = useState<BankConnection | null>(null);
+  const [bankLoading, setBankLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [bankToast, setBankToast] = useState<string | null>(null);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
@@ -74,9 +89,32 @@ export default function SubscriptionsPage() {
     }
   }, []);
 
+  const fetchBankConnection = useCallback(async () => {
+    try {
+      const res = await fetch('/api/bank/connection');
+      if (res.ok) {
+        const data = await res.json();
+        setBankConnection(data.connection || null);
+      }
+    } catch (error) {
+      console.error('Error fetching bank connection:', error);
+    } finally {
+      setBankLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSubscriptions();
-  }, [fetchSubscriptions]);
+    fetchBankConnection();
+  }, [fetchSubscriptions, fetchBankConnection]);
+
+  useEffect(() => {
+    if (searchParams.get('connected') === 'true') {
+      setBankToast('Bank connected! We\'ve synced your last 12 months of transactions.');
+      const t = setTimeout(() => setBankToast(null), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [searchParams]);
 
   const totalMonthly = subscriptions
     .filter((s) => s.status === 'active')
@@ -252,6 +290,53 @@ export default function SubscriptionsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSyncBank = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/bank/sync', { method: 'POST' });
+      if (res.ok) {
+        await fetchBankConnection();
+        await fetchSubscriptions();
+        setBankToast('Sync complete!');
+        setTimeout(() => setBankToast(null), 3000);
+      }
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDisconnectBank = async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/bank/disconnect', { method: 'POST' });
+      if (res.ok) {
+        setBankConnection(null);
+      }
+    } catch (err) {
+      console.error('Disconnect failed:', err);
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const getSourceBadges = (source?: string) => {
+    if (!source || source === 'manual') {
+      return <span className="text-xs bg-slate-700/50 text-slate-400 px-1.5 py-0.5 rounded" title="Manually added">✏️</span>;
+    }
+    return (
+      <span className="flex gap-1">
+        {(source === 'bank' || source === 'bank_and_email') && (
+          <span className="text-xs bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded" title="Detected from bank">🏦</span>
+        )}
+        {(source === 'email' || source === 'bank_and_email') && (
+          <span className="text-xs bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded" title="Detected from email">📧</span>
+        )}
+      </span>
+    );
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -275,6 +360,82 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="max-w-7xl">
+      {/* Success toast */}
+      {bankToast && (
+        <div className="fixed top-6 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="h-5 w-5" />
+          {bankToast}
+        </div>
+      )}
+
+      {/* Bank connection card */}
+      {!bankLoading && (
+        <div className="mb-8">
+          {!bankConnection ? (
+            <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                  <Building2 className="h-6 w-6 text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-white font-semibold mb-1">🏦 Connect your bank for automatic detection</h3>
+                  <p className="text-slate-400 text-sm mb-1">
+                    We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
+                  </p>
+                  <p className="text-slate-500 text-xs">
+                    Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
+                  </p>
+                </div>
+                <a
+                  href="/api/auth/truelayer"
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Connect Bank Account
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-900/50 backdrop-blur-sm border border-green-500/30 rounded-2xl p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                  <Wifi className="h-5 w-5 text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-green-400 font-semibold text-sm">Bank connected</span>
+                    <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                  </div>
+                  <p className="text-slate-500 text-xs">
+                    {bankConnection.last_synced_at
+                      ? `Last synced: ${new Date(bankConnection.last_synced_at).toLocaleString('en-GB')}`
+                      : 'Never synced'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleSyncBank}
+                    disabled={syncing}
+                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Syncing...' : 'Sync Now'}
+                  </button>
+                  <button
+                    onClick={handleDisconnectBank}
+                    disabled={disconnecting}
+                    className="flex items-center gap-2 text-slate-500 hover:text-red-400 disabled:opacity-50 text-sm transition-all"
+                  >
+                    <WifiOff className="h-4 w-4" />
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
@@ -402,6 +563,7 @@ export default function SubscriptionsPage() {
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-semibold text-white">{sub.provider_name}</h3>
                       {getStatusBadge(sub.status)}
+                      {getSourceBadges(sub.source)}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-slate-400">
                       {sub.category && (

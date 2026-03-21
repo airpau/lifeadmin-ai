@@ -24,6 +24,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
@@ -61,6 +62,23 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, [supabase]);
+
+  const handleManageBilling = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch('/api/stripe/portal', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || 'Could not open billing portal.');
+        setPortalLoading(false);
+      }
+    } catch {
+      alert('Failed to open billing portal. Please try again.');
+      setPortalLoading(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     setDeleting(true);
@@ -226,7 +244,7 @@ export default function ProfilePage() {
       <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8">
         <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
         
-        {profile?.subscription_tier === 'free' ? (
+        {!profile?.subscription_tier || profile.subscription_tier === 'free' ? (
           <div className="text-center py-8">
             <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-white mb-2">Upgrade to unlock more</h3>
@@ -237,7 +255,7 @@ export default function ProfilePage() {
               href="/pricing"
               className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-6 py-3 rounded-lg transition-all"
             >
-              View Plans
+              Upgrade Plan
             </a>
           </div>
         ) : (
@@ -249,12 +267,17 @@ export default function ProfilePage() {
                   {profile?.subscription_tier === 'essential' ? '£9.99/month' : '£19.99/month'}
                 </p>
               </div>
-              <button className="text-sm text-red-400 hover:text-red-300 transition-all">
-                Cancel subscription
+              <button
+                onClick={handleManageBilling}
+                disabled={portalLoading}
+                className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
+              >
+                <CreditCard className="h-4 w-4" />
+                {portalLoading ? 'Loading...' : 'Manage Billing'}
               </button>
             </div>
             <p className="text-xs text-slate-500">
-              Your subscription will renew automatically. Cancel anytime.
+              Your subscription will renew automatically. Manage or cancel anytime via the billing portal.
             </p>
           </div>
         )}
