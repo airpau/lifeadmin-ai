@@ -114,6 +114,54 @@ RESEND_API_KEY=
 - Competitors: DoNotPay (US-focused), Resolver (manual process)
 - Advantage: Fully automated with AI, UK-specific regulations
 
+## Social Media Posting — How It Works
+
+### Current Setup (21 Mar 2026)
+Social media posting is **admin-only infrastructure** — no user-facing UI. All routes require `CRON_SECRET` Bearer token.
+
+**Facebook posting: WORKING ✅**
+- Posts go to Facebook Page ID: `1056645287525328`
+- Page Access Token stored in `META_ACCESS_TOKEN` env var (expires — needs refreshing periodically)
+- Token is a **Page Access Token** (not user token) — obtained by exchanging user token via `/v18.0/{page_id}?fields=access_token`
+- Token refresh: go to developers.facebook.com → Graph API Explorer → Get Page Access Token → exchange via API → update Vercel env
+
+**Instagram posting: PENDING ✅**
+- Blocked until Meta App Review completes (requires incorporation documents for business verification)
+- Instagram account: @paybacker.co.uk (ID: 17841440175351137)
+- Will work once Meta app is published (Development → Live mode)
+
+**Manual posting workflow (until Instagram API works):**
+1. Generate image: `uv run ~/.openclaw/skills/nano-banana-pro/scripts/generate_image.py --prompt "..." --filename "docs/social-images/name.png" --resolution 2K --api-key $GEMINI_API_KEY`
+2. Check image for text errors before using
+3. Post to Facebook via API (see src/lib/meta-social.ts)
+4. Send image to Paul via Telegram for manual Instagram posting
+
+**Brand guidelines for all posts:**
+- Dark navy (#0f172a) background, gold (#f59e0b) accents
+- NO TEXT in generated images (AI hallucinates garbled text)
+- Always use `paybacker.co.uk` (NEVER paybacker.com)
+- All posts must include pre-launch waitlist CTA: "Join the waitlist at paybacker.co.uk"
+- GEMINI_API_KEY is set in Vercel and .env.local (hello@paybacker.co.uk Google account)
+
+**Key files:**
+- `src/lib/meta-social.ts` — Facebook + Instagram Graph API posting
+- `src/lib/generate-image.ts` — Google Imagen 4 image generation
+- `src/lib/storage.ts` — Supabase Storage upload (bucket: social-images)
+- `src/app/api/social/post/route.ts` — publish approved post
+- `src/app/api/social/approve/route.ts` — approve draft post
+- `src/app/api/social/generate-image/route.ts` — generate image for post
+- `src/app/api/cron/generate-social-posts/route.ts` — 8am daily post generation
+- `src/app/api/cron/post-social/route.ts` — 10am daily auto-post
+
+**Meta App credentials:**
+- META_APP_ID, META_APP_SECRET, META_ACCESS_TOKEN, META_PAGE_ID, META_INSTAGRAM_ACCOUNT_ID — all set in Vercel
+
+### Current Mode
+`NEXT_PUBLIC_WAITLIST_MODE=true` — site shows waitlist CTAs instead of free trial buttons.
+To disable: set `NEXT_PUBLIC_WAITLIST_MODE=false` in Vercel env and redeploy.
+
+---
+
 ## Build Progress
 
 ### Phase 1: Foundation ✅
