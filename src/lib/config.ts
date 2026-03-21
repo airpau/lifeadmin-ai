@@ -1,3 +1,6 @@
+// Feature flags
+export const WAITLIST_MODE = process.env.NEXT_PUBLIC_WAITLIST_MODE === 'true';
+
 /**
  * Environment configuration with validation
  * Validates all required environment variables on startup

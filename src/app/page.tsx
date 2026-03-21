@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale } from 'lucide-react';
+import Image from 'next/image';
+import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale, Users } from 'lucide-react';
+import { WAITLIST_MODE } from '@/lib/config';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -10,6 +12,16 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (WAITLIST_MODE) {
+      fetch('/api/waitlist')
+        .then((res) => res.json())
+        .then((data) => { if (data.count) setWaitlistCount(data.count); })
+        .catch(() => {});
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,14 +36,17 @@ export default function Home() {
       });
 
       if (!res.ok) {
-        throw new Error('Failed to join waitlist');
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to join waitlist');
       }
 
+      const data = await res.json();
+      if (data.count) setWaitlistCount(data.count);
       setSuccess(true);
       setName('');
       setEmail('');
-    } catch (err) {
-      setError('Something went wrong. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -48,7 +63,7 @@ export default function Home() {
         <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-amber-500" />
+              <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
               <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
             </div>
             <div className="flex items-center gap-2 md:gap-3">
@@ -58,12 +73,21 @@ export default function Home() {
               >
                 Sign In
               </Link>
-              <Link
-                href="/auth/signup"
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all"
-              >
-                Get Started
-              </Link>
+              {WAITLIST_MODE ? (
+                <a
+                  href="#waitlist"
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+                >
+                  Join Waitlist
+                </a>
+              ) : (
+                <Link
+                  href="/auth/signup"
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all"
+                >
+                  Get Started
+                </Link>
+              )}
             </div>
           </div>
         </header>
@@ -71,11 +95,20 @@ export default function Home() {
         {/* Hero Section */}
         <main className="container mx-auto px-6 py-16 md:py-24">
           <div className="max-w-4xl mx-auto">
+            {/* Logo in hero */}
+            <div className="flex justify-center mb-6">
+              <Image src="/logo.png" alt="Paybacker" width={64} height={64} />
+            </div>
+
             {/* Badge */}
             <div className="flex justify-center mb-8">
               <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20">
                 <Sparkles className="h-4 w-4" />
-                <span>AI-Powered Money Recovery — Now in Early Access</span>
+                {WAITLIST_MODE ? (
+                  <span>Launching Soon — Join the Waitlist for Early Access</span>
+                ) : (
+                  <span>AI-Powered Money Recovery — Now in Early Access</span>
+                )}
               </div>
             </div>
 
@@ -98,20 +131,31 @@ export default function Home() {
             </div>
 
             {/* Hero CTAs */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-              <Link
-                href="/auth/signup"
-                className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg"
-              >
-                Create Free Account
-              </Link>
-              <Link
-                href="/auth/login"
-                className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white font-medium px-8 py-4 rounded-xl transition-all text-center text-lg"
-              >
-                Sign In
-              </Link>
-            </div>
+            {WAITLIST_MODE ? (
+              <div className="flex justify-center mb-16">
+                <a
+                  href="#waitlist"
+                  className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg"
+                >
+                  Join the Waitlist — Get Early Access
+                </a>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+                <Link
+                  href="/auth/signup"
+                  className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg"
+                >
+                  Create Free Account
+                </Link>
+                <Link
+                  href="/auth/login"
+                  className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white font-medium px-8 py-4 rounded-xl transition-all text-center text-lg"
+                >
+                  Sign In
+                </Link>
+              </div>
+            )}
 
             {/* Benefits */}
             <div className="grid md:grid-cols-3 gap-6 mb-24">
@@ -199,8 +243,16 @@ export default function Home() {
             </div>
 
             {/* Waitlist Form */}
-            <div className="max-w-xl mx-auto">
+            <div id="waitlist" className="max-w-xl mx-auto scroll-mt-24">
               <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 shadow-2xl">
+                {/* Social proof counter */}
+                {WAITLIST_MODE && waitlistCount && waitlistCount > 0 && (
+                  <div className="flex items-center justify-center gap-2 mb-6 text-sm text-slate-400">
+                    <Users className="h-4 w-4 text-amber-500" />
+                    <span>Join <span className="text-white font-semibold">{waitlistCount.toLocaleString()}</span> {waitlistCount === 1 ? 'other' : 'others'} on the waitlist</span>
+                  </div>
+                )}
+
                 {success ? (
                   <div className="text-center py-8">
                     <div className="bg-green-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -211,6 +263,13 @@ export default function Home() {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-4">
+                    {WAITLIST_MODE && (
+                      <div className="text-center mb-2">
+                        <h3 className="text-xl font-bold text-white mb-1">Get early access</h3>
+                        <p className="text-slate-400 text-sm">Be first in line when we launch. No spam, ever.</p>
+                      </div>
+                    )}
+
                     <div>
                       <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-2">
                         Full name

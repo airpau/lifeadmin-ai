@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Mail, Lock, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
@@ -73,7 +74,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
-            <Sparkles className="h-8 w-8 text-amber-500" />
+            <Image src="/logo.png" alt="Paybacker" width={36} height={36} />
             <span className="text-2xl font-bold text-white">
               Pay<span className="text-amber-500">backer</span>
             </span>

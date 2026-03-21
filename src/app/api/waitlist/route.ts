@@ -13,7 +13,7 @@ function getAdmin() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email } = body;
+    const { name, email, plan_preference } = body;
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
@@ -37,9 +37,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert into DB (emails_sent starts empty — updated after confirmed send)
+    const insertData: Record<string, unknown> = {
+      email: email.toLowerCase(),
+      full_name: name,
+      emails_sent: [],
+    };
+    if (plan_preference) {
+      insertData.plan_preference = plan_preference;
+    }
+
     const { data: inserted, error: insertError } = await supabase
       .from('waitlist_signups')
-      .insert({ email: email.toLowerCase(), full_name: name, emails_sent: [] })
+      .insert(insertData)
       .select('id')
       .single();
 

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   LayoutDashboard,
   ScanSearch,
@@ -11,7 +12,6 @@ import {
   Tag,
   User,
   LogOut,
-  Sparkles,
   Menu,
   X,
 } from 'lucide-react';
@@ -59,7 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const NavContent = () => (
     <>
       <Link href="/dashboard" className="flex items-center gap-2 mb-8">
-        <Sparkles className="h-6 w-6 text-amber-500" />
+        <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
         <span className="text-xl font-bold text-white">
           Pay<span className="text-amber-500">backer</span>
         </span>
@@ -109,7 +109,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile header */}
       <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900/80 border-b border-slate-800 sticky top-0 z-40">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-amber-500" />
+          <Image src="/logo.png" alt="Paybacker" width={28} height={28} />
           <span className="text-lg font-bold text-white">
             Pay<span className="text-amber-500">backer</span>
           </span>

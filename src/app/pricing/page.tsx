@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS } from '@/lib/stripe';
-import { Check, Sparkles, TrendingUp, Zap } from 'lucide-react';
+import Image from 'next/image';
+import { Check, Sparkles, TrendingUp, Zap, Users } from 'lucide-react';
+import { WAITLIST_MODE } from '@/lib/config';
 
 const plans = [
   {
@@ -19,8 +21,10 @@ const plans = [
       'Email support',
     ],
     cta: 'Get started free',
+    waitlistCta: 'Join Waitlist — Free',
     highlighted: false,
     trial: false,
+    planKey: 'free' as const,
   },
   {
     name: 'Essential',
@@ -35,8 +39,10 @@ const plans = [
       'AI complaint letters citing Consumer Rights Act 2015',
     ],
     cta: 'Start 7-day free trial',
+    waitlistCta: 'Join Waitlist — Essential',
     highlighted: true,
     trial: true,
+    planKey: 'essential' as const,
     priceIds: {
       monthly: PRICE_IDS.essential_monthly,
       yearly:  PRICE_IDS.essential_yearly,
@@ -55,8 +61,10 @@ const plans = [
       'Solicitor-quality letter generation in seconds',
     ],
     cta: 'Start 7-day free trial',
+    waitlistCta: 'Join Waitlist — Pro',
     highlighted: false,
     trial: true,
+    planKey: 'pro' as const,
     priceIds: {
       monthly: PRICE_IDS.pro_monthly,
       yearly:  PRICE_IDS.pro_yearly,
@@ -67,6 +75,11 @@ const plans = [
 export default function PricingPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [loading, setLoading] = useState<string | null>(null);
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistPlan, setWaitlistPlan] = useState<string | null>(null);
+  const [waitlistSuccess, setWaitlistSuccess] = useState(false);
+  const [waitlistError, setWaitlistError] = useState('');
   const router = useRouter();
   const supabase = createClient();
 
@@ -106,18 +119,66 @@ export default function PricingPage() {
     }
   };
 
+  const handleWaitlistPlan = (planKey: string) => {
+    setWaitlistPlan(planKey);
+    setWaitlistSuccess(false);
+    setWaitlistError('');
+  };
+
+  const handleWaitlistSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading('waitlist');
+    setWaitlistError('');
+
+    try {
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: waitlistName,
+          email: waitlistEmail,
+          plan_preference: waitlistPlan,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to join waitlist');
+      }
+
+      setWaitlistSuccess(true);
+      setWaitlistEmail('');
+      setWaitlistName('');
+    } catch (err: any) {
+      setWaitlistError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <div className="relative">
         {/* Header */}
         <header className="container mx-auto px-6 py-6">
           <Link href="/" className="flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-amber-500" />
+            <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
             <span className="text-xl font-bold text-white">
               Pay<span className="text-amber-500">backer</span>
             </span>
           </Link>
         </header>
+
+        {/* Waitlist Banner */}
+        {WAITLIST_MODE && (
+          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/10 border-y border-amber-500/20">
+            <div className="container mx-auto px-6 py-3 text-center">
+              <p className="text-amber-400 text-sm font-medium">
+                Launching soon — join the waitlist for early access and 30% off your first month
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Hero */}
         <div className="container mx-auto px-6 py-16 text-center">
@@ -178,14 +239,14 @@ export default function PricingPage() {
                   <div className="mb-6">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
-                      {plan.trial && (
+                      {plan.trial && !WAITLIST_MODE && (
                         <span className="bg-green-500/15 text-green-400 text-xs font-medium px-2 py-0.5 rounded-full border border-green-500/30">
                           7-day free trial
                         </span>
                       )}
                     </div>
                     <p className="text-slate-400 text-sm mb-4">{plan.description}</p>
-                    
+
                     <div className="flex items-baseline gap-1 mb-1">
                       <span className="text-5xl font-bold text-white">£{price}</span>
                       {price > 0 && (
@@ -194,7 +255,7 @@ export default function PricingPage() {
                         </span>
                       )}
                     </div>
-                    
+
                     {billingCycle === 'yearly' && price > 0 && (
                       <p className="text-sm text-slate-500">
                         £{(price / 12).toFixed(2)}/month billed annually
@@ -202,23 +263,36 @@ export default function PricingPage() {
                     )}
                   </div>
 
-                  <button
-                    onClick={() => handleSubscribe(priceId, plan.name)}
-                    disabled={loading === plan.name}
-                    className={`w-full py-3 rounded-lg font-semibold transition-all ${
-                      plan.highlighted
-                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950'
-                        : 'bg-slate-800 hover:bg-slate-700 text-white'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {loading === plan.name ? 'Loading...' : plan.cta}
-                  </button>
-                  {plan.trial && (
+                  {WAITLIST_MODE ? (
+                    <button
+                      onClick={() => handleWaitlistPlan(plan.planKey)}
+                      className={`w-full py-3 rounded-lg font-semibold transition-all ${
+                        plan.highlighted
+                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950'
+                          : 'bg-slate-800 hover:bg-slate-700 text-white'
+                      }`}
+                    >
+                      {plan.waitlistCta}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleSubscribe(priceId, plan.name)}
+                      disabled={loading === plan.name}
+                      className={`w-full py-3 rounded-lg font-semibold transition-all ${
+                        plan.highlighted
+                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950'
+                          : 'bg-slate-800 hover:bg-slate-700 text-white'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {loading === plan.name ? 'Loading...' : plan.cta}
+                    </button>
+                  )}
+                  {plan.trial && !WAITLIST_MODE && (
                     <p className="text-xs text-slate-500 text-center mt-2 mb-4">
                       No card required during trial. Cancel anytime.
                     </p>
                   )}
-                  {!plan.trial && <div className="mb-6" />}
+                  {(!plan.trial || WAITLIST_MODE) && <div className="mb-6" />}
 
                   <ul className="space-y-3">
                     {plan.features.map((feature, i) => (
@@ -232,6 +306,81 @@ export default function PricingPage() {
               );
             })}
           </div>
+
+          {/* Waitlist modal/form when a plan is selected */}
+          {WAITLIST_MODE && waitlistPlan && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+                {waitlistSuccess ? (
+                  <div className="text-center py-4">
+                    <div className="bg-green-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Check className="h-8 w-8 text-green-500" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">You're on the list!</h3>
+                    <p className="text-slate-400 mb-2">We'll be in touch when we launch.</p>
+                    <p className="text-amber-400 text-sm font-medium mb-6">You'll get 30% off your first month as an early supporter.</p>
+                    <button
+                      onClick={() => setWaitlistPlan(null)}
+                      className="text-slate-400 hover:text-white text-sm"
+                    >
+                      Close
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleWaitlistSubmit} className="space-y-4">
+                    <div className="text-center mb-2">
+                      <h3 className="text-xl font-bold text-white mb-1">
+                        Join the waitlist — {waitlistPlan.charAt(0).toUpperCase() + waitlistPlan.slice(1)} plan
+                      </h3>
+                      <p className="text-slate-400 text-sm">Get early access and 30% off your first month.</p>
+                    </div>
+
+                    <div>
+                      <input
+                        type="text"
+                        required
+                        value={waitlistName}
+                        onChange={(e) => setWaitlistName(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        placeholder="Your name"
+                      />
+                    </div>
+
+                    <div>
+                      <input
+                        type="email"
+                        required
+                        value={waitlistEmail}
+                        onChange={(e) => setWaitlistEmail(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        placeholder="you@example.com"
+                      />
+                    </div>
+
+                    {waitlistError && (
+                      <p className="text-red-400 text-sm">{waitlistError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading === 'waitlist'}
+                      className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading === 'waitlist' ? 'Joining...' : 'Join Waitlist'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWaitlistPlan(null)}
+                      className="w-full text-slate-400 hover:text-white text-sm py-2"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Trust Section */}
           <div className="mt-16 pt-16 border-t border-slate-800">

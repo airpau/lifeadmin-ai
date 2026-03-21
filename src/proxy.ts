@@ -33,7 +33,19 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Protect dashboard routes
+  const isWaitlistMode = process.env.NEXT_PUBLIC_WAITLIST_MODE === 'true';
+
+  // Waitlist mode: redirect signup and unauthenticated dashboard to home
+  if (isWaitlistMode) {
+    if (request.nextUrl.pathname === '/auth/signup' && !user) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+    if (request.nextUrl.pathname.startsWith('/dashboard') && !user) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+  }
+
+  // Protect dashboard routes (non-waitlist or fallback)
   if (request.nextUrl.pathname.startsWith('/dashboard') && !user) {
     return NextResponse.redirect(new URL('/auth/login', request.url));
   }
