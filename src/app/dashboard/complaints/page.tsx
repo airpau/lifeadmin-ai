@@ -25,11 +25,16 @@ interface LetterModalProps {
 
 function LetterModal({ task, onClose }: LetterModalProps) {
   const [copied, setCopied] = useState(false);
-  const letter = task.agent_runs?.[0]?.output_data?.letter || '';
+  const [isEditing, setIsEditing] = useState(false);
+  const [letterContent, setLetterContent] = useState(task.agent_runs?.[0]?.output_data?.letter || '');
+  const [editText, setEditText] = useState(letterContent);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
   const legalRefs = task.agent_runs?.[0]?.output_data?.legalReferences || [];
+  const isApproved = task.status === 'approved';
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(letter);
+    navigator.clipboard.writeText(letterContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -51,13 +56,43 @@ function LetterModal({ task, onClose }: LetterModalProps) {
         </style>
       </head>
       <body>
-        <pre>${letter.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        <pre>${letterContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
         ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
         <script>window.onload = () => { window.print(); }<\/script>
       </body>
       </html>
     `);
     printWindow.document.close();
+  };
+
+  const handleStartEdit = () => {
+    setEditText(letterContent);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditText(letterContent);
+  };
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/complaints/${task.id}/letter`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ letter: editText }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      setLetterContent(editText);
+      setIsEditing(false);
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 3000);
+    } catch {
+      alert('Failed to save changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -81,27 +116,58 @@ function LetterModal({ task, onClose }: LetterModalProps) {
                   day: 'numeric', month: 'short', year: 'numeric',
                 })}
               </span>
+              {isApproved && (
+                <span className="text-xs text-green-400 flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3" /> Approved
+                </span>
+              )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white transition-all p-1 ml-4 flex-shrink-0"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+            {!isEditing && letterContent && (
+              <button
+                onClick={handleStartEdit}
+                className="text-slate-400 hover:text-white transition-all p-1"
+                title="Edit letter"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white transition-all p-1"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Letter body */}
         <div className="flex-1 overflow-y-auto p-6">
-          {letter ? (
+          {letterContent ? (
             <>
               <div className="bg-slate-950 rounded-xl p-6 border border-slate-800 mb-4">
-                <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
-                  {letter}
-                </pre>
+                {isEditing ? (
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="w-full text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed bg-transparent resize-none outline-none min-h-[400px]"
+                    autoFocus
+                  />
+                ) : (
+                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
+                    {letterContent}
+                  </pre>
+                )}
               </div>
 
-              {legalRefs.length > 0 && (
+              {savedMsg && (
+                <div className="text-sm text-green-400 flex items-center gap-2 mb-4">
+                  <CheckCircle className="h-4 w-4" /> Saved ✓
+                </div>
+              )}
+
+              {!isEditing && legalRefs.length > 0 && (
                 <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Legal References</h3>
                   <ul className="text-xs text-slate-400 space-y-1">
@@ -119,20 +185,40 @@ function LetterModal({ task, onClose }: LetterModalProps) {
 
         {/* Modal actions */}
         <div className="flex gap-3 p-6 border-t border-slate-800 flex-shrink-0">
-          <button
-            onClick={handleCopy}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all font-medium"
-          >
-            {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            {copied ? 'Copied!' : 'Copy Letter'}
-          </button>
-          <button
-            onClick={handlePDF}
-            className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-lg transition-all font-semibold"
-          >
-            <Download className="h-4 w-4" />
-            Download PDF
-          </button>
+          {isEditing ? (
+            <>
+              <button
+                onClick={handleCancelEdit}
+                className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-lg transition-all font-semibold disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleCopy}
+                className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all font-medium"
+              >
+                {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                {copied ? 'Copied!' : 'Copy Letter'}
+              </button>
+              <button
+                onClick={handlePDF}
+                className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-lg transition-all font-semibold"
+              >
+                <Download className="h-4 w-4" />
+                Download PDF
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -156,6 +242,7 @@ function ComplaintsPageInner() {
   const [result, setResult] = useState<any>(null);
   const [feedback, setFeedback] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
+  const [letterApproved, setLetterApproved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
@@ -190,6 +277,7 @@ function ComplaintsPageInner() {
     setResult(null);
     setShowFeedback(false);
     setFeedback('');
+    setLetterApproved(false);
 
     try {
       const res = await fetch('/api/complaints/generate', {
@@ -588,23 +676,37 @@ function ComplaintsPageInner() {
                 {/* Satisfaction prompt */}
                 {!showFeedback ? (
                   <div className="border border-slate-800 rounded-xl p-4">
-                    <p className="text-sm text-slate-300 font-medium mb-3">Happy with this letter?</p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setShowFeedback(false)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 py-2.5 rounded-lg transition-all text-sm font-medium"
-                      >
-                        <ThumbsUp className="h-4 w-4" />
-                        Yes, it&apos;s great
-                      </button>
-                      <button
-                        onClick={() => setShowFeedback(true)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-lg transition-all text-sm font-medium"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Request changes
-                      </button>
-                    </div>
+                    {letterApproved ? (
+                      <div className="flex items-center gap-2 text-green-400 text-sm font-medium py-1">
+                        <CheckCircle className="h-4 w-4" />
+                        Letter saved to your history
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-slate-300 font-medium mb-3">Happy with this letter?</p>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={async () => {
+                              if (result?.taskId) {
+                                await fetch(`/api/complaints/${result.taskId}/approve`, { method: 'PATCH' });
+                              }
+                              setLetterApproved(true);
+                            }}
+                            className="flex-1 flex items-center justify-center gap-2 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 py-2.5 rounded-lg transition-all text-sm font-medium"
+                          >
+                            <ThumbsUp className="h-4 w-4" />
+                            Yes, it&apos;s great
+                          </button>
+                          <button
+                            onClick={() => setShowFeedback(true)}
+                            className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-lg transition-all text-sm font-medium"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Request changes
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="border border-slate-700 rounded-xl p-4 space-y-3">

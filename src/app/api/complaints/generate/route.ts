@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     // Increment usage after successful generation
     await incrementUsage(user.id, 'complaint_generated');
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, taskId: task?.id });
   } catch (error: any) {
     console.error('Complaint generation error:', error);
     return NextResponse.json(

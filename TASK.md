@@ -1,103 +1,93 @@
-# TASK: Paybacker — Next Steps (Post-Deploy)
+# TASK: Complaints Page — 3 Bug Fixes
 
-## What's been completed today (21 Mar 2026)
+## Bug 1: "Yes, it's great" button does nothing
 
-All 4 hard launch blockers are built and deployed to paybacker.co.uk:
+In src/app/dashboard/complaints/page.tsx, the "Yes, it's great" button currently calls:
+`onClick={() => setShowFeedback(false)}`
 
-✅ Plan-gating in src/proxy.ts — free users blocked from /dashboard/scanner and /dashboard/deals
-✅ Stripe Customer Portal — /api/stripe/portal route + Manage Billing / Upgrade Plan buttons on profile page
-✅ Vercel cron jobs — vercel.json with waitlist (9am) + onboarding (10am) daily, secured with CRON_SECRET
-✅ Affiliate Deals tab — /dashboard/deals with 13 providers across Energy, Broadband, Insurance, Mobile
-✅ TrueLayer Open Banking — full OAuth flow, transaction sync, recurring detection, bank connection UI
-✅ Supabase migrations applied — deal_clicks, bank_connections, bank_transactions tables live
-✅ All env vars set in Vercel — CRON_SECRET, TRUELAYER_CLIENT_ID/SECRET/REDIRECT_URI/AUTH_URL/API_URL
-✅ Resend domain verified — paybacker.co.uk domain confirmed working
+This does nothing useful — showFeedback is already false at that point.
 
-## Current env state (.env.local)
-- NEXT_PUBLIC_SUPABASE_URL=https://kcxxlesishltdmfctlmo.supabase.co
-- NEXT_PUBLIC_APP_URL=https://lifeadmin-ai.vercel.app (NOTE: needs updating to https://paybacker.co.uk)
-- TRUELAYER_CLIENT_ID=sandbox-paybacker-340887 (sandbox for now)
-- TRUELAYER_AUTH_URL=https://auth.truelayer-sandbox.com
-- TRUELAYER_API_URL=https://api.truelayer-sandbox.com
-- RESEND domain: verified ✅
+**Fix:** The button should:
+1. Mark the task/letter as confirmed/approved in the database — update the task status to 'approved' in the tasks table (add a PATCH /api/complaints/[id]/approve route if needed, or use the existing tasks table to set status='approved')
+2. Show a success state in the UI — replace the satisfaction prompt with a green confirmation: "✅ Letter saved to your history" 
+3. The confirmed state should persist — if the user closes and reopens the letter modal, it should show as already confirmed (check task.status === 'approved')
 
-## YOUR TASKS
+Create src/app/api/complaints/[id]/approve/route.ts:
+- PATCH endpoint
+- Authenticate user
+- Update tasks table: set status='approved', updated_at=now() where id=[id] AND user_id=[user_id]
+- Return { ok: true }
 
-### TASK 1: Fix NEXT_PUBLIC_APP_URL in Vercel
+## Bug 2: History tab — letters not editable / amendable
 
-The NEXT_PUBLIC_APP_URL env var is set to the old Vercel preview URL. Update it to the real domain.
+When clicking a letter in the History tab, it opens the LetterModal which is READ ONLY. Users should be able to amend the content.
 
-Run:
+**Fix:** Add an edit mode to LetterModal:
+- Add an "Edit Letter" button (pencil icon) in the modal header
+- When clicked, replace the `<pre>` display with a `<textarea>` containing the letter text
+- Add "Save Changes" button that:
+  - PATCHes to /api/complaints/[id]/letter with the new letter text
+  - Saves the updated letter back to agent_runs output_data.letter in Supabase
+  - Shows "Saved ✓" confirmation
+  - Returns to read mode
+- Add "Cancel" button to discard edits
+
+Create src/app/api/complaints/[id]/letter/route.ts:
+- PATCH endpoint
+- Authenticate user
+- Verify task belongs to user
+- Update agent_runs table: set output_data = jsonb_set(output_data, '{letter}', $letter) where task_id=[id]
+- Return { ok: true }
+
+## Bug 3: Plan gating not enforced on complaints — free users can generate unlimited letters
+
+The usage check exists in /api/complaints/usage but the generate endpoint isn't properly blocking users who've hit their limit. Also the Supabase function `increment_usage` may not exist.
+
+**Fix:**
+
+1. Check if the `usage_logs` table and `increment_usage` RPC function exist in Supabase. If not, create a migration:
+
+Create supabase/migrations/20260321140000_usage_logs.sql:
+```sql
+CREATE TABLE IF NOT EXISTS usage_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  action TEXT NOT NULL,
+  year_month TEXT NOT NULL, -- format: YYYY-MM
+  count INTEGER DEFAULT 1,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, action, year_month)
+);
+
+ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users view own usage" ON usage_logs FOR SELECT USING (auth.uid() = user_id);
+
+-- Atomic increment function (upsert)
+CREATE OR REPLACE FUNCTION increment_usage(p_user_id UUID, p_action TEXT, p_year_month TEXT)
+RETURNS void AS $$
+BEGIN
+  INSERT INTO usage_logs (user_id, action, year_month, count)
+  VALUES (p_user_id, p_action, p_year_month, 1)
+  ON CONFLICT (user_id, action, year_month)
+  DO UPDATE SET count = usage_logs.count + 1, updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
-vercel env add NEXT_PUBLIC_APP_URL production --force
+
+2. In src/app/api/complaints/generate/route.ts — check the usage check is actually enforced BEFORE generating the letter:
+- Call checkUsageLimit at the START of the POST handler
+- If !result.allowed, return 403 with { upgradeRequired: true, used: result.used, limit: result.limit, tier: result.tier }
+- Only call incrementUsage AFTER successful generation
+
+3. Apply the migration using the Supabase connection:
 ```
-Value: https://paybacker.co.uk
-
-Then redeploy.
-
-### TASK 2: Update Resend from address
-
-Now that paybacker.co.uk domain is verified in Resend, update the from address used in emails.
-
-Find all places in the codebase that send emails via Resend (check src/app/api/cron/ and any other email sending code). Update the `from` field to:
-- From: Paybacker <hello@paybacker.co.uk>
-
-Also check if RESEND_FROM_EMAIL env var exists and update it in Vercel:
+PGPASSWORD='[REDACTED-DB-PASS]' psql "postgresql://postgres@db.kcxxlesishltdmfctlmo.supabase.co:5432/postgres" -f supabase/migrations/20260321140000_usage_logs.sql
 ```
-vercel env add RESEND_FROM_EMAIL production --force
-```
-Value: Paybacker <hello@paybacker.co.uk>
-
-### TASK 3: End-to-end audit — fix any broken imports or TypeScript errors
-
-Run a full TypeScript check across the new files built today:
-```
-npx tsc --noEmit
-```
-
-Fix any type errors in:
-- src/lib/truelayer.ts
-- src/lib/detect-recurring.ts
-- src/app/api/auth/truelayer/route.ts
-- src/app/api/auth/callback/truelayer/route.ts
-- src/app/api/bank/sync/route.ts
-- src/app/api/bank/disconnect/route.ts
-- src/app/api/deals/click/route.ts
-- src/app/dashboard/deals/page.tsx
-- src/app/api/stripe/portal/route.ts
-
-### TASK 4: Add loading states and error handling to new UI components
-
-Review src/app/dashboard/deals/page.tsx and src/app/dashboard/subscriptions/page.tsx (bank connection section):
-
-- Add proper loading spinner while click tracking fires
-- Add error toast if bank sync fails
-- Add error state if Stripe portal request fails (show "Please try again or contact support")
-- Make sure all fetch calls have try/catch
-
-### TASK 5: Verify email sending works end-to-end
-
-Check the waitlist email route (src/app/api/cron/waitlist-emails/route.ts) and onboarding route:
-- Confirm they use the correct Resend from address
-- Confirm CRON_SECRET auth is working (check the implementation)
-- Add a test endpoint GET /api/cron/test-email that sends a single test email to hello@paybacker.co.uk to verify Resend is working with the verified domain
-
-### TASK 6: Update .env.local.example
-
-Make sure .env.local.example has ALL required env vars documented (including ones added today):
-- TRUELAYER_CLIENT_ID
-- TRUELAYER_CLIENT_SECRET  
-- TRUELAYER_REDIRECT_URI
-- TRUELAYER_AUTH_URL
-- TRUELAYER_API_URL
-- CRON_SECRET
-- RESEND_FROM_EMAIL
-- NEXT_PUBLIC_APP_URL
 
 ## NOTES
-- TypeScript throughout, follow existing patterns
-- Run `npm run build` before finishing to confirm no build errors
-- Do not touch .env.local itself — only .env.local.example
-- Commit all changes with a clear message
+- TypeScript throughout, follow existing patterns  
+- The tasks table is the source of truth for complaints — check its schema before writing queries
+- Run `npm run build` when done to confirm no errors
+- Commit all changes
 
-When completely finished, run: openclaw system event --text "Done: Paybacker post-deploy fixes — app URL, Resend, TypeScript audit, error handling" --mode now
+When completely finished, run: openclaw system event --text "Done: Paybacker complaints fixes — approve button, editable history, plan gating enforced" --mode now
