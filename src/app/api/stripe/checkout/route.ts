@@ -78,14 +78,13 @@ export async function POST(request: NextRequest) {
       await supabase.from('profiles').update({ stripe_customer_id: customerId }).eq('id', user.id);
     }
 
-    // Check for existing active subscriptions on this customer
+    // Check for existing active subscriptions
     const existingSubs = await stripeGet(
       `/subscriptions?customer=${customerId}&status=active&limit=10`
     );
     const trialingSubs = await stripeGet(
       `/subscriptions?customer=${customerId}&status=trialing&limit=10`
     );
-
     const allActiveSubs = [
       ...(existingSubs.data || []),
       ...(trialingSubs.data || []),
@@ -93,14 +92,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`Checkout: customer=${customerId} existing_subs=${allActiveSubs.length}`);
 
-    // If user has an active/trialing subscription, upgrade it instead of creating a new one
+    // If already on the exact same price, reject
     if (allActiveSubs.length > 0) {
-      // Use the most recent subscription
-      const currentSub = allActiveSubs[0];
-      const currentItemId = currentSub.items.data[0]?.id;
-      const currentPriceId = currentSub.items.data[0]?.price.id;
-
-      // If already on this price, no change needed
+      const currentPriceId = allActiveSubs[0].items.data[0]?.price.id;
       if (currentPriceId === priceId) {
         return NextResponse.json({
           error: 'You are already on this plan.',
@@ -108,53 +102,14 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      console.log(`Checkout: upgrading sub=${currentSub.id} from price=${currentPriceId} to price=${priceId}`);
-
-      // Cancel any other duplicate subscriptions (keep only the one we're upgrading)
-      for (let i = 1; i < allActiveSubs.length; i++) {
-        console.log(`Checkout: cancelling duplicate sub=${allActiveSubs[i].id}`);
-        await stripeDelete(`/subscriptions/${allActiveSubs[i].id}`);
+      // Cancel ALL existing subscriptions so the new checkout is clean
+      for (const sub of allActiveSubs) {
+        console.log(`Checkout: cancelling existing sub=${sub.id} price=${sub.items.data[0]?.price.id}`);
+        await stripeDelete(`/subscriptions/${sub.id}`);
       }
-
-      // Update the subscription to the new price (prorate immediately)
-      const updated = await stripePost(`/subscriptions/${currentSub.id}`, {
-        'items[0][id]': currentItemId,
-        'items[0][price]': priceId,
-        proration_behavior: 'create_prorations',
-      });
-
-      if (updated.error) {
-        console.error('Stripe upgrade error:', JSON.stringify(updated.error));
-        return NextResponse.json({ error: updated.error.message }, { status: 400 });
-      }
-
-      console.log(`Checkout: upgraded to price=${priceId} sub=${updated.id}`);
-
-      // The webhook will handle updating the profile tier, but also update directly
-      // so the user sees the change immediately
-      const PRICE_TO_TIER: Record<string, string> = {
-        'price_1TDVvS7qw7mEWYpyN80zzAXM': 'essential',
-        'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
-        'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
-        'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
-      };
-
-      const newTier = PRICE_TO_TIER[priceId] || 'essential';
-      await supabase.from('profiles').update({
-        subscription_tier: newTier,
-        subscription_status: updated.status,
-        stripe_subscription_id: updated.id,
-        updated_at: new Date().toISOString(),
-      }).eq('id', user.id);
-
-      return NextResponse.json({
-        upgraded: true,
-        tier: newTier,
-        url: `https://paybacker.co.uk/dashboard?upgraded=${newTier}`,
-      });
     }
 
-    // No existing subscription — create a new checkout session
+    // Always create a fresh Stripe checkout session requiring payment
     const appUrl = 'https://paybacker.co.uk';
 
     const session = await stripePost('/checkout/sessions', {
