@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { refreshAccessToken } from '@/lib/gmail';
 import Anthropic from '@anthropic-ai/sdk';
+import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
+import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 
 export const maxDuration = 60;
 
@@ -26,6 +28,24 @@ export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Check plan limit
+  const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+  if (!usageCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Monthly scan limit reached', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+      { status: 403 }
+    );
+  }
+
+  // Check Claude rate limit
+  const rateLimit = checkClaudeRateLimit(user.id);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: `Claude rate limit reached (${rateLimit.used}/10 calls per hour). Please wait before trying again.` },
+      { status: 429 }
+    );
+  }
 
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,9 +80,9 @@ export async function POST(request: NextRequest) {
   const allIds = Array.from(new Set([...subjectIds, ...providerIds]));
   if (!allIds.length) return NextResponse.json({ subscriptions: [] });
 
-  // Fetch up to 40 email details for Claude (more coverage)
+  // Fetch up to 20 email details for Claude (cost control)
   const details = await Promise.allSettled(
-    allIds.slice(0, 40).map(async (id: string) => {
+    allIds.slice(0, 20).map(async (id: string) => {
       const res = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -70,7 +90,7 @@ export async function POST(request: NextRequest) {
       const msg = await res.json();
       const headers = msg.payload?.headers || [];
       const get = (name: string) => headers.find((h: any) => h.name === name)?.value || '';
-      return { subject: get('Subject'), from: get('From'), date: get('Date'), snippet: msg.snippet || '' };
+      return { subject: get('Subject'), from: get('From'), date: get('Date'), snippet: (msg.snippet || '').slice(0, 500) };
     })
   );
 
@@ -80,8 +100,17 @@ export async function POST(request: NextRequest) {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  const DETECT_MODEL = 'claude-haiku-4-5-20251001';
+  logClaudeCall({
+    userId: user.id,
+    route: '/api/gmail/detect-subscriptions',
+    model: DETECT_MODEL,
+    estimatedInputTokens: 3000,
+    estimatedOutputTokens: 1000,
+  });
+
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: DETECT_MODEL,
     max_tokens: 2000,
     system: `You are a subscription detection assistant for UK consumers. Analyse these emails and identify recurring subscriptions.
 
@@ -107,6 +136,9 @@ Return ONLY the JSON array, no markdown, no explanation.`,
       ).join('\n\n')}`,
     }],
   });
+
+  recordClaudeCall(user.id);
+  await incrementUsage(user.id, 'scan_run');
 
   try {
     let raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]';

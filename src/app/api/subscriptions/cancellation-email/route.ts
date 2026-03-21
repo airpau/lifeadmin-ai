@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+const CANCEL_MODEL = 'claude-haiku-4-5-20251001';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +23,15 @@ export async function POST(request: NextRequest) {
 
     if (!providerName) {
       return NextResponse.json({ error: 'Missing providerName' }, { status: 400 });
+    }
+
+    // Check Claude rate limit
+    const rateLimit = checkClaudeRateLimit(user.id);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: `Claude rate limit reached (${rateLimit.used}/10 calls per hour). Please wait before trying again.` },
+        { status: 429 }
+      );
     }
 
     const prompt = `Write a concise, professional cancellation email for a subscription to ${providerName}.
@@ -40,11 +52,21 @@ Requirements:
 
 Return as JSON with keys: subject (string), body (string)`;
 
+    logClaudeCall({
+      userId: user.id,
+      route: '/api/subscriptions/cancellation-email',
+      model: CANCEL_MODEL,
+      estimatedInputTokens: 300,
+      estimatedOutputTokens: 400,
+    });
+
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: CANCEL_MODEL,
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
+
+    recordClaudeCall(user.id);
 
     const content = message.content[0];
     if (content.type !== 'text') throw new Error('Unexpected response from Claude');

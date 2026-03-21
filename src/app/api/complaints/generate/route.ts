@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 export const maxDuration = 60;
@@ -41,7 +42,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate complaint letter using Claude
+    // Check Claude rate limit
+    const rateLimit = checkClaudeRateLimit(user.id);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: `Claude rate limit reached (${rateLimit.used}/10 calls in the last hour). Please wait before trying again.` },
+        { status: 429 }
+      );
+    }
+
+    // Log and generate complaint letter using Claude
+    logClaudeCall({
+      userId: user.id,
+      route: '/api/complaints/generate',
+      model: 'claude-sonnet-4-6',
+      estimatedInputTokens: 1300,
+      estimatedOutputTokens: 2000,
+    });
     const result = await generateComplaintLetter({
       companyName: body.companyName,
       issueDescription: body.issueDescription,
@@ -85,7 +102,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Increment usage after successful generation
+    // Record Claude call for rate limiting and increment plan usage
+    recordClaudeCall(user.id);
     await incrementUsage(user.id, 'complaint_generated');
 
     return NextResponse.json({ ...result, taskId: task?.id });

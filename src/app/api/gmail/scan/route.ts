@@ -4,6 +4,8 @@ export const maxDuration = 60;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, refreshAccessToken } from '@/lib/gmail';
+import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -11,6 +13,24 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Check plan limit
+  const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+  if (!usageCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Monthly scan limit reached', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+      { status: 403 }
+    );
+  }
+
+  // Check Claude rate limit
+  const rateLimit = checkClaudeRateLimit(user.id);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: `Claude rate limit reached (${rateLimit.used}/10 calls per hour). Please wait before trying again.` },
+      { status: 429 }
+    );
   }
 
   const admin = createAdminClient(
@@ -46,6 +66,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const { opportunities, emailsFound, emailsScanned } = await scanEmailsForOpportunities(accessToken);
+    recordClaudeCall(user.id);
+    await incrementUsage(user.id, 'scan_run');
     return NextResponse.json({ opportunities, emailsFound, emailsScanned, scannedAt: new Date().toISOString() });
   } catch (err: any) {
     console.error('Gmail scan error:', err);

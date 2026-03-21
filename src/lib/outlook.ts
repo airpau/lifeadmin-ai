@@ -117,20 +117,30 @@ export async function scanOutlookForOpportunities(accessToken: string) {
 
   if (!messages.length) return [];
 
-  // Use Claude to analyse
+  // Use Claude Haiku to analyse (cost-efficient for categorisation)
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  const OUTLOOK_MODEL = 'claude-haiku-4-5-20251001';
   const emailSummaries = messages
     .slice(0, 15)
     .map(
       (m, i) =>
-        `--- Email ${i + 1} (id: ${m.id}) ---\nFrom: ${m.from?.emailAddress?.address}\nSubject: ${m.subject}\nDate: ${m.receivedDateTime}\nPreview: ${m.bodyPreview}\nBody: ${m.body?.content?.replace(/<[^>]+>/g, ' ').slice(0, 1500)}`
+        `--- Email ${i + 1} (id: ${m.id}) ---\nFrom: ${m.from?.emailAddress?.address}\nSubject: ${m.subject}\nDate: ${m.receivedDateTime}\nPreview: ${m.bodyPreview}\nBody: ${m.body?.content?.replace(/<[^>]+>/g, ' ').slice(0, 500)}`
     )
     .join('\n\n');
 
+  logClaudeCall({
+    userId: 'outlook-scan',
+    route: '/api/outlook/scan (lib/outlook)',
+    model: OUTLOOK_MODEL,
+    estimatedInputTokens: Math.round(emailSummaries.length / 4) + 500,
+    estimatedOutputTokens: 1500,
+  });
+
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: OUTLOOK_MODEL,
     max_tokens: 2048,
     system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities.
 Return a JSON array of opportunities. Each must have:

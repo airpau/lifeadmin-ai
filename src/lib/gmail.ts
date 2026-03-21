@@ -142,7 +142,7 @@ async function fetchEmailDetail(accessToken: string, messageId: string): Promise
     from: get('From'),
     date: get('Date'),
     snippet: msg.snippet || '',
-    body: body.slice(0, 2000), // cap to keep prompts manageable
+    body: body.slice(0, 500), // truncated for cost control
   };
 }
 
@@ -193,25 +193,35 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Fetch up to 30 full emails (format=full gives Claude the body to extract amounts/dates)
+  // Fetch up to 20 full emails (cost control — body truncated to 500 chars in fetchEmailDetail)
   const details = await Promise.allSettled(
-    allMessages.slice(0, 30).map((m) => fetchEmailDetail(accessToken, m.id))
+    allMessages.slice(0, 20).map((m) => fetchEmailDetail(accessToken, m.id))
   );
 
   const emails = details
     .filter((r): r is PromiseFulfilledResult<EmailData> => r.status === 'fulfilled')
     .map((r) => r.value);
 
-  // Use Claude to analyse the emails
+  // Use Claude Haiku to analyse the emails (cost-efficient for categorisation)
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
   const emailSummaries = emails
     .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${e.body}`)
     .join('\n\n');
 
+  logClaudeCall({
+    userId: 'gmail-scan',
+    route: '/api/gmail/scan (lib/gmail)',
+    model: SCAN_MODEL,
+    estimatedInputTokens: Math.round(emailSummaries.length / 4) + 500,
+    estimatedOutputTokens: 1500,
+  });
+
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: SCAN_MODEL,
     max_tokens: 2048,
     system: `You are a UK consumer finance assistant. Analyse these emails and identify money-saving opportunities.
 
