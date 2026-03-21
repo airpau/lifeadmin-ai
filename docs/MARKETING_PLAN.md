@@ -214,4 +214,148 @@ ORDER BY created_at DESC;
 
 ---
 
+---
+
+## 8. Community Marketing (Reddit, Forums, Facebook Groups)
+
+### Reddit Strategy
+
+Target subreddits:
+- **r/UKPersonalFinance** (450k members) — largest UK personal finance community
+- **r/moneysavingexpert** — deal-hunters and bill-busters
+- **r/LegalAdviceUK** — consumer rights questions
+- **r/britishproblems** — relatable content about utility companies
+- **r/AskUK** — broad UK audience
+
+**Approach:** Do NOT spam. Provide genuine value. Answer questions about billing disputes, energy overcharges, and subscription cancellations — then mention Paybacker naturally when relevant.
+
+**Post types that work on r/UKPersonalFinance:**
+- "I built a tool that..." posts — indie products with clear value are welcomed
+- Case study posts: "How I got £240 back from British Gas using the Consumer Rights Act"
+
+**Weekly cadence:**
+- 2–3 helpful replies in UKPersonalFinance threads per week
+- 1 genuine original post per month (not promotional — provide real value first)
+
+**Rules:** Always read subreddit rules before posting. Never post promotional content in subreddits that prohibit it. Build karma before mentioning Paybacker.
+
+---
+
+### Money Saving Expert (MSE) Forum
+
+- forum.moneysavingexpert.com — massive UK audience (Martin Lewis's community)
+- Create account, contribute genuinely to billing dispute threads for at least 2 weeks
+- Add Paybacker to signature after 10+ posts (forum etiquette)
+- Target boards: **Energy**, **Broadband & Phone**, **Consumer Rights**, **Debt-Free Wannabe**
+
+---
+
+### Facebook Groups
+
+| Group | Members | Strategy |
+|-------|---------|----------|
+| UK Money Saving Tips | 300k+ | Join, contribute value for 2 weeks, then share Paybacker as a resource |
+| Energy Bill Help UK | varies | Answer questions about Ofgem complaints, smart meter disputes |
+| UK Broadband Complaints & Help | varies | Help with Ofcom escalation queries |
+
+**Rule:** Join and contribute genuine value for a minimum of 2 weeks before any mention of Paybacker.
+
+---
+
+### Quora
+
+Answer questions about:
+- "How do I complain to my energy provider?"
+- "Can I get a refund on my broadband bill?"
+- "What are my consumer rights in the UK?"
+- "How do I escalate a complaint to Ofgem/Ofcom?"
+
+Add Paybacker link in bio and in answers where genuinely relevant (not in every answer).
+
+---
+
+## 9. SEO Content Strategy
+
+**Target: 200+ programmatic SEO pages**
+
+### Page Templates (high search volume, low competition)
+
+1. **"How to complain to [Company]"** — e.g. "How to complain to British Gas", "How to complain to BT Broadband" (500+ companies)
+2. **"Am I owed a refund from [Company]?"**
+3. **"How to cancel [Subscription]"** — Netflix, Sky, gym memberships etc.
+4. **"[Company] complaints — know your rights"**
+
+### Each page should:
+- Target a specific long-tail keyword
+- Include a CTA to use Paybacker's complaint generator
+- Be generated programmatically from a company database (`/src/data/companies.ts`)
+- Be 400–600 words with genuine, useful advice
+- Reference the relevant UK regulator (Ofgem, Ofcom, Trading Standards)
+
+### Implementation
+
+Dynamic route: `/src/app/complaints/[company]/page.tsx`
+
+**Phase 1 (launch):** 20 pages for top companies — British Gas, BT, Sky, Virgin Media, EDF, Vodafone, O2, Three, EE, Amazon, Netflix, Evri, DPD, PureGym, The Gym Group, Octopus Energy, OVO Energy, Utilita, ASOS, Royal Mail.
+
+**Phase 2:** Expand to 200+ companies using the same template.
+
+### SEO Page Structure
+Each page:
+1. Title: "How to complain to [Company] — and get results"
+2. Meta description: "Know your rights when complaining to [Company]. Step-by-step guide including escalation to [Regulator]. Let Paybacker write your complaint letter for free."
+3. Content sections:
+   - Your rights when complaining to [Company]
+   - Step-by-step: how to make a formal complaint
+   - What to do if [Company] ignores you (escalation to regulator)
+   - CTA: "Let Paybacker write your complaint letter for free →"
+
+### KPIs for SEO
+| Metric | Target (Month 3) |
+|--------|-----------------|
+| Indexed SEO pages | 20 |
+| Organic impressions | 10,000/month |
+| Organic clicks | 500/month |
+| SEO-attributed signups | 25/month |
+
+---
+
+## 10. Influencer & PR Strategy
+
+### Micro-Influencers (10k–100k followers)
+
+**Target:** UK personal finance YouTubers and TikTokers
+
+**Search terms:** `#UKMoney`, `#MoneySavingTips`, `#ConsumerRights` on TikTok and Instagram
+
+**Offer:**
+- Free Pro account to trial
+- 20% affiliate commission on any signups they refer
+- Simple affiliate link via a referral code system
+
+**Pitch template:**
+> "Hey [Name], I love your content on UK money saving. I built Paybacker — an AI that fights incorrect bills and cancels forgotten subscriptions automatically. Here's a free Pro account to try. If you love it, here's your affiliate link — you earn 20% on every signup. No obligation."
+
+---
+
+### PR Targets
+
+| Publication | Contact angle | Why it fits |
+|------------|--------------|-------------|
+| **Which?** Magazine | Consumer rights AI tool | Their audience is exactly our users |
+| **MoneySavingExpert.com** | Martin Lewis editorial team | Largest UK money site — a mention here = thousands of signups |
+| **The Guardian Money** | "AI tool helps UK consumers reclaim millions" | Technology + consumer interest angle |
+| **BBC Consumer Affairs** | "Startup fights back against wrong bills" | Strong public interest story |
+| **City A.M.** | UK fintech startup story | B2B and investor audience |
+
+**PR angle:** "AI tool helps UK consumers reclaim millions from incorrect bills — fully automated, citing Consumer Rights Act 2015"
+
+**How to pitch:**
+1. Write a 200-word press release with a specific money recovery stat (e.g. "UK consumers lose £2.3bn annually to billing errors")
+2. Include a quote from founder
+3. Offer an exclusive to one outlet before wider distribution
+4. Follow up once, 5 days after initial pitch
+
+---
+
 *Marketing plan prepared for Paybacker LTD · March 2026*

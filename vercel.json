@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/generate-social-posts",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/post-social",
+      "schedule": "0 10 * * *"
     }
   ]
 }
