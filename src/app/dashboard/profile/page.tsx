@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 
@@ -29,8 +29,10 @@ export default function ProfilePage() {
   const [portalError, setPortalError] = useState<string | null>(null);
   const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
   const [renewalDate, setRenewalDate] = useState<string | null>(null);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -77,9 +79,16 @@ export default function ProfilePage() {
             day: 'numeric', month: 'long', year: 'numeric',
           }));
         }
+        // If returning from billing portal, refetch profile to show updated tier
+        if (searchParams.get('billing') === 'updated' && data.synced) {
+          setBillingMessage('Your subscription has been updated.');
+          setTimeout(() => setBillingMessage(null), 5000);
+          // Refetch profile to pick up any tier changes
+          fetchProfile();
+        }
       })
       .catch(() => {});
-  }, [supabase]);
+  }, [supabase, searchParams]);
 
   const handleManageBilling = async () => {
     setPortalLoading(true);
@@ -172,6 +181,14 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-4xl">
+      {/* Billing update message */}
+      {billingMessage && (
+        <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4" />
+          {billingMessage}
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2">Profile</h1>
