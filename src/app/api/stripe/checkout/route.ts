@@ -166,7 +166,6 @@ export async function POST(request: NextRequest) {
       cancel_url: `${appUrl}/pricing?canceled=true`,
       'metadata[user_id]': user.id,
       'metadata[billing_cycle]': billingCycle || 'monthly',
-      'subscription_data[trial_period_days]': '7',
       'subscription_data[metadata][user_id]': user.id,
     });
 
