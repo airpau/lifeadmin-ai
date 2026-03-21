@@ -27,6 +27,8 @@ export default function ProfilePage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
+  const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
+  const [renewalDate, setRenewalDate] = useState<string | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -64,6 +66,19 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
+
+    // Sync subscription status from Stripe
+    fetch('/api/stripe/sync', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.pendingChange) setPendingChange(data.pendingChange);
+        if (data.currentPeriodEnd) {
+          setRenewalDate(new Date(data.currentPeriodEnd).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'long', year: 'numeric',
+          }));
+        }
+      })
+      .catch(() => {});
   }, [supabase]);
 
   const handleManageBilling = async () => {
@@ -301,6 +316,9 @@ export default function ProfilePage() {
                 <p className="text-sm text-slate-400">
                   {effectiveTier === 'essential' ? '£9.99/month' : '£19.99/month'}
                 </p>
+                {renewalDate && !pendingChange && (
+                  <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
+                )}
               </div>
               <button
                 onClick={handleManageBilling}
@@ -311,11 +329,44 @@ export default function ProfilePage() {
                 {portalLoading ? 'Loading...' : 'Manage Billing'}
               </button>
             </div>
+
+            {/* Pending downgrade or cancellation notice */}
+            {pendingChange && (
+              <div className={`flex items-start gap-3 p-4 rounded-lg border ${
+                pendingChange.type === 'cancel'
+                  ? 'bg-red-500/5 border-red-500/20'
+                  : 'bg-amber-500/5 border-amber-500/20'
+              }`}>
+                <AlertCircle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
+                  pendingChange.type === 'cancel' ? 'text-red-400' : 'text-amber-400'
+                }`} />
+                <div>
+                  {pendingChange.type === 'cancel' ? (
+                    <>
+                      <p className="text-sm text-red-400 font-medium">Subscription cancelling</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Your {effectiveTier} plan will be cancelled on {pendingChange.date}. You will keep access until then and be moved to the Free plan.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-amber-400 font-medium">
+                        Changing to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Your plan will change to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)} on {pendingChange.date}. You keep {effectiveTier?.charAt(0).toUpperCase()}{effectiveTier?.slice(1)} access until then.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             {portalError && (
               <p className="text-xs text-red-400 mt-2">{portalError}</p>
             )}
             <p className="text-xs text-slate-500">
-              Your subscription will renew automatically. Manage or cancel anytime via the billing portal.
+              Manage, upgrade, downgrade or cancel anytime via the billing portal.
             </p>
           </div>
         )}
