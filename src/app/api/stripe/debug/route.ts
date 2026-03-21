@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     canceled_at: sub.canceled_at,
     current_period_end: sub.current_period_end,
     current_period_end_date: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+    cancel_at_date: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
     schedule: sub.schedule,
     pending_update: sub.pending_update,
     price: sub.items?.data?.[0]?.price?.id,

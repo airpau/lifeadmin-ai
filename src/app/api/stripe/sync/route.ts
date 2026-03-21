@@ -68,9 +68,14 @@ export async function POST() {
     // Check for pending changes (scheduled downgrade/cancel)
     let pendingChange: { type: string; tier?: string; date: string } | null = null;
 
-    // Check if subscription is set to cancel at period end
+    // Check if subscription is set to cancel at period end OR at a specific date
     if (sub.cancel_at_period_end) {
       const cancelDate = new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'long', year: 'numeric',
+      });
+      pendingChange = { type: 'cancel', date: cancelDate };
+    } else if (sub.cancel_at) {
+      const cancelDate = new Date(sub.cancel_at * 1000).toLocaleDateString('en-GB', {
         day: 'numeric', month: 'long', year: 'numeric',
       });
       pendingChange = { type: 'cancel', date: cancelDate };
