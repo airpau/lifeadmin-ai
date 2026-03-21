@@ -25,6 +25,7 @@ export default function ProfilePage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -65,17 +66,18 @@ export default function ProfilePage() {
 
   const handleManageBilling = async () => {
     setPortalLoading(true);
+    setPortalError(null);
     try {
       const res = await fetch('/api/stripe/portal', { method: 'POST' });
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert(data.error || 'Could not open billing portal.');
+        setPortalError(data.error || 'Please try again or contact support at hello@paybacker.co.uk');
         setPortalLoading(false);
       }
     } catch {
-      alert('Failed to open billing portal. Please try again.');
+      setPortalError('Failed to open billing portal. Please try again or contact support at hello@paybacker.co.uk');
       setPortalLoading(false);
     }
   };
@@ -276,6 +278,9 @@ export default function ProfilePage() {
                 {portalLoading ? 'Loading...' : 'Manage Billing'}
               </button>
             </div>
+            {portalError && (
+              <p className="text-xs text-red-400 mt-2">{portalError}</p>
+            )}
             <p className="text-xs text-slate-500">
               Your subscription will renew automatically. Manage or cancel anytime via the billing portal.
             </p>

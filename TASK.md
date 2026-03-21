@@ -1,191 +1,103 @@
-# TASK: Open Banking Integration (TrueLayer)
+# TASK: Paybacker — Next Steps (Post-Deploy)
 
-Build the full TrueLayer Open Banking integration for Paybacker. This is the last hard launch blocker.
+## What's been completed today (21 Mar 2026)
 
-## Overview
-Allow users to connect their UK bank account via TrueLayer OAuth. Sync 12 months of transactions. Auto-detect subscriptions/recurring payments from bank data. Merge with email-detected subscriptions in the Subscription Tracker.
+All 4 hard launch blockers are built and deployed to paybacker.co.uk:
 
----
+✅ Plan-gating in src/proxy.ts — free users blocked from /dashboard/scanner and /dashboard/deals
+✅ Stripe Customer Portal — /api/stripe/portal route + Manage Billing / Upgrade Plan buttons on profile page
+✅ Vercel cron jobs — vercel.json with waitlist (9am) + onboarding (10am) daily, secured with CRON_SECRET
+✅ Affiliate Deals tab — /dashboard/deals with 13 providers across Energy, Broadband, Insurance, Mobile
+✅ TrueLayer Open Banking — full OAuth flow, transaction sync, recurring detection, bank connection UI
+✅ Supabase migrations applied — deal_clicks, bank_connections, bank_transactions tables live
+✅ All env vars set in Vercel — CRON_SECRET, TRUELAYER_CLIENT_ID/SECRET/REDIRECT_URI/AUTH_URL/API_URL
+✅ Resend domain verified — paybacker.co.uk domain confirmed working
 
-## 1. Supabase Migrations
+## Current env state (.env.local)
+- NEXT_PUBLIC_SUPABASE_URL=https://kcxxlesishltdmfctlmo.supabase.co
+- NEXT_PUBLIC_APP_URL=https://lifeadmin-ai.vercel.app (NOTE: needs updating to https://paybacker.co.uk)
+- TRUELAYER_CLIENT_ID=sandbox-paybacker-340887 (sandbox for now)
+- TRUELAYER_AUTH_URL=https://auth.truelayer-sandbox.com
+- TRUELAYER_API_URL=https://api.truelayer-sandbox.com
+- RESEND domain: verified ✅
 
-Create supabase/migrations/20260321130000_open_banking.sql:
+## YOUR TASKS
 
-```sql
--- Bank connections table
-CREATE TABLE IF NOT EXISTS bank_connections (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  provider TEXT NOT NULL,
-  provider_id TEXT,
-  access_token TEXT,
-  refresh_token TEXT,
-  token_expires_at TIMESTAMPTZ,
-  account_ids TEXT[], -- array of connected account IDs
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'expired', 'revoked')),
-  connected_at TIMESTAMPTZ DEFAULT NOW(),
-  last_synced_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+### TASK 1: Fix NEXT_PUBLIC_APP_URL in Vercel
 
-ALTER TABLE bank_connections ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users manage own bank connections" ON bank_connections
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+The NEXT_PUBLIC_APP_URL env var is set to the old Vercel preview URL. Update it to the real domain.
 
--- Bank transactions table
-CREATE TABLE IF NOT EXISTS bank_transactions (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  connection_id UUID REFERENCES bank_connections(id) ON DELETE CASCADE NOT NULL,
-  transaction_id TEXT NOT NULL, -- TrueLayer transaction ID
-  account_id TEXT NOT NULL,
-  amount DECIMAL(10,2) NOT NULL, -- positive = credit, negative = debit
-  currency TEXT DEFAULT 'GBP',
-  description TEXT,
-  merchant_name TEXT,
-  category TEXT,
-  timestamp TIMESTAMPTZ NOT NULL,
-  is_recurring BOOLEAN DEFAULT FALSE,
-  recurring_group TEXT, -- merchant name normalised for grouping
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(user_id, transaction_id)
-);
+Run:
+```
+vercel env add NEXT_PUBLIC_APP_URL production --force
+```
+Value: https://paybacker.co.uk
 
-ALTER TABLE bank_transactions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users view own transactions" ON bank_transactions
-  USING (auth.uid() = user_id);
+Then redeploy.
 
--- Index for recurring detection queries
-CREATE INDEX idx_bank_transactions_user_merchant ON bank_transactions(user_id, merchant_name);
-CREATE INDEX idx_bank_transactions_user_timestamp ON bank_transactions(user_id, timestamp DESC);
+### TASK 2: Update Resend from address
+
+Now that paybacker.co.uk domain is verified in Resend, update the from address used in emails.
+
+Find all places in the codebase that send emails via Resend (check src/app/api/cron/ and any other email sending code). Update the `from` field to:
+- From: Paybacker <hello@paybacker.co.uk>
+
+Also check if RESEND_FROM_EMAIL env var exists and update it in Vercel:
+```
+vercel env add RESEND_FROM_EMAIL production --force
+```
+Value: Paybacker <hello@paybacker.co.uk>
+
+### TASK 3: End-to-end audit — fix any broken imports or TypeScript errors
+
+Run a full TypeScript check across the new files built today:
+```
+npx tsc --noEmit
 ```
 
----
+Fix any type errors in:
+- src/lib/truelayer.ts
+- src/lib/detect-recurring.ts
+- src/app/api/auth/truelayer/route.ts
+- src/app/api/auth/callback/truelayer/route.ts
+- src/app/api/bank/sync/route.ts
+- src/app/api/bank/disconnect/route.ts
+- src/app/api/deals/click/route.ts
+- src/app/dashboard/deals/page.tsx
+- src/app/api/stripe/portal/route.ts
 
-## 2. TrueLayer OAuth Flow
+### TASK 4: Add loading states and error handling to new UI components
 
-### Environment variables needed (add to .env.local.example):
-```
-TRUELAYER_CLIENT_ID=
-TRUELAYER_CLIENT_SECRET=
-TRUELAYER_REDIRECT_URI=https://paybacker.co.uk/api/auth/callback/truelayer
-# For sandbox testing:
-# TRUELAYER_AUTH_URL=https://auth.truelayer-sandbox.com
-# TRUELAYER_API_URL=https://api.truelayer-sandbox.com
-# For production:
-TRUELAYER_AUTH_URL=https://auth.truelayer.com
-TRUELAYER_API_URL=https://api.truelayer.com
-```
+Review src/app/dashboard/deals/page.tsx and src/app/dashboard/subscriptions/page.tsx (bank connection section):
 
-### src/app/api/auth/truelayer/route.ts
-GET endpoint that redirects user to TrueLayer consent screen:
-```
-${TRUELAYER_AUTH_URL}/?response_type=code
-  &client_id=${TRUELAYER_CLIENT_ID}
-  &scope=info accounts balance cards transactions offline_access
-  &redirect_uri=${TRUELAYER_REDIRECT_URI}
-  &providers=uk-ob-all uk-oauth-all
-  &state=${userId} (base64 encoded user ID for CSRF)
-```
+- Add proper loading spinner while click tracking fires
+- Add error toast if bank sync fails
+- Add error state if Stripe portal request fails (show "Please try again or contact support")
+- Make sure all fetch calls have try/catch
 
-### src/app/api/auth/callback/truelayer/route.ts
-GET endpoint handling the OAuth callback:
-1. Verify state param matches user session
-2. Exchange code for tokens (POST to ${TRUELAYER_AUTH_URL}/connect/token)
-3. Fetch accounts list (GET ${TRUELAYER_API_URL}/data/v1/accounts)
-4. Store connection in bank_connections table (encrypt tokens using SUPABASE_SERVICE_ROLE_KEY as salt — or just store as-is for MVP)
-5. Trigger initial transaction sync (call the sync function)
-6. Redirect to /dashboard/subscriptions?connected=true
+### TASK 5: Verify email sending works end-to-end
 
----
+Check the waitlist email route (src/app/api/cron/waitlist-emails/route.ts) and onboarding route:
+- Confirm they use the correct Resend from address
+- Confirm CRON_SECRET auth is working (check the implementation)
+- Add a test endpoint GET /api/cron/test-email that sends a single test email to hello@paybacker.co.uk to verify Resend is working with the verified domain
 
-## 3. Transaction Sync
+### TASK 6: Update .env.local.example
 
-### src/app/api/bank/sync/route.ts
-POST endpoint to sync transactions for a user:
-1. Authenticate user via Supabase
-2. Fetch their active bank_connections
-3. For each connection, for each account:
-   - GET ${TRUELAYER_API_URL}/data/v1/accounts/{account_id}/transactions?from={12_months_ago}&to={today}
-   - If token expired, attempt refresh (POST to ${TRUELAYER_AUTH_URL}/connect/token with grant_type=refresh_token)
-   - Upsert transactions into bank_transactions table (ignore duplicates via UNIQUE constraint)
-4. Run recurring detection (see section 4)
-5. Update last_synced_at on the connection
-6. Return { synced: N, recurring_detected: M }
-
-### src/lib/truelayer.ts
-Helper library:
-- `getAccessToken(connection)` — returns valid token, refreshes if expired
-- `fetchTransactions(accessToken, accountId, fromDate)` — calls TrueLayer API
-- `fetchAccounts(accessToken)` — lists accounts for a connection
-- `refreshToken(connection)` — exchanges refresh token for new access token, updates DB
-
----
-
-## 4. Recurring Payment Detection
-
-### src/lib/detect-recurring.ts
-After syncing transactions, run this analysis:
-
-Algorithm:
-1. Group transactions by normalised merchant name (lowercase, strip Ltd/Limited/PLC etc.)
-2. For each merchant group with 2+ transactions:
-   - Check if amounts are consistent (within 10% variance)
-   - Check if intervals are regular (weekly/monthly/quarterly — within 5 day tolerance)
-   - If both true → mark as recurring (is_recurring = true, recurring_group = normalised name)
-3. For each detected recurring merchant, check if already in user's subscriptions table
-   - If not present → create a new subscription record with source='bank'
-   - If present with source='email' → update with bank confirmation
-
-Export function: `detectRecurring(userId: string, supabase: SupabaseClient): Promise<number>`
-Returns count of new recurring payments detected.
-
----
-
-## 5. Dashboard: Bank Connection UI
-
-### src/app/dashboard/subscriptions/page.tsx — update
-
-Add a "Connect Bank" section at the top of the subscriptions page (above the existing subscription list):
-
-- If no bank connection: show a card with:
-  - "🏦 Connect your bank for automatic detection"
-  - "We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials."
-  - "Connect Bank Account" button → GET /api/auth/truelayer
-  - Logos of supported banks (Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling — text list is fine)
-
-- If connected: show a green badge "Bank connected — last synced [time]" with a "Sync Now" button (POST /api/bank/sync) and "Disconnect" link
-
-- If ?connected=true in URL: show a success toast "Bank connected! We've synced your last 12 months of transactions."
-
-### src/app/api/bank/disconnect/route.ts
-POST endpoint:
-- Authenticate user
-- Update bank_connections status to 'revoked' for user's connections
-- Return { ok: true }
-
----
-
-## 6. Updated Subscription Tracker
-
-In the subscriptions page list, add a "source" badge on each subscription:
-- Bank-detected: show 🏦 badge
-- Email-detected: show 📧 badge  
-- Manual: show ✏️ badge
-- Both bank + email: show both badges
-
-The subscriptions data already comes from the subscriptions table — bank-detected ones will be in there after sync with source='bank', so the list automatically shows them.
-
----
+Make sure .env.local.example has ALL required env vars documented (including ones added today):
+- TRUELAYER_CLIENT_ID
+- TRUELAYER_CLIENT_SECRET  
+- TRUELAYER_REDIRECT_URI
+- TRUELAYER_AUTH_URL
+- TRUELAYER_API_URL
+- CRON_SECRET
+- RESEND_FROM_EMAIL
+- NEXT_PUBLIC_APP_URL
 
 ## NOTES
 - TypeScript throughout, follow existing patterns
-- For MVP, store TrueLayer tokens as plaintext (note in code: "TODO: encrypt tokens in production")
-- Use 'use client' only where needed (Sync Now button, Connect Bank button need interactivity)
-- Error handling: if TrueLayer API fails, log error but don't crash — return partial results
-- The TRUELAYER_REDIRECT_URI for local dev should be http://localhost:3000/api/auth/callback/truelayer — add a note in the code
-- Do NOT use any TrueLayer npm package — call their REST API directly with fetch()
-- Add all new env vars to .env.local.example (don't touch .env.local itself)
+- Run `npm run build` before finishing to confirm no build errors
+- Do not touch .env.local itself — only .env.local.example
+- Commit all changes with a clear message
 
-When completely finished, run: openclaw system event --text "Done: Paybacker TrueLayer Open Banking integration built" --mode now
+When completely finished, run: openclaw system event --text "Done: Paybacker post-deploy fixes — app URL, Resend, TypeScript audit, error handling" --mode now

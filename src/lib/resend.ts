@@ -2,9 +2,8 @@ import { Resend } from 'resend';
 
 export const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Using Resend sandbox domain until paybacker.co.uk is verified at resend.com/domains
-// Once verified, change to: 'Paybacker <hello@paybacker.co.uk>'
-export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Paybacker <onboarding@resend.dev>';
+// paybacker.co.uk domain is verified in Resend — RESEND_FROM_EMAIL env var set to 'Paybacker <hello@paybacker.co.uk>'
+export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Paybacker <hello@paybacker.co.uk>';
 export const REPLY_TO = 'hello@paybacker.co.uk';
 
 export async function sendWaitlistConfirmation(name: string, email: string) {

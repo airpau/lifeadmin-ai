@@ -1,6 +1,7 @@
 'use client';
 
-import { Tag } from 'lucide-react';
+import { useState } from 'react';
+import { Tag, Loader2 } from 'lucide-react';
 
 const AWIN_AFF_ID = '!!!REPLACE_WITH_AWIN_ID!!!';
 
@@ -147,17 +148,28 @@ function buildAwinUrl(awinMid: string, providerUrl: string): string {
 }
 
 function DealCard({ deal }: { deal: Deal }) {
-  const handleClick = () => {
-    fetch('/api/deals/click', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: deal.provider,
-        category: deal.category,
-        deal_id: deal.id,
-        awin_mid: deal.awinMid,
-      }),
-    }).catch(() => {});
+  const [tracking, setTracking] = useState(false);
+
+  const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setTracking(true);
+    try {
+      await fetch('/api/deals/click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: deal.provider,
+          category: deal.category,
+          deal_id: deal.id,
+          awin_mid: deal.awinMid,
+        }),
+      });
+    } catch {
+      // Non-fatal — still navigate
+    } finally {
+      setTracking(false);
+      window.open(buildAwinUrl(deal.awinMid, deal.providerUrl), '_blank', 'noopener,noreferrer');
+    }
   };
 
   return (
@@ -172,11 +184,11 @@ function DealCard({ deal }: { deal: Deal }) {
         </span>
         <a
           href={buildAwinUrl(deal.awinMid, deal.providerUrl)}
-          target="_blank"
-          rel="noopener noreferrer"
           onClick={handleClick}
-          className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
+          className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
+          aria-disabled={tracking}
         >
+          {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           View Deal →
         </a>
       </div>

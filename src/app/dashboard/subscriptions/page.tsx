@@ -299,9 +299,14 @@ export default function SubscriptionsPage() {
         await fetchSubscriptions();
         setBankToast('Sync complete!');
         setTimeout(() => setBankToast(null), 3000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setBankToast(`Sync failed: ${data.error || 'Please try again.'}`);
+        setTimeout(() => setBankToast(null), 5000);
       }
-    } catch (err) {
-      console.error('Sync failed:', err);
+    } catch {
+      setBankToast('Sync failed. Please check your connection and try again.');
+      setTimeout(() => setBankToast(null), 5000);
     } finally {
       setSyncing(false);
     }
@@ -360,9 +365,9 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="max-w-7xl">
-      {/* Success toast */}
+      {/* Bank toast (success or error) */}
       {bankToast && (
-        <div className="fixed top-6 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+        <div className={`fixed top-6 right-6 z-50 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${bankToast.toLowerCase().includes('fail') || bankToast.toLowerCase().includes('error') ? 'bg-red-600' : 'bg-green-500'}`}>
           <CheckCircle className="h-5 w-5" />
           {bankToast}
         </div>
