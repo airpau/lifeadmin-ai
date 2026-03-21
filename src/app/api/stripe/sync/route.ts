@@ -13,6 +13,17 @@ const PRICE_ID_TO_TIER: Record<string, string> = {
   'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
 };
 
+function formatDate(timestamp: number | null | undefined): string | null {
+  if (!timestamp) return null;
+  try {
+    return new Date(timestamp * 1000).toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function stripeGet(path: string) {
   const res = await fetch(`${STRIPE_BASE}${path}`, {
     headers: { 'Authorization': `Bearer ${process.env.STRIPE_SECRET_KEY}` },
@@ -39,7 +50,7 @@ export async function POST() {
       return NextResponse.json({ synced: false, tier: 'free', reason: 'No Stripe customer' });
     }
 
-    // Fetch active/trialing subs from Stripe
+    // Fetch active/trialing subs
     const [activeSubs, trialingSubs] = await Promise.all([
       stripeGet(`/subscriptions?customer=${profile.stripe_customer_id}&status=active&limit=5`),
       stripeGet(`/subscriptions?customer=${profile.stripe_customer_id}&status=trialing&limit=5`),
@@ -60,65 +71,50 @@ export async function POST() {
       return NextResponse.json({ synced: true, tier: 'free' });
     }
 
-    // Get the full subscription details directly (list may omit some fields)
-    const subId = allSubs[0].id;
-    const sub = await stripeGet(`/subscriptions/${subId}`);
+    // Get full subscription details directly
+    const sub = await stripeGet(`/subscriptions/${allSubs[0].id}`);
 
     const currentPriceId = sub.items?.data?.[0]?.price?.id || '';
     const currentTier = PRICE_ID_TO_TIER[currentPriceId] || 'essential';
 
     console.log(`Sync: sub=${sub.id} status=${sub.status} cancel_at_period_end=${sub.cancel_at_period_end} cancel_at=${sub.cancel_at} current_period_end=${sub.current_period_end}`);
 
-    // Check for pending changes
+    // Detect pending changes
     let pendingChange: { type: string; tier?: string; date: string } | null = null;
 
-    if (sub.cancel_at_period_end) {
-      pendingChange = {
-        type: 'cancel',
-        date: new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric',
-        }),
-      };
+    if (sub.cancel_at_period_end && sub.current_period_end) {
+      const date = formatDate(sub.current_period_end);
+      if (date) pendingChange = { type: 'cancel', date };
     } else if (sub.cancel_at) {
-      pendingChange = {
-        type: 'cancel',
-        date: new Date(sub.cancel_at * 1000).toLocaleDateString('en-GB', {
-          day: 'numeric', month: 'long', year: 'numeric',
-        }),
-      };
+      const date = formatDate(sub.cancel_at);
+      if (date) pendingChange = { type: 'cancel', date };
     }
 
     // Check for scheduled plan change
-    if (sub.schedule) {
-      const schedule = await stripeGet(`/subscription_schedules/${sub.schedule}`);
-      if (schedule.phases && schedule.phases.length > 1) {
-        const nextPhase = schedule.phases[1];
-        const nextPriceId = nextPhase.items?.[0]?.price;
-        const nextTier = PRICE_ID_TO_TIER[nextPriceId] || null;
-        if (nextTier && nextTier !== currentTier) {
-          pendingChange = {
-            type: 'downgrade',
-            tier: nextTier,
-            date: new Date(nextPhase.start_date * 1000).toLocaleDateString('en-GB', {
-              day: 'numeric', month: 'long', year: 'numeric',
-            }),
-          };
+    if (!pendingChange && sub.schedule) {
+      try {
+        const schedule = await stripeGet(`/subscription_schedules/${sub.schedule}`);
+        if (schedule.phases && schedule.phases.length > 1) {
+          const nextPhase = schedule.phases[1];
+          const nextPriceId = nextPhase.items?.[0]?.price;
+          const nextTier = PRICE_ID_TO_TIER[nextPriceId] || null;
+          if (nextTier && nextTier !== currentTier) {
+            const date = formatDate(nextPhase.start_date);
+            if (date) pendingChange = { type: 'downgrade', tier: nextTier, date };
+          }
         }
+      } catch {
+        // Schedule fetch failed — not critical
       }
     }
 
     // Check for pending_update
-    if (sub.pending_update) {
+    if (!pendingChange && sub.pending_update) {
       const pendingPriceId = sub.pending_update.subscription_items?.[0]?.price;
       const pendingTier = pendingPriceId ? PRICE_ID_TO_TIER[pendingPriceId] : null;
       if (pendingTier && pendingTier !== currentTier) {
-        pendingChange = {
-          type: 'downgrade',
-          tier: pendingTier,
-          date: new Date(sub.current_period_end * 1000).toLocaleDateString('en-GB', {
-            day: 'numeric', month: 'long', year: 'numeric',
-          }),
-        };
+        const date = formatDate(sub.current_period_end || sub.cancel_at);
+        if (date) pendingChange = { type: 'downgrade', tier: pendingTier, date };
       }
     }
 
@@ -133,18 +129,18 @@ export async function POST() {
       updated_at: new Date().toISOString(),
     }).eq('id', user.id);
 
-    const periodEnd = sub.current_period_end
-      ? new Date(sub.current_period_end * 1000).toISOString()
-      : sub.cancel_at
-        ? new Date(sub.cancel_at * 1000).toISOString()
-        : null;
+    // Build period end date safely
+    const periodEndTimestamp = sub.current_period_end || sub.cancel_at;
+    const currentPeriodEnd = periodEndTimestamp
+      ? new Date(periodEndTimestamp * 1000).toISOString()
+      : null;
 
     return NextResponse.json({
       synced: true,
       tier: currentTier,
       status: sub.status,
       pendingChange,
-      currentPeriodEnd: periodEnd,
+      currentPeriodEnd,
     });
   } catch (err: any) {
     console.error('Stripe sync error:', err.message);
