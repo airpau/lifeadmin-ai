@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Check Claude rate limit
-  const rateLimit = checkClaudeRateLimit(user.id);
+  const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
   if (!rateLimit.allowed) {
     return NextResponse.json(
-      { error: `Claude rate limit reached (${rateLimit.used}/10 calls per hour). Please wait before trying again.` },
+      { error: 'Rate limit exceeded. Please try again later.' },
       { status: 429 }
     );
   }
@@ -80,9 +80,9 @@ export async function POST(request: NextRequest) {
   const allIds = Array.from(new Set([...subjectIds, ...providerIds]));
   if (!allIds.length) return NextResponse.json({ subscriptions: [] });
 
-  // Fetch up to 20 email details for Claude (cost control)
+  // Token optimisation: truncated to reduce API costs — max 15 emails
   const details = await Promise.allSettled(
-    allIds.slice(0, 20).map(async (id: string) => {
+    allIds.slice(0, 15).map(async (id: string) => {
       const res = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
       const msg = await res.json();
       const headers = msg.payload?.headers || [];
       const get = (name: string) => headers.find((h: any) => h.name === name)?.value || '';
-      return { subject: get('Subject'), from: get('From'), date: get('Date'), snippet: (msg.snippet || '').slice(0, 500) };
+      // Token optimisation: truncated to reduce API costs
+      return { subject: get('Subject'), from: get('From'), date: get('Date'), snippet: (msg.snippet || '').slice(0, 300) };
     })
   );
 
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const DETECT_MODEL = 'claude-haiku-4-5-20251001';
+  const DETECT_MODEL = 'claude-haiku-3-20240307';
   logClaudeCall({
     userId: user.id,
     route: '/api/gmail/detect-subscriptions',
@@ -137,7 +138,7 @@ Return ONLY the JSON array, no markdown, no explanation.`,
     }],
   });
 
-  recordClaudeCall(user.id);
+  await recordClaudeCall(user.id, usageCheck.tier);
   await incrementUsage(user.id, 'scan_run');
 
   try {

@@ -25,10 +25,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Check Claude rate limit
-  const rateLimit = checkClaudeRateLimit(user.id);
+  const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
   if (!rateLimit.allowed) {
     return NextResponse.json(
-      { error: `Claude rate limit reached (${rateLimit.used}/10 calls per hour). Please wait before trying again.` },
+      { error: 'Rate limit exceeded. Please try again later.' },
       { status: 429 }
     );
   }
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
   }
 
   const opportunities = await scanOutlookForOpportunities(accessToken);
-  recordClaudeCall(user.id);
+  await recordClaudeCall(user.id, usageCheck.tier);
   await incrementUsage(user.id, 'scan_run');
   return NextResponse.json({ opportunities, scannedAt: new Date().toISOString() });
 }

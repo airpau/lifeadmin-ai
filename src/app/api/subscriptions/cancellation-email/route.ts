@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
+import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall, getUserTier } from '@/lib/claude-rate-limit';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const CANCEL_MODEL = 'claude-haiku-4-5-20251001';
+const CANCEL_MODEL = 'claude-haiku-3-20240307';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,10 +26,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check Claude rate limit
-    const rateLimit = checkClaudeRateLimit(user.id);
+    const tier = await getUserTier(user.id);
+    const rateLimit = await checkClaudeRateLimit(user.id, tier);
     if (!rateLimit.allowed) {
       return NextResponse.json(
-        { error: `Claude rate limit reached (${rateLimit.used}/10 calls per hour). Please wait before trying again.` },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
@@ -66,7 +67,7 @@ Return as JSON with keys: subject (string), body (string)`;
       messages: [{ role: 'user', content: prompt }],
     });
 
-    recordClaudeCall(user.id);
+    await recordClaudeCall(user.id, tier);
 
     const content = message.content[0];
     if (content.type !== 'text') throw new Error('Unexpected response from Claude');

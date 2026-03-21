@@ -142,7 +142,8 @@ async function fetchEmailDetail(accessToken: string, messageId: string): Promise
     from: get('From'),
     date: get('Date'),
     snippet: msg.snippet || '',
-    body: body.slice(0, 500), // truncated for cost control
+    // Token optimisation: truncated to reduce API costs
+    body: body.replace(/<[^>]+>/g, ' ').slice(0, 300),
   };
 }
 
@@ -193,9 +194,9 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Fetch up to 20 full emails (cost control — body truncated to 500 chars in fetchEmailDetail)
+  // Token optimisation: truncated to reduce API costs — max 15 emails, body capped to 300 chars
   const details = await Promise.allSettled(
-    allMessages.slice(0, 20).map((m) => fetchEmailDetail(accessToken, m.id))
+    allMessages.slice(0, 15).map((m) => fetchEmailDetail(accessToken, m.id))
   );
 
   const emails = details
@@ -207,7 +208,7 @@ export async function scanEmailsForOpportunities(
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
+  const SCAN_MODEL = 'claude-haiku-3-20240307';
   const emailSummaries = emails
     .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${e.body}`)
     .join('\n\n');

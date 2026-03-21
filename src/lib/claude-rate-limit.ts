@@ -1,38 +1,101 @@
 /**
- * Claude API rate limiting and usage logging.
+ * Claude API rate limiting using Supabase usage_logs.
  *
- * Uses an in-memory store (module-level Map) which persists for the lifetime
- * of a serverless function instance. Not perfectly distributed but provides
- * meaningful per-user throttling within a running instance.
+ * Time-bucketed keys stored in the year_month column:
+ *   - free tier:  YYYY-MM-DD        (daily bucket,  limit = 3 calls/day)
+ *   - paid tiers: YYYY-MM-DD-HH     (hourly bucket, limit = 20 calls/hour)
+ *
+ * action = 'claude_call' differentiates these rows from other usage actions.
  */
 
-const MAX_CALLS_PER_HOUR = 10;
+import { createClient } from '@supabase/supabase-js';
 
-// userId -> array of call timestamps (ms)
-const rateStore = new Map<string, number[]>();
+const FREE_DAILY_LIMIT = 3;
+const PAID_HOURLY_LIMIT = 20;
+
+function getAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+function getTimeKey(tier: string): string {
+  const now = new Date();
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (tier === 'free') return day;
+  return `${day}-${String(now.getHours()).padStart(2, '0')}`;
+}
+
+function getLimit(tier: string): number {
+  if (tier === 'free') return FREE_DAILY_LIMIT;
+  return PAID_HOURLY_LIMIT;
+}
+
+/**
+ * Fetch a user's subscription tier from their profile.
+ * Verifies active Stripe subscription for paid tiers.
+ */
+export async function getUserTier(userId: string): Promise<string> {
+  const admin = getAdmin();
+  const { data } = await admin
+    .from('profiles')
+    .select('subscription_tier, subscription_status, stripe_subscription_id')
+    .eq('id', userId)
+    .single();
+
+  const tier = (data?.subscription_tier as string) ?? 'free';
+  const isPaid = tier !== 'free';
+  const hasActiveStripe =
+    data?.stripe_subscription_id &&
+    ['active', 'trialing'].includes(data?.subscription_status ?? '');
+
+  return isPaid && !hasActiveStripe ? 'free' : tier;
+}
 
 /**
  * Check whether a user is within their Claude API rate limit.
  * Call this BEFORE making a Claude API call.
+ *
+ * @param userId - authenticated user ID
+ * @param tier   - subscription tier ('free' | 'essential' | 'pro')
  */
-export function checkClaudeRateLimit(userId: string): { allowed: boolean; used: number } {
-  const now = Date.now();
-  const oneHourAgo = now - 60 * 60 * 1000;
+export async function checkClaudeRateLimit(
+  userId: string,
+  tier: string
+): Promise<{ allowed: boolean; remaining: number }> {
+  const admin = getAdmin();
+  const timeKey = getTimeKey(tier);
+  const limit = getLimit(tier);
 
-  const calls = (rateStore.get(userId) ?? []).filter((t) => t > oneHourAgo);
-  rateStore.set(userId, calls);
+  const { data } = await admin
+    .from('usage_logs')
+    .select('count')
+    .eq('user_id', userId)
+    .eq('action', 'claude_call')
+    .eq('year_month', timeKey)
+    .single();
 
-  return { allowed: calls.length < MAX_CALLS_PER_HOUR, used: calls.length };
+  const used = (data?.count as number) ?? 0;
+  return { allowed: used < limit, remaining: Math.max(0, limit - used) };
 }
 
 /**
  * Record a Claude API call for rate limiting.
  * Call this immediately AFTER a successful Claude API call.
+ *
+ * @param userId - authenticated user ID
+ * @param tier   - subscription tier ('free' | 'essential' | 'pro')
  */
-export function recordClaudeCall(userId: string): void {
-  const calls = rateStore.get(userId) ?? [];
-  calls.push(Date.now());
-  rateStore.set(userId, calls);
+export async function recordClaudeCall(userId: string, tier: string): Promise<void> {
+  const admin = getAdmin();
+  const timeKey = getTimeKey(tier);
+
+  await admin.rpc('increment_usage', {
+    p_user_id: userId,
+    p_action: 'claude_call',
+    p_year_month: timeKey,
+  });
 }
 
 /**
@@ -57,7 +120,6 @@ export function logClaudeCall(params: {
 }
 
 function costPerMToken(model: string, type: 'input' | 'output'): number {
-  // Approximate pricing in USD per million tokens
   if (model.includes('haiku')) {
     return type === 'input' ? 0.80 : 4.00;
   }

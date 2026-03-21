@@ -1,5 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+if (!process.env.ANTHROPIC_API_KEY) {
+  throw new Error('ANTHROPIC_API_KEY not configured');
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -66,25 +70,33 @@ export interface ComplaintOutput {
   escalationPath: string;
 }
 
+const COMPLAINT_MODEL = 'claude-sonnet-4-6';
+
 export async function generateComplaintLetter(
   input: ComplaintInput
 ): Promise<ComplaintOutput> {
+  // Token optimisation: truncate inputs to reduce API costs
+  const issueDescription = input.issueDescription.slice(0, 1000);
+  const previousContact = input.previousContact?.slice(0, 500);
+
+  console.log(`[claude] model=${COMPLAINT_MODEL} route=complaints-agent/generateComplaintLetter`);
+
   const userPrompt = `Generate a formal complaint letter for the following situation:
 
 Company: ${input.companyName}
-Issue: ${input.issueDescription}
+Issue: ${issueDescription}
 Desired Outcome: ${input.desiredOutcome}
 ${input.amount ? `Amount Involved: £${input.amount}` : ''}
 ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}
 ${input.incidentDate ? `Incident Date: ${input.incidentDate}` : ''}
-${input.previousContact ? `Previous Contact: ${input.previousContact}` : ''}
+${previousContact ? `Previous Contact: ${previousContact}` : ''}
 ${input.feedback ? `\nUser feedback on previous version: ${input.feedback}` : ''}
 ${input.previousLetter ? `\nPrevious letter to improve upon:\n${input.previousLetter}` : ''}
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: COMPLAINT_MODEL,
     max_tokens: 4096,
     system: COMPLAINTS_SYSTEM_PROMPT,
     messages: [
