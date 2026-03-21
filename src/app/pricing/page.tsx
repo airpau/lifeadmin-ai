@@ -106,11 +106,12 @@ export default function PricingPage() {
       });
 
       const data = await res.json();
+      console.log('Stripe checkout response:', res.status, data);
 
       if (data.url) {
         window.location.href = data.url;
       } else {
-        throw new Error(data.error || 'No checkout URL returned');
+        throw new Error(data.error || `No checkout URL returned (status ${res.status})`);
       }
     } catch (error: any) {
       console.error('Subscription error:', error);
