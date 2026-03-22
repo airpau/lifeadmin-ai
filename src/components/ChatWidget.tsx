@@ -73,7 +73,7 @@ export default function ChatWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-50 bg-amber-500 hover:bg-amber-600 text-slate-950 w-14 h-14 rounded-full shadow-lg shadow-amber-500/25 flex items-center justify-center transition-all hover:scale-105"
+          className="fixed bottom-20 right-6 z-50 bg-amber-500 hover:bg-amber-600 text-slate-950 w-14 h-14 rounded-full shadow-lg shadow-amber-500/25 flex items-center justify-center transition-all hover:scale-105 md:bottom-6"
           aria-label="Open chat"
         >
           <MessageCircle className="h-6 w-6" />
@@ -82,7 +82,7 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-4rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed bottom-20 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-6rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px]">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
             <div className="flex items-center gap-2">

@@ -98,15 +98,31 @@ interface EmailData {
   body: string;
 }
 
-async function fetchEmailList(accessToken: string, query: string, maxResults = 20): Promise<GmailMessage[]> {
-  const params = new URLSearchParams({ q: query, maxResults: String(maxResults) });
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) throw new Error('Failed to fetch email list');
-  const data = await res.json();
-  return data.messages || [];
+async function fetchEmailList(accessToken: string, query: string, maxResults = 100): Promise<GmailMessage[]> {
+  const allMessages: GmailMessage[] = [];
+  let pageToken: string | undefined;
+
+  // Paginate through results to get up to maxResults
+  while (allMessages.length < maxResults) {
+    const params = new URLSearchParams({
+      q: query,
+      maxResults: String(Math.min(100, maxResults - allMessages.length)),
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const res = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) throw new Error('Failed to fetch email list');
+    const data = await res.json();
+
+    if (data.messages) allMessages.push(...data.messages);
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
+  }
+
+  return allMessages.slice(0, maxResults);
 }
 
 async function fetchEmailDetail(accessToken: string, messageId: string): Promise<EmailData> {
@@ -142,8 +158,8 @@ async function fetchEmailDetail(accessToken: string, messageId: string): Promise
     from: get('From'),
     date: get('Date'),
     snippet: msg.snippet || '',
-    // Token optimisation: truncated to reduce API costs
-    body: body.replace(/<[^>]+>/g, ' ').slice(0, 300),
+    // Extract useful content — strip HTML, keep up to 800 chars for better data extraction
+    body: body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800),
   };
 }
 
@@ -160,33 +176,48 @@ export interface Opportunity {
   emailId: string;
 }
 
-// Two focused queries run in parallel — Gmail handles shorter queries more reliably than one giant OR.
+// Multiple focused queries run in parallel for comprehensive scanning.
 // Query A: subject/keyword based (catches billing emails from any provider)
 const SCAN_QUERY_SUBJECT =
-  'subject:(bill OR invoice OR statement OR renewal OR "price increase" OR "price change" OR overdue OR "direct debit" OR subscription OR "payment failed" OR "payment due" OR "payment received" OR charge OR receipt OR "notice of" OR "important update" OR "your account" OR "action required" OR "outstanding balance" OR refund OR overcharge OR "final notice" OR "increased" OR "tariff") newer_than:730d';
+  'subject:(bill OR invoice OR statement OR renewal OR "price increase" OR "price change" OR overdue OR "direct debit" OR subscription OR "payment failed" OR "payment due" OR "payment received" OR charge OR receipt OR "notice of" OR "important update" OR "your account" OR "action required" OR "outstanding balance" OR refund OR overcharge OR "final notice" OR "increased" OR "tariff" OR "your plan" OR "your membership" OR "annual review" OR "policy renewal" OR "mortgage" OR "loan" OR "credit card" OR "minimum payment" OR "balance" OR "interest rate" OR "fixed rate" OR "contract end" OR "leaving" OR "switching" OR "cancellation" OR "cancelled" OR "flight" OR "booking confirmation" OR "delay" OR "compensation" OR "council tax") newer_than:730d';
 
-// Query B: sender-based (catches emails from known billing domains)
-const SCAN_QUERY_SENDERS = [
-  'from:(britishgas OR edfenergy OR octopusenergy OR eon OR npower OR shell OR bulb OR sse OR scottishpower OR utilita)',
-  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee OR plusnet OR smarty)',
-  'from:(netflix OR spotify OR amazon OR disney OR apple OR adobe OR microsoft OR google OR dropbox)',
-  'from:(barclays OR lloyds OR hsbc OR natwest OR monzo OR starling OR revolut OR halifax OR santander OR tsb)',
-  'from:(council OR gov.uk OR hmrc OR dvla OR nhs)',
-  'from:(insurethebox OR admiral OR aviva OR directline OR comparethemarket OR gocompare OR confused)',
-  'from:(aa OR rac OR greenflag OR breakdown)',
+// Query B: sender-based — energy, telecoms, streaming
+const SCAN_QUERY_SENDERS_1 = [
+  'from:(britishgas OR edfenergy OR octopusenergy OR eon OR npower OR shell OR bulb OR sse OR scottishpower OR utilita OR ovo OR ecotricity OR "good energy" OR greenstar)',
+  'from:(sky OR virginmedia OR bt OR talktalk OR vodafone OR o2 OR three OR ee OR plusnet OR smarty OR giffgaff OR lebara OR idmobile OR tesco OR "community fibre" OR hyperoptic OR zen)',
+  'from:(netflix OR spotify OR amazon OR disney OR apple OR adobe OR microsoft OR google OR dropbox OR youtube OR dazn OR "now tv" OR paramount OR crunchyroll OR audible)',
+].join(' OR ') + ' newer_than:730d';
+
+// Query C: sender-based — finance, insurance, government
+const SCAN_QUERY_SENDERS_2 = [
+  'from:(barclays OR lloyds OR hsbc OR natwest OR monzo OR starling OR revolut OR halifax OR santander OR tsb OR nationwide OR "first direct" OR metro OR chase OR klarna OR clearpay)',
+  'from:(council OR gov.uk OR hmrc OR dvla OR nhs OR "valuation office")',
+  'from:(admiral OR aviva OR directline OR comparethemarket OR gocompare OR confused OR moneysupermarket OR "legal and general" OR zurich OR axa OR "many pets" OR "pet plan" OR hastings)',
+  'from:(mortgage OR "halifax mortgage" OR "nationwide mortgage" OR skipton OR lendinvest OR "accord mortgages")',
+].join(' OR ') + ' newer_than:730d';
+
+// Query D: sender-based — fitness, food, software, transport
+const SCAN_QUERY_SENDERS_3 = [
+  'from:(puregym OR "david lloyd" OR "the gym" OR nuffield OR "anytime fitness" OR whoop OR peloton OR strava OR fitbit)',
+  'from:(deliveroo OR "just eat" OR ubereats OR gousto OR "hello fresh" OR "mindful chef")',
+  'from:(experian OR equifax OR "credit karma" OR openai OR anthropic OR github OR notion OR slack OR zoom OR canva OR figma)',
+  'from:(trainline OR tfl OR "national rail" OR uber OR bolt OR "parking eye" OR aa OR rac)',
+  'from:(ryanair OR easyjet OR "british airways" OR jet2 OR wizz OR tui OR booking OR airbnb)',
 ].join(' OR ') + ' newer_than:730d';
 
 export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
-  // Run both queries in parallel, deduplicate by message ID
-  const [subjectMessages, senderMessages] = await Promise.all([
-    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 50),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS, 50),
+  // Run all queries in parallel for comprehensive scanning
+  const [subjectMessages, senderMessages1, senderMessages2, senderMessages3] = await Promise.all([
+    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 100),
   ]);
 
   const seen = new Set<string>();
-  const allMessages = [...subjectMessages, ...senderMessages].filter((m) => {
+  const allMessages = [...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3].filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
     return true;
@@ -194,10 +225,21 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Scan up to 50 emails for comprehensive financial intelligence
-  const details = await Promise.allSettled(
-    allMessages.slice(0, 50).map((m) => fetchEmailDetail(accessToken, m.id))
-  );
+  // Scan up to 100 emails for comprehensive financial intelligence
+  // Process in batches of 20 to avoid Gmail rate limits
+  const batchSize = 20;
+  const emailsToScan = allMessages.slice(0, 100);
+  const allDetails: PromiseSettledResult<EmailData>[] = [];
+
+  for (let i = 0; i < emailsToScan.length; i += batchSize) {
+    const batch = emailsToScan.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map((m) => fetchEmailDetail(accessToken, m.id))
+    );
+    allDetails.push(...results);
+  }
+
+  const details = allDetails;
 
   const emails = details
     .filter((r): r is PromiseFulfilledResult<EmailData> => r.status === 'fulfilled')
