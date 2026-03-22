@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       let posted = false;
       if (platform === 'facebook' && process.env.META_ACCESS_TOKEN && savedPost) {
         try {
-          const fbResult = await postToFacebook(postContent);
+          const fbResult = await postToFacebook(template.content, template.hashtags, imageData || undefined);
           if (fbResult.id) {
             await supabase.from('social_posts').update({
               status: 'published',
