@@ -190,19 +190,35 @@ export async function detectRecurring(
       .update({ is_recurring: true, recurring_group: normalisedName })
       .in('id', ids);
 
+    const displayName = txs[0].extracted_name;
+
     // Check if subscription already exists (active or dismissed)
-    const { data: existing } = await supabase
+    // Match by exact provider_name OR by normalised name contained in provider_name
+    const { data: existingExact } = await supabase
       .from('subscriptions')
-      .select('id, dismissed_at')
+      .select('id')
       .eq('user_id', userId)
-      .ilike('provider_name', `%${normalisedName}%`)
+      .eq('provider_name', displayName)
       .maybeSingle();
 
-    // Skip if already exists (active) or was dismissed by user
-    if (existing) continue;
+    if (existingExact) continue;
+
+    // Also check by normalised partial match (handles slight naming variations)
+    const { data: allUserSubs } = await supabase
+      .from('subscriptions')
+      .select('id, provider_name')
+      .eq('user_id', userId);
+
+    const alreadyExists = (allUserSubs || []).some((sub) => {
+      const subNormalised = normaliseMerchant(sub.provider_name);
+      return subNormalised === normalisedName ||
+             subNormalised.includes(normalisedName) ||
+             normalisedName.includes(subNormalised);
+    });
+
+    if (alreadyExists) continue;
 
     const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-    const displayName = txs[0].extracted_name;
     const bankDesc = txs[0].description || null;
 
     // Auto-categorise based on description keywords
