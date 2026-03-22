@@ -1,0 +1,193 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+
+export const runtime = 'nodejs';
+
+const CATEGORY_MAP: Record<string, string> = {
+  PURCHASE: 'shopping',
+  DEBIT: 'shopping',
+  DIRECT_DEBIT: 'bills',
+  STANDING_ORDER: 'bills',
+  TRANSFER: 'transfers',
+  ATM: 'cash',
+  CREDIT: 'income',
+  FEE: 'fees',
+  INTEREST: 'interest',
+  DIVIDEND: 'income',
+};
+
+// Keywords to categorise transactions by description
+const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = [
+  { keywords: ['mortgage', 'lendinvest', 'skipton', 'halifax mort', 'nationwide mort'], category: 'mortgage' },
+  { keywords: ['loan', 'auto finance', 'novuna', 'santander loan', 'natwest loan'], category: 'loans' },
+  { keywords: ['barclaycard', 'credit card', 'amex', 'klarna', 'clearpay'], category: 'credit' },
+  { keywords: ['council', 'testvalley', 'winchester', 'hounslow', 'lbh'], category: 'council_tax' },
+  { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },
+  { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
+  { keywords: ['sky', 'virgin media', 'bt ', 'talktalk', 'plusnet', 'communityfibre', 'vodafone broad'], category: 'broadband' },
+  { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'lebara', 'smarty', 'tesco mobile'], category: 'mobile' },
+  { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'now tv', 'youtube', 'dazn', 'plex', 'patreon'], category: 'streaming' },
+  { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton', 'strava', 'fitness'], category: 'fitness' },
+  { keywords: ['tesco', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'co-op', 'ocado', 'iceland'], category: 'groceries' },
+  { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'nando', 'pizza', 'greggs', 'starbucks', 'costa', 'pret'], category: 'eating_out' },
+  { keywords: ['petrol', 'shell ', 'bp ', 'esso', 'texaco', 'total ', 'fuel'], category: 'fuel' },
+  { keywords: ['amazon', 'ebay', 'asos', 'next ', 'argos', 'john lewis', 'currys'], category: 'shopping' },
+  { keywords: ['insurance', 'admiral', 'aviva', 'direct line', 'manypets', 'petplan'], category: 'insurance' },
+  { keywords: ['dvla', 'trainline', 'tfl', 'uber', 'bolt', 'parking'], category: 'transport' },
+  { keywords: ['betfair', 'bet365', 'paddy', 'william hill', 'coral', 'ladbrokes'], category: 'gambling' },
+  { keywords: ['nursery', 'childcare', 'school'], category: 'childcare' },
+  { keywords: ['experian', 'adobe', 'microsoft', 'google', 'openai', 'anthropic', 'github'], category: 'software' },
+];
+
+function categoriseTransaction(description: string, bankCategory: string): string {
+  const desc = description.toLowerCase();
+  for (const { keywords, category } of DESCRIPTION_CATEGORIES) {
+    if (keywords.some(kw => desc.includes(kw))) return category;
+  }
+  return CATEGORY_MAP[bankCategory] || 'other';
+}
+
+const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  mortgage: { label: 'Mortgage', color: '#8b5cf6', icon: '🏠' },
+  loans: { label: 'Loans & Finance', color: '#ef4444', icon: '🏦' },
+  credit: { label: 'Credit Cards', color: '#f43f5e', icon: '💳' },
+  council_tax: { label: 'Council Tax', color: '#6366f1', icon: '🏛️' },
+  energy: { label: 'Energy', color: '#f59e0b', icon: '⚡' },
+  water: { label: 'Water', color: '#06b6d4', icon: '💧' },
+  broadband: { label: 'Broadband', color: '#3b82f6', icon: '📡' },
+  mobile: { label: 'Mobile', color: '#8b5cf6', icon: '📱' },
+  streaming: { label: 'Streaming', color: '#ec4899', icon: '📺' },
+  fitness: { label: 'Fitness', color: '#10b981', icon: '💪' },
+  groceries: { label: 'Groceries', color: '#22c55e', icon: '🛒' },
+  eating_out: { label: 'Eating Out', color: '#f97316', icon: '🍽️' },
+  fuel: { label: 'Fuel', color: '#64748b', icon: '⛽' },
+  shopping: { label: 'Shopping', color: '#a855f7', icon: '🛍️' },
+  insurance: { label: 'Insurance', color: '#14b8a6', icon: '🛡️' },
+  transport: { label: 'Transport', color: '#0ea5e9', icon: '🚗' },
+  gambling: { label: 'Gambling', color: '#dc2626', icon: '🎰' },
+  childcare: { label: 'Childcare', color: '#f472b6', icon: '👶' },
+  software: { label: 'Software', color: '#7c3aed', icon: '💻' },
+  bills: { label: 'Bills', color: '#64748b', icon: '📄' },
+  transfers: { label: 'Transfers', color: '#475569', icon: '↔️' },
+  cash: { label: 'Cash', color: '#78716c', icon: '💵' },
+  fees: { label: 'Fees', color: '#991b1b', icon: '⚠️' },
+  income: { label: 'Income', color: '#16a34a', icon: '💰' },
+  other: { label: 'Other', color: '#475569', icon: '📋' },
+};
+
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Fetch last 6 months of transactions
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const { data: transactions } = await supabase
+      .from('bank_transactions')
+      .select('amount, description, category, timestamp')
+      .eq('user_id', user.id)
+      .gte('timestamp', sixMonthsAgo.toISOString())
+      .order('timestamp', { ascending: false });
+
+    if (!transactions || transactions.length === 0) {
+      return NextResponse.json({ hasData: false });
+    }
+
+    // Categorise all transactions
+    const categorised = transactions.map(tx => ({
+      ...tx,
+      spending_category: categoriseTransaction(tx.description || '', tx.category || ''),
+      amount: parseFloat(String(tx.amount)),
+    }));
+
+    // Split debits and credits
+    const debits = categorised.filter(tx => tx.amount < 0);
+    const credits = categorised.filter(tx => tx.amount > 0);
+
+    // Category totals (debits only, absolute values)
+    const categoryTotals: Record<string, number> = {};
+    for (const tx of debits) {
+      const cat = tx.spending_category;
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + Math.abs(tx.amount);
+    }
+
+    // Monthly totals (last 6 months)
+    const monthlySpend: Record<string, number> = {};
+    const monthlyIncome: Record<string, number> = {};
+    for (const tx of categorised) {
+      const month = tx.timestamp.substring(0, 7); // YYYY-MM
+      if (tx.amount < 0) {
+        monthlySpend[month] = (monthlySpend[month] || 0) + Math.abs(tx.amount);
+      } else {
+        monthlyIncome[month] = (monthlyIncome[month] || 0) + tx.amount;
+      }
+    }
+
+    // Current month vs previous month comparison
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevMonth = new Date(now);
+    prevMonth.setMonth(prevMonth.getMonth() - 1);
+    const previousMonth = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+
+    const currentMonthSpend = monthlySpend[currentMonth] || 0;
+    const previousMonthSpend = monthlySpend[previousMonth] || 0;
+    const monthChange = previousMonthSpend > 0
+      ? Math.round(((currentMonthSpend - previousMonthSpend) / previousMonthSpend) * 100)
+      : 0;
+
+    // Total income and spend
+    const totalSpend = debits.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    const totalIncome = credits.reduce((sum, tx) => sum + tx.amount, 0);
+
+    // Build category breakdown with labels
+    const categoryBreakdown = Object.entries(categoryTotals)
+      .map(([cat, total]) => ({
+        category: cat,
+        ...(CATEGORY_LABELS[cat] || CATEGORY_LABELS.other),
+        total: parseFloat(total.toFixed(2)),
+        monthly_avg: parseFloat((total / Math.max(Object.keys(monthlySpend).length, 1)).toFixed(2)),
+        percentage: parseFloat(((total / totalSpend) * 100).toFixed(1)),
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    // Top 10 biggest single transactions
+    const biggestTransactions = debits
+      .sort((a, b) => a.amount - b.amount)
+      .slice(0, 10)
+      .map(tx => ({
+        description: tx.description,
+        amount: Math.abs(tx.amount),
+        category: tx.spending_category,
+        date: tx.timestamp.substring(0, 10),
+      }));
+
+    return NextResponse.json({
+      hasData: true,
+      summary: {
+        total_transactions: transactions.length,
+        total_spend: parseFloat(totalSpend.toFixed(2)),
+        total_income: parseFloat(totalIncome.toFixed(2)),
+        current_month_spend: parseFloat(currentMonthSpend.toFixed(2)),
+        previous_month_spend: parseFloat(previousMonthSpend.toFixed(2)),
+        month_change_percent: monthChange,
+        months_analysed: Object.keys(monthlySpend).length,
+      },
+      category_breakdown: categoryBreakdown,
+      monthly_spend: Object.entries(monthlySpend)
+        .map(([month, total]) => ({ month, spend: parseFloat(total.toFixed(2)), income: parseFloat((monthlyIncome[month] || 0).toFixed(2)) }))
+        .sort((a, b) => a.month.localeCompare(b.month)),
+      biggest_transactions: biggestTransactions,
+      category_labels: CATEGORY_LABELS,
+    });
+  } catch (err: any) {
+    console.error('Spending API error:', err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

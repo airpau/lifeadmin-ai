@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   ShieldAlert,
+  BarChart3,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -24,6 +25,7 @@ const navItems = [
   { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
+  { name: 'Spending', href: '/dashboard/spending', icon: BarChart3 },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
