@@ -21,6 +21,10 @@
       "schedule": "0 9 * * 1"
     },
     {
+      "path": "/api/cron/targeted-deals",
+      "schedule": "0 9 * * 3,5"
+    },
+    {
       "path": "/api/cron/generate-social-posts",
       "schedule": "0 9 * * 1"
     }

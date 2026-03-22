@@ -28,6 +28,7 @@ interface Member {
   created_at: string;
   total_money_recovered: number;
   total_tasks_completed: number;
+  opportunity_score: number;
   subscriptions_tracked: number;
   tasks_created: number;
   bank_transactions: number;
@@ -127,7 +128,7 @@ export default function AdminPage() {
   const loadMembers = async () => {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, full_name, subscription_tier, subscription_status, created_at, total_money_recovered, total_tasks_completed')
+      .select('id, email, full_name, subscription_tier, subscription_status, created_at, total_money_recovered, total_tasks_completed, opportunity_score')
       .order('created_at', { ascending: false });
 
     setMembers((data || []).map((m) => ({
@@ -137,6 +138,7 @@ export default function AdminPage() {
       subscription_status: m.subscription_status || '',
       total_money_recovered: m.total_money_recovered || 0,
       total_tasks_completed: m.total_tasks_completed || 0,
+      opportunity_score: m.opportunity_score || 0,
       subscriptions_tracked: 0,
       tasks_created: 0,
       bank_transactions: 0,
@@ -341,6 +343,15 @@ export default function AdminPage() {
                   <p className="text-slate-500 text-xs">{m.email}</p>
                 </div>
                 <div className="flex items-center gap-4">
+                  {m.opportunity_score > 0 && (
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                      m.opportunity_score >= 100 ? 'bg-red-500/20 text-red-400' :
+                      m.opportunity_score >= 50 ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      Score: {m.opportunity_score}
+                    </span>
+                  )}
                   <span className={`px-2 py-0.5 rounded text-xs font-semibold ${tierColor(m.subscription_tier)}`}>{m.subscription_tier}</span>
                   <span className="text-slate-500 text-xs">{new Date(m.created_at).toLocaleDateString('en-GB')}</span>
                   <ChevronRight className="h-4 w-4 text-slate-500" />
