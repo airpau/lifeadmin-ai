@@ -51,6 +51,7 @@ export async function calculateOpportunityScore(
   }
 
   const now = new Date();
+  const scoredProviders = new Set<string>(); // prevent duplicate scoring per provider
 
   for (const sub of subs) {
     const amount = parseFloat(String(sub.amount)) || 0;
@@ -59,43 +60,60 @@ export async function calculateOpportunityScore(
     // Skip non-switchable categories
     if (!SWITCHABLE_CATEGORIES.includes(cat)) continue;
 
-    // 1. Renewal within 30 days = +50 points
+    // Skip if already scored this provider
+    if (scoredProviders.has(sub.provider_name)) continue;
+    scoredProviders.add(sub.provider_name);
+
+    // Pick the single best reason for this subscription
+    let bestReason = '';
+    let bestPoints = 0;
+
+    // Check renewal
     if (sub.next_billing_date) {
       const renewalDate = new Date(sub.next_billing_date);
       const daysUntil = Math.floor((renewalDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
       if (daysUntil >= 0 && daysUntil <= 7) {
-        breakdown.push({ reason: `${sub.provider_name} renews in ${daysUntil} days — urgent`, points: 60, subscription: sub.provider_name });
-        topOpportunities.push({ provider: sub.provider_name, category: cat, amount, reason: `Renews in ${daysUntil} days` });
+        bestReason = `Renews in ${daysUntil} days — urgent`;
+        bestPoints = 60;
       } else if (daysUntil > 7 && daysUntil <= 30) {
-        breakdown.push({ reason: `${sub.provider_name} renews in ${daysUntil} days`, points: 40, subscription: sub.provider_name });
-        topOpportunities.push({ provider: sub.provider_name, category: cat, amount, reason: `Renews in ${daysUntil} days` });
+        bestReason = `Renews in ${daysUntil} days`;
+        bestPoints = 40;
       } else if (daysUntil > 30 && daysUntil <= 90) {
-        breakdown.push({ reason: `${sub.provider_name} renews in ${daysUntil} days`, points: 20, subscription: sub.provider_name });
+        bestReason = `Renews in ${daysUntil} days`;
+        bestPoints = 20;
       }
     }
 
-    // 2. Paying above average for category = +20 points
+    // Check if paying above average (use if higher points than renewal)
     const avg = CATEGORY_AVERAGES[cat];
     if (avg && amount > avg * 1.2) {
       const overpay = Math.round(((amount - avg) / avg) * 100);
-      breakdown.push({ reason: `${sub.provider_name}: paying ${overpay}% above average for ${cat}`, points: 20, subscription: sub.provider_name });
-      topOpportunities.push({ provider: sub.provider_name, category: cat, amount, reason: `${overpay}% above average` });
+      if (20 > bestPoints) {
+        bestReason = `Paying ${overpay}% above average for ${cat}`;
+        bestPoints = 20;
+      }
     }
 
-    // 3. High-value subscription = +15 points (bigger potential savings)
-    if (amount >= 100) {
-      breakdown.push({ reason: `${sub.provider_name}: high-value £${amount.toFixed(0)}/mo — worth comparing`, points: 15, subscription: sub.provider_name });
+    // Mortgage always scores high
+    if (cat === 'mortgage' && 30 > bestPoints) {
+      bestReason = 'Remortgage comparison could save thousands';
+      bestPoints = 30;
     }
 
-    // 4. Mortgage = always high value opportunity
-    if (cat === 'mortgage') {
-      breakdown.push({ reason: `${sub.provider_name}: mortgage — even 0.5% saving is significant`, points: 30, subscription: sub.provider_name });
-      topOpportunities.push({ provider: sub.provider_name, category: cat, amount, reason: 'Remortgage comparison could save thousands' });
+    // High-value subscription
+    if (amount >= 100 && 15 > bestPoints) {
+      bestReason = `High-value £${amount.toFixed(0)}/mo — worth comparing`;
+      bestPoints = 15;
+    }
+
+    if (bestPoints > 0) {
+      breakdown.push({ reason: `${sub.provider_name}: ${bestReason}`, points: bestPoints, subscription: sub.provider_name });
+      topOpportunities.push({ provider: sub.provider_name, category: cat, amount, reason: bestReason });
     }
   }
 
-  // 5. Multiple loans = consolidation opportunity
+  // Multiple loans = consolidation opportunity (one entry, not per-loan)
   const loans = subs.filter(s => s.category === 'loan' || s.category === 'credit_card' || s.category === 'car_finance');
   if (loans.length >= 2) {
     const totalLoanPayments = loans.reduce((sum, l) => sum + (parseFloat(String(l.amount)) || 0), 0);
@@ -103,16 +121,16 @@ export async function calculateOpportunityScore(
     topOpportunities.push({ provider: 'Multiple lenders', category: 'loan', amount: totalLoanPayments, reason: `Consolidate ${loans.length} debts` });
   }
 
-  // 6. High total monthly spend = +10 points
+  // High total monthly spend
   const totalMonthly = subs.reduce((sum, s) => sum + (parseFloat(String(s.amount)) || 0), 0);
   if (totalMonthly >= 500) {
     breakdown.push({ reason: `Total spend £${totalMonthly.toFixed(0)}/mo across ${subs.length} subscriptions`, points: 10 });
   }
 
-  // 7. Many switchable subscriptions = +10 points
-  const switchableCount = subs.filter(s => SWITCHABLE_CATEGORIES.includes(s.category || '')).length;
+  // Many switchable subscriptions
+  const switchableCount = scoredProviders.size;
   if (switchableCount >= 5) {
-    breakdown.push({ reason: `${switchableCount} switchable subscriptions — multiple saving opportunities`, points: 10 });
+    breakdown.push({ reason: `${switchableCount} switchable subscriptions`, points: 10 });
   }
 
   // Calculate total
@@ -124,10 +142,16 @@ export async function calculateOpportunityScore(
   else if (total >= 50) tier = 'high';
   else if (total >= 20) tier = 'medium';
 
-  // Sort top opportunities by amount descending
-  topOpportunities.sort((a, b) => b.amount - a.amount);
+  // Deduplicate and sort top opportunities by amount descending
+  const seen = new Set<string>();
+  const dedupedOpps = topOpportunities.filter((o) => {
+    if (seen.has(o.provider)) return false;
+    seen.add(o.provider);
+    return true;
+  });
+  dedupedOpps.sort((a, b) => b.amount - a.amount);
 
-  return { total, breakdown, tier, topOpportunities: topOpportunities.slice(0, 5) };
+  return { total, breakdown, tier, topOpportunities: dedupedOpps.slice(0, 5) };
 }
 
 /**
