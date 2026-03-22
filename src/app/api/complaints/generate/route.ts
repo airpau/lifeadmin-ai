@@ -89,6 +89,10 @@ export async function POST(request: NextRequest) {
 
     // Log agent run
     if (task) {
+      // Calculate cost: Sonnet input=$3/1M, output=$15/1M
+      const inputCost = (result.usage?.input_tokens || 0) * 0.000003;
+      const outputCost = (result.usage?.output_tokens || 0) * 0.000015;
+
       await supabase.from('agent_runs').insert({
         task_id: task.id,
         user_id: user.id,
@@ -98,6 +102,9 @@ export async function POST(request: NextRequest) {
         input_data: body,
         output_data: result,
         legal_references: result.legalReferences,
+        input_tokens: result.usage?.input_tokens || null,
+        output_tokens: result.usage?.output_tokens || null,
+        estimated_cost: parseFloat((inputCost + outputCost).toFixed(6)),
         completed_at: new Date().toISOString(),
       });
     }

@@ -315,7 +315,69 @@ function DealCard({ deal }: { deal: Deal }) {
   );
 }
 
+// Map subscription categories to deal categories
+const CATEGORY_TO_DEALS: Record<string, string[]> = {
+  utility: ['Energy'],
+  broadband: ['Broadband'],
+  mobile: ['Mobile'],
+  insurance: ['Insurance'],
+  mortgage: ['Mortgages'],
+  loan: ['Loans', 'Credit Cards'],
+  credit_card: ['Credit Cards'],
+  car_finance: ['Car Finance'],
+  streaming: [],
+  fitness: [],
+  software: [],
+};
+
+interface UserSubscription {
+  provider_name: string;
+  amount: number;
+  category: string | null;
+  billing_cycle: string;
+}
+
 export default function DealsPage() {
+  const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useState(() => {
+    fetch('/api/subscriptions')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setSubscriptions(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  });
+
+  // Build personalised recommendations based on user's subscriptions
+  const recommendedCategories = new Set<string>();
+  const userProviders = new Map<string, UserSubscription>();
+
+  for (const sub of subscriptions) {
+    const cat = sub.category || 'other';
+    const dealCats = CATEGORY_TO_DEALS[cat] || [];
+    dealCats.forEach(dc => recommendedCategories.add(dc));
+    if (dealCats.length > 0) {
+      userProviders.set(cat, sub);
+    }
+  }
+
+  const recommendedDeals: Deal[] = [];
+  for (const cat of recommendedCategories) {
+    const deals = DEALS[cat] || [];
+    recommendedDeals.push(...deals);
+  }
+
+  // Calculate potential savings
+  const potentialSavings = subscriptions
+    .filter(s => {
+      const cat = s.category || '';
+      return CATEGORY_TO_DEALS[cat] && CATEGORY_TO_DEALS[cat].length > 0;
+    })
+    .reduce((sum, s) => sum + (parseFloat(String(s.amount)) || 0), 0);
+
   return (
     <div className="max-w-7xl">
       {/* Hero */}
@@ -332,7 +394,44 @@ export default function DealsPage() {
         </p>
       </div>
 
-      {/* Category sections */}
+      {/* Personalised Recommendations */}
+      {recommendedDeals.length > 0 && (
+        <section className="mb-10">
+          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-amber-400 mb-1">Recommended for you</h2>
+                <p className="text-slate-400 text-sm">
+                  Based on your tracked subscriptions and bills, we think these deals could save you money.
+                </p>
+              </div>
+              {potentialSavings > 0 && (
+                <div className="text-right shrink-0 ml-4">
+                  <div className="text-2xl font-bold text-amber-500">£{potentialSavings.toFixed(0)}</div>
+                  <div className="text-slate-500 text-xs">/month on switchable bills</div>
+                </div>
+              )}
+            </div>
+
+            {/* Show which subscriptions triggered recommendations */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {[...userProviders.entries()].map(([cat, sub]) => (
+                <span key={cat} className="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded-full">
+                  {sub.provider_name} · £{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {recommendedDeals.slice(0, 8).map((deal) => (
+              <DealCard key={`rec-${deal.id}`} deal={deal} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* All Category sections */}
       <div className="space-y-10">
         {Object.entries(DEALS).map(([category, deals]) => (
           <section key={category}>

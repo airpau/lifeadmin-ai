@@ -196,6 +196,10 @@ Return as JSON with keys: subject (string), body (string)`;
       .single();
 
     if (task) {
+      // Haiku: input=$0.80/1M, output=$4/1M
+      const inputCost = (message.usage?.input_tokens || 0) * 0.0000008;
+      const outputCost = (message.usage?.output_tokens || 0) * 0.000004;
+
       await supabase.from('agent_runs').insert({
         task_id: task.id,
         user_id: user.id,
@@ -204,6 +208,9 @@ Return as JSON with keys: subject (string), body (string)`;
         status: 'completed',
         input_data: { providerName, amount, billingCycle, category, accountEmail },
         output_data: { subject: result.subject, body: result.body },
+        input_tokens: message.usage?.input_tokens || null,
+        output_tokens: message.usage?.output_tokens || null,
+        estimated_cost: parseFloat((inputCost + outputCost).toFixed(6)),
         completed_at: new Date().toISOString(),
       });
     }

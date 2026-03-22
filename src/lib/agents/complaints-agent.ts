@@ -68,6 +68,7 @@ export interface ComplaintOutput {
   estimatedSuccess: number;
   nextSteps: string[];
   escalationPath: string;
+  usage?: { input_tokens: number; output_tokens: number };
 }
 
 const COMPLAINT_MODEL = 'claude-sonnet-4-6';
@@ -128,5 +129,9 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
     estimatedSuccess: result.estimatedSuccess || 70,
     nextSteps: result.nextSteps || [],
     escalationPath: result.escalationPath || 'Contact relevant ombudsman',
+    usage: {
+      input_tokens: message.usage?.input_tokens || 0,
+      output_tokens: message.usage?.output_tokens || 0,
+    },
   };
 }

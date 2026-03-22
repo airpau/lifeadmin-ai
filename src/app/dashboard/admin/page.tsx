@@ -150,7 +150,7 @@ export default function AdminPage() {
       supabase.from('profiles').select('*').eq('id', memberId).single(),
       supabase.from('subscriptions').select('*').eq('user_id', memberId).is('dismissed_at', null).order('amount', { ascending: false }),
       supabase.from('tasks').select('id, type, title, status, provider_name, disputed_amount, created_at').eq('user_id', memberId).order('created_at', { ascending: false }).limit(50),
-      supabase.from('agent_runs').select('id, agent_type, model_name, status, created_at').eq('user_id', memberId).order('created_at', { ascending: false }).limit(50),
+      supabase.from('agent_runs').select('id, agent_type, model_name, status, created_at, input_tokens, output_tokens, estimated_cost').eq('user_id', memberId).order('created_at', { ascending: false }).limit(50),
       supabase.from('bank_connections').select('id, status, bank_name, last_synced_at, connected_at').eq('user_id', memberId),
       supabase.from('bank_transactions').select('id', { count: 'exact', head: true }).eq('user_id', memberId),
     ]);
@@ -164,8 +164,11 @@ export default function AdminPage() {
     }, 0);
 
     const runsList = runs.data || [];
-    const haikuCost = runsList.filter((r: any) => r.model_name?.includes('haiku')).length * 0.003;
-    const sonnetCost = runsList.filter((r: any) => r.model_name?.includes('sonnet')).length * 0.02;
+    // Use actual tracked cost if available, fall back to estimates
+    const actualCost = runsList.reduce((sum: number, r: any) => sum + (parseFloat(r.estimated_cost) || 0), 0);
+    const haikuCost = actualCost > 0 ? 0 : runsList.filter((r: any) => r.model_name?.includes('haiku')).length * 0.003;
+    const sonnetCost = actualCost > 0 ? 0 : runsList.filter((r: any) => r.model_name?.includes('sonnet')).length * 0.02;
+    const totalCost = actualCost > 0 ? actualCost : (haikuCost + sonnetCost);
 
     setSelectedMember({
       profile: profile.data,
@@ -176,7 +179,7 @@ export default function AdminPage() {
         total_cancellation_emails: (tasks.data || []).filter((t: any) => t.type === 'cancellation_email').length,
         total_agent_runs: runsList.length,
         bank_transactions: txCount.count || 0,
-        estimated_api_cost: parseFloat((haikuCost + sonnetCost).toFixed(4)),
+        estimated_api_cost: parseFloat(totalCost.toFixed(4)),
       },
       subscriptions: subsList.map((s: any) => ({
         provider: s.provider_name,
