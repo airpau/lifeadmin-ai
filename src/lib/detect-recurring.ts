@@ -12,6 +12,63 @@ const CYCLE_DAYS = {
   yearly: 365,
 };
 
+/**
+ * Extract a merchant name from a bank transaction description.
+ * UK Open Banking descriptions come in various formats:
+ * - "4239 19MAR26 D EXPERIAN NOTTINGHAM GB"
+ * - "GYM IQ LTD TO REVOLUT -ZIE5- TPP REVOLUT LTD FP 19/03/26..."
+ * - "CA AUTO FINANCE UK"
+ * - "9384 17MAR26 WHOOP BOSTON US"
+ */
+function extractMerchantFromDescription(description: string): string | null {
+  if (!description) return null;
+
+  let cleaned = description;
+
+  // Remove leading card numbers (4 digits)
+  cleaned = cleaned.replace(/^\d{4}\s+/, '');
+
+  // Remove date patterns: "19MAR26", "17/03/26", "19/03/26"
+  cleaned = cleaned.replace(/\d{2}[A-Z]{3}\d{2}\s*/g, '');
+  cleaned = cleaned.replace(/\d{2}\/\d{2}\/\d{2}\s*/g, '');
+
+  // Remove "D " prefix (debit indicator)
+  cleaned = cleaned.replace(/^D\s+/, '');
+
+  // Remove FP reference numbers
+  cleaned = cleaned.replace(/FP\s+\d{2}\/\d{2}\/\d{2}\s+\d+\s*\d*[A-Z]*/g, '');
+
+  // Remove TPP references
+  cleaned = cleaned.replace(/TPP\s+\w+\s+LTD/gi, '');
+
+  // Remove "TO REVOLUT" transfer references and alphanumeric codes like -ZIE5-
+  cleaned = cleaned.replace(/TO\s+REVOLUT\s+-\w+-/gi, '');
+
+  // Remove "VIA MOBILE - PYMT" type phrases
+  cleaned = cleaned.replace(/VIA\s+MOBILE\s*-?\s*PYMT/gi, '');
+
+  // Remove location suffixes (GB, US, etc.)
+  cleaned = cleaned.replace(/\b[A-Z]{2}\s*$/g, '');
+
+  // Remove city names that commonly appear
+  cleaned = cleaned.replace(/\b(LONDON|NOTTINGHAM|BOSTON|MANCHESTER|BIRMINGHAM|LEEDS|EDINBURGH|GLASGOW|CARDIFF|BRISTOL)\b/gi, '');
+
+  // Clean up extra whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  // If too short after cleaning, try to use first meaningful words from original
+  if (cleaned.length < 3) {
+    const words = description.replace(/^\d+\s+/, '').split(/\s+/);
+    // Skip date-like and number-like words
+    const meaningful = words.filter(w =>
+      w.length > 2 && !/^\d+$/.test(w) && !/^\d{2}[A-Z]{3}\d{2}$/.test(w) && w !== 'D'
+    );
+    cleaned = meaningful.slice(0, 3).join(' ');
+  }
+
+  return cleaned.length >= 3 ? cleaned : null;
+}
+
 function normaliseMerchant(name: string): string {
   return name
     .toLowerCase()
@@ -34,25 +91,25 @@ function detectCycle(intervals: number[]): string | null {
 function amountsConsistent(amounts: number[]): boolean {
   if (amounts.length === 0) return false;
   const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+  if (avg === 0) return false;
   return amounts.every((a) => Math.abs(a - avg) / avg <= AMOUNT_VARIANCE);
 }
 
 /**
  * Detects recurring payments from bank transactions for a user.
+ * Uses merchant_name if available, falls back to extracting from description.
  * Marks transactions as recurring and creates subscription records for new ones.
- * Returns the count of new recurring payment groups detected.
  */
 export async function detectRecurring(
   userId: string,
   supabase: SupabaseClient
 ): Promise<number> {
-  // Fetch all debit transactions for this user
+  // Fetch all debit transactions
   const { data: transactions, error } = await supabase
     .from('bank_transactions')
-    .select('id, merchant_name, amount, timestamp, recurring_group')
+    .select('id, merchant_name, description, amount, timestamp, recurring_group')
     .eq('user_id', userId)
     .lt('amount', 0) // debits only
-    .not('merchant_name', 'is', null)
     .order('timestamp', { ascending: true });
 
   if (error || !transactions) {
@@ -60,13 +117,18 @@ export async function detectRecurring(
     return 0;
   }
 
-  // Group by normalised merchant name
-  const groups = new Map<string, typeof transactions>();
+  // Group by normalised merchant name (from merchant_name or description)
+  const groups = new Map<string, Array<typeof transactions[0] & { extracted_name: string }>>();
+
   for (const tx of transactions) {
-    const key = normaliseMerchant(tx.merchant_name!);
-    if (!key) continue;
+    const merchantName = tx.merchant_name || extractMerchantFromDescription(tx.description || '');
+    if (!merchantName) continue;
+
+    const key = normaliseMerchant(merchantName);
+    if (!key || key.length < 3) continue;
+
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(tx);
+    groups.get(key)!.push({ ...tx, extracted_name: merchantName });
   }
 
   let newRecurringCount = 0;
@@ -87,7 +149,7 @@ export async function detectRecurring(
       intervals.push(diff);
     }
 
-    const amounts = sorted.map((t) => Math.abs(t.amount));
+    const amounts = sorted.map((t) => Math.abs(Number(t.amount)));
     const cycle = detectCycle(intervals);
 
     if (!cycle || !amountsConsistent(amounts)) continue;
@@ -99,37 +161,36 @@ export async function detectRecurring(
       .update({ is_recurring: true, recurring_group: normalisedName })
       .in('id', ids);
 
-    // Check if subscription already exists for this user+merchant
+    // Check if subscription already exists
     const { data: existing } = await supabase
       .from('subscriptions')
-      .select('id, source')
+      .select('id')
       .eq('user_id', userId)
       .ilike('provider_name', `%${normalisedName}%`)
       .maybeSingle();
 
-    const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-    const rawMerchantName = txs[0].merchant_name!;
-
     if (!existing) {
-      // Create new subscription record
-      await supabase.from('subscriptions').insert({
+      const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+      const displayName = txs[0].extracted_name;
+
+      const { error: insertError } = await supabase.from('subscriptions').insert({
         user_id: userId,
-        provider_name: rawMerchantName,
+        provider_name: displayName,
         amount: parseFloat(avgAmount.toFixed(2)),
-        billing_cycle: cycle === 'weekly' ? 'monthly' : cycle, // map weekly → monthly as closest standard cycle
+        billing_cycle: cycle === 'weekly' ? 'monthly' : cycle,
         status: 'active',
-        source: 'bank',
-        usage_frequency: 'sometimes',
+        notes: 'Detected from bank transactions',
       });
-      newRecurringCount++;
-    } else if (existing.source === 'email') {
-      // Update existing email-detected subscription with bank confirmation
-      await supabase
-        .from('subscriptions')
-        .update({ source: 'bank_and_email' })
-        .eq('id', existing.id);
+
+      if (insertError) {
+        console.error(`Failed to create subscription for ${displayName}:`, insertError);
+      } else {
+        newRecurringCount++;
+        console.log(`Detected recurring: ${displayName} £${avgAmount.toFixed(2)}/${cycle}`);
+      }
     }
   }
 
+  console.log(`detectRecurring: processed ${transactions.length} transactions, found ${newRecurringCount} new recurring payments`);
   return newRecurringCount;
 }
