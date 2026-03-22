@@ -16,6 +16,14 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
+    // Fetch original before update (for learning)
+    const { data: original } = await supabase
+      .from('subscriptions')
+      .select('provider_name, category, bank_description')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
     const { data, error } = await supabase
       .from('subscriptions')
       .update(body)
@@ -26,6 +34,26 @@ export async function PATCH(
 
     if (error) throw error;
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // Self-learning: if user changed provider_name or category, create a merchant rule
+    if (original && (body.provider_name || body.category)) {
+      const rawName = original.bank_description || original.provider_name;
+      const normalised = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+
+      if (normalised) {
+        await supabase.from('merchant_rules').upsert({
+          raw_name: rawName,
+          raw_name_normalised: normalised,
+          display_name: body.provider_name || data.provider_name,
+          category: body.category || data.category || 'other',
+          created_by_user_id: user.id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'raw_name_normalised' }).then(({ error: ruleError }) => {
+          if (ruleError) console.error('Merchant rule save failed:', ruleError);
+          else console.log(`Merchant rule learned: "${rawName}" → "${body.provider_name || data.provider_name}" [${body.category || data.category}]`);
+        });
+      }
+    }
 
     return NextResponse.json(data);
   } catch (error: any) {

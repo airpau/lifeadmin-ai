@@ -133,6 +133,16 @@ export async function detectRecurring(
   userId: string,
   supabase: SupabaseClient
 ): Promise<number> {
+  // Load merchant rules for intelligent categorisation
+  const { data: merchantRules } = await supabase
+    .from('merchant_rules')
+    .select('raw_name_normalised, display_name, category, deal_category, provider_type');
+
+  const rulesMap = new Map<string, { display_name: string; category: string; deal_category: string | null }>();
+  for (const rule of merchantRules || []) {
+    rulesMap.set(rule.raw_name_normalised, rule);
+  }
+
   // Fetch all debit transactions
   const { data: transactions, error } = await supabase
     .from('bank_transactions')
@@ -221,12 +231,16 @@ export async function detectRecurring(
     const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
     const bankDesc = txs[0].description || null;
 
-    // Auto-categorise based on description keywords
-    const category = categoriseTransaction(displayName, bankDesc);
+    // Check merchant rules first (learned from user edits), then fall back to keyword matching
+    const rule = rulesMap.get(normalisedName) ||
+      [...rulesMap.entries()].find(([key]) => normalisedName.includes(key) || key.includes(normalisedName))?.[1];
+
+    const category = rule?.category || categoriseTransaction(displayName, bankDesc);
+    const finalDisplayName = rule?.display_name || displayName;
 
     const { error: insertError } = await supabase.from('subscriptions').insert({
       user_id: userId,
-      provider_name: displayName,
+      provider_name: finalDisplayName,
       amount: parseFloat(avgAmount.toFixed(2)),
       billing_cycle: cycle === 'weekly' ? 'monthly' : cycle,
       status: 'active',
@@ -240,7 +254,7 @@ export async function detectRecurring(
       console.error(`Failed to create subscription for ${displayName}:`, insertError);
     } else {
       newRecurringCount++;
-      console.log(`Detected recurring: ${displayName} £${avgAmount.toFixed(2)}/${cycle} [${category}]`);
+      console.log(`Detected recurring: ${finalDisplayName} £${avgAmount.toFixed(2)}/${cycle} [${category}]${rule ? ' (from merchant rules)' : ''}`);
     }
   }
 
