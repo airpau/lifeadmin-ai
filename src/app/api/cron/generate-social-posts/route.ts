@@ -78,14 +78,14 @@ export async function GET(request: NextRequest) {
       if (platform === 'facebook' && process.env.META_ACCESS_TOKEN && savedPost) {
         try {
           const fbResult = await postToFacebook(template.content, template.hashtags, imageData || undefined);
-          if (fbResult.id) {
+          if (fbResult.postId) {
             await supabase.from('social_posts').update({
               status: 'published',
               published_at: new Date().toISOString(),
-              external_id: fbResult.id,
+              external_id: fbResult.postId,
             }).eq('id', savedPost.id);
             posted = true;
-            console.log(`Auto-posted to Facebook: ${fbResult.id}`);
+            console.log(`Auto-posted to Facebook: ${fbResult.postId}`);
           }
         } catch (fbErr: any) {
           console.error(`Facebook auto-post failed:`, fbErr.message);
