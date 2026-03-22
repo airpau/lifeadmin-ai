@@ -53,14 +53,27 @@ export async function POST() {
       continue;
     }
 
-    // Fetch accounts if we don't have them stored, or if bank_name is missing
+    // Fetch accounts and extract bank name
     let accountIds = connection.account_ids || [];
     if (accountIds.length === 0 || !connection.bank_name) {
       try {
         const accounts = await fetchAccounts(accessToken);
+        console.log('TrueLayer accounts response:', JSON.stringify(accounts.map(a => ({
+          id: a.account_id, type: a.account_type, display_name: a.display_name,
+          provider: a.provider, description: a.description,
+        }))));
+
         accountIds = accounts.map((a) => a.account_id);
-        const displayNames = accounts.map((a) => a.display_name || 'Unknown Account');
-        const bankName = accounts[0]?.display_name || null;
+        const displayNames = accounts.map((a) => {
+          const parts = [a.display_name, a.description].filter(Boolean);
+          return parts.join(' — ') || 'Account';
+        });
+
+        // Bank name: prefer provider.display_name, then account display_name
+        const bankName = accounts[0]?.provider?.display_name
+          || accounts[0]?.display_name
+          || null;
+
         await supabase
           .from('bank_connections')
           .update({
@@ -70,6 +83,8 @@ export async function POST() {
             updated_at: new Date().toISOString(),
           })
           .eq('id', connection.id);
+
+        console.log(`Bank name resolved: "${bankName}" for connection ${connection.id}`);
       } catch (err) {
         console.error('Failed to fetch accounts:', err);
         if (accountIds.length === 0) continue;

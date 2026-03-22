@@ -72,9 +72,12 @@ export async function GET(request: NextRequest) {
   try {
     const accounts = await fetchAccounts(tokens.access_token);
     accountIds = accounts.map((a) => a.account_id);
-    accountDisplayNames = accounts.map((a) => a.display_name || 'Unknown Account');
-    // Use the first account's display name as the bank name
-    bankName = accounts[0]?.display_name || null;
+    accountDisplayNames = accounts.map((a) => {
+      const parts = [a.display_name, a.description].filter(Boolean);
+      return parts.join(' — ') || 'Account';
+    });
+    // Bank name: prefer provider.display_name, then account display_name
+    bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
     console.log(`TrueLayer callback: ${accounts.length} accounts found, bank="${bankName}"`);
   } catch (err) {
     console.error('Failed to fetch accounts:', err);

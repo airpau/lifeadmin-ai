@@ -27,6 +27,12 @@ export interface TrueLayerAccount {
     number?: string;
     sort_code?: string;
   };
+  provider?: {
+    display_name?: string;
+    provider_id?: string;
+    logo_uri?: string;
+  };
+  description?: string;
 }
 
 export interface TrueLayerTransaction {
