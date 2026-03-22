@@ -48,6 +48,7 @@ export default function SubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
+  const [cancelInfo, setCancelInfo] = useState<{ email?: string; phone?: string; url?: string; method: string; tips?: string } | null>(null);
   const [cancellationEmail, setCancellationEmail] = useState<CancellationEmail | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -227,8 +228,11 @@ export default function SubscriptionsPage() {
           providerName: subscription.provider_name,
           amount: subscription.amount,
           billingCycle: subscription.billing_cycle,
-          accountEmail: subscription.account_email,
+          accountEmail: subscription.account_email || cancelInfo?.email,
           category: subscription.category,
+          cancelMethod: cancelInfo?.method,
+          cancelEmail: cancelInfo?.email,
+          cancelPhone: cancelInfo?.phone,
           feedback,
           previousEmail,
         }),
@@ -601,6 +605,11 @@ export default function SubscriptionsPage() {
                 onClick={() => {
                   setSelectedSub(sub);
                   setCancellationEmail(null);
+                  setCancelInfo(null);
+                  fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(sub.provider_name)}`)
+                    .then(r => r.json())
+                    .then(d => setCancelInfo(d.info || null))
+                    .catch(() => {});
                 }}
               >
                 <div className="flex items-start justify-between">
@@ -785,13 +794,53 @@ export default function SubscriptionsPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-12">
-              <Mail className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-400">
-                {selectedSub
-                  ? `Click "Generate Cancellation Email" on ${selectedSub.provider_name}`
-                  : 'Select a subscription and click Generate to create an AI cancellation email'}
-              </p>
+            <div className="space-y-4">
+              {/* Cancellation method info */}
+              {selectedSub && cancelInfo && (
+                <div className="bg-slate-950 rounded-xl p-5 border border-slate-800">
+                  <h4 className="text-sm font-semibold text-amber-400 mb-3">How to cancel {selectedSub.provider_name}</h4>
+                  <p className="text-sm text-slate-300 mb-3">{cancelInfo.method}</p>
+                  {cancelInfo.tips && (
+                    <p className="text-xs text-slate-400 mb-3">{cancelInfo.tips}</p>
+                  )}
+                  <div className="space-y-2">
+                    {cancelInfo.email && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail className="h-3.5 w-3.5 text-slate-500" />
+                        <a href={`mailto:${cancelInfo.email}`} className="text-amber-400 hover:text-amber-300 underline">{cancelInfo.email}</a>
+                      </div>
+                    )}
+                    {cancelInfo.phone && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-slate-500 text-xs">Tel</span>
+                        <a href={`tel:${cancelInfo.phone.split('/')[0].trim().replace(/\s/g, '')}`} className="text-amber-400 hover:text-amber-300">{cancelInfo.phone}</a>
+                      </div>
+                    )}
+                    {cancelInfo.url && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-slate-500 text-xs">Web</span>
+                        <a href={cancelInfo.url} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 underline truncate">{cancelInfo.url.replace('https://', '')}</a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedSub && !cancelInfo && (
+                <div className="bg-slate-950 rounded-xl p-5 border border-slate-800">
+                  <h4 className="text-sm font-semibold text-slate-400 mb-2">Cancel {selectedSub.provider_name}</h4>
+                  <p className="text-xs text-slate-500">Generate a cancellation letter below. Our AI will suggest the best approach based on the subscription type.</p>
+                </div>
+              )}
+
+              {!selectedSub && (
+                <div className="text-center py-12">
+                  <Mail className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+                  <p className="text-slate-400">
+                    Select a subscription to see cancellation options and generate a cancellation letter
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

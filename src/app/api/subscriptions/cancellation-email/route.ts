@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { subscriptionId, providerName, amount, billingCycle, accountEmail, category, feedback, previousEmail } = body;
+    const { subscriptionId, providerName, amount, billingCycle, accountEmail, category, cancelMethod, cancelEmail, cancelPhone, feedback, previousEmail } = body;
 
     if (!providerName) {
       return NextResponse.json({ error: 'Missing providerName' }, { status: 400 });
@@ -125,6 +125,9 @@ Provider: ${providerName}
 Category: ${category || 'unknown'}
 Cost: £${amount}/${billingCycle === 'yearly' ? 'year' : billingCycle === 'quarterly' ? 'quarter' : 'month'}
 ${accountEmail ? `Account email: ${accountEmail}` : ''}
+${cancelEmail ? `Known cancellation email: ${cancelEmail}` : ''}
+${cancelPhone ? `Known cancellation phone: ${cancelPhone}` : ''}
+${cancelMethod ? `Known cancellation method: ${cancelMethod}` : ''}
 
 LEGAL CONTEXT FOR THIS TYPE OF PAYMENT:
 ${legalContext}
