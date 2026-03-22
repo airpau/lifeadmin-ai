@@ -138,7 +138,7 @@ export default function ProfilePage() {
     ['active', 'trialing'].includes(profile?.subscription_status ?? '');
   const hasActiveStripe = !!profile?.stripe_subscription_id;
   const effectiveTier = hasActiveSubscription
-    ? profile.subscription_tier
+    ? (profile.subscription_tier || 'free')
     : 'free';
 
   const subscriptionBadge = () => {
