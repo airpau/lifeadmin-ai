@@ -2,7 +2,7 @@
 
 import posthog from 'posthog-js';
 import { PostHogProvider as PHProvider } from 'posthog-js/react';
-import { useEffect, Suspense, useState } from 'react';
+import { useEffect, Suspense } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -58,21 +58,6 @@ function PostHogIdentify() {
 }
 
 export default function PostHogProvider({ children }: { children: React.ReactNode }) {
-  const [debugInfo, setDebugInfo] = useState<string>('');
-
-  useEffect(() => {
-    // Debug: check PostHog state after a delay
-    setTimeout(() => {
-      const info = [
-        `loaded: ${posthog.__loaded}`,
-        `distinct_id: ${posthog.get_distinct_id?.() || 'N/A'}`,
-        `key: ${POSTHOG_KEY.substring(0, 10)}...`,
-      ].join(', ');
-      console.log('[PostHog] Debug:', info);
-      setDebugInfo(info);
-    }, 2000);
-  }, []);
-
   return (
     <PHProvider client={posthog}>
       <Suspense fallback={null}>
@@ -80,12 +65,6 @@ export default function PostHogProvider({ children }: { children: React.ReactNod
         <PostHogIdentify />
       </Suspense>
       {children}
-      {/* Temporary debug banner — remove after confirming PostHog works */}
-      {debugInfo && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, background: '#1a1a2e', color: '#0f0', fontSize: '10px', padding: '2px 8px', zIndex: 9999, opacity: 0.7 }}>
-          PH: {debugInfo}
-        </div>
-      )}
     </PHProvider>
   );
 }
