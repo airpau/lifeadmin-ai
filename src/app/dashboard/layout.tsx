@@ -16,6 +16,7 @@ import {
   X,
   ShieldAlert,
   BarChart3,
+  Gift,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -26,6 +27,7 @@ const navItems = [
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Spending', href: '/dashboard/spending', icon: BarChart3 },
+  { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 

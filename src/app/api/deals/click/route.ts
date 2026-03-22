@@ -20,6 +20,11 @@ export async function POST(request: Request) {
       awin_mid,
     });
 
+    // Award loyalty points for exploring deals
+    import('@/lib/loyalty').then(({ awardPoints }) => {
+      awardPoints(user.id, 'deal_clicked', { provider, category });
+    }).catch(() => {});
+
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ ok: true });

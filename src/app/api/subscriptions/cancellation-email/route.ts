@@ -215,6 +215,11 @@ Return as JSON with keys: subject (string), body (string)`;
       });
     }
 
+    // Award loyalty points
+    import('@/lib/loyalty').then(({ awardPoints }) => {
+      awardPoints(user.id, 'cancellation_email', { provider: providerName });
+    }).catch(() => {});
+
     return NextResponse.json({
       subject: result.subject,
       body: result.body,

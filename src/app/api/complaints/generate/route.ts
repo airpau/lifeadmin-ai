@@ -113,6 +113,11 @@ export async function POST(request: NextRequest) {
     await recordClaudeCall(user.id, usageCheck.tier);
     await incrementUsage(user.id, 'complaint_generated');
 
+    // Award loyalty points
+    import('@/lib/loyalty').then(({ awardPoints }) => {
+      awardPoints(user.id, 'complaint_generated', { company: body.companyName });
+    }).catch(() => {});
+
     return NextResponse.json({ ...result, taskId: task?.id });
   } catch (error: any) {
     console.error('Complaint generation error:', error);
