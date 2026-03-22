@@ -6,19 +6,18 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/ingest/static/:path*",
-        destination: "https://eu-assets.i.posthog.com/static/:path*",
+        destination: "https://us-assets.i.posthog.com/static/:path*",
       },
       {
         source: "/ingest/:path*",
-        destination: "https://eu.i.posthog.com/:path*",
+        destination: "https://us.i.posthog.com/:path*",
       },
       {
         source: "/ingest/decide",
-        destination: "https://eu.i.posthog.com/decide",
+        destination: "https://us.i.posthog.com/decide",
       },
     ];
   },
-  // Required to prevent header stripping on proxied requests
   skipTrailingSlashRedirect: true,
 };
 
