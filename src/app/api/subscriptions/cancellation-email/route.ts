@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const CANCEL_MODEL = 'claude-haiku-3-20240307';
+const CANCEL_MODEL = 'claude-haiku-4-5-20251001';
 
 export async function POST(request: NextRequest) {
   try {

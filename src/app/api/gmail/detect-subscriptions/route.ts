@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const DETECT_MODEL = 'claude-haiku-3-20240307';
+  const DETECT_MODEL = 'claude-haiku-4-5-20251001';
   logClaudeCall({
     userId: user.id,
     route: '/api/gmail/detect-subscriptions',

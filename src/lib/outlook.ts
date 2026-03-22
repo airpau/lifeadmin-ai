@@ -122,7 +122,7 @@ export async function scanOutlookForOpportunities(accessToken: string) {
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const OUTLOOK_MODEL = 'claude-haiku-3-20240307';
+  const OUTLOOK_MODEL = 'claude-haiku-4-5-20251001';
   const emailSummaries = messages
     .slice(0, 15)
     .map(

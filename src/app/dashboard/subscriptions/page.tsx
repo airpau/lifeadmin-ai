@@ -20,6 +20,8 @@ interface Subscription {
   account_email: string | null;
   cancel_requested_at: string | null;
   source?: 'manual' | 'email' | 'bank' | 'bank_and_email';
+  bank_description?: string | null;
+  notes?: string | null;
 }
 
 interface BankConnection {
@@ -589,13 +591,18 @@ export default function SubscriptionsPage() {
                     </div>
                     <div className="flex items-center gap-4 text-sm text-slate-400">
                       {sub.category && (
-                        <span className="capitalize">{sub.category}</span>
+                        <span className="capitalize bg-slate-800 px-2 py-0.5 rounded text-xs">{sub.category.replace('_', ' ')}</span>
                       )}
                       <span>£{sub.amount.toFixed(2)}/{sub.billing_cycle === 'one-time' ? 'once' : sub.billing_cycle}</span>
                       {sub.next_billing_date && (
                         <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
                       )}
                     </div>
+                    {sub.source === 'bank' && sub.bank_description && (
+                      <p className="text-xs text-slate-500 mt-1 truncate max-w-md" title={sub.bank_description}>
+                        Bank: {sub.bank_description}
+                      </p>
+                    )}
                     {sub.last_used_date && (
                       <p className="text-xs text-slate-500 mt-1">
                         Last used: {new Date(sub.last_used_date).toLocaleDateString('en-GB')}

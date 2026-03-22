@@ -208,7 +208,7 @@ export async function scanEmailsForOpportunities(
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const SCAN_MODEL = 'claude-haiku-3-20240307';
+  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
   const emailSummaries = emails
     .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${e.body}`)
     .join('\n\n');
