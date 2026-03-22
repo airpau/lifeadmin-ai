@@ -1,62 +1,78 @@
 'use client';
 
 import posthog from 'posthog-js';
-import { PostHogProvider as PHProvider, usePostHog } from 'posthog-js/react';
-import { useEffect, Suspense } from 'react';
+import { PostHogProvider as PHProvider } from 'posthog-js/react';
+import { useEffect, Suspense, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 const POSTHOG_KEY = 'phc_GNRV5alJCSp3SMcZzo4BgdTy0HcbttVIH4hakfBjv97';
-const POSTHOG_HOST = '/ingest';
 
+// Init at module level — runs once when JS loads in browser
 if (typeof window !== 'undefined') {
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
-    ui_host: 'https://eu.posthog.com',
-    person_profiles: 'identified_only',
-    capture_pageview: false, // we capture manually below
-    capture_pageleave: true,
-    loaded: (posthog) => {
-      if (process.env.NODE_ENV === 'development') posthog.debug();
-    },
-  });
+  console.log('[PostHog] Initializing...');
+  try {
+    posthog.init(POSTHOG_KEY, {
+      api_host: 'https://eu.i.posthog.com',
+      person_profiles: 'identified_only',
+      capture_pageview: false,
+      capture_pageleave: true,
+      loaded: (ph) => {
+        console.log('[PostHog] Loaded successfully, distinct_id:', ph.get_distinct_id());
+      },
+    });
+    console.log('[PostHog] init() called, __loaded:', posthog.__loaded);
+  } catch (e) {
+    console.error('[PostHog] Init failed:', e);
+  }
 }
 
 function PostHogPageView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const ph = usePostHog();
 
   useEffect(() => {
-    if (pathname && ph) {
+    if (pathname) {
       let url = window.origin + pathname;
-      if (searchParams?.toString()) {
-        url = url + '?' + searchParams.toString();
-      }
-      ph.capture('$pageview', { $current_url: url });
+      if (searchParams?.toString()) url += '?' + searchParams.toString();
+      console.log('[PostHog] Capturing pageview:', url);
+      posthog.capture('$pageview', { $current_url: url });
     }
-  }, [pathname, searchParams, ph]);
+  }, [pathname, searchParams]);
 
   return null;
 }
 
 function PostHogIdentify() {
-  const ph = usePostHog();
-
   useEffect(() => {
-    if (!ph) return;
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
-        ph.identify(user.id, { email: user.email });
+        console.log('[PostHog] Identifying user:', user.id);
+        posthog.identify(user.id, { email: user.email });
       }
     });
-  }, [ph]);
+  }, []);
 
   return null;
 }
 
 export default function PostHogProvider({ children }: { children: React.ReactNode }) {
+  const [debugInfo, setDebugInfo] = useState<string>('');
+
+  useEffect(() => {
+    // Debug: check PostHog state after a delay
+    setTimeout(() => {
+      const info = [
+        `loaded: ${posthog.__loaded}`,
+        `distinct_id: ${posthog.get_distinct_id?.() || 'N/A'}`,
+        `key: ${POSTHOG_KEY.substring(0, 10)}...`,
+      ].join(', ');
+      console.log('[PostHog] Debug:', info);
+      setDebugInfo(info);
+    }, 2000);
+  }, []);
+
   return (
     <PHProvider client={posthog}>
       <Suspense fallback={null}>
@@ -64,6 +80,12 @@ export default function PostHogProvider({ children }: { children: React.ReactNod
         <PostHogIdentify />
       </Suspense>
       {children}
+      {/* Temporary debug banner — remove after confirming PostHog works */}
+      {debugInfo && (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, background: '#1a1a2e', color: '#0f0', fontSize: '10px', padding: '2px 8px', zIndex: 9999, opacity: 0.7 }}>
+          PH: {debugInfo}
+        </div>
+      )}
     </PHProvider>
   );
 }
