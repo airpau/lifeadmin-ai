@@ -16,6 +16,13 @@ export default function Home() {
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
 
   useEffect(() => {
+    // Capture referral code from URL and persist
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (ref) {
+      localStorage.setItem('pb_ref', ref);
+    }
+
     if (WAITLIST_MODE) {
       fetch('/api/waitlist')
         .then((res) => res.json())

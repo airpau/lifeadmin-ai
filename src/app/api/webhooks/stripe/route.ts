@@ -95,6 +95,13 @@ export async function POST(request: NextRequest) {
           .select('id, subscription_tier')
           .single();
 
+        // Process referral subscription reward
+        if (!updateError && userId) {
+          import('@/lib/referrals').then(({ processReferralSubscription }) => {
+            processReferralSubscription(userId);
+          }).catch(() => {});
+        }
+
         if (updateError) {
           console.error('Webhook: profile update FAILED:', updateError.message);
         } else {

@@ -66,7 +66,18 @@ export default function SignupPage() {
           mobile_number: mobile.trim() || null,
         }).eq('id', data.user!.id);
 
-        capture('user_signed_up', { email });
+        // Process referral if ref code present
+        const refCode = searchParams.get('ref') || localStorage.getItem('pb_ref');
+        if (refCode && data.user) {
+          fetch('/api/referrals/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ referralCode: refCode, userId: data.user.id, email }),
+          }).catch(() => {});
+          localStorage.removeItem('pb_ref');
+        }
+
+        capture('user_signed_up', { email, referral: refCode || undefined });
         router.push('/dashboard');
         router.refresh();
       } else {
