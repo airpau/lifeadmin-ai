@@ -9,6 +9,14 @@
       "schedule": "0 10 * * *"
     },
     {
+      "path": "/api/cron/renewal-reminders",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/deal-alerts",
+      "schedule": "0 9 * * 1"
+    },
+    {
       "path": "/api/cron/generate-social-posts",
       "schedule": "0 8 * * 1"
     },
