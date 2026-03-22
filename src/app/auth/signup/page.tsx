@@ -10,6 +10,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Mail, Lock, User, Phone, Sparkles, CheckCircle2 } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
+import { capture } from '@/lib/posthog';
 
 export default function SignupPage() {
   const [firstName, setFirstName] = useState('');
@@ -65,9 +66,11 @@ export default function SignupPage() {
           mobile_number: mobile.trim() || null,
         }).eq('id', data.user!.id);
 
+        capture('user_signed_up', { email });
         router.push('/dashboard');
         router.refresh();
       } else {
+        capture('user_signup_verify', { email });
         router.push('/auth/signup?verify=true');
       }
     } catch (err: any) {

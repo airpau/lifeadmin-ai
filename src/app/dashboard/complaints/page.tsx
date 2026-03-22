@@ -6,6 +6,7 @@ export const runtime = 'edge';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw, X, ThumbsUp, Pencil } from 'lucide-react';
+import { capture } from '@/lib/posthog';
 import UpgradeModal from '@/components/UpgradeModal';
 
 interface Task {
@@ -295,6 +296,7 @@ function ComplaintsPageInner() {
 
       if (!res.ok) throw new Error(data.error || 'Failed to generate letter');
       setResult(data);
+      capture('complaint_generated', { company: formData.companyName, amount: formData.amount });
     } catch (error) {
       console.error('Error:', error);
       alert('Failed to generate complaint letter. Please try again.');

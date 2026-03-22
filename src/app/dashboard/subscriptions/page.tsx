@@ -6,6 +6,7 @@ export const runtime = 'edge';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { capture } from '@/lib/posthog';
 
 interface Subscription {
   id: string;
@@ -118,6 +119,7 @@ export default function SubscriptionsPage() {
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
       setBankToast('Bank connected! We\'ve synced your last 12 months of transactions.');
+      capture('bank_connected');
       const t = setTimeout(() => setBankToast(null), 5000);
       return () => clearTimeout(t);
     }
@@ -245,6 +247,7 @@ export default function SubscriptionsPage() {
         setCancellationEmail(data);
         setCancelFeedback('');
         setShowCancelFeedback(false);
+        capture('cancellation_email_generated', { provider: subscription.provider_name, category: subscription.category });
         await fetchSubscriptions();
       }
     } catch (error: any) {
@@ -322,6 +325,7 @@ export default function SubscriptionsPage() {
         await fetchBankConnection();
         await fetchSubscriptions();
         setBankToast('Sync complete!');
+        capture('bank_synced');
         setTimeout(() => setBankToast(null), 3000);
       } else {
         const data = await res.json().catch(() => ({}));

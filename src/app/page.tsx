@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale, Users, CreditCard, Bell, Gift, Banknote, FileText, Zap, BarChart3, Building2, Check, X } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
+import { capture } from '@/lib/posthog';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -43,6 +44,7 @@ export default function Home() {
       const data = await res.json();
       if (data.count) setWaitlistCount(data.count);
       setSuccess(true);
+      capture('waitlist_signup', { email, count: data.count });
       setName('');
       setEmail('');
     } catch (err: any) {

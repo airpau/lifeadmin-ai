@@ -8,6 +8,7 @@ import { PRICE_IDS } from '@/lib/stripe';
 import Image from 'next/image';
 import { Check, Sparkles, TrendingUp, Zap, Users } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
+import { capture } from '@/lib/posthog';
 
 const plans = [
   {
@@ -99,6 +100,7 @@ export default function PricingPage() {
     setLoading(planName);
 
     try {
+      capture('checkout_started', { priceId, billingCycle, planName });
       console.log('Stripe checkout: sending request', { priceId, billingCycle });
       const res = await fetch('/api/stripe/checkout', {
         method: 'POST',

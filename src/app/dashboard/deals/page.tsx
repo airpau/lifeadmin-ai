@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Tag, Loader2 } from 'lucide-react';
 
+import { capture } from '@/lib/posthog';
+
 const AWIN_AFF_ID = '!!!REPLACE_WITH_AWIN_ID!!!';
 
 interface Deal {
@@ -164,6 +166,7 @@ function DealCard({ deal }: { deal: Deal }) {
           awin_mid: deal.awinMid,
         }),
       });
+      capture('deal_clicked', { provider: deal.provider, category: deal.category });
     } catch {
       // Non-fatal — still navigate
     } finally {
