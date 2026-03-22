@@ -540,7 +540,7 @@ function ComplaintsPageInner() {
                   value={formData.issueDescription}
                   onChange={(e) => setFormData({ ...formData, issueDescription: e.target.value })}
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                  placeholder="Explain what went wrong, when it happened, and any impact on you..."
+                  placeholder="Explain what went wrong, when it happened, and any impact on you. You can paste email content here too. Examples: debt recovery letters, billing disputes, service complaints, unfair charges..."
                 />
               </div>
 

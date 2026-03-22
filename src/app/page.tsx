@@ -148,8 +148,8 @@ export default function Home() {
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <FileText className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">AI Complaint Letters</h3>
-                <p className="text-slate-400 text-sm mb-3">Generate formal complaint letters in seconds. Every letter cites the exact UK legislation that applies — Consumer Rights Act 2015, Ofcom, FCA, Ofgem rules. Companies take these seriously.</p>
+                <h3 className="text-lg font-semibold text-white mb-2">AI Complaint and Debt Response Letters</h3>
+                <p className="text-slate-400 text-sm mb-3">Generate formal complaint letters and debt dispute responses in seconds. Every letter cites exact UK legislation — Consumer Rights Act, Consumer Credit Act, Protection from Harassment Act. Fight unfair debt recovery, billing disputes, and service complaints.</p>
                 <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">3 free per month</span>
               </div>
 
@@ -450,9 +450,27 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Trust indicators */}
-          <div className="text-center mb-16">
-            <p className="text-slate-500 text-sm">UK consumer law trained · GDPR compliant · Read-only access · FCA-regulated Open Banking · Not legal advice</p>
+          {/* Data Security */}
+          <div className="max-w-3xl mx-auto mb-16 bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold text-white mb-3 text-center">Your data is safe with us</h3>
+            <div className="grid sm:grid-cols-2 gap-4 text-sm">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                <span className="text-slate-400">Your data is stored in the UK/EU and is GDPR compliant. We are the data controller.</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                <span className="text-slate-400">AI processing uses Anthropic (Claude), who are contractually prohibited from using your data for training.</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                <span className="text-slate-400">Bank connections use TrueLayer (FCA regulated). We never see or store your banking credentials.</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                <span className="text-slate-400">All data is encrypted at rest and in transit. You can delete your account and all data at any time.</span>
+              </div>
+            </div>
           </div>
         </main>
 

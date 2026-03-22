@@ -24,6 +24,13 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Energy sector: Gas Act 1986 / Electricity Act 1989, Ofgem Standards of Conduct
 - Telecoms: Communications Act 2003, Ofcom General Conditions
 - Financial services: Financial Services and Markets Act 2000, FCA Consumer Duty (July 2023)
+- Debt recovery: Consumer Credit Act 1974, Financial Conduct Authority CONC (Consumer Credit sourcebook)
+- Statute-barred debts: Limitation Act 1980, s.5 — debts become unenforceable after 6 years (5 in Scotland)
+- Debt harassment: Protection from Harassment Act 1997 — creditors must not harass, threaten, or use deceptive practices
+- Disputed debts: creditor must prove the debt exists and is owed by providing a signed credit agreement (Consumer Credit Act 1974, s.78)
+- Default notices: Consumer Credit Act 1974, s.87-88 — creditor must serve valid default notice before taking enforcement action
+- Gym/leisure debts: these are often unenforceable if no signed credit agreement exists, especially if service was cancelled
+- Unfair contract terms: Consumer Rights Act 2015, Part 2 — terms must be fair and transparent
 
 ## Regulatory escalation paths:
 - Energy: Ofgem → Energy Ombudsman (after 8 weeks or deadlock letter)
@@ -31,6 +38,8 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Financial services: FCA → Financial Ombudsman Service
 - General retail: Trading Standards → Consumer Ombudsman
 - Public transport: Transport Focus → Transport Select Committee
+- Debt collection: FCA → Financial Ombudsman Service (if regulated debt collector)
+- Debt harassment: report to Trading Standards, complain to FCA, consider police report under Protection from Harassment Act
 
 ## Writing rules:
 - Formal UK business letter format with date, addressee, subject line
