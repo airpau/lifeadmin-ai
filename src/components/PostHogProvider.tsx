@@ -9,22 +9,14 @@ import { createClient } from '@/lib/supabase/client';
 const POSTHOG_KEY = 'phc_GNRV5alJCSp3SMcZzo4BgdTy0HcbttVIH4hakfBjv97';
 
 // Init at module level — runs once when JS loads in browser
-if (typeof window !== 'undefined') {
-  console.log('[PostHog] Initializing...');
-  try {
-    posthog.init(POSTHOG_KEY, {
-      api_host: 'https://eu.i.posthog.com',
-      person_profiles: 'identified_only',
-      capture_pageview: false,
-      capture_pageleave: true,
-      loaded: (ph) => {
-        console.log('[PostHog] Loaded successfully, distinct_id:', ph.get_distinct_id());
-      },
-    });
-    console.log('[PostHog] init() called, __loaded:', posthog.__loaded);
-  } catch (e) {
-    console.error('[PostHog] Init failed:', e);
-  }
+if (typeof window !== 'undefined' && !posthog.__loaded) {
+  posthog.init(POSTHOG_KEY, {
+    api_host: 'https://eu.i.posthog.com',
+    person_profiles: 'always',
+    capture_pageview: true,
+    capture_pageleave: true,
+    autocapture: true,
+  });
 }
 
 function PostHogPageView() {
