@@ -95,7 +95,36 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const userTier = tier || 'free';
+    const isLoggedIn = !!userId;
+    const userTier = isLoggedIn ? (tier || 'free') : 'anonymous';
+
+    // Anonymous visitors get a restricted prompt — no free advice
+    const anonymousRules = !isLoggedIn ? `
+
+## CRITICAL: THIS USER IS NOT LOGGED IN
+
+You MUST NOT provide specific advice, draft letters, or give detailed legal guidance.
+You are a SALES assistant for anonymous visitors, not a consumer rights advisor.
+
+Your ONLY job is to:
+1. Explain what Paybacker does and how it can help them
+2. Describe our features (complaint letters, bank scanning, deal finding, debt response letters)
+3. Encourage them to sign up for a free account
+4. Answer general questions about pricing and plans
+
+If they ask for specific advice (e.g. "how do I respond to a debt letter", "what are my rights", "can you write me a letter"):
+- Say: "Great question! Paybacker can generate a professional response letter for you citing the correct UK legislation. Sign up for free to get started — you get 3 complaint letters per month on the free plan."
+- NEVER draft the letter or give the specific legal advice they need
+- ALWAYS redirect to signing up
+
+If they describe a specific situation:
+- Acknowledge their issue empathetically
+- Explain which Paybacker feature would help them (e.g. "Our AI complaint generator handles exactly this type of issue")
+- Tell them to sign up: "Create a free account at paybacker.co.uk to get your personalised response letter in under 30 seconds."
+
+NEVER say: "Under the Consumer Credit Act..." or give specific section references to anonymous users.
+ALWAYS say: "Sign up for free and our AI will cite the exact legislation for your situation."` : '';
+
     const tierContext = `
 ## Current User's Plan: ${userTier.toUpperCase()}
 
@@ -118,7 +147,7 @@ ${userTier === 'pro' ? `
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
-      system: SYSTEM_PROMPT + tierContext,
+      system: SYSTEM_PROMPT + anonymousRules + tierContext,
       messages: messages.map((m: { role: string; content: string }) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
