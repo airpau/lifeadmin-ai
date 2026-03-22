@@ -42,10 +42,11 @@ export default function ChatWidget() {
     setLoading(true);
 
     try {
+      const distinctId = typeof window !== 'undefined' ? localStorage.getItem('pb_distinct_id') : null;
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages, tier: userTier }),
+        body: JSON.stringify({ messages: updatedMessages, tier: userTier, distinctId }),
       });
 
       const data = await res.json();

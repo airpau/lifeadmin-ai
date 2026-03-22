@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdmin } from '@supabase/supabase-js';
 
 export const maxDuration = 30;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+function getAdmin() {
+  return createAdmin(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 const SYSTEM_PROMPT = `You are the Paybacker support assistant. You help users understand how Paybacker works and answer questions about UK consumer rights.
 
@@ -64,7 +73,17 @@ You are a friendly, knowledgeable support assistant. You ONLY discuss:
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, tier } = body;
+    const { messages, tier, distinctId } = body;
+
+    // Try to get logged-in user (may be null for anonymous visitors)
+    let userId: string | null = null;
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id || null;
+    } catch {
+      // Anonymous user — that's fine
+    }
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages required' }, { status: 400 });
@@ -111,6 +130,30 @@ ${userTier === 'pro' ? `
     if (text.type !== 'text') {
       return NextResponse.json({ error: 'Unexpected response' }, { status: 500 });
     }
+
+    // Track cost — Haiku: input $0.80/1M, output $4/1M
+    const inputTokens = response.usage?.input_tokens || 0;
+    const outputTokens = response.usage?.output_tokens || 0;
+    const inputCost = inputTokens * 0.0000008;
+    const outputCost = outputTokens * 0.000004;
+    const estimatedCost = parseFloat((inputCost + outputCost).toFixed(6));
+
+    // Log to agent_runs using service role (bypasses RLS, works for anonymous users)
+    const admin = getAdmin();
+    admin.from('agent_runs').insert({
+      user_id: userId || null,
+      agent_type: 'chatbot',
+      model_name: 'claude-haiku-4-5-20251001',
+      status: 'completed',
+      input_data: { message_count: messages.length, tier: userTier, distinct_id: distinctId || null },
+      output_data: { reply_length: text.text.length },
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      estimated_cost: estimatedCost,
+      completed_at: new Date().toISOString(),
+    }).then(({ error }) => {
+      if (error) console.error('Chat cost tracking failed:', error.message);
+    });
 
     return NextResponse.json({ reply: text.text });
   } catch (error: any) {
