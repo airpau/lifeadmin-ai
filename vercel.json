@@ -26,7 +26,7 @@
     },
     {
       "path": "/api/cron/email-monitor",
-      "schedule": "0 8,14 * * *"
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/generate-social-posts",
