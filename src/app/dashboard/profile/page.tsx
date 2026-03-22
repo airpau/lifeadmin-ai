@@ -133,9 +133,11 @@ export default function ProfilePage() {
     ? new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : 'Unknown';
 
-  const hasActiveStripe = profile?.stripe_subscription_id &&
+  // Trust the DB tier — covers both Stripe-paying and manually upgraded users
+  const hasActiveSubscription = profile?.subscription_tier && profile.subscription_tier !== 'free' &&
     ['active', 'trialing'].includes(profile?.subscription_status ?? '');
-  const effectiveTier = (profile?.subscription_tier && profile.subscription_tier !== 'free' && hasActiveStripe)
+  const hasActiveStripe = !!profile?.stripe_subscription_id;
+  const effectiveTier = hasActiveSubscription
     ? profile.subscription_tier
     : 'free';
 
