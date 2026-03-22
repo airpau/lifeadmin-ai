@@ -139,7 +139,7 @@ export default function Home() {
           <div className="max-w-6xl mx-auto mb-24">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Everything you need to take control of your money</h2>
-              <p className="text-slate-400 text-lg max-w-2xl mx-auto">Six powerful AI agents working around the clock to save you money, fight your corner, and find you better deals.</p>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto">AI-powered tools working around the clock to save you money, fight your corner, and find you better deals.</p>
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -148,19 +148,19 @@ export default function Home() {
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <FileText className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">AI Complaint and Debt Response Letters</h3>
-                <p className="text-slate-400 text-sm mb-3">Generate formal complaint letters and debt dispute responses in seconds. Every letter cites exact UK legislation — Consumer Rights Act, Consumer Credit Act, Protection from Harassment Act. Fight unfair debt recovery, billing disputes, and service complaints.</p>
+                <h3 className="text-lg font-semibold text-white mb-2">AI Complaint and Debt Letters</h3>
+                <p className="text-slate-400 text-sm mb-3">Generate formal complaint letters, debt dispute responses, and refund requests in seconds. Every letter cites exact UK legislation. Fight unfair charges, debt recovery, and service failures.</p>
                 <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">3 free per month</span>
               </div>
 
               {/* Feature 2 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <ScanSearch className="h-6 w-6 text-blue-500" />
+                <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <Building2 className="h-6 w-6 text-purple-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Inbox Scanner</h3>
-                <p className="text-slate-400 text-sm mb-3">Connect your email and our AI scans for billing notifications, price increases, subscription confirmations, and savings opportunities hiding in your inbox.</p>
-                <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Bank Scanning</h3>
+                <p className="text-slate-400 text-sm mb-3">Connect your bank account securely. We automatically detect every subscription, direct debit, and recurring payment. Free users get a one-time scan. Paid users get daily auto-sync.</p>
+                <span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-1 rounded-full">One-time scan free</span>
               </div>
 
               {/* Feature 3 */}
@@ -169,58 +169,58 @@ export default function Home() {
                   <CreditCard className="h-6 w-6 text-green-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Subscription Tracker</h3>
-                <p className="text-slate-400 text-sm mb-3">See every subscription in one place. Bank feeds and email scanning combined give you the complete picture — what you pay, when it renews, and what you can cancel.</p>
-                <span className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded-full">Unlimited on paid plans</span>
+                <p className="text-slate-400 text-sm mb-3">See every subscription in one place with smart categorisation. Know exactly what you pay for mortgages, loans, utilities, broadband, streaming, and more. Cancel anything with one click.</p>
+                <span className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded-full">Unlimited on all plans</span>
               </div>
 
               {/* Feature 4 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Building2 className="h-6 w-6 text-purple-500" />
+                <div className="bg-rose-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <Scale className="h-6 w-6 text-rose-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Open Banking</h3>
-                <p className="text-slate-400 text-sm mb-3">Connect your bank account securely via TrueLayer. We read your transactions to detect every recurring payment — including direct debits and card subscriptions email scanning misses.</p>
-                <span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-1 rounded-full">Pro plan</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Personalised Deal Finder</h3>
+                <p className="text-slate-400 text-sm mb-3">We know what you pay and find cheaper alternatives. Energy, broadband, mobile, insurance, mortgages, credit cards, and loans. "You pay £45 for Sky — switch to CommunityFibre for £25."</p>
+                <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">All plans</span>
               </div>
 
               {/* Feature 5 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-rose-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Scale className="h-6 w-6 text-rose-500" />
+                <div className="bg-indigo-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <FileText className="h-6 w-6 text-indigo-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Deal Finder</h3>
-                <p className="text-slate-400 text-sm mb-3">Compare energy, broadband, insurance, mobile, mortgages, credit cards and loans. We know what you currently pay and find cheaper alternatives. Switch and start saving immediately.</p>
-                <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">Available on all plans</span>
+                <h3 className="text-lg font-semibold text-white mb-2">HMRC and Government Letters</h3>
+                <p className="text-slate-400 text-sm mb-3">Tax rebate claims, council tax band challenges, DVLA disputes, NHS complaints, parking charge appeals, and flight delay compensation. All with the correct legal references.</p>
+                <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded-full">All plans</span>
               </div>
 
               {/* Feature 6 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Bell className="h-6 w-6 text-amber-500" />
+                <div className="bg-sky-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <BarChart3 className="h-6 w-6 text-sky-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">AI Deal Alerts</h3>
-                <p className="text-slate-400 text-sm mb-3">Get personalised emails before your subscriptions renew with better deals we have found for you. Timed alerts at 30, 14, and 7 days before renewal so you never overpay.</p>
-                <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Spending Intelligence</h3>
+                <p className="text-slate-400 text-sm mb-3">See where every pound goes with 25 spending categories. Monthly trends, income vs outgoings, and smart savings suggestions. Know exactly how much you spend on energy, groceries, transport, and more.</p>
+                <span className="text-xs text-sky-400 bg-sky-500/10 px-2 py-1 rounded-full">Basic free, full on Essential+</span>
               </div>
 
               {/* Feature 7 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-emerald-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Zap className="h-6 w-6 text-emerald-500" />
+                <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <Bell className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Auto-Cancellation</h3>
-                <p className="text-slate-400 text-sm mb-3">Found a subscription you do not use? Paybacker drafts and sends the cancellation email for you, citing your legal right to cancel. Review it, approve it, done.</p>
-                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Renewal Reminders and Deal Alerts</h3>
+                <p className="text-slate-400 text-sm mb-3">Get emailed 30, 14, and 7 days before any subscription renews with better deals we have found. Weekly personalised savings digest based on your actual bills. Never overpay again.</p>
+                <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
               </div>
 
               {/* Feature 8 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-sky-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <BarChart3 className="h-6 w-6 text-sky-500" />
+                <div className="bg-emerald-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <Zap className="h-6 w-6 text-emerald-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Spending Insights</h3>
-                <p className="text-slate-400 text-sm mb-3">Monthly spending trends, category breakdowns, and alerts when your costs increase. Powered by Open Banking data so you always know where your money goes.</p>
-                <span className="text-xs text-sky-400 bg-sky-500/10 px-2 py-1 rounded-full">Pro plan</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Smart Cancellation</h3>
+                <p className="text-slate-400 text-sm mb-3">For every subscription, we show you exactly how to cancel — email address, phone number, direct link, and tips. Then generate a legally-backed cancellation letter with one click.</p>
+                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
               </div>
 
               {/* Feature 9 */}
@@ -228,9 +228,9 @@ export default function Home() {
                 <div className="bg-yellow-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <Gift className="h-6 w-6 text-yellow-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Loyalty Rewards</h3>
-                <p className="text-slate-400 text-sm mb-3">Earn points every time you save money — complaints filed, subscriptions cancelled, deals switched. Redeem points for discounts on your Paybacker subscription. The more you save, the more you earn.</p>
-                <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-full">Paid members</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Loyalty Rewards and Referrals</h3>
+                <p className="text-slate-400 text-sm mb-3">Earn points every time you use Paybacker — complaints filed, deals explored, subscriptions cancelled. Refer friends for bonus points. Redeem points for money off your subscription.</p>
+                <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-full">All members</span>
               </div>
             </div>
           </div>
@@ -304,17 +304,20 @@ export default function Home() {
                 </thead>
                 <tbody className="text-sm">
                   {[
-                    { feature: 'AI complaint letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { feature: 'AI complaint and debt letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { feature: 'HMRC, council tax, DVLA, NHS letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { feature: 'Flight delay compensation claims', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
                     { feature: 'Subscription tracker', free: true, essential: true, pro: true },
                     { feature: 'Personalised deals page', free: true, essential: true, pro: true },
                     { feature: 'AI support chatbot', free: true, essential: true, pro: true },
+                    { feature: 'Loyalty rewards and referrals', free: true, essential: true, pro: true },
                     { feature: 'Bank scan', free: 'One-time', essential: '1 bank, daily sync', pro: 'Unlimited banks' },
                     { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
-                    { feature: 'Cancellation emails', free: false, essential: true, pro: true },
-                    { feature: 'Renewal reminders', free: false, essential: true, pro: true },
+                    { feature: 'Smart cancellation with legal letters', free: false, essential: true, pro: true },
+                    { feature: 'Renewal reminders (30/14/7 days)', free: false, essential: true, pro: true },
                     { feature: 'Targeted deal alerts', free: 'Weekly digest', essential: 'Personalised', pro: 'Priority alerts' },
-                    { feature: 'Email scanning', free: false, essential: false, pro: 'Coming soon' },
-                    { feature: 'Auto-cancel on your behalf', free: false, essential: false, pro: 'Coming soon' },
+                    { feature: 'Email inbox scanning', free: false, essential: false, pro: 'Coming soon' },
+                    { feature: 'Automated cancellations', free: false, essential: false, pro: 'Coming soon' },
                     { feature: 'Priority support', free: false, essential: false, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-slate-800/50">
