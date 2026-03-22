@@ -48,15 +48,14 @@ export default function RootLayout({
             `,
           }}
         />
-        {/* Google Analytics GA4 — uncomment and add measurement ID when ready
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX" />
+        {/* Google Analytics GA4 */}
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-GRL9XKYTN1" />
         <script dangerouslySetInnerHTML={{ __html: `
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
-          gtag('config', 'G-XXXXXXXXXX');
+          gtag('config', 'G-GRL9XKYTN1');
         `}} />
-        */}
       </head>
       <body className="min-h-full flex flex-col">
         <PostHogProvider>
