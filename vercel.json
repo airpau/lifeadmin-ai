@@ -25,6 +25,10 @@
       "schedule": "0 9 * * 3,5"
     },
     {
+      "path": "/api/cron/email-monitor",
+      "schedule": "0 8,14 * * *"
+    },
+    {
       "path": "/api/cron/generate-social-posts",
       "schedule": "0 9 * * 1"
     }
