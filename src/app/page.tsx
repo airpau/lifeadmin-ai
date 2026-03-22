@@ -283,33 +283,32 @@ export default function Home() {
                     <th className="py-4 pr-4 text-slate-400 font-medium text-sm">Feature</th>
                     <th className="py-4 px-4 text-center">
                       <div className="text-white font-bold">Free</div>
-                      <div className="text-slate-500 text-xs mt-1">Try Paybacker with 3 complaint letters. See what we can do.</div>
+                      <div className="text-slate-500 text-xs mt-1">See what Paybacker can do — one bank scan included.</div>
                     </th>
                     <th className="py-4 px-4 text-center bg-amber-500/5 rounded-t-xl">
                       <div className="text-amber-400 font-bold">Essential — £9.99/mo</div>
-                      <div className="text-slate-400 text-xs mt-1">Scan your inbox, find subscriptions, and cancel them automatically.</div>
+                      <div className="text-slate-400 text-xs mt-1">Keep your finances on track with daily bank sync and full insights.</div>
                     </th>
                     <th className="py-4 px-4 text-center">
                       <div className="text-purple-400 font-bold">Pro — £19.99/mo</div>
-                      <div className="text-slate-400 text-xs mt-1">Full financial picture with Open Banking and spending insights.</div>
+                      <div className="text-slate-400 text-xs mt-1">Complete financial control — unlimited banks and premium features.</div>
                     </th>
                   </tr>
                 </thead>
                 <tbody className="text-sm">
                   {[
                     { feature: 'AI complaint letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { feature: 'UK consumer law citations', free: true, essential: true, pro: true },
                     { feature: 'Subscription tracker', free: true, essential: true, pro: true },
-                    { feature: 'Deal comparison', free: true, essential: true, pro: true },
-                    { feature: 'Email inbox scanner', free: false, essential: true, pro: true },
-                    { feature: 'Auto-cancellation emails', free: false, essential: true, pro: true },
-                    { feature: 'AI deal finder alerts', free: false, essential: true, pro: true },
-                    { feature: 'Open Banking connection', free: false, essential: false, pro: true },
-                    { feature: 'Spending insights dashboard', free: false, essential: false, pro: true },
-                    { feature: 'Loyalty rewards programme', free: false, essential: true, pro: true },
-                    { feature: 'Annual savings report', free: false, essential: true, pro: true },
-                    { feature: 'Priority support', free: false, essential: true, pro: true },
-                    { feature: 'Dedicated account manager', free: false, essential: false, pro: true },
+                    { feature: 'Personalised deals page', free: true, essential: true, pro: true },
+                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
+                    { feature: 'Bank scan', free: 'One-time', essential: '1 bank, daily sync', pro: 'Unlimited banks' },
+                    { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
+                    { feature: 'Cancellation emails', free: false, essential: true, pro: true },
+                    { feature: 'Renewal reminders', free: false, essential: true, pro: true },
+                    { feature: 'Targeted deal alerts', free: 'Weekly digest', essential: 'Personalised', pro: 'Priority alerts' },
+                    { feature: 'Email scanning', free: false, essential: false, pro: 'Coming soon' },
+                    { feature: 'Auto-cancel on your behalf', free: false, essential: false, pro: 'Coming soon' },
+                    { feature: 'Priority support', free: false, essential: false, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-slate-800/50">
                       <td className="py-3 pr-4 text-slate-300">{row.feature}</td>

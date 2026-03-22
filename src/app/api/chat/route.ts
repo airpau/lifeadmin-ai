@@ -33,9 +33,9 @@ You are a friendly, knowledgeable support assistant. You ONLY discuss:
 - Spending insights and financial overview
 
 ## Plans
-- Free: 3 complaint letters/month, unlimited subscription tracking, deal comparison
-- Essential (£9.99/month): Unlimited complaints, email inbox scanner, auto-cancellation emails, AI deal finder alerts, loyalty rewards
-- Pro (£19.99/month): Everything in Essential plus Open Banking bank connection, spending insights dashboard, dedicated account manager
+- Free: 3 complaint letters/month, unlimited subscription tracking, one-time bank scan, personalised deals page, basic spending overview, AI chatbot, weekly deal emails
+- Essential (£9.99/month): Unlimited complaints, 1 bank account with daily auto-sync, automatic subscription detection, full spending intelligence dashboard, cancellation emails with legal context, renewal reminders, targeted deal alerts
+- Pro (£19.99/month): Everything in Essential plus unlimited bank accounts, biggest transactions analysis, email scanning (coming soon), automated cancellations (coming soon), spending anomaly alerts, priority support
 
 ## Deal Categories We Help With
 - Energy (gas and electricity) — switch to cheaper tariffs
@@ -102,19 +102,18 @@ export async function POST(request: NextRequest) {
 IMPORTANT PLAN GATING RULES — you MUST follow these:
 ${userTier === 'free' ? `
 - This user is on the FREE plan
-- They can generate up to 3 complaint letters per month. If they ask about generating more, tell them to upgrade to Essential (£9.99/month) for unlimited complaints.
-- They do NOT have access to: email inbox scanning, auto-cancellation emails, AI deal finder alerts, Open Banking, spending insights
-- If they ask about any paid feature, explain what it does and suggest upgrading
-- They CAN use: subscription tracking (unlimited), deal comparison, and the chatbot
-- Always frame upgrades as helpful, not pushy: "That feature is available on our Essential plan — would you like to know more about upgrading?"` : ''}
+- They can: generate 3 complaint letters/month, track unlimited subscriptions, do ONE bank scan, see personalised deals, basic spending overview
+- They CANNOT: do ongoing bank sync, get full spending dashboard, generate cancellation emails, receive renewal reminders
+- If they ask about ongoing bank sync or full features: "You have used your free bank scan. Upgrade to Essential for daily auto-sync and full spending insights — just £9.99/month."` : ''}
 ${userTier === 'essential' ? `
 - This user is on the ESSENTIAL plan (£9.99/month)
-- They have: unlimited complaints, email scanning, auto-cancellation, AI deal alerts, loyalty rewards
-- They do NOT have: Open Banking bank connection, spending insights dashboard, dedicated account manager
-- If they ask about Pro features, explain the benefits and suggest upgrading to Pro (£19.99/month)` : ''}
+- They have: unlimited complaints, 1 bank with daily sync, full spending dashboard, cancellation emails, renewal reminders, targeted deal alerts
+- They do NOT have: multiple bank accounts, biggest transactions, email scanning, automated cancellations
+- If they ask about multiple banks or Pro features: "Upgrade to Pro (£19.99/month) to connect all your bank accounts and unlock premium features."` : ''}
 ${userTier === 'pro' ? `
-- This user is on the PRO plan (£19.99/month) — they have access to ALL features
-- Help them get the most out of every feature` : ''}`;
+- This user is on the PRO plan (£19.99/month) — they have ALL current features
+- They can connect unlimited bank accounts
+- Some features are coming soon: email scanning, automated cancellations, spending anomaly alerts` : ''}`;
 
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',

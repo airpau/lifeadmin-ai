@@ -31,11 +31,20 @@ export async function GET(request: NextRequest) {
 
   const supabase = getAdmin();
 
-  // Get all active bank connections
+  // Get active bank connections for paid users only (Essential + Pro)
+  // Free users get one-time scan only, not daily sync
+  const { data: paidUsers } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('subscription_tier', ['essential', 'pro']);
+
+  const paidUserIds = (paidUsers || []).map(u => u.id);
+
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('*')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .in('user_id', paidUserIds.length > 0 ? paidUserIds : ['00000000-0000-0000-0000-000000000000']);
 
   if (connError || !connections || connections.length === 0) {
     return NextResponse.json({ ok: true, synced: 0, reason: 'No active connections' });

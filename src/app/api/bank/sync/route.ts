@@ -14,13 +14,22 @@ export async function POST() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Block free-tier users at API level
+  // Free users: allow one-time scan only (check if already synced before)
   const plan = await getUserPlan(user.id);
   if (plan.tier === 'free') {
-    return NextResponse.json(
-      { error: 'Upgrade to Essential to use this feature', upgradeRequired: true },
-      { status: 403 }
-    );
+    const { data: connections } = await supabase
+      .from('bank_connections')
+      .select('last_synced_at')
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+
+    const hasSyncedBefore = connections?.some(c => c.last_synced_at !== null);
+    if (hasSyncedBefore) {
+      return NextResponse.json(
+        { error: 'Free plan includes one initial bank scan. Upgrade to Essential for daily auto-sync.', upgradeRequired: true },
+        { status: 403 }
+      );
+    }
   }
 
   // Fetch active bank connections

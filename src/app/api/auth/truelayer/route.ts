@@ -11,6 +11,33 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Check bank connection limits by tier
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('subscription_tier')
+    .eq('id', user.id)
+    .single();
+
+  const tier = profile?.subscription_tier || 'free';
+
+  const { data: existingConnections } = await supabase
+    .from('bank_connections')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'active');
+
+  const connectionCount = existingConnections?.length || 0;
+
+  // Free + Essential: 1 bank max, Pro: unlimited
+  if ((tier === 'free' || tier === 'essential') && connectionCount >= 1) {
+    return NextResponse.json({
+      error: tier === 'free'
+        ? 'Free plan includes 1 bank connection. Upgrade to Pro for multiple banks.'
+        : 'Essential plan includes 1 bank connection. Upgrade to Pro for multiple banks.',
+      upgradeRequired: true,
+    }, { status: 403 });
+  }
+
   const clientId = process.env.TRUELAYER_CLIENT_ID;
   const redirectUri = process.env.TRUELAYER_REDIRECT_URI;
 
