@@ -27,6 +27,7 @@ interface SpendingData {
     monthly_avg: number;
     percentage: number;
   }>;
+  category_transactions: Record<string, Array<{ description: string; total: number; count: number; monthly_avg: number }>>;
   monthly_spend: Array<{ month: string; spend: number; income: number }>;
   biggest_transactions: Array<{ description: string; amount: number; category: string; date: string }>;
 }
@@ -197,10 +198,10 @@ export default function SpendingPage() {
                   </div>
                 </button>
 
-                {/* Expanded detail */}
+                {/* Expanded detail with individual payments */}
                 {isExpanded && isPaid && (
                   <div className="ml-12 mt-2 mb-3 bg-slate-950/50 rounded-lg p-4 border border-slate-800">
-                    <div className="grid grid-cols-3 gap-4 mb-3">
+                    <div className="grid grid-cols-3 gap-4 mb-4">
                       <div>
                         <p className="text-slate-500 text-xs">Total ({summary.months_analysed}mo)</p>
                         <p className="text-white font-semibold">£{cat.total.toLocaleString()}</p>
@@ -214,6 +215,26 @@ export default function SpendingPage() {
                         <p className="text-white font-semibold">{cat.percentage}%</p>
                       </div>
                     </div>
+
+                    {/* Individual payments in this category */}
+                    {data.category_transactions?.[cat.category] && (
+                      <div className="space-y-1 mb-3">
+                        <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-2">Payments in this category</p>
+                        {data.category_transactions[cat.category].map((tx, j) => (
+                          <div key={j} className="flex items-center justify-between bg-slate-900/50 rounded px-3 py-2 text-sm">
+                            <div>
+                              <span className="text-white">{tx.description}</span>
+                              <span className="text-slate-600 text-xs ml-2">({tx.count} payments)</span>
+                            </div>
+                            <div className="flex items-center gap-4 shrink-0">
+                              <span className="text-slate-400 text-xs">£{tx.monthly_avg}/mo avg</span>
+                              <span className="text-white font-medium">£{tx.total.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <Link href="/dashboard/deals" className="text-amber-400 hover:text-amber-300 text-xs font-medium flex items-center gap-1">
                       Find better deals for {cat.label.toLowerCase()} <ArrowRight className="h-3 w-3" />
                     </Link>

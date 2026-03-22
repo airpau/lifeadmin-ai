@@ -187,6 +187,34 @@ export async function GET() {
 
     const monthCount = Math.max(Object.keys(monthlySpend).length, 1);
 
+    // Group transactions by category for drill-down
+    // Show unique merchants per category with their monthly average
+    const categoryTransactions: Record<string, Array<{ description: string; total: number; count: number; monthly_avg: number }>> = {};
+    for (const tx of debits) {
+      const cat = tx.spending_category;
+      if (!categoryTransactions[cat]) categoryTransactions[cat] = [];
+
+      const desc = tx.description || 'Unknown';
+      // Group by normalised description (first meaningful words)
+      const key = desc.replace(/\d{2}\/\d{2}\/\d{2}.*/, '').replace(/\d{2}[A-Z]{3}\d{2}.*/, '').replace(/FP \d.*/, '').trim().substring(0, 40);
+
+      const existing = categoryTransactions[cat].find(t => t.description === key);
+      if (existing) {
+        existing.total += Math.abs(tx.amount);
+        existing.count += 1;
+      } else {
+        categoryTransactions[cat].push({ description: key, total: Math.abs(tx.amount), count: 1, monthly_avg: 0 });
+      }
+    }
+
+    // Calculate monthly averages and sort
+    for (const cat of Object.keys(categoryTransactions)) {
+      categoryTransactions[cat] = categoryTransactions[cat]
+        .map(t => ({ ...t, monthly_avg: parseFloat((t.total / monthCount).toFixed(2)), total: parseFloat(t.total.toFixed(2)) }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 15); // Top 15 per category
+    }
+
     return NextResponse.json({
       hasData: true,
       summary: {
@@ -201,6 +229,7 @@ export async function GET() {
         monthly_avg_income: parseFloat((totalIncome / monthCount).toFixed(2)),
       },
       category_breakdown: categoryBreakdown,
+      category_transactions: categoryTransactions,
       monthly_spend: Object.entries(monthlySpend)
         .map(([month, total]) => ({ month, spend: parseFloat(total.toFixed(2)), income: parseFloat((monthlyIncome[month] || 0).toFixed(2)) }))
         .sort((a, b) => a.month.localeCompare(b.month)),
