@@ -5,6 +5,7 @@ import { AgentConfig } from '@/lib/agents/executive-agent';
 import { runCFOAgent } from '@/lib/agents/cfo-agent';
 import { runCTOAgent } from '@/lib/agents/cto-agent';
 import { runCAOAgent } from '@/lib/agents/cao-agent';
+import { runCMOAgent } from '@/lib/agents/cmo-agent';
 import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
@@ -24,6 +25,7 @@ const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
   cfo: runCFOAgent,
   cto: runCTOAgent,
   cao: runCAOAgent,
+  cmo: runCMOAgent,
   support_lead: runSupportLeadAgent,
   support_agent: runSupportAgent,
 };
@@ -123,7 +125,7 @@ export async function GET(request: NextRequest) {
         .eq('id', agent.id);
 
       // Email report to admin (for CFO, CTO, CAO — not support agents)
-      if (['cfo', 'cto', 'cao'].includes(agent.role)) {
+      if (['cfo', 'cto', 'cao', 'cmo'].includes(agent.role)) {
         try {
           await resend.emails.send({
             from: FROM_EMAIL,
