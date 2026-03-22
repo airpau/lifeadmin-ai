@@ -14,6 +14,7 @@ import {
   LogOut,
   Menu,
   X,
+  ShieldAlert,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -84,6 +85,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           );
         })}
+        {userEmail === 'aireypaul@googlemail.com' && (
+          <Link
+            href="/dashboard/admin"
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all min-h-[48px] mt-4 border-t border-slate-800 pt-4 ${
+              pathname === '/dashboard/admin'
+                ? 'bg-red-500 text-white font-semibold'
+                : 'text-red-400 hover:text-white hover:bg-red-500/10'
+            }`}
+          >
+            <ShieldAlert className="h-5 w-5 flex-shrink-0" />
+            <span>Admin</span>
+          </Link>
+        )}
       </nav>
 
       <div className="pt-6 border-t border-slate-800 mt-6">
