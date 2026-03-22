@@ -484,7 +484,9 @@ export default function Home() {
               <Link href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</Link>
               <Link href="/legal/terms" className="hover:text-white transition-all">Terms of Service</Link>
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
+              <a href="mailto:support@paybacker.co.uk" className="hover:text-white transition-all">Contact Us</a>
             </div>
+            <p>Need help? Email <a href="mailto:support@paybacker.co.uk" className="text-amber-500 hover:text-amber-400">support@paybacker.co.uk</a></p>
             <p>© 2026 Paybacker LTD. UK consumer law. Automated.</p>
           </div>
         </footer>

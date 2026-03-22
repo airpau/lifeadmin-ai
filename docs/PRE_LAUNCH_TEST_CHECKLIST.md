@@ -128,6 +128,25 @@
 - [ ] Subscriptions page usable
 - [ ] Chat widget positioned correctly (not blocking content)
 
+### 18. Government Forms
+- [ ] Go to /dashboard/forms
+- [ ] Select DVLA Address Change → enter new address in details + outcome
+- [ ] Generate letter → check the actual address is IN the letter (not a placeholder)
+- [ ] Select HMRC Tax Rebate → fill details → letter references correct legislation
+- [ ] Select Flight Delay → fill details → letter references UK261 with compensation amount
+- [ ] Select Debt Dispute → paste debt chase email → letter references Consumer Credit Act
+- [ ] Copy and PDF buttons work
+
+### 19. Letter Quality Check
+- [ ] Every generated letter includes ALL specific details the user provided
+- [ ] No placeholder text like [YOUR ADDRESS] or [REFERENCE NUMBER]
+- [ ] Legal references are correct for the type of letter
+- [ ] Desired outcome is clearly stated in the letter body
+
+### 20. Email Aliases
+- [ ] Send email to support@paybacker.co.uk → arrives at hello@paybacker.co.uk
+- [ ] Chatbot offers support email when user asks for human help
+
 ---
 
 ## After Each Test
