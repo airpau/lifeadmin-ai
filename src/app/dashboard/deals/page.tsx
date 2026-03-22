@@ -395,14 +395,14 @@ export default function DealsPage() {
       </div>
 
       {/* Personalised Recommendations */}
-      {recommendedDeals.length > 0 && (
+      {[...userProviders.entries()].length > 0 && (
         <section className="mb-10">
           <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-6">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-xl font-bold text-amber-400 mb-1">Recommended for you</h2>
                 <p className="text-slate-400 text-sm">
-                  Based on your tracked subscriptions and bills, we think these deals could save you money.
+                  Based on your bills, here are deals that could save you money.
                 </p>
               </div>
               {potentialSavings > 0 && (
@@ -412,21 +412,32 @@ export default function DealsPage() {
                 </div>
               )}
             </div>
-
-            {/* Show which subscriptions triggered recommendations */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              {[...userProviders.entries()].map(([cat, sub]) => (
-                <span key={cat} className="text-xs bg-slate-800 text-slate-300 px-3 py-1 rounded-full">
-                  {sub.provider_name} · £{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}
-                </span>
-              ))}
-            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {recommendedDeals.slice(0, 8).map((deal) => (
-              <DealCard key={`rec-${deal.id}`} deal={deal} />
-            ))}
+          {/* Per-subscription recommendations */}
+          <div className="space-y-6">
+            {[...userProviders.entries()].map(([cat, sub]) => {
+              const dealCats = CATEGORY_TO_DEALS[cat] || [];
+              const matchingDeals = dealCats.flatMap(dc => DEALS[dc] || []);
+              if (matchingDeals.length === 0) return null;
+
+              return (
+                <div key={cat}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">
+                      <span className="text-red-400 text-sm font-semibold">You pay £{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
+                      <span className="text-slate-400 text-sm ml-1">for {sub.provider_name}</span>
+                    </div>
+                    <span className="text-slate-500 text-xs">Could you get a better deal?</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {matchingDeals.map((deal) => (
+                      <DealCard key={`rec-${cat}-${deal.id}`} deal={deal} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
