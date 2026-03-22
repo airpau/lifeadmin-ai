@@ -99,11 +99,11 @@ export default function ProfilePage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        setPortalError(data.error || 'Please try again or contact support at hello@paybacker.co.uk');
+        setPortalError(data.error || 'Please try again or contact support at support@paybacker.co.uk');
         setPortalLoading(false);
       }
     } catch {
-      setPortalError('Failed to open billing portal. Please try again or contact support at hello@paybacker.co.uk');
+      setPortalError('Failed to open billing portal. Please try again or contact support at support@paybacker.co.uk');
       setPortalLoading(false);
     }
   };
@@ -116,7 +116,7 @@ export default function ProfilePage() {
       await supabase.auth.signOut();
       router.push('/?deleted=true');
     } catch {
-      alert('Failed to delete account. Please contact hello@paybacker.co.uk');
+      alert('Failed to delete account. Please contact support@paybacker.co.uk');
       setDeleting(false);
     }
   };

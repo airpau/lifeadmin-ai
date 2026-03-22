@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
       batch.map(async (subscriber) => {
         try {
           await resend.emails.send({
-            from: 'Paybacker <hello@paybacker.co.uk>',
+            from: 'Paybacker <noreply@paybacker.co.uk>',
             to: subscriber.email,
             subject: "Paybacker is live — you're in 🎉",
             html: buildEmailHtml(subscriber.email),

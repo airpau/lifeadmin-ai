@@ -35,15 +35,64 @@ Tier system that rewards usage and creates switching cost. Points accrue on ever
 
 **Points mechanics:**
 - £1 saved via complaint = 1 point
-- Subscription cancelled = 10 points
-- Deal switched via affiliate link = 25 points
+- Subscription cancelled via Paybacker = 10 points
+- Deal switched via affiliate link (confirmed conversion) = 25 points
+- Referral signup (friend joins paid plan) = 100 points
 - 500 points = £5 off next month's subscription (Stripe coupon auto-applied)
+
+**Affiliate Conversion Tracking:**
+- User clicks deal → `/api/deals/click` logs: user_id, provider, awin_link, timestamp
+- Awin postback URL configured to hit `/api/deals/conversion` when sale completes
+- Postback matched to user via click ID or sub-ID parameter embedded in affiliate link
+- On confirmed conversion: award 25 points, log to `point_events`, update `user_points` balance
+- Conversion data stored in `deal_conversions` table: user_id, provider, commission, awin_ref, converted_at
+
+**User-Facing Presentation:**
+- Dashboard sidebar: points balance, current tier badge, progress bar to next tier
+- Profile page: tier details, perks unlocked, points history
+- Rewards page: available rewards to redeem (£5 off, partner discounts, free month upgrade)
+- Monthly email digest: "You earned X points this month, you've saved £Y total with Paybacker"
+- Shareable annual savings card: "I saved £847 with Paybacker" → branded image for social sharing
+
+**Rewards Redemption Flow:**
+1. User views available rewards on rewards page
+2. Clicks "Redeem £5 off next month"
+3. System creates Stripe coupon (£5 off, single use) via API
+4. Coupon auto-applied to user's next invoice
+5. Points deducted from balance, logged in `point_events`
 
 **Implementation:**
 - `user_points` table: user_id, balance, lifetime_earned, tier
-- Points events logged on: complaint_sent, subscription_cancelled, affiliate_click_converted
+- `point_events` table: user_id, event_type, points, metadata, created_at
+- `deal_conversions` table: user_id, provider, click_id, commission, awin_ref, converted_at
+- Points events logged on: complaint_sent, subscription_cancelled, affiliate_click_converted, referral_converted
 - Tier computed from `profiles.created_at`, cached in session
 - Points balance shown in dashboard sidebar
+- `/api/deals/conversion` — Awin postback webhook endpoint
+- `/api/rewards/redeem` — creates Stripe coupon from points
+
+---
+
+### AI Deal Finder (Paid Feature — Essential + Pro)
+
+Automated personalised deal alert emails. Uses email scan + bank scan data to identify what the user pays for and find cheaper alternatives via Awin affiliate links.
+
+**How it works:**
+1. System knows user's subscriptions (provider, amount, renewal date) from email + bank scans
+2. Cron job checks upcoming renewals (30, 14, 7 days before)
+3. AI matches user's current deal against available Awin affiliate offers in the same category
+4. If a better deal exists: sends personalised email with comparison and affiliate link
+5. Email: "Your Sky broadband renews in 14 days at £45/mo — here are 3 better deals from £25/mo"
+
+**Plan gating:**
+- Free tier: sees generic deals on Deals tab (still earns affiliate clicks)
+- Essential/Pro: gets AI Deal Finder emails — personalised, timed to renewals, much higher conversion
+
+**Implementation:**
+- Cron: `/api/cron/deal-alerts` — runs daily, checks renewals within 30/14/7 days
+- Matches subscription category to Awin offers
+- Sends via Resend with affiliate-tracked links
+- Tracks opens/clicks for optimisation
 
 ---
 

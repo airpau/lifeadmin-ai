@@ -26,7 +26,7 @@ const Footer = () => `
       <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/>
       You're receiving this because you created a Paybacker account.<br/>
       <a href="https://paybacker.co.uk/legal/privacy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
-      <a href="mailto:hello@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
+      <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
     </p>
   </div>
 `;
@@ -280,7 +280,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Cancellation emails citing the Consumer Contracts Regulations 2013 right to cancel — sent professionally rather than emotionally — get a much higher response rate than "please cancel my account" messages.</p>
     </div>
 
-    <p style="${p}">Have you had a win with Paybacker? <a href="mailto:hello@paybacker.co.uk?subject=My Paybacker win" style="color:#f59e0b;">Reply and tell me</a> — I'd love to share your story (anonymously if you prefer).</p>
+    <p style="${p}">Have you had a win with Paybacker? <a href="mailto:support@paybacker.co.uk?subject=My Paybacker win" style="color:#f59e0b;">Reply and tell me</a> — I'd love to share your story (anonymously if you prefer).</p>
 
     <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Write a complaint now →</a>
   </div>

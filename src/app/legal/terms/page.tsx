@@ -81,7 +81,7 @@ export default function TermsPage() {
               <li>
                 Under the Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013,
                 you have a 14-day cooling-off period from the date of purchase. To exercise this right,
-                email <a href="mailto:hello@paybacker.co.uk" className="text-amber-400 hover:underline">hello@paybacker.co.uk</a>.
+                email <a href="mailto:support@paybacker.co.uk" className="text-amber-400 hover:underline">support@paybacker.co.uk</a>.
               </li>
             </ul>
           </section>
@@ -159,7 +159,7 @@ export default function TermsPage() {
             <h2 className="text-2xl font-bold text-white mb-4">13. Contact</h2>
             <p>
               Questions about these terms:{' '}
-              <a href="mailto:hello@paybacker.co.uk" className="text-amber-400 hover:underline">hello@paybacker.co.uk</a>
+              <a href="mailto:support@paybacker.co.uk" className="text-amber-400 hover:underline">support@paybacker.co.uk</a>
             </p>
           </section>
         </div>

@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 export const resend = new Resend(process.env.RESEND_API_KEY);
 
-// paybacker.co.uk domain is verified in Resend — RESEND_FROM_EMAIL env var set to 'Paybacker <hello@paybacker.co.uk>'
+// paybacker.co.uk domain is verified in Resend — RESEND_FROM_EMAIL set to noreply@, REPLY_TO set to support@
 export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>';
 export const REPLY_TO = 'support@paybacker.co.uk';
 
