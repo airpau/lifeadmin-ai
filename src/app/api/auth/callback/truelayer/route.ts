@@ -65,22 +65,25 @@ export async function GET(request: NextRequest) {
   const tokens = await tokenRes.json();
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-  // Fetch accounts list
+  // Fetch accounts list and bank names
   let accountIds: string[] = [];
+  let accountDisplayNames: string[] = [];
+  let bankName: string | null = null;
   try {
     const accounts = await fetchAccounts(tokens.access_token);
     accountIds = accounts.map((a) => a.account_id);
+    accountDisplayNames = accounts.map((a) => a.display_name || 'Unknown Account');
+    // Use the first account's display name as the bank name
+    bankName = accounts[0]?.display_name || null;
+    console.log(`TrueLayer callback: ${accounts.length} accounts found, bank="${bankName}"`);
   } catch (err) {
     console.error('Failed to fetch accounts:', err);
   }
 
   // Use first account ID as provider_id to identify the bank
-  // Same bank reconnecting → upsert updates tokens
-  // Different bank → creates new connection row
   const providerId = accountIds[0] || `truelayer_${Date.now()}`;
 
   // Store connection in DB (upsert on user_id + provider_id)
-  // Tokens are encrypted at rest using AES-256-GCM
   const { data: connection, error: upsertError } = await supabase
     .from('bank_connections')
     .upsert({
@@ -91,6 +94,8 @@ export async function GET(request: NextRequest) {
       refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
       token_expires_at: expiresAt,
       account_ids: accountIds,
+      account_display_names: accountDisplayNames,
+      bank_name: bankName,
       status: 'active',
       connected_at: new Date().toISOString(),
     }, { onConflict: 'user_id,provider_id' })

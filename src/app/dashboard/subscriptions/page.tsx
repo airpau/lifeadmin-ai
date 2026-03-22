@@ -31,6 +31,8 @@ interface BankConnection {
   last_synced_at: string | null;
   connected_at: string;
   account_ids: string[] | null;
+  bank_name: string | null;
+  account_display_names: string[] | null;
 }
 
 interface CancellationEmail {
@@ -393,13 +395,18 @@ export default function SubscriptionsPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-green-400 font-semibold text-sm">Bank connected</span>
+                    <span className="text-green-400 font-semibold text-sm">
+                      {conn.bank_name || 'Bank connected'}
+                    </span>
                     <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
                     {conn.account_ids && conn.account_ids.length > 1 && (
                       <span className="text-xs text-slate-500">{conn.account_ids.length} accounts</span>
                     )}
                   </div>
                   <p className="text-slate-500 text-xs">
+                    {conn.account_display_names && conn.account_display_names.length > 0 && (
+                      <span>{conn.account_display_names.join(', ')} · </span>
+                    )}
                     {conn.last_synced_at
                       ? `Last synced: ${new Date(conn.last_synced_at).toLocaleString('en-GB')}`
                       : 'Never synced'}

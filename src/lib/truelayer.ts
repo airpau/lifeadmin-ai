@@ -12,6 +12,7 @@ export interface BankConnection {
   refresh_token: string | null;
   token_expires_at: string | null;
   account_ids: string[] | null;
+  bank_name: string | null;
   status: string;
   last_synced_at: string | null;
 }
