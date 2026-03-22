@@ -106,8 +106,25 @@ export async function GET() {
       amount: parseFloat(String(tx.amount)),
     }));
 
-    // Split debits and credits
-    const debits = categorised.filter(tx => tx.amount < 0);
+    // Filter out transfers (internal account movements, not real spending)
+    // Also filter out ATM withdrawals (cash, not trackable spending)
+    const isTransfer = (tx: typeof categorised[0]) => {
+      const cat = tx.category?.toUpperCase() || '';
+      const desc = (tx.description || '').toLowerCase();
+      // Exclude: transfers between own accounts, Revolut top-ups, savings moves
+      if (cat === 'TRANSFER' && (
+        desc.includes('revolut') ||
+        desc.includes('savings') ||
+        desc.includes('monzo') ||
+        desc.includes('starling') ||
+        desc.includes('via mobile') ||
+        desc.includes('fp ') // Faster Payments between own accounts
+      )) return true;
+      return false;
+    };
+
+    // Split debits and credits, excluding internal transfers
+    const debits = categorised.filter(tx => tx.amount < 0 && !isTransfer(tx));
     const credits = categorised.filter(tx => tx.amount > 0);
 
     // Category totals (debits only, absolute values)
