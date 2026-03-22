@@ -9,6 +9,83 @@ const anthropic = new Anthropic({
 
 const CANCEL_MODEL = 'claude-haiku-4-5-20251001';
 
+// Category-specific legal context
+const CATEGORY_LEGAL_CONTEXT: Record<string, string> = {
+  council_tax: `This is a council tax payment to a local authority. Do NOT reference Consumer Contracts Regulations 2013 — council tax is a statutory obligation, not a consumer subscription. Instead:
+- If challenging the amount: reference Council Tax (Administration and Enforcement) Regulations 1992
+- If requesting a review of the band: reference the Valuation Office Agency process
+- If seeking exemption/discount: reference Council Tax (Exempt Dwellings) Order 1992 or Council Tax Reduction Schemes
+- If the property is empty: reference empty property exemptions
+Write the letter as a formal request to the council, not a cancellation email.`,
+
+  mortgage: `This is a mortgage payment. Do NOT reference Consumer Contracts Regulations 2013. Mortgages are regulated financial products. Instead:
+- Reference the Financial Conduct Authority (FCA) Mortgage Conduct of Business rules (MCOB)
+- If seeking early repayment: reference the right to make early repayments under the mortgage contract and ask for an Early Repayment Charge (ERC) statement
+- If disputing charges: reference the FCA's Treating Customers Fairly (TCF) principles
+- Suggest contacting the Financial Ombudsman Service if the complaint is not resolved within 8 weeks`,
+
+  loan: `This is a loan or credit agreement. Instead of Consumer Contracts Regulations 2013, reference:
+- Consumer Credit Act 1974 — right to early settlement under Section 94
+- Request a settlement figure and any early repayment charges
+- FCA Consumer Duty requirements for fair treatment
+- If the loan has unfair terms: reference Unfair Contract Terms Act 1977`,
+
+  insurance: `This is an insurance policy. Reference:
+- Consumer Insurance (Disclosure and Representations) Act 2012
+- FCA Insurance: Conduct of Business Sourcebook (ICOBS)
+- Right to cancel within 14-day cooling-off period (if applicable)
+- Request confirmation of any refund due for the unexpired portion
+- If renewal was automatic and unnotified: reference FCA rules requiring clear renewal notifications`,
+
+  utility: `This is a utility bill (energy/water). Reference:
+- For energy: Ofgem Standards of Conduct, Ofgem Supplier Guaranteed Standards
+- For water: Water Industry Act 1991, Ofwat Consumer Protection regulations
+- Request a final meter reading and final bill
+- Ask for any credit balance to be refunded within 10 working days (Ofgem requirement for energy)
+- Reference right to switch supplier without penalty (energy)`,
+
+  broadband: `This is a broadband/telecoms contract. Reference:
+- Communications Act 2003
+- Ofcom General Conditions of Entitlement
+- If in contract: ask about early termination charges and whether any Ofcom mid-contract price rise rules apply
+- If out of contract: confirm right to cancel with 30 days notice
+- Reference right to exit penalty-free if speeds are below Ofcom minimum guaranteed speed`,
+
+  mobile: `This is a mobile phone contract. Reference:
+- Communications Act 2003
+- Ofcom General Conditions
+- If in contract: request early termination charge details
+- If out of contract: confirm right to cancel with 30 days notice and request PAC code or STAC code
+- Reference Ofcom switching rules`,
+
+  streaming: `This is a streaming/digital subscription. Reference:
+- Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013
+- Right to cancel digital content subscriptions
+- Request confirmation of cancellation and final billing date
+- Ask for any pro-rata refund if cancelling mid-billing period`,
+
+  fitness: `This is a gym/fitness membership. Reference:
+- Consumer Rights Act 2015 — services must be performed with reasonable care and skill
+- If there is a minimum term: acknowledge it but request details of any early termination options
+- If the gym has changed terms/facilities: reference right to cancel due to material change
+- If cancelled during illness/injury: reference potential right to freeze or cancel under consumer protection law`,
+
+  gambling: `This is a gambling/betting account. Reference:
+- Gambling Act 2005
+- UK Gambling Commission's Social Responsibility Code
+- Request immediate account closure and self-exclusion if desired
+- Request any remaining balance to be returned
+- The operator must comply with self-exclusion requests`,
+
+  software: `This is a software/SaaS subscription. Reference:
+- Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013
+- Consumer Rights Act 2015 for digital content
+- Request cancellation and confirmation of final billing date
+- Ask about data export/deletion rights under GDPR`,
+};
+
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -19,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { subscriptionId, providerName, amount, billingCycle, accountEmail } = body;
+    const { subscriptionId, providerName, amount, billingCycle, accountEmail, category, feedback, previousEmail } = body;
 
     if (!providerName) {
       return NextResponse.json({ error: 'Missing providerName' }, { status: 400 });
@@ -35,21 +112,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const prompt = `Write a concise, professional cancellation email for a subscription to ${providerName}.
+    // Get category-specific legal context
+    const legalContext = CATEGORY_LEGAL_CONTEXT[category || ''] || CATEGORY_LEGAL_CONTEXT.streaming;
 
-Subscription details:
-- Provider: ${providerName}
-- Cost: £${amount}/${billingCycle === 'yearly' ? 'year' : 'month'}
-${accountEmail ? `- Account email: ${accountEmail}` : ''}
+    const feedbackSection = feedback && previousEmail
+      ? `\n\nThe user has reviewed a previous version and wants changes:\nPrevious email: ${previousEmail}\nUser's feedback: ${feedback}\n\nPlease regenerate incorporating their feedback.`
+      : '';
+
+    const prompt = `You are a UK consumer rights expert writing a formal letter on behalf of a consumer.
+
+Provider: ${providerName}
+Category: ${category || 'unknown'}
+Cost: £${amount}/${billingCycle === 'yearly' ? 'year' : billingCycle === 'quarterly' ? 'quarter' : 'month'}
+${accountEmail ? `Account email: ${accountEmail}` : ''}
+
+LEGAL CONTEXT FOR THIS TYPE OF PAYMENT:
+${legalContext}
 
 Requirements:
-- Subject line and email body
-- Polite but firm tone
-- Request written confirmation of cancellation
-- Ask for confirmation of the final billing date
-- Reference UK Consumer Contracts Regulations 2013 right to cancel
-- Keep it under 200 words
+- Write a professional, formal letter (not a casual email)
+- Use the correct legal references for this specific type of payment/subscription
+- Do NOT use Consumer Contracts Regulations 2013 unless the category is specifically a consumer subscription (streaming, software, etc.)
+- Request written confirmation
+- Ask for confirmation of final billing date and any refund due
+- Keep it under 250 words
 - Do not include placeholder brackets — write it ready to send
+- Include the sender's closing as "Yours faithfully" for formal letters${feedbackSection}
 
 Return as JSON with keys: subject (string), body (string)`;
 
@@ -57,8 +145,8 @@ Return as JSON with keys: subject (string), body (string)`;
       userId: user.id,
       route: '/api/subscriptions/cancellation-email',
       model: CANCEL_MODEL,
-      estimatedInputTokens: 300,
-      estimatedOutputTokens: 400,
+      estimatedInputTokens: 500,
+      estimatedOutputTokens: 500,
     });
 
     const message = await anthropic.messages.create({
@@ -89,9 +177,38 @@ Return as JSON with keys: subject (string), body (string)`;
         .eq('user_id', user.id);
     }
 
+    // Save to tasks + agent_runs for history
+    const { data: task } = await supabase
+      .from('tasks')
+      .insert({
+        user_id: user.id,
+        type: 'cancellation_email',
+        title: `Cancellation: ${providerName}`,
+        description: `Cancellation email for ${providerName} (${category || 'unknown'})`,
+        provider_name: providerName,
+        disputed_amount: amount ? parseFloat(amount) : null,
+        status: 'completed',
+      })
+      .select('id')
+      .single();
+
+    if (task) {
+      await supabase.from('agent_runs').insert({
+        task_id: task.id,
+        user_id: user.id,
+        agent_type: 'cancellation_writer',
+        model_name: CANCEL_MODEL,
+        status: 'completed',
+        input_data: { providerName, amount, billingCycle, category, accountEmail },
+        output_data: { subject: result.subject, body: result.body },
+        completed_at: new Date().toISOString(),
+      });
+    }
+
     return NextResponse.json({
       subject: result.subject,
       body: result.body,
+      taskId: task?.id,
     });
   } catch (error: any) {
     console.error('Cancellation email error:', error);

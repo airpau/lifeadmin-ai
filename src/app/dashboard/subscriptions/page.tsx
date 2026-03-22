@@ -204,10 +204,18 @@ export default function SubscriptionsPage() {
     }
   };
 
-  const handleCancelRequest = async (subscription: Subscription) => {
+  const [cancelFeedback, setCancelFeedback] = useState('');
+  const [showCancelFeedback, setShowCancelFeedback] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleCancelRequest = async (subscription: Subscription, feedback?: string, previousEmail?: string) => {
     setSelectedSub(subscription);
-    setGenerating(true);
-    setCancellationEmail(null);
+    if (!feedback) {
+      setGenerating(true);
+      setCancellationEmail(null);
+    } else {
+      setRegenerating(true);
+    }
     setCancellationError(null);
 
     try {
@@ -220,6 +228,9 @@ export default function SubscriptionsPage() {
           amount: subscription.amount,
           billingCycle: subscription.billing_cycle,
           accountEmail: subscription.account_email,
+          category: subscription.category,
+          feedback,
+          previousEmail,
         }),
       });
 
@@ -228,12 +239,15 @@ export default function SubscriptionsPage() {
         setCancellationError(data.error || 'Failed to generate cancellation email. Please try again.');
       } else {
         setCancellationEmail(data);
+        setCancelFeedback('');
+        setShowCancelFeedback(false);
         await fetchSubscriptions();
       }
     } catch (error: any) {
       setCancellationError(error.message || 'Failed to generate cancellation email. Please try again.');
     } finally {
       setGenerating(false);
+      setRegenerating(false);
     }
   };
 
@@ -684,6 +698,11 @@ export default function SubscriptionsPage() {
             </div>
           ) : cancellationEmail ? (
             <div className="space-y-4">
+              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 flex items-center gap-2 text-xs text-green-400">
+                <CheckCircle className="h-3.5 w-3.5" />
+                Saved to your complaint history
+              </div>
+
               <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
                 <p className="text-xs text-slate-500 mb-1">Subject</p>
                 <p className="text-white font-medium">{cancellationEmail.subject}</p>
@@ -695,6 +714,43 @@ export default function SubscriptionsPage() {
                   {cancellationEmail.body}
                 </pre>
               </div>
+
+              {/* Edit/Feedback section */}
+              {showCancelFeedback ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={cancelFeedback}
+                    onChange={(e) => setCancelFeedback(e.target.value)}
+                    placeholder="Tell the AI what to change (e.g. 'Make it more formal', 'Add reference to my 2 year contract ending', 'Include my account number 12345')"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 text-sm"
+                    rows={3}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => selectedSub && handleCancelRequest(selectedSub, cancelFeedback, cancellationEmail.body)}
+                      disabled={!cancelFeedback.trim() || regenerating}
+                      className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold py-2 rounded-lg transition-all text-sm"
+                    >
+                      {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {regenerating ? 'Regenerating...' : 'Regenerate'}
+                    </button>
+                    <button
+                      onClick={() => { setShowCancelFeedback(false); setCancelFeedback(''); }}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowCancelFeedback(true)}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg transition-all text-sm"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Request changes
+                </button>
+              )}
 
               <div className="flex gap-3">
                 <button
