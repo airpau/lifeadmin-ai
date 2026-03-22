@@ -24,9 +24,11 @@ interface Subscription {
 
 interface BankConnection {
   id: string;
+  provider_id: string | null;
   status: string;
   last_synced_at: string | null;
   connected_at: string;
+  account_ids: string[] | null;
 }
 
 interface CancellationEmail {
@@ -69,7 +71,7 @@ export default function SubscriptionsPage() {
     account_email: '',
     usage_frequency: 'sometimes',
   });
-  const [bankConnection, setBankConnection] = useState<BankConnection | null>(null);
+  const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [bankLoading, setBankLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -94,7 +96,7 @@ export default function SubscriptionsPage() {
       const res = await fetch('/api/bank/connection');
       if (res.ok) {
         const data = await res.json();
-        setBankConnection(data.connection || null);
+        setBankConnections(data.connections || []);
       }
     } catch (error) {
       console.error('Error fetching bank connection:', error);
@@ -312,12 +314,16 @@ export default function SubscriptionsPage() {
     }
   };
 
-  const handleDisconnectBank = async () => {
+  const handleDisconnectBank = async (connectionId?: string) => {
     setDisconnecting(true);
     try {
-      const res = await fetch('/api/bank/disconnect', { method: 'POST' });
+      const res = await fetch('/api/bank/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
       if (res.ok) {
-        setBankConnection(null);
+        setBankConnections((prev) => prev.filter((c) => c.id !== connectionId));
       }
     } catch (err) {
       console.error('Disconnect failed:', err);
@@ -373,35 +379,12 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* Bank connection card */}
+      {/* Bank connections */}
       {!bankLoading && (
-        <div className="mb-8">
-          {!bankConnection ? (
-            <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
-                  <Building2 className="h-6 w-6 text-blue-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-white font-semibold mb-1">🏦 Connect your bank for automatic detection</h3>
-                  <p className="text-slate-400 text-sm mb-1">
-                    We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
-                  </p>
-                  <p className="text-slate-500 text-xs">
-                    Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
-                  </p>
-                </div>
-                <a
-                  href="/api/auth/truelayer"
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
-                >
-                  <Building2 className="h-4 w-4" />
-                  Connect Bank Account
-                </a>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-slate-900/50 backdrop-blur-sm border border-green-500/30 rounded-2xl p-5">
+        <div className="mb-8 space-y-3">
+          {/* Show each connected bank */}
+          {bankConnections.map((conn) => (
+            <div key={conn.id} className="bg-slate-900/50 backdrop-blur-sm border border-green-500/30 rounded-2xl p-5">
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
                   <Wifi className="h-5 w-5 text-green-400" />
@@ -410,10 +393,13 @@ export default function SubscriptionsPage() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-green-400 font-semibold text-sm">Bank connected</span>
                     <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                    {conn.account_ids && conn.account_ids.length > 1 && (
+                      <span className="text-xs text-slate-500">{conn.account_ids.length} accounts</span>
+                    )}
                   </div>
                   <p className="text-slate-500 text-xs">
-                    {bankConnection.last_synced_at
-                      ? `Last synced: ${new Date(bankConnection.last_synced_at).toLocaleString('en-GB')}`
+                    {conn.last_synced_at
+                      ? `Last synced: ${new Date(conn.last_synced_at).toLocaleString('en-GB')}`
                       : 'Never synced'}
                   </p>
                 </div>
@@ -427,7 +413,7 @@ export default function SubscriptionsPage() {
                     {syncing ? 'Syncing...' : 'Sync Now'}
                   </button>
                   <button
-                    onClick={handleDisconnectBank}
+                    onClick={() => handleDisconnectBank(conn.id)}
                     disabled={disconnecting}
                     className="flex items-center gap-2 text-slate-500 hover:text-red-400 disabled:opacity-50 text-sm transition-all"
                   >
@@ -437,7 +423,38 @@ export default function SubscriptionsPage() {
                 </div>
               </div>
             </div>
-          )}
+          ))}
+
+          {/* Add another bank button */}
+          <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                <Building2 className="h-6 w-6 text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-white font-semibold mb-1">
+                  {bankConnections.length === 0
+                    ? 'Connect your bank for automatic detection'
+                    : 'Connect another bank account'}
+                </h3>
+                <p className="text-slate-400 text-sm mb-1">
+                  We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
+                </p>
+                {bankConnections.length === 0 && (
+                  <p className="text-slate-500 text-xs">
+                    Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
+                  </p>
+                )}
+              </div>
+              <a
+                href="/api/auth/truelayer"
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+              >
+                <Building2 className="h-4 w-4" />
+                {bankConnections.length === 0 ? 'Connect Bank Account' : 'Add Bank'}
+              </a>
+            </div>
+          </div>
         </div>
       )}
 

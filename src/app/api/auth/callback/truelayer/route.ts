@@ -74,20 +74,26 @@ export async function GET(request: NextRequest) {
     console.error('Failed to fetch accounts:', err);
   }
 
-  // Store connection in DB (upsert to avoid duplicates on reconnect)
+  // Use first account ID as provider_id to identify the bank
+  // Same bank reconnecting → upsert updates tokens
+  // Different bank → creates new connection row
+  const providerId = accountIds[0] || `truelayer_${Date.now()}`;
+
+  // Store connection in DB (upsert on user_id + provider_id)
   // Tokens are encrypted at rest using AES-256-GCM
   const { data: connection, error: upsertError } = await supabase
     .from('bank_connections')
     .upsert({
       user_id: user.id,
       provider: 'truelayer',
+      provider_id: providerId,
       access_token: encrypt(tokens.access_token),
       refresh_token: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
       token_expires_at: expiresAt,
       account_ids: accountIds,
       status: 'active',
       connected_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' })
+    }, { onConflict: 'user_id,provider_id' })
     .select()
     .single();
 
