@@ -11,7 +11,8 @@ const POSTHOG_KEY = 'phc_GNRV5alJCSp3SMcZzo4BgdTy0HcbttVIH4hakfBjv97';
 // Init at module level — runs once when JS loads in browser
 if (typeof window !== 'undefined' && !posthog.__loaded) {
   posthog.init(POSTHOG_KEY, {
-    api_host: 'https://eu.i.posthog.com',
+    api_host: window.location.origin + '/ingest',
+    ui_host: 'https://eu.posthog.com',
     person_profiles: 'always',
     capture_pageview: true,
     capture_pageleave: true,

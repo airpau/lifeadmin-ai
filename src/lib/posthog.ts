@@ -1,7 +1,7 @@
 import posthog from 'posthog-js';
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY || 'phc_GNRV5alJCSp3SMcZzo4BgdTy0HcbttVIH4hakfBjv97';
-const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || '/ingest';
+const POSTHOG_HOST = typeof window !== 'undefined' ? window.location.origin + '/ingest' : '/ingest';
 
 export function initPostHog() {
   if (typeof window === 'undefined') return;
