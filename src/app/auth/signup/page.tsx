@@ -77,6 +77,13 @@ export default function SignupPage() {
           localStorage.removeItem('pb_ref');
         }
 
+        // Send welcome email immediately
+        fetch('/api/auth/welcome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, name: firstName.trim() }),
+        }).catch(() => {});
+
         capture('user_signed_up', { email, referral: refCode || undefined });
         router.push('/dashboard');
         router.refresh();
