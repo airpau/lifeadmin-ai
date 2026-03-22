@@ -1,13 +1,15 @@
 import posthog from 'posthog-js';
 
+const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY || 'phc_dqaBtmz3wI10Lxsv7fvh4z75ZzdRZWyYh1aLLOSYf9r';
+const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://eu.i.posthog.com';
+
 export function initPostHog() {
   if (typeof window === 'undefined') return;
-  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
   if (posthog.__loaded) return;
 
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://eu.i.posthog.com',
-    capture_pageview: false, // we capture manually via PostHogProvider
+  posthog.init(POSTHOG_KEY, {
+    api_host: POSTHOG_HOST,
+    capture_pageview: false,
     capture_pageleave: true,
     person_profiles: 'identified_only',
   });
@@ -15,13 +17,11 @@ export function initPostHog() {
 
 export function capture(event: string, properties?: Record<string, unknown>) {
   if (typeof window === 'undefined') return;
-  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
   posthog.capture(event, properties);
 }
 
 export function identify(userId: string, traits?: Record<string, unknown>) {
   if (typeof window === 'undefined') return;
-  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
   posthog.identify(userId, traits);
 }
 
