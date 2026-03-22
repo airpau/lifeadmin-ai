@@ -281,15 +281,15 @@ export default function Home() {
                     <th className="py-4 pr-4 text-slate-400 font-medium text-sm">Feature</th>
                     <th className="py-4 px-4 text-center">
                       <div className="text-white font-bold">Free</div>
-                      <div className="text-slate-500 text-sm">£0/month</div>
+                      <div className="text-slate-500 text-xs mt-1">Try Paybacker with 3 complaint letters. See what we can do.</div>
                     </th>
                     <th className="py-4 px-4 text-center bg-amber-500/5 rounded-t-xl">
-                      <div className="text-amber-400 font-bold">Essential</div>
-                      <div className="text-slate-400 text-sm">£9.99/month</div>
+                      <div className="text-amber-400 font-bold">Essential — £9.99/mo</div>
+                      <div className="text-slate-400 text-xs mt-1">Scan your inbox, find subscriptions, and cancel them automatically.</div>
                     </th>
                     <th className="py-4 px-4 text-center">
-                      <div className="text-purple-400 font-bold">Pro</div>
-                      <div className="text-slate-400 text-sm">£19.99/month</div>
+                      <div className="text-purple-400 font-bold">Pro — £19.99/mo</div>
+                      <div className="text-slate-400 text-xs mt-1">Full financial picture with Open Banking and spending insights.</div>
                     </th>
                   </tr>
                 </thead>
@@ -348,7 +348,7 @@ export default function Home() {
             <div className="grid md:grid-cols-3 gap-8">
               <div className="text-center">
                 <div className="text-4xl font-bold text-amber-500 mb-2">£520</div>
-                <p className="text-slate-400 text-sm">Maximum flight delay compensation under UK261</p>
+                <p className="text-slate-400 text-sm">Up to £520 for flight delays (EU261/UK261 rights)</p>
               </div>
               <div className="text-center">
                 <div className="text-4xl font-bold text-amber-500 mb-2">£312</div>
