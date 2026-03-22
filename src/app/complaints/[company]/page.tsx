@@ -27,13 +27,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 const CATEGORY_LABELS: Record<string, string> = {
   energy: 'energy supplier',
+  water: 'water company',
   broadband: 'broadband provider',
   'broadband-tv': 'broadband and TV provider',
   mobile: 'mobile network',
+  insurance: 'insurance provider',
+  banking: 'bank',
   retail: 'retailer',
   streaming: 'streaming service',
   delivery: 'delivery company',
   gym: 'gym',
+  airline: 'airline',
+  transport: 'transport provider',
+  bnpl: 'buy now pay later provider',
+  payments: 'payment provider',
 };
 
 const REGULATOR_ESCALATION: Record<string, { name: string; url: string; description: string }> = {
@@ -54,6 +61,36 @@ const REGULATOR_ESCALATION: Record<string, { name: string; url: string; descript
     url: 'https://www.citizensadvice.org.uk',
     description:
       'For retail and delivery complaints, contact Citizens Advice for guidance. You may also have rights under the Consumer Rights Act 2015 to seek a refund, repair, or replacement through the courts (small claims).',
+  },
+  FCA: {
+    name: 'the Financial Ombudsman Service',
+    url: 'https://www.financial-ombudsman.org.uk',
+    description:
+      'If your financial services provider has not resolved your complaint within 8 weeks, you can escalate to the Financial Ombudsman Service (FOS). Their decisions are binding on the firm. The service is free.',
+  },
+  Ofwat: {
+    name: 'the Consumer Council for Water',
+    url: 'https://www.ccwater.org.uk',
+    description:
+      'For water company complaints, contact the Consumer Council for Water (CCW). They can investigate and help resolve disputes with your water supplier.',
+  },
+  CAA: {
+    name: 'the Civil Aviation Authority',
+    url: 'https://www.caa.co.uk/passengers/resolving-travel-problems/',
+    description:
+      'For flight delays over 3 hours, you may be entitled to up to £520 compensation under UK261. If the airline refuses, you can escalate to an ADR scheme approved by the CAA, or to the small claims court.',
+  },
+  'Transport Focus': {
+    name: 'Transport Focus',
+    url: 'https://www.transportfocus.org.uk',
+    description:
+      'For rail and public transport complaints, contact Transport Focus. They advocate for passengers and can help escalate unresolved complaints.',
+  },
+  TfL: {
+    name: 'Transport for London',
+    url: 'https://tfl.gov.uk/forms/12381',
+    description:
+      'For complaints about TfL-regulated services including Uber, contact TfL directly through their complaints form.',
   },
 };
 
