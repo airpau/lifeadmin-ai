@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 const POSTHOG_HOST = 'https://eu.posthog.com';
-const POSTHOG_PERSONAL_KEY = process.env.POSTHOG_PERSONAL_API_KEY || 'phx_ERfo6PaHu2AiqohwZoMIlHDOWWXygY49YrsB6WAWe1Xrm5N';
+const POSTHOG_PERSONAL_KEY = process.env.POSTHOG_PERSONAL_API_KEY!;
 
 async function posthogQuery(path: string) {
   const res = await fetch(`${POSTHOG_HOST}/api/projects/@current${path}`, {
