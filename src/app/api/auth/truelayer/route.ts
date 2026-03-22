@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-// Local dev redirect: http://localhost:3000/api/auth/callback/truelayer
-// Production redirect: https://paybacker.co.uk/api/auth/callback/truelayer
-const TRUELAYER_AUTH_URL = process.env.TRUELAYER_AUTH_URL || 'https://auth.truelayer.com';
+const TRUELAYER_AUTH_URL = process.env.TRUELAYER_AUTH_URL || 'https://auth.truelayer-sandbox.com';
 
 export async function GET() {
   const supabase = await createClient();
@@ -26,16 +24,23 @@ export async function GET() {
   // Encode user ID as state for CSRF protection
   const state = Buffer.from(user.id).toString('base64');
 
+  // Build auth URL — TrueLayer expects specific parameter format
+  // Use only scopes that are enabled by default on new sandbox apps
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: clientId,
-    scope: 'info accounts balance cards transactions offline_access',
+    scope: 'info accounts balance transactions offline_access',
     redirect_uri: redirectUri,
-    providers: 'uk-ob-all uk-oauth-all',
     state,
   });
 
+  // TrueLayer expects providers as separate params, not space-separated
+  params.append('providers', 'uk-ob-all');
+  params.append('providers', 'uk-oauth-all');
+
   const authUrl = `${TRUELAYER_AUTH_URL}/?${params.toString()}`;
+
+  console.log(`TrueLayer auth: redirecting to ${authUrl}`);
 
   return NextResponse.redirect(authUrl);
 }
