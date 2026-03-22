@@ -112,6 +112,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Award loyalty points for bank connection
+  import('@/lib/loyalty').then(({ awardPoints }) => {
+    awardPoints(user.id, 'bank_connected');
+    awardPoints(user.id, 'first_scan');
+  }).catch(() => {});
+
   // Trigger initial transaction sync via internal API call
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';

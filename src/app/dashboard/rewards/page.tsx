@@ -84,23 +84,24 @@ export default function RewardsPage() {
         <h2 className="text-lg font-bold text-white mb-4">How to earn points</h2>
         <div className="grid sm:grid-cols-2 gap-3">
           {[
-            { action: 'Generate a complaint letter', points: 10, icon: '📄' },
-            { action: 'Generate a cancellation email', points: 5, icon: '✉️' },
-            { action: 'Cancel a subscription', points: 15, icon: '❌' },
-            { action: 'Connect a bank account', points: 25, icon: '🏦' },
-            { action: 'Sync bank transactions', points: 5, icon: '🔄' },
-            { action: 'Click a deal', points: 2, icon: '🔗' },
-            { action: 'Switch to a better deal', points: 50, icon: '💰' },
-            { action: 'Refer a friend who signs up', points: 100, icon: '👥' },
-            { action: 'Refer a friend who subscribes', points: 200, icon: '🌟' },
-            { action: 'Complete first bank scan', points: 20, icon: '📊' },
+            { action: 'Generate a complaint letter', points: 10, icon: '📄', live: true },
+            { action: 'Generate a cancellation email', points: 5, icon: '✉️', live: true },
+            { action: 'Connect a bank account', points: 25, icon: '🏦', live: true },
+            { action: 'Complete first bank scan', points: 20, icon: '📊', live: true },
+            { action: 'Sync bank transactions', points: 5, icon: '🔄', live: true },
+            { action: 'Explore a deal', points: 2, icon: '🔗', live: true },
+            { action: 'Confirm a cancellation', points: 15, icon: '✅', live: true },
+            { action: 'Switch via an affiliate deal', points: 50, icon: '💰', live: false },
+            { action: 'Refer a friend who signs up', points: 100, icon: '👥', live: false },
+            { action: 'Refer a friend who subscribes', points: 200, icon: '🌟', live: false },
           ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-2.5 border border-slate-800">
+            <div key={i} className={`flex items-center justify-between rounded-lg px-4 py-2.5 border ${item.live ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-950/30 border-slate-800/50'}`}>
               <div className="flex items-center gap-3">
                 <span className="text-lg">{item.icon}</span>
-                <span className="text-slate-300 text-sm">{item.action}</span>
+                <span className={`text-sm ${item.live ? 'text-slate-300' : 'text-slate-500'}`}>{item.action}</span>
+                {!item.live && <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">Coming soon</span>}
               </div>
-              <span className="text-amber-400 font-bold text-sm">+{item.points}</span>
+              <span className={`font-bold text-sm ${item.live ? 'text-amber-400' : 'text-slate-600'}`}>+{item.points}</span>
             </div>
           ))}
         </div>

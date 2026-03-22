@@ -8,18 +8,26 @@ function getAdmin() {
 }
 
 // Points awarded per action
-export const POINT_VALUES: Record<string, { points: number; description: string }> = {
-  complaint_generated: { points: 10, description: 'Generated a complaint letter' },
-  cancellation_email: { points: 5, description: 'Generated a cancellation email' },
-  subscription_cancelled: { points: 15, description: 'Cancelled a subscription' },
-  bank_connected: { points: 25, description: 'Connected a bank account' },
-  bank_synced: { points: 5, description: 'Synced bank transactions' },
-  deal_clicked: { points: 2, description: 'Explored a deal' },
-  deal_switched: { points: 50, description: 'Switched to a better deal' },
-  referral_signup: { points: 100, description: 'Referred a friend who signed up' },
-  referral_paid: { points: 200, description: 'Referred a friend who subscribed' },
-  profile_completed: { points: 10, description: 'Completed your profile' },
-  first_scan: { points: 20, description: 'Completed first bank scan' },
+// trackable: true = we fire these automatically right now
+// trackable: false = future feature, needs additional infrastructure
+export const POINT_VALUES: Record<string, { points: number; description: string; trackable: boolean }> = {
+  // AUTO-TRACKED — these fire when the user takes the action
+  complaint_generated: { points: 10, description: 'Generated a complaint letter', trackable: true },
+  cancellation_email: { points: 5, description: 'Generated a cancellation email', trackable: true },
+  bank_connected: { points: 25, description: 'Connected a bank account', trackable: true },
+  bank_synced: { points: 5, description: 'Synced bank transactions', trackable: true },
+  deal_clicked: { points: 2, description: 'Explored a deal', trackable: true },
+  first_scan: { points: 20, description: 'Completed first bank scan', trackable: true },
+
+  // USER-CONFIRMED — user marks subscription as cancelled in tracker
+  subscription_cancelled: { points: 15, description: 'Confirmed a cancellation', trackable: true },
+
+  // FUTURE — needs Awin postback endpoint (/api/deals/conversion)
+  deal_switched: { points: 50, description: 'Switched to a better deal via Paybacker', trackable: false },
+
+  // FUTURE — needs referral system (unique codes + tracking)
+  referral_signup: { points: 100, description: 'Referred a friend who signed up', trackable: false },
+  referral_paid: { points: 200, description: 'Referred a friend who subscribed', trackable: false },
 };
 
 // Tier thresholds based on membership duration
