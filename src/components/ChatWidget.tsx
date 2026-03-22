@@ -15,6 +15,7 @@ export default function ChatWidget() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [userTier, setUserTier] = useState<string>('free');
+  const [escalatedTicket, setEscalatedTicket] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch user's plan tier when chat opens
@@ -51,6 +52,9 @@ export default function ChatWidget() {
 
       const data = await res.json();
       setMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
+      if (data.escalated && data.ticketNumber) {
+        setEscalatedTicket(data.ticketNumber);
+      }
     } catch {
       setMessages([
         ...updatedMessages,
@@ -161,8 +165,53 @@ export default function ChatWidget() {
               </div>
             )}
 
+            {escalatedTicket && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
+                Support ticket <span className="font-semibold">{escalatedTicket}</span> created. Our team will respond via email shortly.
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Talk to human button */}
+          {!escalatedTicket && messages.length >= 3 && (
+            <div className="px-3 pb-1">
+              <button
+                onClick={async () => {
+                  const distinctId = typeof window !== 'undefined' ? localStorage.getItem('pb_distinct_id') : null;
+                  setLoading(true);
+                  try {
+                    const res = await fetch('/api/support/tickets', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        subject: messages.find(m => m.role === 'user')?.content.slice(0, 100) || 'Support request',
+                        description: 'User requested human support via chatbot.',
+                        source: 'chatbot',
+                        metadata: { conversation: messages, distinct_id: distinctId },
+                      }),
+                    });
+                    const data = await res.json();
+                    if (data.ticket?.ticket_number) {
+                      setEscalatedTicket(data.ticket.ticket_number);
+                      setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `I've created support ticket ${data.ticket.ticket_number}. Our team will get back to you via email as soon as possible.`,
+                      }]);
+                    }
+                  } catch {
+                    // silent fail
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="w-full text-xs text-slate-400 hover:text-amber-400 py-1.5 transition-all"
+              >
+                Talk to a human instead
+              </button>
+            </div>
+          )}
 
           {/* Input */}
           <div className="p-3 border-t border-slate-700">

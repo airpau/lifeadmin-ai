@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/generate-social-posts",
       "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/executive-agents",
+      "schedule": "0 * * * *"
     }
   ]
 }

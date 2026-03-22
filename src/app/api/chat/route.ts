@@ -189,7 +189,59 @@ ${userTier === 'pro' ? `
       if (error) console.error('Chat cost tracking failed:', error.message);
     });
 
-    return NextResponse.json({ reply: text.text });
+    // Detect escalation — chatbot directed user to support email
+    let escalated = false;
+    let ticketNumber: string | null = null;
+    const reply = text.text;
+
+    if (reply.includes('support@paybacker.co.uk') && (
+      reply.includes('speak to someone') ||
+      reply.includes('support team') ||
+      reply.includes('get back to you') ||
+      reply.includes('reach our')
+    )) {
+      try {
+        // Auto-create support ticket with conversation history
+        const firstUserMsg = messages.find((m: any) => m.role === 'user');
+        const ticketSubject = firstUserMsg
+          ? firstUserMsg.content.slice(0, 100)
+          : 'Chatbot escalation';
+
+        const { data: ticket } = await admin.from('support_tickets').insert({
+          user_id: userId || null,
+          subject: ticketSubject,
+          description: `User escalated from chatbot. Conversation has ${messages.length} messages.`,
+          category: 'general',
+          priority: 'medium',
+          source: 'chatbot',
+          status: 'open',
+          metadata: {
+            conversation: messages,
+            user_tier: userTier,
+            distinct_id: distinctId || null,
+          },
+        }).select('id, ticket_number').single();
+
+        if (ticket) {
+          ticketNumber = ticket.ticket_number;
+          escalated = true;
+
+          // Add conversation as first message on the ticket
+          await admin.from('ticket_messages').insert({
+            ticket_id: ticket.id,
+            sender_type: 'system',
+            sender_name: 'Chatbot',
+            message: messages.map((m: any) => `[${m.role}]: ${m.content}`).join('\n\n'),
+          });
+
+          console.log(`[chat] Escalation ticket created: ${ticketNumber}`);
+        }
+      } catch (escErr) {
+        console.error('[chat] Failed to create escalation ticket:', escErr);
+      }
+    }
+
+    return NextResponse.json({ reply, escalated, ticketNumber });
   } catch (error: any) {
     console.error('Chat error:', error.message);
     return NextResponse.json({

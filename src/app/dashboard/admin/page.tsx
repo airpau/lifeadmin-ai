@@ -7,8 +7,10 @@ import { createClient } from '@/lib/supabase/client';
 import {
   ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Clock, Mail, Database,
+  Banknote, Clock, Mail, Database, Ticket, Brain,
 } from 'lucide-react';
+import TicketList from '@/components/admin/TicketList';
+import AITeamPanel from '@/components/admin/AITeamPanel';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
@@ -49,7 +51,7 @@ export default function AdminPage() {
   const [selectedMember, setSelectedMember] = useState<MemberDetail | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'members'>('overview');
+  const [tab, setTab] = useState<'overview' | 'members' | 'tickets' | 'ai_team'>('overview');
   const supabase = createClient();
 
   useEffect(() => {
@@ -206,6 +208,14 @@ export default function AdminPage() {
         <button onClick={() => { setTab('members'); loadMembers(); setSelectedMember(null); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
           Members
+        </button>
+        <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+          <Ticket className="h-4 w-4" /> Tickets
+        </button>
+        <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+          <Brain className="h-4 w-4" /> AI Team
         </button>
       </div>
 
@@ -430,6 +440,12 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* TICKETS TAB */}
+      {tab === 'tickets' && <TicketList />}
+
+      {/* AI TEAM TAB */}
+      {tab === 'ai_team' && <AITeamPanel />}
     </div>
   );
 }
