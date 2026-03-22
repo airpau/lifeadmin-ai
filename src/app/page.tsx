@@ -343,20 +343,43 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Social Proof / Stats */}
-          <div className="max-w-4xl mx-auto mb-24">
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="text-center">
+          {/* Money You Could Be Owed */}
+          <div className="max-w-5xl mx-auto mb-24">
+            <div className="text-center mb-10">
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Money you could be owed right now</h2>
+              <p className="text-slate-400 text-lg">Most UK consumers are owed money they do not know about. Here are the most common.</p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
                 <div className="text-4xl font-bold text-amber-500 mb-2">£520</div>
-                <p className="text-slate-400 text-sm">Up to £520 for flight delays (EU261/UK261 rights)</p>
+                <p className="text-white font-medium mb-1">Flight delay compensation</p>
+                <p className="text-slate-400 text-xs">Up to £520 per person for delays over 3 hours under EU261/UK261. Airlines count on you not claiming.</p>
               </div>
-              <div className="text-center">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
                 <div className="text-4xl font-bold text-amber-500 mb-2">£312</div>
-                <p className="text-slate-400 text-sm">Average wasted on forgotten subscriptions per year</p>
+                <p className="text-white font-medium mb-1">Forgotten subscriptions</p>
+                <p className="text-slate-400 text-xs">The average UK adult wastes £312 a year on subscriptions they have forgotten about or no longer use.</p>
               </div>
-              <div className="text-center">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
+                <div className="text-4xl font-bold text-amber-500 mb-2">£30k</div>
+                <p className="text-white font-medium mb-1">Section 75 protection</p>
+                <p className="text-slate-400 text-xs">Credit card purchases between £100 and £30,000 are protected. If something goes wrong, your card provider is jointly liable.</p>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
+                <div className="text-4xl font-bold text-amber-500 mb-2">£100s</div>
+                <p className="text-white font-medium mb-1">Council tax overpayment</p>
+                <p className="text-slate-400 text-xs">Bands were set in 1991. Millions of homes are in the wrong band. If yours is too high, you could be owed years of overpayments.</p>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
+                <div className="text-4xl font-bold text-amber-500 mb-2">£150</div>
+                <p className="text-white font-medium mb-1">Energy credit refunds</p>
+                <p className="text-slate-400 text-xs">Your energy supplier must refund credit on your account within 10 working days. The average UK household is owed around £150.</p>
+              </div>
+              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
                 <div className="text-4xl font-bold text-amber-500 mb-2">30s</div>
-                <p className="text-slate-400 text-sm">Time to generate a formal complaint letter</p>
+                <p className="text-white font-medium mb-1">AI complaint letter</p>
+                <p className="text-slate-400 text-xs">Generate a formal complaint citing the exact UK law that applies in under 30 seconds. Companies respond when you know your rights.</p>
               </div>
             </div>
           </div>
