@@ -10,7 +10,8 @@ import {
 
 interface Opportunity {
   id: string;
-  type: 'overcharge' | 'renewal' | 'forgotten_subscription' | 'price_increase';
+  type: string;
+  category?: string;
   title: string;
   description: string;
   amount: number;
@@ -18,6 +19,11 @@ interface Opportunity {
   provider: string;
   detected: string;
   status: 'new' | 'reviewing';
+  suggestedAction?: 'track' | 'cancel' | 'switch_deal' | 'dispute' | 'claim_refund' | 'monitor';
+  contractEndDate?: string | null;
+  paymentAmount?: number | null;
+  paymentFrequency?: string | null;
+  accountNumber?: string | null;
 }
 
 interface ConnectedAccount {
@@ -25,11 +31,26 @@ interface ConnectedAccount {
   email: string;
 }
 
-const typeConfig = {
+const typeConfig: Record<string, { icon: typeof AlertCircle; color: string; bg: string; label: string }> = {
   overcharge: { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: 'Overcharge' },
   renewal: { icon: Calendar, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Renewal Alert' },
   forgotten_subscription: { icon: CreditCard, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Unused Subscription' },
   price_increase: { icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Price Increase' },
+  loan: { icon: CreditCard, color: 'text-purple-500', bg: 'bg-purple-500/10', label: 'Loan' },
+  credit_card: { icon: CreditCard, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Credit Card' },
+  insurance: { icon: AlertCircle, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'Insurance' },
+  utility_bill: { icon: TrendingUp, color: 'text-cyan-500', bg: 'bg-cyan-500/10', label: 'Utility Bill' },
+  refund_opportunity: { icon: AlertCircle, color: 'text-green-500', bg: 'bg-green-500/10', label: 'Refund' },
+  flight_delay: { icon: AlertCircle, color: 'text-sky-500', bg: 'bg-sky-500/10', label: 'Flight Delay' },
+};
+
+const actionLabels: Record<string, { text: string; color: string }> = {
+  track: { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' },
+  cancel: { text: 'Track & Cancel', color: 'bg-red-600 hover:bg-red-700' },
+  switch_deal: { text: 'Track & Find Deal', color: 'bg-amber-500 hover:bg-amber-600 text-slate-950' },
+  dispute: { text: 'Track & Dispute', color: 'bg-orange-600 hover:bg-orange-700' },
+  claim_refund: { text: 'Track & Claim', color: 'bg-green-600 hover:bg-green-700' },
+  monitor: { text: 'Monitor', color: 'bg-slate-700 hover:bg-slate-600' },
 };
 
 const GoogleIcon = () => (
@@ -192,8 +213,8 @@ export default function ScannerPage() {
                 className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
               >
                 {scanning
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
-                  : <><RefreshCw className="h-4 w-4" /> Scan All</>}
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Deep scanning your emails...</>
+                  : <><RefreshCw className="h-4 w-4" /> Scan Inbox</>}
               </button>
             )}
           </div>
@@ -255,8 +276,44 @@ export default function ScannerPage() {
         </div>
       )}
 
+      {/* Scanning progress */}
+      {scanning && (
+        <div className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-8 mb-6">
+          <div className="flex flex-col items-center text-center">
+            <Loader2 className="h-12 w-12 text-amber-500 animate-spin mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">Deep scanning your inbox</h3>
+            <p className="text-slate-400 text-sm mb-4">
+              Analysing up to 50 emails for subscriptions, bills, loans, insurance, renewals, and savings opportunities. This may take up to a minute.
+            </p>
+            <div className="flex items-center gap-6 text-xs text-slate-500">
+              <span>Searching emails</span>
+              <span>Extracting financial data</span>
+              <span>Finding savings</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scan summary */}
+      {!scanning && scanDebug && opportunities.length > 0 && (
+        <div className="bg-slate-900/50 border border-green-500/30 rounded-2xl p-5 mb-6">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+            <div>
+              <h3 className="text-white font-semibold mb-1">Scan complete</h3>
+              <p className="text-slate-400 text-sm">
+                Scanned {scanDebug.emailsScanned} emails from the last 12 months.
+                Found {opportunities.length} {opportunities.length === 1 ? 'opportunity' : 'opportunities'} across {new Set(opportunities.map(o => o.provider)).size} providers
+                with potential savings of £{totalSavings.toFixed(2)}.
+                {highConfidence > 0 && ` ${highConfidence} ${highConfidence === 1 ? 'item' : 'items'} need attention.`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
-      {opportunities.length > 0 && (
+      {!scanning && opportunities.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
             <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
@@ -414,7 +471,7 @@ export default function ScannerPage() {
                               }}
                               className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
                             >
-                              {actionLoading === opp.id ? 'Saving...' : 'Track & Cancel'}
+                              {actionLoading === opp.id ? 'Saving...' : (actionLabels[opp.suggestedAction || 'track']?.text || 'Track')}
                             </button>
                           ) : (
                             <button

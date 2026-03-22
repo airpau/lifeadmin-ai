@@ -194,9 +194,9 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Token optimisation: truncated to reduce API costs — max 15 emails, body capped to 300 chars
+  // Scan up to 50 emails for comprehensive financial intelligence
   const details = await Promise.allSettled(
-    allMessages.slice(0, 15).map((m) => fetchEmailDetail(accessToken, m.id))
+    allMessages.slice(0, 50).map((m) => fetchEmailDetail(accessToken, m.id))
   );
 
   const emails = details
@@ -223,34 +223,43 @@ export async function scanEmailsForOpportunities(
 
   const message = await anthropic.messages.create({
     model: SCAN_MODEL,
-    max_tokens: 2048,
-    system: `You are a UK consumer finance assistant. Analyse these emails and identify money-saving opportunities.
+    max_tokens: 4096,
+    system: `You are a UK consumer finance intelligence analyst. Your job is to extract EVERY piece of financial information from these emails to help the user save money.
 
 Return a JSON array of opportunities. Each must have:
 - id: unique string (e.g. "opp_1")
 - emailId: the email id it came from
-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase"
-- title: short actionable title (max 60 chars, e.g. "British Gas price increase — dispute available")
-- description: 1-2 sentences explaining the opportunity and what the user can do
-- amount: estimated GBP amount at risk or saveable (number, 0 if unknown) — extract from email body/snippet where possible
+- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay"
+- category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "gambling" | "other"
+- title: short actionable title (max 80 chars)
+- description: 2-3 sentences explaining what was found and what the user can do about it
+- amount: GBP amount (number, 0 if unknown) — extract exact amounts from emails
 - confidence: 0-100
-- provider: company name (clean, e.g. "British Gas" not "britishgas@email.britishgas.co.uk")
+- provider: company name (clean format, e.g. "British Gas" not "britishgas@email.britishgas.co.uk")
 - detected: "${new Date().toISOString().split('T')[0]}"
 - status: "new"
+- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_refund" | "monitor"
+- contractEndDate: ISO date string if found in email, null otherwise
+- paymentAmount: exact payment amount if found, null otherwise
+- paymentFrequency: "monthly" | "quarterly" | "yearly" | "one-time" | null
+- accountNumber: account/reference number if found, null otherwise
 
-What to flag:
-- Price increases or tariff changes (dispute under Consumer Rights Act 2015)
-- Billing errors or unexpected charges
-- Upcoming renewals where user may be auto-rolled onto a worse rate
-- Failed payments that could lead to service disruption
-- Overcharges vs agreed contract price
-- Forgotten or unused subscriptions still charging
-- Refund opportunities (e.g. service outages, missed SLA)
-- Broadband/energy/insurance renewals (user likely paying loyalty premium)
+Extract EVERYTHING from these emails:
+- Active subscriptions (streaming, software, gym, SaaS) with exact amounts
+- Utility bills (energy, water, broadband) with amounts and any price changes
+- Loan statements, credit card statements with balances and payment amounts
+- Insurance policies with renewal dates and premium amounts
+- Flight bookings (check for delays — EU261/UK261 compensation up to £520)
+- Price increase notifications — these are dispute opportunities
+- Renewal reminders — chance to switch to a better deal
+- Refund confirmations or outstanding refund requests
+- Contract end date notifications
+- Direct debit setup/change confirmations with amounts
+- Any mention of account numbers, reference numbers, or contract terms
 
-Confidence guide: 70+ = clear opportunity, 50-69 = likely worth reviewing, 35-49 = possible but uncertain.
-Include opportunities with confidence >= 35. Be generous — better to surface candidates the user can dismiss than to miss real savings.
-Deduplicate: one entry per provider even if multiple emails exist.
+Confidence guide: 80+ = definite financial item, 60-79 = likely, 40-59 = possible.
+Include everything with confidence >= 40.
+Multiple entries per provider are fine if they represent different products/accounts.
 Return ONLY the JSON array, no markdown.`,
     messages: [{ role: 'user', content: `Analyse these emails:\n\n${emailSummaries}` }],
   });
