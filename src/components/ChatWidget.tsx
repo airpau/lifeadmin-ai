@@ -14,7 +14,18 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [userTier, setUserTier] = useState<string>('free');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch user's plan tier when chat opens
+  useEffect(() => {
+    if (open) {
+      fetch('/api/stripe/sync', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.tier) setUserTier(d.tier); })
+        .catch(() => {});
+    }
+  }, [open]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,7 +45,7 @@ export default function ChatWidget() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({ messages: updatedMessages, tier: userTier }),
       });
 
       const data = await res.json();

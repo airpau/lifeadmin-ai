@@ -64,7 +64,7 @@ You are a friendly, knowledgeable support assistant. You ONLY discuss:
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages } = body;
+    const { messages, tier } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages required' }, { status: 400 });
@@ -76,10 +76,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const userTier = tier || 'free';
+    const tierContext = `
+## Current User's Plan: ${userTier.toUpperCase()}
+
+IMPORTANT PLAN GATING RULES — you MUST follow these:
+${userTier === 'free' ? `
+- This user is on the FREE plan
+- They can generate up to 3 complaint letters per month. If they ask about generating more, tell them to upgrade to Essential (£9.99/month) for unlimited complaints.
+- They do NOT have access to: email inbox scanning, auto-cancellation emails, AI deal finder alerts, Open Banking, spending insights
+- If they ask about any paid feature, explain what it does and suggest upgrading
+- They CAN use: subscription tracking (unlimited), deal comparison, and the chatbot
+- Always frame upgrades as helpful, not pushy: "That feature is available on our Essential plan — would you like to know more about upgrading?"` : ''}
+${userTier === 'essential' ? `
+- This user is on the ESSENTIAL plan (£9.99/month)
+- They have: unlimited complaints, email scanning, auto-cancellation, AI deal alerts, loyalty rewards
+- They do NOT have: Open Banking bank connection, spending insights dashboard, dedicated account manager
+- If they ask about Pro features, explain the benefits and suggest upgrading to Pro (£19.99/month)` : ''}
+${userTier === 'pro' ? `
+- This user is on the PRO plan (£19.99/month) — they have access to ALL features
+- Help them get the most out of every feature` : ''}`;
+
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT + tierContext,
       messages: messages.map((m: { role: string; content: string }) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
