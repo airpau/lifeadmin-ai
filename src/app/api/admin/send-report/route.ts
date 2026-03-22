@@ -11,10 +11,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { to, subject, markdownContent } = await request.json();
+  const { to, subject, markdownContent, rawHtml } = await request.json();
 
-  // Convert markdown to styled HTML email
-  const html = `
+  // Use raw HTML if provided, otherwise wrap markdown
+  const html = rawHtml || `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
