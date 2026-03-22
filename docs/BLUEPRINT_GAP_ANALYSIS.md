@@ -1,193 +1,142 @@
 # Blueprint Gap Analysis — Paybacker LTD
-**Last updated:** 22 March 2026, 20:00
+**Last updated:** 22 March 2026, 23:30
 
 ---
 
-## Overall Completion: ~85%
+## Overall Completion: ~92%
 
 ---
 
-## Section 1: The Five AI Agents
+## Core Product Features
 
-| Agent | Status | Notes |
-|-------|--------|-------|
-| Inbox Scanner | ✅ **Done** | 100 emails, 150+ providers, 4 parallel queries, comprehensive extraction |
-| Complaints & Rights | ✅ **Done** | Category-aware legal context (11 categories), edit/regenerate, saved to history |
-| Subscriptions | ✅ **Done** | Bank + email detection, soft-delete, categories, cancellation methods DB (50+ providers) |
-| Savings / Deals | ✅ **Mostly done** | 8 deal categories, personalised recommendations. Waiting on Awin for live links |
-| Forms & Government | ❌ **Not started** | HMRC, council tax, DVLA. Post-launch |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| AI Complaint Letters | ✅ | Category-aware, debt disputes, edit/regenerate, history |
+| AI Debt Response Letters | ✅ | Consumer Credit Act 1974, Limitation Act, harassment protection |
+| HMRC & Government Letters | ✅ | 11 types: tax rebate, tax code, council tax, DVLA, NHS, parking, flights, refunds |
+| Bank Scanning (TrueLayer) | ✅ | Production, multi-bank, NatWest tested, nightly auto-sync |
+| Subscription Tracker | ✅ | Bank + manual, soft-delete, categories, 25 auto-categories |
+| Cancellation Methods DB | ✅ | 50+ UK providers with email, phone, URL, tips |
+| Smart Cancellation Letters | ✅ | Category-specific legal context per subscription type |
+| Personalised Deal Finder | ✅ | 8 categories, shows "You pay X — switch to Y" |
+| Spending Intelligence | ✅ | Monthly trends, income vs spend, 25 categories, tiered access |
+| Email Scanner | ✅ BUILT | 100 emails, 150+ providers. Blocked: Google OAuth verification |
+| AI Support Chatbot | ✅ | Tier-aware, sales mode for anonymous, Haiku powered |
+| Loyalty Rewards | ✅ | Points system, 4 tiers, redemptions, auto-awarded |
+| Referral System | ✅ | Unique codes, share links, point tracking, end-to-end |
+| Opportunity Scoring | ✅ | Scores users by switching likelihood, feeds targeted emails |
+| Self-Learning Merchant Rules | ✅ | 80+ seeded, learns from user edits |
 
-**Agent completion: 4/5 agents built (80%)**
+## Email System
 
----
+| Email | Status | Schedule |
+|-------|--------|----------|
+| Welcome (instant) | ✅ | On signup |
+| Onboarding nurture (8 emails) | ✅ | Daily 10am |
+| Waitlist nurture (8 emails) | ✅ | Daily 9am |
+| Weekly deal digest | ✅ | Monday 9am |
+| Targeted deal alerts | ✅ | Wed/Fri 9am |
+| Renewal reminders | ✅ | Daily 8am |
+| Email delivery monitor | ✅ | Daily 2pm |
+| Launch announcement | ✅ | Manual trigger |
 
-## Section 2: Tech Stack
+## Infrastructure
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Next.js 15 App Router | ✅ | |
-| Supabase (Postgres + Auth) | ✅ | EU-west-2, RLS enabled |
-| Claude API | ✅ | Sonnet for complaints, Haiku for chatbot/scanning. Per-user token tracking |
-| Stripe (subscriptions + webhooks) | ✅ | Live mode, full lifecycle, portal, sync |
-| Gmail API OAuth | ✅ | Built. Waiting on Google app verification for public access |
-| Microsoft Graph (Outlook) | ✅ | Built, not tested |
-| TrueLayer Open Banking | ✅ | **LIVE** — multi-bank, 2,337+ transactions, nightly sync |
-| Vercel hosting | ✅ | paybacker.co.uk + paybacker.ai redirect |
-| Resend (email) | ✅ | Domain verified, 6 email sequences active |
-| PostHog analytics | ✅ | Server-side tracking, working |
-| Google Analytics GA4 | ✅ | G-GRL9XKYTN1 |
-| Awin affiliates | ⏳ | Deal pages built, waiting on Awin approval |
+| Next.js 15 | ✅ | |
+| Supabase (EU-west-2) | ✅ | RLS on all tables |
+| Claude API | ✅ | Sonnet for letters, Haiku for chatbot. Per-user cost tracking |
+| Stripe (live) | ✅ | Full lifecycle, webhook at /api/webhooks/stripe |
+| TrueLayer (production) | ✅ | Multi-bank, nightly sync |
+| Resend (verified domain) | ✅ | SPF/DKIM/DMARC all verified |
+| PostHog | ✅ | Server-side tracking, working |
+| GA4 | ✅ | G-GRL9XKYTN1 |
+| Vercel | ✅ | paybacker.co.uk + paybacker.ai redirect |
+| SEO pages | ✅ | 103 company complaint pages |
 
-**Stack completion: 11/12 components (92%)**
+## Tier Gating
 
----
+| Rule | Status |
+|------|--------|
+| Free: 3 complaints/month | ✅ |
+| Free: one-time bank scan | ✅ |
+| Free: unlimited subscription tracking | ✅ |
+| Essential: 1 bank, daily sync | ✅ |
+| Essential: unlimited complaints | ✅ |
+| Essential: full spending dashboard | ✅ |
+| Pro: unlimited banks | ✅ |
+| Pro: biggest transactions | ✅ |
+| Chatbot: sales mode for anonymous | ✅ |
+| Chatbot: tier-aware for logged in | ✅ |
 
-## Section 3: Database Schema
+## Admin & Operations
 
-| Table | Status | Notes |
-|-------|--------|-------|
-| profiles | ✅ | Stripe IDs, subscription tier/status |
-| waitlist_signups | ✅ | With email sequence tracking |
-| subscriptions | ✅ | Soft-delete, source, category, bank_description, connection_id |
-| bank_connections | ✅ | Multi-bank, bank_name, account_display_names |
-| bank_transactions | ✅ | 2,337+ records, dedup on transaction_id |
-| tasks / agent_runs | ✅ | Token usage tracking, estimated_cost per call |
-| merchant_rules | ✅ **NEW** | 80+ rules, self-learning from user edits |
-| social_posts | ✅ | Template-based, auto-post to Facebook |
-| gmail_tokens | ✅ | OAuth tokens for Gmail |
-
-**Schema completion: 9/9 tables (100%)**
-
----
-
-## Section 4: Dashboard Pages & Features
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Auth (signup/login) | ✅ | |
-| Dashboard overview | ✅ | Stripe sync on return from checkout |
-| Complaints page | ✅ | Generate + history + letter modal + edit/regenerate + approve |
-| Scanner page | ✅ | Deep scan (100 emails), progress panel, summary, smart action buttons |
-| Subscriptions page | ✅ | Bank sync, multi-bank, categories, cancel methods, soft-delete |
-| Deals page | ✅ | 8 categories, personalised "Recommended for you" per subscription |
-| Profile page | ✅ | Stripe portal, pending cancellation notice, renewal date |
-| Admin dashboard | ✅ **NEW** | Business metrics, MRR/ARR, member drill-down, API cost per user |
-| AI chatbot | ✅ **NEW** | Tier-aware, every page, Haiku powered |
-
-**Page completion: 9/9 pages (100%)**
-
----
-
-## Section 5: Plan Gating & Business Logic
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Free tier limits | ✅ | 3 complaints/month, unlimited subscription tracking |
-| Paid tier gating | ✅ | Middleware enforced on paid routes |
-| Stripe checkout | ✅ | No trial, cancels old subs before new checkout |
-| Stripe Customer Portal | ✅ | Cancel, switch plan, update payment |
-| Subscription sync | ✅ | Webhook + /api/stripe/sync belt-and-suspenders |
-
-**Business logic completion: 5/5 items (100%)**
-
----
-
-## Section 6: Email System
-
-| Email | Schedule | Status |
-|-------|----------|--------|
-| Waitlist welcome | Instant on signup | ✅ |
-| Waitlist nurture (8 emails) | Days 0-28 | ✅ |
-| Onboarding welcome | Instant on register | ✅ |
-| Onboarding nurture (8 emails) | Days 0-28 | ✅ |
-| Deal alert emails | Weekly Monday 9am | ✅ **NEW** |
-| Renewal reminders | Daily 8am (30/14/7 days) | ✅ **NEW** |
-| Launch announcement | Manual trigger | ✅ |
-| Cancellation emails | On demand (AI generated) | ✅ |
-
-**Email completion: 8/8 sequences (100%)**
-
----
-
-## Section 7: Cron Jobs
-
-| Time | Job | Status |
-|------|-----|--------|
-| 3am daily | Bank sync (all connections) | ✅ **NEW** |
-| 8am daily | Renewal reminders | ✅ **NEW** |
-| 9am daily | Waitlist nurture emails | ✅ |
-| 9am Monday | Deal alert emails | ✅ **NEW** |
-| 9am Monday | Social: generate + auto-post Facebook | ✅ |
-| 10am daily | Onboarding nurture emails | ✅ |
-
-**Cron completion: 6/6 jobs (100%)**
-
----
-
-## Section 8: Intelligence & Self-Learning
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Merchant rules DB | ✅ **NEW** | 80+ UK providers seeded |
-| Self-learning from edits | ✅ **NEW** | User edits create/update rules for all users |
-| Auto-categorisation | ✅ | Keywords + merchant rules |
-| Cancellation methods DB | ✅ | 50+ providers with email, phone, URL, tips |
-| Per-user API cost tracking | ✅ **NEW** | Actual token counts from Claude responses |
-| Personalised deal matching | ✅ **NEW** | Subscription → deal category mapping |
+| Feature | Status |
+|---------|--------|
+| Admin dashboard (metrics + members) | ✅ |
+| Per-user API cost tracking | ✅ |
+| Opportunity score per member | ✅ |
+| Social post automation | ✅ |
+| Marketing plan | ✅ |
 
 ---
 
 ## Blocked on External Approvals
 
-| Item | Status | Impact |
-|------|--------|--------|
-| Awin affiliate approval | ⏳ Pending | Deal links non-functional, no affiliate revenue |
-| Google OAuth verification | ⏳ Pending | Gmail scanning limited to test users only |
-| Meta app review | ⏳ Pending | Instagram auto-posting blocked |
+| Item | Impact | Workaround |
+|------|--------|------------|
+| Awin affiliate approval | Deal links non-functional | Deals page works, links go to provider directly |
+| Google OAuth verification | Gmail scanning limited to test users | Bank scanning works for all users |
+| Meta app review | Instagram auto-posting blocked | Manual Instagram posting |
 
 ---
 
-## ACTION REQUIRED — Paul Manual Steps
-
-1. **Awin merchant IDs** — When approved, replace `!!!REPLACE_WITH_AWIN_ID!!!` in `src/app/dashboard/deals/page.tsx`. Verify each merchant ID in Awin dashboard.
-
-2. **Google OAuth** — Submit for verification when ready for public Gmail access.
-
-3. **PostHog personal API key** — Store in Vercel as `POSTHOG_PERSONAL_API_KEY` (NOT in code — GitHub revokes it).
-
-4. **paybacker.ai DNS** — Verify A record `76.76.21.21` is set at 123-reg.
-
----
-
-## Not Started (Post-Launch)
+## What's NOT Done (Post-Launch / Future)
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| Forms & Government Agent | Medium | HMRC, council tax, DVLA |
-| Opportunity scoring system | High | Score users by switching likelihood, target with emails |
-| Separate scanning modes | Medium | Subscription detection vs deal switching vs complaint |
-| Loyalty rewards programme | Medium | Points system designed, not built |
-| Spending intelligence dashboard | High | Tiered reporting designed, not built |
+| Spending cross-user comparisons | Medium | Needs 20+ users with bank data |
+| Separate scanning modes | Low | UX improvement, not critical |
+| AI email aliases (support@, billing@) | Medium | Designed, not built |
+| Annual savings report PDF | Low | |
 | Share Your Win viral feature | Low | |
 | Family plans | Low | |
-| Auto-cancel / auto-negotiate | Low | |
-| AI email aliases | Medium | support@, billing@, etc. designed |
-| Annual savings report PDF | Low | |
-| Nightly email scan cron | Medium | Bank sync done, email scan not automated |
+| Auto-cancel on user's behalf | Low | Pro feature, complex |
+| Spending anomaly alerts | Low | Pro feature |
+| Awin postback endpoint | Medium | Needs Awin approval first |
+| Re-engagement emails | Medium | "You haven't logged in" |
+| Monthly newsletter | Medium | Consumer rights tips |
 
 ---
 
-## Blueprint Completion by Section
+## Pre-Launch Checklist
 
-| Section | Previous | Now |
-|---------|----------|-----|
-| AI Agents | 60% | 80% |
-| Tech Stack | 82% | 92% |
-| Database Schema | 71% | 100% |
-| Dashboard Pages | 78% | 100% |
-| Plan Gating / Business Logic | 80% | 100% |
-| Email System | 30% | 100% |
-| Cron Jobs | 20% | 100% |
-| Intelligence & Self-Learning | 0% | 100% |
-| Marketing & Growth | 50% | 65% |
-| **OVERALL** | **~69%** | **~85%** |
+| Item | Status |
+|------|--------|
+| Waitlist mode disabled | ✅ |
+| Homepage shows all features | ✅ |
+| Pricing page correct tiers | ✅ |
+| Stripe payments working | ✅ |
+| Bank scanning working | ✅ |
+| Complaint letters working | ✅ Needs ANTHROPIC_API_KEY verified in Vercel |
+| Government forms working | ✅ Needs ANTHROPIC_API_KEY verified in Vercel |
+| Welcome emails sending | ✅ |
+| Admin dashboard working | ✅ |
+| SEO pages live | ✅ (103 pages) |
+| PostHog tracking | ✅ |
+| GA4 tracking | ✅ |
+| Privacy policy | ✅ |
+| Terms of service | ✅ |
+| Data security section on homepage | ✅ |
+| paybacker.ai redirect | ✅ (pending DNS propagation) |
+| Chatbot restricted for anonymous | ✅ |
+
+## ACTION REQUIRED — Paul
+
+1. **Verify ANTHROPIC_API_KEY** is set in Vercel production — needed for complaint/form generation
+2. **Awin** — chase approval, then update `!!!REPLACE_WITH_AWIN_ID!!!` in deals page
+3. **Google OAuth** — submit for verification when ready
+4. **paybacker.ai** — verify DNS A record `76.76.21.21` is set at 123-reg
+5. **Test complaint generation** — generate a real complaint letter to verify Claude API works
+6. **Test government form** — generate an HMRC letter to verify
