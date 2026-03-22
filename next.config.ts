@@ -1,6 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Redirect paybacker.ai → paybacker.co.uk
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'paybacker.ai' }],
+        destination: 'https://paybacker.co.uk/:path*',
+        permanent: true,
+      },
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.paybacker.ai' }],
+        destination: 'https://paybacker.co.uk/:path*',
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {
