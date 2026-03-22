@@ -1,24 +1,45 @@
 'use client';
 
-import posthog from 'posthog-js';
-import { PostHogProvider as PHProvider } from 'posthog-js/react';
-import { useEffect, Suspense } from 'react';
+import { useEffect, Suspense, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-const POSTHOG_KEY = 'phc_GNRV5alJCSp3SMcZzo4BgdTy0HcbttVIH4hakfBjv97';
+// Server-side tracking — guaranteed to work, no ad blockers
+function trackEvent(event: string, properties?: Record<string, unknown>) {
+  const distinctId = typeof window !== 'undefined'
+    ? localStorage.getItem('pb_distinct_id') || crypto.randomUUID()
+    : 'server';
 
-// Init at module level — runs once when JS loads in browser
-if (typeof window !== 'undefined' && !posthog.__loaded) {
-  posthog.init(POSTHOG_KEY, {
-    api_host: window.location.origin + '/ingest',
-    ui_host: 'https://eu.posthog.com',
-    person_profiles: 'always',
-    capture_pageview: true,
-    capture_pageleave: true,
-    autocapture: true,
-  });
+  if (typeof window !== 'undefined' && !localStorage.getItem('pb_distinct_id')) {
+    localStorage.setItem('pb_distinct_id', distinctId);
+  }
+
+  fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event,
+      distinct_id: distinctId,
+      properties: {
+        ...properties,
+        $current_url: typeof window !== 'undefined' ? window.location.href : undefined,
+        $host: typeof window !== 'undefined' ? window.location.host : undefined,
+        $pathname: typeof window !== 'undefined' ? window.location.pathname : undefined,
+        $referrer: typeof window !== 'undefined' ? document.referrer : undefined,
+        $screen_width: typeof window !== 'undefined' ? window.screen.width : undefined,
+        $screen_height: typeof window !== 'undefined' ? window.screen.height : undefined,
+        $lib: 'paybacker-server-track',
+      },
+    }),
+  }).catch(() => {});
 }
+
+// Export for use in other components
+if (typeof window !== 'undefined') {
+  (window as any).__pbTrack = trackEvent;
+}
+
+export { trackEvent };
 
 function PostHogPageView() {
   const pathname = usePathname();
@@ -26,10 +47,7 @@ function PostHogPageView() {
 
   useEffect(() => {
     if (pathname) {
-      let url = window.origin + pathname;
-      if (searchParams?.toString()) url += '?' + searchParams.toString();
-      console.log('[PostHog] Capturing pageview:', url);
-      posthog.capture('$pageview', { $current_url: url });
+      trackEvent('$pageview');
     }
   }, [pathname, searchParams]);
 
@@ -40,9 +58,12 @@ function PostHogIdentify() {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        console.log('[PostHog] Identifying user:', user.id);
-        posthog.identify(user.id, { email: user.email });
+      if (user && typeof window !== 'undefined') {
+        localStorage.setItem('pb_distinct_id', user.id);
+        trackEvent('$identify', {
+          distinct_id: user.id,
+          $set: { email: user.email },
+        });
       }
     });
   }, []);
@@ -52,12 +73,12 @@ function PostHogIdentify() {
 
 export default function PostHogProvider({ children }: { children: React.ReactNode }) {
   return (
-    <PHProvider client={posthog}>
+    <>
       <Suspense fallback={null}>
         <PostHogPageView />
         <PostHogIdentify />
       </Suspense>
       {children}
-    </PHProvider>
+    </>
   );
 }
