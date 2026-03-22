@@ -62,63 +62,15 @@ export default function AdminPage() {
       }
       setAuthorized(true);
 
-      // Fetch metrics from Supabase directly (admin page uses client-side queries)
-      const [
-        usersRes, waitlistRes, subsRes, complaintsRes, bankRes, txRes, runsRes, rulesRes,
-      ] = await Promise.all([
-        supabase.from('profiles').select('id, subscription_tier', { count: 'exact' }),
-        supabase.from('waitlist_signups').select('id', { count: 'exact', head: true }),
-        supabase.from('subscriptions').select('id', { count: 'exact', head: true }).is('dismissed_at', null),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }),
-        supabase.from('bank_connections').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-        supabase.from('bank_transactions').select('id', { count: 'exact', head: true }),
-        supabase.from('agent_runs').select('id', { count: 'exact', head: true }),
-        supabase.from('merchant_rules').select('id', { count: 'exact', head: true }),
-      ]);
+      // Fetch via admin API (uses service role, bypasses RLS)
+      const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
+      const metricsRes = await fetch('/api/admin/metrics', {
+        headers: { Authorization: `Bearer ${cronSecret}` },
+      }).then(r => r.json());
 
-      const profiles = usersRes.data || [];
-      const tierBreakdown: Record<string, number> = { free: 0, essential: 0, pro: 0 };
-      for (const p of profiles) {
-        const t = p.subscription_tier || 'free';
-        tierBreakdown[t] = (tierBreakdown[t] || 0) + 1;
+      if (metricsRes.overview) {
+        setMetrics(metricsRes);
       }
-
-      const mrr = (tierBreakdown.essential || 0) * 9.99 + (tierBreakdown.pro || 0) * 19.99;
-
-      // Recent signups
-      const { data: recentSignups } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, subscription_tier, subscription_status, created_at')
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      setMetrics({
-        overview: {
-          total_users: usersRes.count || 0,
-          waitlist_signups: waitlistRes.count || 0,
-          active_subscriptions: subsRes.count || 0,
-          bank_connections: bankRes.count || 0,
-          bank_transactions: txRes.count || 0,
-          complaints_generated: complaintsRes.count || 0,
-          agent_runs: runsRes.count || 0,
-          merchant_rules: rulesRes.count || 0,
-        },
-        revenue: {
-          mrr: parseFloat(mrr.toFixed(2)),
-          arr: parseFloat((mrr * 12).toFixed(2)),
-          paying_customers: (tierBreakdown.essential || 0) + (tierBreakdown.pro || 0),
-          free_users: tierBreakdown.free || 0,
-        },
-        tier_breakdown: tierBreakdown,
-        recent_signups: (recentSignups || []).map((u) => ({
-          id: u.id,
-          email: u.email || '',
-          name: u.full_name || '',
-          tier: u.subscription_tier || 'free',
-          status: u.subscription_status || '',
-          joined: u.created_at,
-        })),
-      });
 
       setLoading(false);
     };
@@ -126,28 +78,41 @@ export default function AdminPage() {
   }, [supabase]);
 
   const loadMembers = async () => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, subscription_tier, subscription_status, created_at, total_money_recovered, total_tasks_completed, opportunity_score')
-      .order('created_at', { ascending: false });
+    const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
+    const res = await fetch('/api/admin/members', {
+      headers: { Authorization: `Bearer ${cronSecret}` },
+    }).then(r => r.json());
 
-    setMembers((data || []).map((m) => ({
-      ...m,
-      full_name: m.full_name || '',
-      subscription_tier: m.subscription_tier || 'free',
-      subscription_status: m.subscription_status || '',
-      total_money_recovered: m.total_money_recovered || 0,
-      total_tasks_completed: m.total_tasks_completed || 0,
-      opportunity_score: m.opportunity_score || 0,
-      subscriptions_tracked: 0,
-      tasks_created: 0,
-      bank_transactions: 0,
-    })));
+    if (res.members) {
+      setMembers(res.members.map((m: any) => ({
+        ...m,
+        full_name: m.full_name || '',
+        subscription_tier: m.subscription_tier || 'free',
+        subscription_status: m.subscription_status || '',
+        total_money_recovered: m.total_money_recovered || 0,
+        total_tasks_completed: m.total_tasks_completed || 0,
+        opportunity_score: m.opportunity_score || 0,
+        subscriptions_tracked: m.subscriptions_tracked || 0,
+        tasks_created: m.tasks_created || 0,
+        bank_transactions: m.bank_transactions || 0,
+      })));
+    }
   };
 
   const loadMemberDetail = async (memberId: string) => {
     setSelectedMemberId(memberId);
 
+    const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
+    const res = await fetch(`/api/admin/members?id=${memberId}`, {
+      headers: { Authorization: `Bearer ${cronSecret}` },
+    }).then(r => r.json());
+
+    if (res.profile) {
+      setSelectedMember(res);
+      return;
+    }
+
+    // Fallback to client-side (shouldn't reach here)
     const [profile, subs, tasks, runs, banks, txCount] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', memberId).single(),
       supabase.from('subscriptions').select('*').eq('user_id', memberId).is('dismissed_at', null).order('amount', { ascending: false }),
