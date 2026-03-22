@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateSocialImage, buildBrandedPrompt } from '@/lib/generate-image';
 import { pickTemplate } from '@/lib/social-templates';
+import { postToFacebook } from '@/lib/meta-social';
 
-// Runs daily at 8am (see vercel.json)
-// Picks a pre-written template per platform, generates images, saves as drafts
+// Runs weekly Monday 9am (see vercel.json)
+// Picks a template, generates image, saves to DB, and auto-posts to Facebook
 
 const PLATFORMS = ['twitter', 'facebook', 'instagram', 'linkedin'] as const;
 type Platform = typeof PLATFORMS[number];
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const results: Array<{ platform: string; pillar: string; ok: boolean; imageGenerated?: boolean; error?: string }> = [];
+  const results: Array<{ platform: string; pillar: string; ok: boolean; imageGenerated?: boolean; posted?: boolean; error?: string }> = [];
 
   for (const platform of PLATFORMS) {
     const pillar = getDailyPillarForPlatform(platform);
@@ -57,7 +58,9 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const { error } = await supabase.from('social_posts').insert({
+      const postContent = `${template.content}\n\n${template.hashtags}`;
+
+      const { data: savedPost, error } = await supabase.from('social_posts').insert({
         platform,
         pillar,
         content: template.content,
@@ -66,10 +69,30 @@ export async function GET(request: NextRequest) {
         image_data: imageData,
         image_generated_at: imageGeneratedAt,
         status: 'draft',
-      });
+      }).select('id').single();
 
       if (error) throw new Error(error.message);
-      results.push({ platform, pillar, ok: true, imageGenerated: imageData !== null });
+
+      // Auto-post to Facebook if token is available
+      let posted = false;
+      if (platform === 'facebook' && process.env.META_ACCESS_TOKEN && savedPost) {
+        try {
+          const fbResult = await postToFacebook(postContent);
+          if (fbResult.id) {
+            await supabase.from('social_posts').update({
+              status: 'published',
+              published_at: new Date().toISOString(),
+              external_id: fbResult.id,
+            }).eq('id', savedPost.id);
+            posted = true;
+            console.log(`Auto-posted to Facebook: ${fbResult.id}`);
+          }
+        } catch (fbErr: any) {
+          console.error(`Facebook auto-post failed:`, fbErr.message);
+        }
+      }
+
+      results.push({ platform, pillar, ok: true, imageGenerated: imageData !== null, posted });
     } catch (err: any) {
       console.error(`Failed to generate ${platform} post:`, err.message);
       results.push({ platform, pillar, ok: false, error: err.message });
