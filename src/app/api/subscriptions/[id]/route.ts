@@ -48,9 +48,10 @@ export async function DELETE(
 
     const { id } = await params;
 
+    // Soft delete — mark as dismissed so it won't be re-created by sync
     const { error } = await supabase
       .from('subscriptions')
-      .delete()
+      .update({ dismissed_at: new Date().toISOString(), status: 'dismissed' })
       .eq('id', id)
       .eq('user_id', user.id);
 

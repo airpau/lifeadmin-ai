@@ -69,6 +69,35 @@ function extractMerchantFromDescription(description: string): string | null {
   return cleaned.length >= 3 ? cleaned : null;
 }
 
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  mortgage: ['mortgage', 'halifax mortgage', 'nationwide bs', 'building society'],
+  rent: ['rent', 'letting', 'openrent', 'estate agent'],
+  loan: ['auto finance', 'car finance', 'loan', 'credit', 'klarna', 'clearpay', 'afterpay'],
+  insurance: ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'zurich', 'legal & general'],
+  utility: ['energy', 'electric', 'gas', 'water', 'eon', 'british gas', 'octopus', 'ovo', 'edf', 'scottish power', 'thames water', 'severn trent', 'united utilities'],
+  broadband: ['broadband', 'bt ', 'sky ', 'virgin media', 'vodafone', 'plusnet', 'talktalk', 'hyperoptic'],
+  mobile: ['mobile', 'ee ', 'three', 'o2 ', 'giffgaff', 'id mobile', 'smarty', 'lebara', 'tesco mobile'],
+  streaming: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple tv', 'paramount', 'now tv', 'youtube', 'dazn', 'crunchyroll'],
+  fitness: ['gym', 'fitness', 'puregym', 'david lloyd', 'nuffield', 'anytime fitness', 'the gym', 'whoop', 'peloton', 'strava'],
+  software: ['adobe', 'microsoft', 'google', 'apple', 'icloud', 'dropbox', 'notion', 'slack', 'zoom', 'canva', 'openai', 'anthropic', 'github', 'figma', 'experian'],
+  council_tax: ['council tax', 'council'],
+  gambling: ['betfair', 'bet365', 'paddy power', 'william hill', 'coral', 'ladbrokes', 'sky bet', 'betway'],
+  food: ['deliveroo', 'just eat', 'uber eats', 'gousto', 'hello fresh', 'mindful chef'],
+  shopping: ['amazon', 'ebay', 'asos', 'next'],
+  childcare: ['childcare', 'nursery', 'school'],
+  transport: ['transport', 'tfl', 'oyster', 'rail', 'train'],
+};
+
+function categoriseTransaction(merchantName: string, description: string | null): string {
+  const searchText = `${merchantName} ${description || ''}`.toLowerCase();
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some((kw) => searchText.includes(kw))) {
+      return category;
+    }
+  }
+  return 'other';
+}
+
 function normaliseMerchant(name: string): string {
   return name
     .toLowerCase()
@@ -161,33 +190,41 @@ export async function detectRecurring(
       .update({ is_recurring: true, recurring_group: normalisedName })
       .in('id', ids);
 
-    // Check if subscription already exists
+    // Check if subscription already exists (active or dismissed)
     const { data: existing } = await supabase
       .from('subscriptions')
-      .select('id')
+      .select('id, dismissed_at')
       .eq('user_id', userId)
       .ilike('provider_name', `%${normalisedName}%`)
       .maybeSingle();
 
-    if (!existing) {
-      const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-      const displayName = txs[0].extracted_name;
+    // Skip if already exists (active) or was dismissed by user
+    if (existing) continue;
 
-      const { error: insertError } = await supabase.from('subscriptions').insert({
-        user_id: userId,
-        provider_name: displayName,
-        amount: parseFloat(avgAmount.toFixed(2)),
-        billing_cycle: cycle === 'weekly' ? 'monthly' : cycle,
-        status: 'active',
-        notes: 'Detected from bank transactions',
-      });
+    const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const displayName = txs[0].extracted_name;
+    const bankDesc = txs[0].description || null;
 
-      if (insertError) {
-        console.error(`Failed to create subscription for ${displayName}:`, insertError);
-      } else {
-        newRecurringCount++;
-        console.log(`Detected recurring: ${displayName} £${avgAmount.toFixed(2)}/${cycle}`);
-      }
+    // Auto-categorise based on description keywords
+    const category = categoriseTransaction(displayName, bankDesc);
+
+    const { error: insertError } = await supabase.from('subscriptions').insert({
+      user_id: userId,
+      provider_name: displayName,
+      amount: parseFloat(avgAmount.toFixed(2)),
+      billing_cycle: cycle === 'weekly' ? 'monthly' : cycle,
+      status: 'active',
+      source: 'bank',
+      category,
+      bank_description: bankDesc,
+      notes: 'Detected from bank transactions',
+    });
+
+    if (insertError) {
+      console.error(`Failed to create subscription for ${displayName}:`, insertError);
+    } else {
+      newRecurringCount++;
+      console.log(`Detected recurring: ${displayName} £${avgAmount.toFixed(2)}/${cycle} [${category}]`);
     }
   }
 
