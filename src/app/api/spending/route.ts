@@ -106,20 +106,20 @@ export async function GET() {
       amount: parseFloat(String(tx.amount)),
     }));
 
-    // Filter out transfers (internal account movements, not real spending)
-    // Also filter out ATM withdrawals (cash, not trackable spending)
+    // Filter out internal transfers (not real spending)
     const isTransfer = (tx: typeof categorised[0]) => {
       const cat = tx.category?.toUpperCase() || '';
       const desc = (tx.description || '').toLowerCase();
-      // Exclude: transfers between own accounts, Revolut top-ups, savings moves
-      if (cat === 'TRANSFER' && (
-        desc.includes('revolut') ||
-        desc.includes('savings') ||
-        desc.includes('monzo') ||
-        desc.includes('starling') ||
-        desc.includes('via mobile') ||
-        desc.includes('fp ') // Faster Payments between own accounts
-      )) return true;
+
+      // All TRANSFER category transactions are likely internal movements
+      if (cat === 'TRANSFER') return true;
+
+      // Also catch transfers disguised as other categories
+      if (desc.includes('revolut') && !desc.includes('deliveroo') && !desc.includes('uber')) return true;
+      if (desc.includes('monzo') || desc.includes('starling')) return true;
+      if (desc.includes('savings') || desc.includes('isa ')) return true;
+      if (desc.includes('via mobile') && desc.includes('pymt')) return true;
+
       return false;
     };
 
@@ -185,6 +185,8 @@ export async function GET() {
         date: tx.timestamp.substring(0, 10),
       }));
 
+    const monthCount = Math.max(Object.keys(monthlySpend).length, 1);
+
     return NextResponse.json({
       hasData: true,
       summary: {
@@ -194,7 +196,9 @@ export async function GET() {
         current_month_spend: parseFloat(currentMonthSpend.toFixed(2)),
         previous_month_spend: parseFloat(previousMonthSpend.toFixed(2)),
         month_change_percent: monthChange,
-        months_analysed: Object.keys(monthlySpend).length,
+        months_analysed: monthCount,
+        monthly_avg_spend: parseFloat((totalSpend / monthCount).toFixed(2)),
+        monthly_avg_income: parseFloat((totalIncome / monthCount).toFixed(2)),
       },
       category_breakdown: categoryBreakdown,
       monthly_spend: Object.entries(monthlySpend)
