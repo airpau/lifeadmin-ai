@@ -42,6 +42,7 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Debt harassment: report to Trading Standards, complain to FCA, consider police report under Protection from Harassment Act
 
 ## Writing rules:
+- CRITICAL: Include ALL specific details the user has provided — names, dates, amounts, addresses, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
 - Formal UK business letter format with date, addressee, subject line
 - State facts chronologically and precisely (dates, amounts, reference numbers)
 - Cite the exact legal provision violated

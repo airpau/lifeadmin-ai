@@ -156,14 +156,15 @@ DESIRED OUTCOME: ${desiredOutcome}
 ${amount ? `AMOUNT INVOLVED: £${amount}` : ''}
 ${referenceNumber ? `REFERENCE NUMBER: ${referenceNumber}` : ''}
 
-Requirements:
-- Formal UK letter format with date
+CRITICAL REQUIREMENTS:
+- You MUST include ALL specific details the user has provided in their situation and desired outcome. If they gave an address, include the full address. If they gave dates, amounts, reference numbers, names, or any other specifics, include them ALL in the letter. The letter must be specific to THEIR situation, not generic.
+- Formal UK letter format with date and correct recipient address
 - Cite the specific legislation that applies
 - Professional tone — firm but respectful
 - Set a clear deadline for response (28 days for government bodies)
 - Include escalation path if no response
-- Under 400 words
-- Do not include placeholder brackets — write it ready to send
+- The letter must be ready to print and send — no placeholder text like [YOUR ADDRESS] or [REFERENCE]. If you do not have a specific detail, leave it out rather than using a placeholder.
+- Include the user's stated desired outcome clearly and specifically in the letter body
 
 Return as JSON with keys:
 - letter: the complete letter as a string
