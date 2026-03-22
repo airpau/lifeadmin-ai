@@ -18,7 +18,7 @@ const plans = [
     features: [
       '3 AI complaint letters per month',
       'Basic bill scanner',
-      'Subscription tracker (up to 10)',
+      'Unlimited subscription tracking',
       'Email support',
     ],
     cta: 'Get started free',

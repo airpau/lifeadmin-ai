@@ -182,7 +182,7 @@ export default function Home() {
                   <Scale className="h-6 w-6 text-rose-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Deal Finder</h3>
-                <p className="text-slate-400 text-sm mb-3">Compare energy, broadband, insurance and mobile deals. We know what you currently pay and find cheaper alternatives. Switch in minutes and start saving immediately.</p>
+                <p className="text-slate-400 text-sm mb-3">Compare energy, broadband, insurance, mobile, mortgages, credit cards and loans. We know what you currently pay and find cheaper alternatives. Switch and start saving immediately.</p>
                 <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">Available on all plans</span>
               </div>
 
@@ -299,7 +299,7 @@ export default function Home() {
                   {[
                     { feature: 'AI complaint letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
                     { feature: 'UK consumer law citations', free: true, essential: true, pro: true },
-                    { feature: 'Subscription tracker', free: 'Up to 10', essential: 'Unlimited', pro: 'Unlimited' },
+                    { feature: 'Subscription tracker', free: true, essential: true, pro: true },
                     { feature: 'Deal comparison', free: true, essential: true, pro: true },
                     { feature: 'Email inbox scanner', free: false, essential: true, pro: true },
                     { feature: 'Auto-cancellation emails', free: false, essential: true, pro: true },

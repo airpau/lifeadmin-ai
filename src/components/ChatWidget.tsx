@@ -122,7 +122,21 @@ export default function ChatWidget() {
                       : 'bg-slate-800 text-slate-200'
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user' ? (
+                    msg.content
+                  ) : (
+                    <div className="space-y-2">
+                      {msg.content.split('\n').filter(Boolean).map((line, j) => {
+                        if (line.startsWith('- ') || line.startsWith('• ')) {
+                          return <p key={j} className="pl-3 before:content-['•'] before:mr-2 before:text-amber-500">{line.replace(/^[-•]\s*/, '')}</p>;
+                        }
+                        if (line.startsWith('**') && line.endsWith('**')) {
+                          return <p key={j} className="font-semibold text-white">{line.replace(/\*\*/g, '')}</p>;
+                        }
+                        return <p key={j}>{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

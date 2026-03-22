@@ -36,7 +36,7 @@ export const PLANS = {
     limits: {
       scans: 5,
       complaints: 1,
-      subscriptions: 10,
+      subscriptions: Infinity,
     },
   },
   essential: {
