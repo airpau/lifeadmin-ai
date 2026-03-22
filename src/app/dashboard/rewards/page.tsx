@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Gift, Star, Trophy, Crown, Loader2, Check, Clock } from 'lucide-react';
+import { Gift, Star, Trophy, Crown, Loader2, Check, Clock, Copy, Share2 } from 'lucide-react';
 
 interface LoyaltyData {
   balance: number;
@@ -20,17 +20,37 @@ const tierIcons: Record<string, typeof Star> = {
   platinum: Gift,
 };
 
+interface ReferralData {
+  code: string;
+  shareUrl: string;
+  totalReferred: number;
+  totalSubscribed: number;
+  referrals: Array<{ email: string; status: string; created_at: string }>;
+}
+
 export default function RewardsPage() {
   const [data, setData] = useState<LoyaltyData | null>(null);
+  const [referrals, setReferrals] = useState<ReferralData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   useEffect(() => {
-    fetch('/api/loyalty')
-      .then(r => r.json())
-      .then(d => { if (!d.error) setData(d); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch('/api/loyalty').then(r => r.json()),
+      fetch('/api/referrals').then(r => r.json()),
+    ]).then(([loyaltyData, refData]) => {
+      if (!loyaltyData.error) setData(loyaltyData);
+      if (!refData.error) setReferrals(refData);
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  const handleCopyCode = () => {
+    if (referrals?.shareUrl) {
+      navigator.clipboard.writeText(referrals.shareUrl);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    }
+  };
 
   if (loading) {
     return (
@@ -79,6 +99,46 @@ export default function RewardsPage() {
         </div>
       </div>
 
+      {/* Referral System */}
+      {referrals && (
+        <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-8">
+          <div className="flex items-center gap-3 mb-4">
+            <Share2 className="h-6 w-6 text-amber-500" />
+            <div>
+              <h2 className="text-lg font-bold text-white">Refer a friend, earn rewards</h2>
+              <p className="text-slate-400 text-sm">They get a free first month. You get 100 points (+ 200 if they subscribe).</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800 mb-4">
+            <p className="text-slate-500 text-xs mb-2">Your referral link</p>
+            <div className="flex items-center gap-3">
+              <code className="flex-1 text-amber-400 text-sm bg-slate-900 rounded-lg px-3 py-2 font-mono truncate">{referrals.shareUrl}</code>
+              <button
+                onClick={handleCopyCode}
+                className="shrink-0 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all flex items-center gap-2"
+              >
+                {codeCopied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy</>}
+              </button>
+            </div>
+            <p className="text-slate-600 text-xs mt-2">Your code: <span className="text-slate-400 font-mono">{referrals.code}</span></p>
+          </div>
+
+          {referrals.totalReferred > 0 && (
+            <div className="flex items-center gap-6 text-sm">
+              <div>
+                <span className="text-white font-bold">{referrals.totalReferred}</span>
+                <span className="text-slate-500 ml-1">referred</span>
+              </div>
+              <div>
+                <span className="text-amber-400 font-bold">{referrals.totalSubscribed}</span>
+                <span className="text-slate-500 ml-1">subscribed</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* How to earn */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
         <h2 className="text-lg font-bold text-white mb-4">How to earn points</h2>
@@ -92,8 +152,8 @@ export default function RewardsPage() {
             { action: 'Explore a deal', points: 2, icon: '🔗', live: true },
             { action: 'Confirm a cancellation', points: 15, icon: '✅', live: true },
             { action: 'Switch via an affiliate deal', points: 50, icon: '💰', live: false },
-            { action: 'Refer a friend who signs up', points: 100, icon: '👥', live: false },
-            { action: 'Refer a friend who subscribes', points: 200, icon: '🌟', live: false },
+            { action: 'Refer a friend who signs up', points: 100, icon: '👥', live: true },
+            { action: 'Refer a friend who subscribes', points: 200, icon: '🌟', live: true },
           ].map((item, i) => (
             <div key={i} className={`flex items-center justify-between rounded-lg px-4 py-2.5 border ${item.live ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-950/30 border-slate-800/50'}`}>
               <div className="flex items-center gap-3">
