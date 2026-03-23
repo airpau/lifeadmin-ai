@@ -336,15 +336,20 @@ IMPORTANT:
 
   const content = message.content[0];
   if (content.type === 'text') {
+    const raw = content.text.trim();
+    console.log(`[gmail] Claude response: ${raw.length} chars. First 300: ${raw.substring(0, 300)}`);
     try {
-      const raw = content.text.trim();
       const jsonMatch = raw.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        const parsed: Opportunity[] = JSON.parse(jsonMatch[0]);
+        const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
+        const parsed: Opportunity[] = JSON.parse(cleaned);
+        console.log(`[gmail] Found ${parsed.length} opportunities`);
         allOpportunities.push(...parsed.map((o) => ({ ...o, status: 'new' as const })));
+      } else {
+        console.error(`[gmail] No JSON array in response. Starts with: ${raw.substring(0, 200)}`);
       }
-    } catch {
-      console.error('[gmail] Failed to parse chunk response');
+    } catch (e) {
+      console.error(`[gmail] Parse error:`, e);
     }
     }
   } // end chunks loop
