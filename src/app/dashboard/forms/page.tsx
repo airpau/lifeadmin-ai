@@ -4,17 +4,50 @@ import { useState } from 'react';
 import { FileText, Loader2, Copy, Download, CheckCircle, Sparkles, RefreshCw } from 'lucide-react';
 
 const FORM_TYPES = [
-  { key: 'hmrc_tax_rebate', label: 'HMRC Tax Rebate', icon: '💷', description: 'Claim back overpaid tax' },
-  { key: 'hmrc_tax_code', label: 'Tax Code Challenge', icon: '📊', description: 'Fix an incorrect tax code' },
-  { key: 'council_tax_band', label: 'Council Tax Band Challenge', icon: '🏠', description: 'Challenge your council tax band' },
-  { key: 'council_tax_reduction', label: 'Council Tax Reduction', icon: '💰', description: 'Apply for discount or exemption' },
-  { key: 'dvla_vehicle', label: 'DVLA Vehicle Issue', icon: '🚗', description: 'Tax, registration, or SORN issues' },
-  { key: 'dvla_driving_licence', label: 'DVLA Driving Licence', icon: '🪪', description: 'Licence renewal, errors, or disputes' },
-  { key: 'nhs_complaint', label: 'NHS Complaint', icon: '🏥', description: 'Complain about NHS services' },
-  { key: 'parking_appeal', label: 'Parking Charge Appeal', icon: '🅿️', description: 'Appeal a private or council parking charge' },
-  { key: 'flight_compensation', label: 'Flight Delay Compensation', icon: '✈️', description: 'Claim up to £520 for flight delays' },
-  { key: 'debt_dispute', label: 'Debt Dispute Response', icon: '⚖️', description: 'Respond to unfair debt recovery' },
-  { key: 'refund_request', label: 'Formal Refund Request', icon: '↩️', description: 'Request a refund citing consumer law' },
+  { key: 'hmrc_tax_rebate', label: 'HMRC Tax Rebate', icon: '💷', description: 'Claim back overpaid tax',
+    situationPlaceholder: 'e.g. I was on emergency tax code for 3 months when I started a new job in September 2025. I believe I overpaid approximately £800 in income tax.',
+    outcomePlaceholder: 'Full refund of overpaid income tax',
+    refLabel: 'National Insurance number', refPlaceholder: 'e.g. QQ 12 34 56 A' },
+  { key: 'hmrc_tax_code', label: 'Tax Code Challenge', icon: '📊', description: 'Fix an incorrect tax code',
+    situationPlaceholder: 'e.g. My tax code changed to BR when it should be 1257L. I only have one job and no outstanding tax debts.',
+    outcomePlaceholder: 'Correct my tax code and refund any overpaid tax',
+    refLabel: 'National Insurance number', refPlaceholder: 'e.g. QQ 12 34 56 A' },
+  { key: 'council_tax_band', label: 'Council Tax Band Challenge', icon: '🏠', description: 'Challenge your council tax band',
+    situationPlaceholder: 'e.g. My property is in Band D but similar houses on my street are in Band C. My house is a 3-bed semi built in 1985.',
+    outcomePlaceholder: 'Reduce my council tax band to match comparable properties',
+    refLabel: 'Council tax account number', refPlaceholder: 'e.g. 1234567890' },
+  { key: 'council_tax_reduction', label: 'Council Tax Reduction', icon: '💰', description: 'Apply for discount or exemption',
+    situationPlaceholder: 'e.g. I am the sole adult resident at my property and should qualify for the 25% single person discount.',
+    outcomePlaceholder: '25% single person discount applied and backdated',
+    refLabel: 'Council tax account number', refPlaceholder: 'e.g. 1234567890' },
+  { key: 'dvla_vehicle', label: 'DVLA Vehicle Issue', icon: '🚗', description: 'Tax, registration, or SORN issues',
+    situationPlaceholder: 'e.g. I declared SORN on my vehicle in January but received a fine for no road tax in February. The vehicle has been off the road the entire time.',
+    outcomePlaceholder: 'Cancel the fine and confirm my SORN declaration',
+    refLabel: 'Vehicle registration number', refPlaceholder: 'e.g. AB12 CDE' },
+  { key: 'dvla_driving_licence', label: 'DVLA Driving Licence', icon: '🪪', description: 'Licence renewal, errors, or disputes',
+    situationPlaceholder: 'e.g. I applied to renew my driving licence 8 weeks ago and have not received it. My current licence expired and I need it for work.',
+    outcomePlaceholder: 'Expedite my licence renewal and issue a temporary licence',
+    refLabel: 'Driving licence number', refPlaceholder: 'e.g. JONES 801125 AB1CD' },
+  { key: 'nhs_complaint', label: 'NHS Complaint', icon: '🏥', description: 'Complain about NHS services',
+    situationPlaceholder: 'e.g. I attended A&E on 15 March and waited 9 hours before being seen. I was in significant pain and was not triaged properly.',
+    outcomePlaceholder: 'Formal investigation and written apology',
+    refLabel: 'NHS number (optional)', refPlaceholder: 'e.g. 123 456 7890' },
+  { key: 'parking_appeal', label: 'Parking Charge Appeal', icon: '🅿️', description: 'Appeal a private or council parking charge',
+    situationPlaceholder: 'e.g. I received a parking charge notice for £100 at Tesco car park. I was inside the store the entire time but exceeded the 2-hour limit by 10 minutes due to long queues.',
+    outcomePlaceholder: 'Cancel the parking charge notice',
+    refLabel: 'PCN number', refPlaceholder: 'e.g. PCN-12345678' },
+  { key: 'flight_compensation', label: 'Flight Delay Compensation', icon: '✈️', description: 'Claim up to £520 for flight delays',
+    situationPlaceholder: 'e.g. My flight BA1234 from Heathrow to Barcelona on 10 March was delayed by 4 hours and 20 minutes. No extraordinary circumstances were announced.',
+    outcomePlaceholder: 'Compensation of £350 under UK261 regulation',
+    refLabel: 'Booking reference', refPlaceholder: 'e.g. ABC123' },
+  { key: 'debt_dispute', label: 'Debt Dispute Response', icon: '⚖️', description: 'Respond to unfair debt recovery',
+    situationPlaceholder: 'e.g. I received a letter from a debt collector claiming I owe £450 to a gym I cancelled 3 years ago. I have no record of this debt and it may be statute-barred.',
+    outcomePlaceholder: 'Provide proof of the alleged debt or cease all contact',
+    refLabel: 'Debt reference number', refPlaceholder: 'e.g. REF-12345' },
+  { key: 'refund_request', label: 'Formal Refund Request', icon: '↩️', description: 'Request a refund citing consumer law',
+    situationPlaceholder: 'e.g. I purchased a laptop for £899 from Currys on 1 March. It developed a fault within 2 weeks and they are refusing to refund.',
+    outcomePlaceholder: 'Full refund under the 30-day right to reject',
+    refLabel: 'Order or receipt number', refPlaceholder: 'e.g. ORD-12345678' },
 ];
 
 export default function FormsPage() {
@@ -133,42 +166,49 @@ export default function FormsPage() {
                   {FORM_TYPES.find(f => f.key === selectedForm)?.label}
                 </h2>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Describe your situation *</label>
-                  <textarea
-                    required rows={5} value={details} onChange={(e) => setDetails(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                    placeholder="Explain what happened, when, and any relevant details. You can paste email or letter content here too..."
-                  />
-                </div>
+                {(() => {
+                  const formConfig = FORM_TYPES.find(f => f.key === selectedForm);
+                  return (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">Describe your situation *</label>
+                        <textarea
+                          required rows={5} value={details} onChange={(e) => setDetails(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          placeholder={formConfig?.situationPlaceholder || 'Explain what happened, when, and any relevant details...'}
+                        />
+                      </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">What outcome do you want? *</label>
-                  <input
-                    type="text" required value={desiredOutcome} onChange={(e) => setDesiredOutcome(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                    placeholder="e.g. Full refund of overpaid tax, Band reduction, Compensation..."
-                  />
-                </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">What outcome do you want? *</label>
+                        <input
+                          type="text" required value={desiredOutcome} onChange={(e) => setDesiredOutcome(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          placeholder={formConfig?.outcomePlaceholder || 'e.g. Refund, correction, compensation...'}
+                        />
+                      </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Amount (optional)</label>
-                    <input
-                      type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      placeholder="£"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Reference (optional)</label>
-                    <input
-                      type="text" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                      placeholder="Tax ref, PCN number, etc."
-                    />
-                  </div>
-                </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-300 mb-2">Amount (optional)</label>
+                          <input
+                            type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            placeholder="£"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-300 mb-2">{formConfig?.refLabel || 'Reference'} (optional)</label>
+                          <input
+                            type="text" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            placeholder={formConfig?.refPlaceholder || 'Reference number'}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {error && (
                   <div className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg p-3">{error}</div>
