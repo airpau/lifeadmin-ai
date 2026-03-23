@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const supabase = getAdmin();
 
   // Fetch requested agents (or all executive agents)
-  const agentRoles = requestedAgents || ['cfo', 'cto', 'cao', 'cmo', 'exec_assistant', 'support_lead'];
+  const agentRoles = requestedAgents || ['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'exec_assistant', 'support_lead', 'support_agent'];
   const { data: agents } = await supabase
     .from('ai_executives')
     .select('role, name, system_prompt')

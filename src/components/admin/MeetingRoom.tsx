@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Users, Send, Loader2, X, TrendingUp, Brain,
-  Megaphone, ClipboardList, Headphones, Bot, Lightbulb, Check,
+  Megaphone, ClipboardList, Headphones, Bot, Lightbulb, Check, Target,
 } from 'lucide-react';
 
 interface MeetingMessage {
@@ -18,6 +18,7 @@ const roleIcons: Record<string, any> = {
   cto: Brain,
   cao: Users,
   cmo: Megaphone,
+  head_of_ads: Target,
   exec_assistant: ClipboardList,
   support_lead: Headphones,
   support_agent: Bot,
@@ -28,6 +29,7 @@ const roleColors: Record<string, string> = {
   cto: 'text-blue-400',
   cao: 'text-purple-400',
   cmo: 'text-pink-400',
+  head_of_ads: 'text-orange-400',
   exec_assistant: 'text-cyan-400',
   support_lead: 'text-amber-400',
   support_agent: 'text-slate-400',
@@ -38,6 +40,7 @@ const roleBgColors: Record<string, string> = {
   cto: 'bg-blue-500/10 border-blue-500/30',
   cao: 'bg-purple-500/10 border-purple-500/30',
   cmo: 'bg-pink-500/10 border-pink-500/30',
+  head_of_ads: 'bg-orange-500/10 border-orange-500/30',
   exec_assistant: 'bg-cyan-500/10 border-cyan-500/30',
   support_lead: 'bg-amber-500/10 border-amber-500/30',
   support_agent: 'bg-slate-500/10 border-slate-500/30',
@@ -146,13 +149,13 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
             </div>
             <div>
               <h2 className="text-white font-semibold">Executive Meeting Room</h2>
-              <p className="text-slate-400 text-xs">6 agents online — speak to your AI team directly</p>
+              <p className="text-slate-400 text-xs">8 agents online — speak to your AI team directly</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Online indicators */}
             <div className="flex -space-x-1">
-              {['cfo', 'cto', 'cao', 'cmo', 'exec_assistant', 'support_lead'].map((role) => {
+              {['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'exec_assistant', 'support_lead', 'support_agent'].map((role) => {
                 const Icon = roleIcons[role] || Bot;
                 return (
                   <div key={role} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-slate-800 ${roleBgColors[role]}`}>
