@@ -26,7 +26,7 @@ const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = 
   { keywords: ['auriga advocates', 'solicitor', 'accountant', 'property accountant'], category: 'professional' },
   { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },
   { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
-  { keywords: ['sky', 'virgin media', 'bt ', 'talktalk', 'plusnet', 'communityfibre', 'vodafone broad'], category: 'broadband' },
+  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'bt fibre', 'talktalk', 'plusnet', 'communityfibre', 'vodafone broad', 'hyperoptic'], category: 'broadband' },
   { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'lebara', 'smarty', 'tesco mobile'], category: 'mobile' },
   { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'now tv', 'youtube', 'dazn', 'plex', 'patreon'], category: 'streaming' },
   { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton', 'strava', 'fitness'], category: 'fitness' },

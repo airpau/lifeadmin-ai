@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText, Loader2, Copy, Download, CheckCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Loader2, Copy, Download, CheckCircle, Sparkles, RefreshCw, History, Clock } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 const FORM_TYPES = [
   { key: 'hmrc_tax_rebate', label: 'HMRC Tax Rebate', icon: '💷', description: 'Claim back overpaid tax',
     situationPlaceholder: 'e.g. I was on emergency tax code for 3 months when I started a new job in September 2025. I believe I overpaid approximately £800 in income tax.',
     outcomePlaceholder: 'Full refund of overpaid income tax',
-    refLabel: 'National Insurance number', refPlaceholder: 'e.g. QQ 12 34 56 A' },
+    refLabel: 'NI number or UTR', refPlaceholder: 'e.g. QQ 12 34 56 A or 1234567890' },
   { key: 'hmrc_tax_code', label: 'Tax Code Challenge', icon: '📊', description: 'Fix an incorrect tax code',
     situationPlaceholder: 'e.g. My tax code changed to BR when it should be 1257L. I only have one job and no outstanding tax debts.',
     outcomePlaceholder: 'Correct my tax code and refund any overpaid tax',
-    refLabel: 'National Insurance number', refPlaceholder: 'e.g. QQ 12 34 56 A' },
+    refLabel: 'NI number or UTR', refPlaceholder: 'e.g. QQ 12 34 56 A or 1234567890' },
   { key: 'council_tax_band', label: 'Council Tax Band Challenge', icon: '🏠', description: 'Challenge your council tax band',
     situationPlaceholder: 'e.g. My property is in Band D but similar houses on my street are in Band C. My house is a 3-bed semi built in 1985.',
     outcomePlaceholder: 'Reduce my council tax band to match comparable properties',
@@ -50,6 +51,14 @@ const FORM_TYPES = [
     refLabel: 'Order or receipt number', refPlaceholder: 'e.g. ORD-12345678' },
 ];
 
+interface FormTask {
+  id: string;
+  title: string;
+  description: string;
+  created_at: string;
+  letter?: string;
+}
+
 export default function FormsPage() {
   const [selectedForm, setSelectedForm] = useState<string | null>(null);
   const [details, setDetails] = useState('');
@@ -60,6 +69,45 @@ export default function FormsPage() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<'generate' | 'history'>('generate');
+  const [historyTasks, setHistoryTasks] = useState<FormTask[]>([]);
+  const [selectedHistoryTask, setSelectedHistoryTask] = useState<FormTask | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const supabase = createClient();
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoadingHistory(false); return; }
+
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('id, title, description, created_at')
+      .eq('user_id', user.id)
+      .eq('type', 'government_form')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    setHistoryTasks(tasks || []);
+    setLoadingHistory(false);
+  };
+
+  const loadTaskLetter = async (task: FormTask) => {
+    const { data: runs } = await supabase
+      .from('agent_runs')
+      .select('output_data')
+      .eq('task_id', task.id)
+      .eq('agent_type', 'government_form_writer')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const letter = runs?.[0]?.output_data?.letter || null;
+    setSelectedHistoryTask({ ...task, letter });
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
   const handleGenerate = async () => {
     if (!selectedForm || !details || !desiredOutcome) return;
@@ -131,7 +179,80 @@ export default function FormsPage() {
         <p className="text-slate-400">Generate formal letters to HMRC, councils, DVLA, NHS, airlines, and more</p>
       </div>
 
-      {!result ? (
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => { setActiveTab('generate'); setResult(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'generate' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+        >
+          <Sparkles className="h-4 w-4" /> Generate
+        </button>
+        <button
+          onClick={() => { setActiveTab('history'); loadHistory(); setSelectedHistoryTask(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'history' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+        >
+          <History className="h-4 w-4" /> History ({historyTasks.length})
+        </button>
+      </div>
+
+      {/* History tab */}
+      {activeTab === 'history' && (
+        <div>
+          {loadingHistory ? (
+            <div className="text-center py-12"><Loader2 className="h-8 w-8 text-amber-500 animate-spin mx-auto" /></div>
+          ) : selectedHistoryTask ? (
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+              <button onClick={() => setSelectedHistoryTask(null)} className="text-slate-400 hover:text-white text-sm mb-4 flex items-center gap-1">
+                ← Back to history
+              </button>
+              <h3 className="text-lg font-bold text-white mb-2">{selectedHistoryTask.title}</h3>
+              <p className="text-slate-500 text-xs mb-4">{new Date(selectedHistoryTask.created_at).toLocaleString('en-GB')}</p>
+              {selectedHistoryTask.letter ? (
+                <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{selectedHistoryTask.letter}</pre>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(selectedHistoryTask.letter!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                    className="mt-4 flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm"
+                  >
+                    {copied ? <><CheckCircle className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-slate-500 text-sm">Letter content not available.</p>
+              )}
+            </div>
+          ) : historyTasks.length === 0 ? (
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center">
+              <FileText className="h-12 w-12 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400 mb-2">No letters generated yet</p>
+              <button onClick={() => setActiveTab('generate')} className="text-amber-400 text-sm">Generate your first letter</button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {historyTasks.map((task) => (
+                <button
+                  key={task.id}
+                  onClick={() => loadTaskLetter(task)}
+                  className="w-full text-left bg-slate-900/50 border border-slate-800 hover:border-amber-500/50 rounded-xl px-5 py-4 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-white font-medium text-sm">{task.title}</p>
+                      <p className="text-slate-500 text-xs mt-1">{task.description}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-500 text-xs shrink-0 ml-4">
+                      <Clock className="h-3 w-3" />
+                      {new Date(task.created_at).toLocaleDateString('en-GB')}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'generate' && !result ? (
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Form type selection */}
           <div>
@@ -230,7 +351,7 @@ export default function FormsPage() {
             )}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'generate' ? (
         /* Result view */
         <div>
           <div className="flex items-center justify-between mb-6">
@@ -291,7 +412,7 @@ export default function FormsPage() {
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

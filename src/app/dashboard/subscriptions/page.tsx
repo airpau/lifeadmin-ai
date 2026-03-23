@@ -702,7 +702,7 @@ export default function SubscriptionsPage() {
         </div>
 
         {/* Cancellation email panel */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
             <Mail className="h-5 w-5 text-amber-500" />
             Cancellation Email
