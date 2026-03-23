@@ -35,32 +35,53 @@ const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
 };
 
 // Simple cron matcher — checks if current time matches a cron expression
-function shouldRunNow(schedule: string): boolean {
+function shouldRunNow(schedule: string, lastRunAt: string | null): boolean {
   const now = new Date();
   const parts = schedule.split(' ');
   if (parts.length !== 5) return false;
 
   const [minute, hour, , , dayOfWeek] = parts;
 
+  // If agent ran in the last 14 minutes, skip (prevents double-runs within same cron window)
+  if (lastRunAt) {
+    const lastRun = new Date(lastRunAt);
+    const minutesSinceLastRun = (now.getTime() - lastRun.getTime()) / (1000 * 60);
+    if (minutesSinceLastRun < 14) return false;
+  }
+
   const matchesPart = (part: string, value: number): boolean => {
     if (part === '*') return true;
-    // Handle */N
     if (part.startsWith('*/')) {
       const interval = parseInt(part.slice(2));
       return value % interval === 0;
     }
-    // Handle comma-separated values
     if (part.includes(',')) {
       return part.split(',').map(Number).includes(value);
     }
     return parseInt(part) === value;
   };
 
-  return (
-    matchesPart(minute, now.getUTCMinutes()) &&
-    matchesPart(hour, now.getUTCHours()) &&
-    matchesPart(dayOfWeek, now.getUTCDay())
-  );
+  // Check with a tolerance: match if we're within 14 minutes of a scheduled time
+  const currentMinute = now.getUTCMinutes();
+  const currentHour = now.getUTCHours();
+
+  // Check day of week first
+  if (!matchesPart(dayOfWeek, now.getUTCDay())) return false;
+
+  // Check hour matches
+  if (!matchesPart(hour, currentHour)) return false;
+
+  // Check minute with tolerance (within 14 min window)
+  if (minute === '*') return true;
+  if (minute.startsWith('*/')) {
+    const interval = parseInt(minute.slice(2));
+    return currentMinute % interval < 14;
+  }
+  const targetMinutes = minute.includes(',') ? minute.split(',').map(Number) : [parseInt(minute)];
+  return targetMinutes.some(target => {
+    const diff = currentMinute - target;
+    return diff >= 0 && diff < 14;
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -85,7 +106,7 @@ export async function GET(request: NextRequest) {
 
   for (const agent of agents) {
     // Check if this agent should run based on schedule
-    if (!shouldRunNow(agent.schedule)) {
+    if (!shouldRunNow(agent.schedule, agent.last_run_at)) {
       results.push({ role: agent.role, status: 'skipped (not scheduled)' });
       continue;
     }
