@@ -131,13 +131,13 @@ export async function POST(request: NextRequest) {
         senderMap.set(key, { from: e.from, subjects: [], snippets: [], emailId: e.id, count: 0 });
       }
       const g = senderMap.get(key)!;
-      if (g.subjects.length < 3) g.subjects.push(e.subject);
-      if (g.snippets.length < 1) g.snippets.push(e.snippet.substring(0, 150));
+      if (g.subjects.length < 5) g.subjects.push(e.subject);
+      if (g.snippets.length < 2) g.snippets.push(e.snippet.substring(0, 200));
       g.count++;
     }
 
     const providerList = Array.from(senderMap.values())
-      .map((g, i) => `${i + 1}. From: ${g.from} (${g.count} emails)\n   Subjects: ${g.subjects.join(' | ')}\n   Snippet: ${g.snippets[0] || ''}`)
+      .map((g, i) => `${i + 1}. From: ${g.from} (${g.count} emails)\n   Subjects: ${g.subjects.join(' | ')}\n   Snippets: ${g.snippets.join(' | ')}`)
       .join('\n');
 
     // Call Claude
@@ -149,23 +149,31 @@ export async function POST(request: NextRequest) {
       max_tokens: 16384,
       system: `You are a UK consumer finance analyst. Analyse the email providers below and return a JSON array of financial opportunities.
 
-For EVERY provider you recognise, create an entry. A normal inbox should have 10-50+ opportunities.
+For EVERY provider you recognise as financially relevant, create an entry.
 
 Each entry must have:
 - id: "opp_1", "opp_2", etc
 - emailId: use the first email ID from that provider
-- type: "subscription" | "utility_bill" | "renewal" | "insurance" | "loan" | "credit_card" | "mortgage" | "flight_delay" | "debt_dispute" | "tax_rebate" | "overcharge" | "forgotten_subscription"
-- category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "other"
+- type: one of "subscription" | "utility_bill" | "renewal" | "insurance" | "loan" | "credit_card" | "mortgage" | "flight_delay" | "debt_dispute" | "tax_rebate" | "overcharge" | "forgotten_subscription" | "admin_task" | "price_alert"
+- category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "business" | "other"
 - title: short actionable title
-- description: 2-3 sentences with specific UK consumer rights advice
+- description: 2-3 sentences with specific advice. Include UK consumer rights where relevant.
 - amount: GBP amount if visible in snippet, 0 if unknown
 - confidence: 60-95
 - provider: clean company name
 - detected: "${new Date().toISOString().split('T')[0]}"
 - status: "new"
-- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_compensation" | "monitor"
+- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_compensation" | "create_task" | "monitor"
 - paymentAmount: amount if visible, null otherwise
 - paymentFrequency: "monthly" | "quarterly" | "yearly" | null
+
+CRITICAL CATEGORISATION RULES:
+- Skyscanner, Google Flights, Kayak price alerts are "price_alert" type, NOT "flight_delay". Only classify as flight_delay if the email is about an ACTUAL flight booking that was delayed.
+- Companies House, HMRC confirmation statements, annual returns are "admin_task" type with suggestedAction "create_task". These are business compliance deadlines, not subscriptions.
+- Marketing emails, newsletters, and promotional offers should be EXCLUDED unless they contain billing/subscription information.
+- Booking confirmations (hotels, flights, car hire) are NOT subscriptions unless they clearly involve recurring payments.
+- Only use "claim_compensation" for actual flight delays (not price alerts) or genuine overcharges.
+- Use "create_task" for anything that requires an action but is not a financial product (filing deadlines, compliance tasks, account verification).
 
 Return ONLY the JSON array. No markdown fences. No explanation.`,
       messages: [{ role: 'user', content: `Find every financial opportunity from these ${senderMap.size} email providers:\n\n${providerList}` }],

@@ -587,6 +587,25 @@ export default function ScannerPage() {
                             </button>
                           )}
 
+                          {/* Create Task - always available */}
+                          <button
+                            onClick={async () => {
+                              const taskTitle = prompt('Task name:', opp.title);
+                              if (!taskTitle) return;
+                              try {
+                                await supabase.from('tasks').update({
+                                  title: taskTitle,
+                                  type: 'other',
+                                  status: 'pending_review',
+                                }).eq('id', opp.id);
+                                setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
+                              } catch {}
+                            }}
+                            className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-all text-sm"
+                          >
+                            Create Task
+                          </button>
+
                           {/* Dismiss - always available */}
                           <button
                             onClick={async () => {
