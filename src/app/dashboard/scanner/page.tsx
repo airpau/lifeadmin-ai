@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
-  Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus,
+  Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus, Shield,
 } from 'lucide-react';
 
 interface Opportunity {
@@ -191,6 +191,14 @@ export default function ScannerPage() {
         </h1>
         <p className="text-slate-400">
           AI scans your inbox for overcharges, renewals, and forgotten subscriptions
+        </p>
+      </div>
+
+      {/* Data security notice */}
+      <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-3 mb-6">
+        <Shield className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-slate-400">
+          <span className="font-semibold text-slate-300">Your data is 100% secure.</span> We use read-only access to scan for financial information. We never store full email content, never share your data with third parties, and you can disconnect at any time. All data is encrypted and stored on UK/EU servers.
         </p>
       </div>
 

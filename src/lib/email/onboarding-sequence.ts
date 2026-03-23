@@ -244,7 +244,8 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
         <li>Unlimited bank accounts</li>
         <li>Full transaction analysis</li>
         <li>Priority support</li>
-        <li>Deal finder and email scanning (coming soon)</li>
+        <li>Email inbox scanning (2 years of history)</li>
+        <li>Deal finder (coming soon)</li>
       </ul>
     </div>
 

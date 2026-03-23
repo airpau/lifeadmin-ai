@@ -272,18 +272,14 @@ export default function DashboardPage() {
           <Clock className="h-5 w-5 text-slate-400" />
           Coming Soon
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
             <p className="text-white font-medium text-sm mb-1">Deal Comparison</p>
             <p className="text-slate-500 text-xs">Compare energy, broadband, insurance, and more. Switch and save directly from your dashboard.</p>
           </div>
           <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
-            <p className="text-white font-medium text-sm mb-1">Email Inbox Scanning</p>
-            <p className="text-slate-500 text-xs">Connect Gmail or Outlook to automatically find subscriptions, overcharges, and renewal dates from your emails.</p>
-          </div>
-          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
             <p className="text-white font-medium text-sm mb-1">Automated Cancellations</p>
-            <p className="text-slate-500 text-xs">Let our AI handle the cancellation process for you. We'll contact the provider and confirm once it's done.</p>
+            <p className="text-slate-500 text-xs">Let our AI handle the cancellation process for you, contacting the provider and confirming once it's done.</p>
           </div>
         </div>
       </div>

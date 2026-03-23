@@ -251,41 +251,48 @@ export async function scanEmailsForOpportunities(
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Use Sonnet for better financial intelligence
   const SCAN_MODEL = 'claude-sonnet-4-6';
-
-  // Truncate email bodies but keep enough for amounts and dates
-  const emailSummaries = emails
-    .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${(e.body || '').substring(0, 500)}`)
-    .join('\n\n');
-
-  // If still too large, process in chunks
-  const MAX_CHARS = 600000; // ~150k tokens, well within Haiku's 200k limit
   const allOpportunities: Opportunity[] = [];
 
-  const chunks: string[] = [];
-  if (emailSummaries.length > MAX_CHARS) {
-    // Split emails into chunks
-    const perEmail = emailSummaries.length / emails.length;
-    const emailsPerChunk = Math.floor(MAX_CHARS / perEmail);
-    for (let i = 0; i < emails.length; i += emailsPerChunk) {
-      const chunkEmails = emails.slice(i, i + emailsPerChunk);
-      chunks.push(chunkEmails
-        .map((e, j) => `--- Email ${i + j + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${(e.body || '').substring(0, 300)}`)
-        .join('\n\n'));
+  // Group emails by sender for efficient analysis
+  const senderMap = new Map<string, { from: string; subjects: string[]; snippets: string[]; dates: string[]; bodies: string[]; emailIds: string[] }>();
+  for (const e of emails) {
+    const sender = (e.from || '').toLowerCase().replace(/<[^>]+>/, '').trim();
+    const key = sender.substring(0, 50);
+    if (!senderMap.has(key)) {
+      senderMap.set(key, { from: e.from, subjects: [], snippets: [], dates: [], bodies: [], emailIds: [] });
     }
-  } else {
-    chunks.push(emailSummaries);
+    const group = senderMap.get(key)!;
+    group.subjects.push(e.subject);
+    group.snippets.push(e.snippet);
+    group.dates.push(e.date);
+    group.bodies.push((e.body || '').substring(0, 200));
+    group.emailIds.push(e.id);
   }
 
-  for (const chunk of chunks) {
-    logClaudeCall({
-      userId: 'gmail-scan',
-      route: '/api/gmail/scan (lib/gmail)',
-      model: SCAN_MODEL,
-      estimatedInputTokens: Math.round(chunk.length / 4) + 500,
-      estimatedOutputTokens: 2000,
-    });
+  // Build compact summary grouped by sender
+  const senderSummary = Array.from(senderMap.entries())
+    .map(([, group], i) => {
+      const recentSubjects = group.subjects.slice(0, 5).join(' | ');
+      const recentSnippet = group.snippets[0] || '';
+      const recentBody = group.bodies[0] || '';
+      return `--- Provider ${i + 1} (${group.emailIds.length} emails) ---\nFrom: ${group.from}\nRecent subjects: ${recentSubjects}\nLatest snippet: ${recentSnippet}\nLatest body excerpt: ${recentBody}\nDate range: ${group.dates[group.dates.length - 1]} to ${group.dates[0]}\nEmail ID: ${group.emailIds[0]}`;
+    })
+    .join('\n\n');
+
+  console.log(`[gmail] Grouped ${emails.length} emails into ${senderMap.size} unique senders. Summary: ${senderSummary.length} chars`);
+
+  logClaudeCall({
+    userId: 'gmail-scan',
+    route: '/api/gmail/scan (lib/gmail)',
+    model: SCAN_MODEL,
+    estimatedInputTokens: Math.round(senderSummary.length / 4) + 1000,
+    estimatedOutputTokens: 4000,
+  });
+
+  // Single Claude call with grouped sender data
+  {
+    const chunk = senderSummary;
 
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
