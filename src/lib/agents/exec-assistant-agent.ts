@@ -136,5 +136,5 @@ Compile your executive brief. Include:
 4. The business metrics snapshot
 5. If there are open action items from other agents that are assigned to 'human', highlight these prominently`;
 
-  return runExecutiveAgent(agentConfig, contextPrompt);
+  return runExecutiveAgent(agentConfig, contextPrompt, { useSonnet: true });
 }

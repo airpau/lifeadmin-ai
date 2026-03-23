@@ -7,6 +7,7 @@ const anthropic = new Anthropic({
 });
 
 const EXECUTIVE_MODEL = 'claude-haiku-4-5-20251001';
+const EXECUTIVE_MODEL_SONNET = 'claude-sonnet-4-6';
 
 export interface AgentConfig {
   id: string;
@@ -35,13 +36,15 @@ export interface AgentReport {
 
 export async function runExecutiveAgent(
   agent: AgentConfig,
-  contextPrompt: string
+  contextPrompt: string,
+  options?: { useSonnet?: boolean }
 ): Promise<AgentReport> {
-  console.log(`[executive-agent] Running ${agent.name} (${agent.role})`);
+  const model = options?.useSonnet ? EXECUTIVE_MODEL_SONNET : EXECUTIVE_MODEL;
+  console.log(`[executive-agent] Running ${agent.name} (${agent.role}) with ${model}`);
 
   const response = await anthropic.messages.create({
-    model: EXECUTIVE_MODEL,
-    max_tokens: 1024,
+    model,
+    max_tokens: options?.useSonnet ? 2048 : 1024,
     system: agent.systemPrompt,
     messages: [{ role: 'user', content: contextPrompt }],
   });
