@@ -254,7 +254,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       </ul>
     </div>
 
-    <p style="${p}">Paybacker's inbox scanner detects upcoming renewals automatically — so you never miss the window to act.</p>
+    <p style="${p}">Paybacker tracks your contract end dates and sends you renewal reminders at 30, 14, and 7 days before, so you never miss the window to act.</p>
 
     <a href="https://paybacker.co.uk" style="${cta}">Get early access →</a>
   </div>
@@ -277,11 +277,11 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <div style="${box}">
       <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">WHAT YOU GET FROM DAY ONE</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
-        <li>Connect Gmail — inbox scanner runs immediately</li>
-        <li>See every overcharge, subscription, and renewal alert</li>
+        <li>Connect your bank account to detect all subscriptions instantly</li>
+        <li>Track every contract with renewal dates and alerts</li>
         <li>Generate complaint letters citing Consumer Rights Act 2015</li>
         <li>AI cancellation emails for every unwanted subscription</li>
-        <li>Review and send from your own email — in under a minute</li>
+        <li>Full spending intelligence dashboard</li>
       </ul>
     </div>
 

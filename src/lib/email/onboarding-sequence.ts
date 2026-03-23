@@ -158,14 +158,14 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     <p style="${p}">You've had access for a week. Here's a quick check on the three things worth reviewing:</p>
 
     <div style="${box}">
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">1. Opportunity Scanner</p>
-      <p style="color:#94a3b8;margin:0 0 16px;font-size:14px;">Have you run it? It covers 2 years of inbox history — energy, broadband, billing errors, renewals. Takes 30 seconds.</p>
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">1. Bank Connection</p>
+      <p style="color:#94a3b8;margin:0 0 16px;font-size:14px;">Connect your bank account to automatically detect every subscription and recurring payment. Takes 30 seconds.</p>
 
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">2. Subscriptions</p>
-      <p style="color:#94a3b8;margin:0 0 16px;font-size:14px;">The "Detect from Inbox" button on the Subscriptions page finds every recurring charge from your emails automatically.</p>
+      <p style="color:#94a3b8;margin:0 0 16px;font-size:14px;">Track every subscription in one place. Add them manually or let the bank scan find them. See exactly what you're spending.</p>
 
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">3. Complaint letters</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;">If you spotted an overcharge or billing error, the Complaints agent writes the letter citing the exact UK law that applies.</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;">If you spot an overcharge or billing error, the Complaints agent writes the letter citing the exact UK law that applies.</p>
     </div>
 
     <a href="https://paybacker.co.uk/dashboard" style="${cta}">Review your dashboard →</a>
@@ -233,16 +233,18 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
       <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">AVAILABLE NOW — ESSENTIAL (£9.99/mo)</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0 0 16px;line-height:2;font-size:14px;">
         <li>Unlimited complaint letters</li>
-        <li>Gmail inbox scanner (2 years of history)</li>
-        <li>Subscription detection from inbox</li>
-        <li>AI cancellation emails</li>
+        <li>1 bank account with daily auto-sync</li>
+        <li>Full spending intelligence dashboard</li>
+        <li>AI cancellation emails with legal context</li>
+        <li>Renewal reminders (30, 14, 7 days before)</li>
       </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">COMING SOON — PRO (£19.99/mo)</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">AVAILABLE NOW — PRO (£19.99/mo)</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2;font-size:14px;">
-        <li>Open Banking integration (full financial picture)</li>
-        <li>Savings Agent (energy, broadband, insurance comparisons)</li>
-        <li>Forms &amp; Government Agent (HMRC, council tax)</li>
-        <li>Nightly auto-scan</li>
+        <li>Everything in Essential</li>
+        <li>Unlimited bank accounts</li>
+        <li>Full transaction analysis</li>
+        <li>Priority support</li>
+        <li>Deal finder and email scanning (coming soon)</li>
       </ul>
     </div>
 

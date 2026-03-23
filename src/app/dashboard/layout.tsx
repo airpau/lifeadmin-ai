@@ -27,7 +27,7 @@ const navItems = [
   { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Forms', href: '/dashboard/forms', icon: Building2 },
-  { name: 'Deals', href: '/dashboard/deals', icon: Tag },
+  { name: 'Deals', href: '/dashboard/deals', icon: Tag, comingSoon: true },
   { name: 'Spending', href: '/dashboard/spending', icon: BarChart3 },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
@@ -88,6 +88,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
               <span>{item.name}</span>
+              {'comingSoon' in item && item.comingSoon && (
+                <span className="text-[9px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-full ml-auto">Soon</span>
+              )}
             </Link>
           );
         })}

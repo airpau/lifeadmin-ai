@@ -128,7 +128,7 @@ export default function Home() {
             </h1>
 
             <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Cancel forgotten subscriptions. Dispute unfair bills. Find better deals on energy, broadband and insurance. Track every penny — automatically.
+              Cancel forgotten subscriptions. Dispute unfair bills. Track every contract and subscription. Get your money back automatically.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-10 text-sm text-slate-400">
@@ -187,8 +187,8 @@ export default function Home() {
                   <Scale className="h-6 w-6 text-rose-500" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Personalised Deal Finder</h3>
-                <p className="text-slate-400 text-sm mb-3">We know what you pay and find cheaper alternatives. Energy, broadband, mobile, insurance, mortgages, credit cards, and loans. "You pay £45 for Sky — switch to CommunityFibre for £25."</p>
-                <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">All plans</span>
+                <p className="text-slate-400 text-sm mb-3">We know what you pay and find cheaper alternatives. Energy, broadband, mobile, insurance, mortgages, credit cards, and loans. Switch and save from your dashboard.</p>
+                <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">Coming soon</span>
               </div>
 
               {/* Feature 5 */}
@@ -268,7 +268,7 @@ export default function Home() {
                   </div>
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">2</div>
                   <h3 className="text-xl font-bold text-white mb-3">AI finds savings</h3>
-                  <p className="text-slate-400">Our AI detects overcharges, forgotten subscriptions, and renewal dates. Better deals are surfaced automatically.</p>
+                  <p className="text-slate-400">Our AI detects overcharges, forgotten subscriptions, contract end dates, and overpayments across all your bills.</p>
                 </div>
               </div>
               <div className="relative">
@@ -278,7 +278,7 @@ export default function Home() {
                   </div>
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">3</div>
                   <h3 className="text-xl font-bold text-white mb-3">Save money automatically</h3>
-                  <p className="text-slate-400">Review AI-generated letters, switch to better deals, cancel unused subscriptions — all from one dashboard.</p>
+                  <p className="text-slate-400">Review AI-generated letters, cancel unused subscriptions, track every contract, and take control of your finances.</p>
                 </div>
               </div>
             </div>
@@ -316,14 +316,14 @@ export default function Home() {
                     { feature: 'HMRC, council tax, DVLA, NHS letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
                     { feature: 'Flight delay compensation claims', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
                     { feature: 'Subscription tracker', free: true, essential: true, pro: true },
-                    { feature: 'Personalised deals page', free: true, essential: true, pro: true },
+                    { feature: 'Personalised deals page', free: 'Coming soon', essential: 'Coming soon', pro: 'Coming soon' },
                     { feature: 'AI support chatbot', free: true, essential: true, pro: true },
                     { feature: 'Loyalty rewards and referrals', free: true, essential: true, pro: true },
                     { feature: 'Bank scan', free: 'One-time', essential: '1 bank, daily sync', pro: 'Unlimited banks' },
                     { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
                     { feature: 'Smart cancellation with legal letters', free: false, essential: true, pro: true },
                     { feature: 'Renewal reminders (30/14/7 days)', free: false, essential: true, pro: true },
-                    { feature: 'Targeted deal alerts', free: 'Weekly digest', essential: 'Personalised', pro: 'Priority alerts' },
+                    { feature: 'Targeted deal alerts', free: 'Coming soon', essential: 'Coming soon', pro: 'Coming soon' },
                     { feature: 'Email inbox scanning', free: false, essential: false, pro: 'Coming soon' },
                     { feature: 'Automated cancellations', free: false, essential: false, pro: 'Coming soon' },
                     { feature: 'Priority support', free: false, essential: false, pro: true },
