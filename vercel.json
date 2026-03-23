@@ -34,7 +34,7 @@
     },
     {
       "path": "/api/cron/executive-agents",
-      "schedule": "0 7 * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }

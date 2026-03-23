@@ -120,6 +120,24 @@ export async function GET(request: NextRequest) {
         .select('id')
         .single();
 
+      // Save action items flagged by this agent
+      if (report.actionItems && report.actionItems.length > 0) {
+        const items = report.actionItems.map((item: any) => ({
+          flagged_by: agent.role,
+          assigned_to: item.assigned_to || 'human',
+          title: item.title || item.task || 'Action required',
+          description: item.description || item.task || '',
+          priority: item.priority || 'medium',
+          category: item.category || 'operations',
+          status: 'open',
+          source_report_id: savedReport?.id || null,
+        }));
+
+        const { error: aiError } = await supabase.from('agent_action_items').insert(items);
+        if (aiError) console.error(`Failed to save action items for ${agent.role}:`, aiError.message);
+        else console.log(`[executive-agents] ${agent.role} flagged ${items.length} action items`);
+      }
+
       // Update agent last_run_at
       await supabase
         .from('ai_executives')

@@ -16,12 +16,21 @@ export interface AgentConfig {
   config: Record<string, any>;
 }
 
+export interface ActionItem {
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  category: 'finance' | 'technical' | 'operations' | 'marketing' | 'support' | 'compliance' | 'growth';
+  assigned_to: string; // agent role or 'human'
+}
+
 export interface AgentReport {
   title: string;
   reportType: string;
   content: string;
   data: Record<string, any>;
   recommendations: string[];
+  actionItems?: ActionItem[];
 }
 
 export async function runExecutiveAgent(
@@ -71,5 +80,6 @@ export async function runExecutiveAgent(
     content: parsed.summary || raw,
     data: parsed.metrics || parsed,
     recommendations: parsed.recommendations || [],
+    actionItems: parsed.action_items || parsed.urgent_tasks || [],
   };
 }
