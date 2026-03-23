@@ -314,10 +314,26 @@ src/app/
 
 ---
 
+## Marketing Plan (8 Items)
+
+1. **SEO Content Pages** - Landing pages for: energy bill disputes, flight delay compensation, gym cancellation, council tax challenge, debt collection response. Each with proper H1, meta tags, CTA.
+2. **Referral Mechanic** - Free month of Essential per referred paying subscriber. Unique links, DB tracking, Stripe reward automation.
+3. **Conversion-Optimised Homepage** - Lead with value prop, live stats counters (letters generated, money claimed, subs tracked), strong free CTA.
+4. **Use-Case Landing Pages** - Separate pages for paid ad traffic: /energy-bill-dispute, /flight-delay-compensation, /cancel-subscriptions, /debt-collection-response, /council-tax-challenge.
+5. **OG Image** - Default 1200x630px branded image for social sharing.
+6. **Google Search Console** - Verification, sitemap submission, request indexing.
+7. **Homepage Stats Counter** - Live from Supabase: total letters, money claimed, subscriptions tracked.
+8. **Structured Data** - FAQPage, SoftwareApplication, BreadcrumbList JSON-LD schemas.
+
+Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these priorities.
+
+---
+
 ## Outstanding Items
 
 1. **Google Search Console setup** (download verification file, submit sitemap, request indexing)
-2. Meta Ads setup (need Pixel ID)
+2. **Marketing plan implementation** (8 items above)
+3. Meta Ads setup (need Pixel ID)
 2. Google Ads API data in Jordan's reports
 3. Scanner learning from dismissals
 4. Onboarded_at trigger
