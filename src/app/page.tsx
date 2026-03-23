@@ -84,7 +84,10 @@ export default function Home() {
               <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
               <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
             </div>
-            <div className="flex items-center gap-2 md:gap-3">
+            <div className="flex items-center gap-1 md:gap-3">
+              <Link href="/about" className="hidden md:block text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">About</Link>
+              <Link href="/blog" className="hidden md:block text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">Blog</Link>
+              <Link href="/pricing" className="hidden md:block text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">Pricing</Link>
               <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">
                 Sign In
               </Link>
@@ -480,11 +483,13 @@ export default function Home() {
         {/* Footer */}
         <footer className="container mx-auto px-6 py-8 border-t border-slate-800">
           <div className="text-center text-slate-500 text-sm space-y-3">
-            <div className="flex justify-center gap-6">
-              <Link href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</Link>
+            <div className="flex flex-wrap justify-center gap-6">
+              <Link href="/about" className="hover:text-white transition-all">About</Link>
+              <Link href="/blog" className="hover:text-white transition-all">Blog</Link>
+              <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy Policy</Link>
               <Link href="/legal/terms" className="hover:text-white transition-all">Terms of Service</Link>
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
-              <a href="mailto:support@paybacker.co.uk" className="hover:text-white transition-all">Contact Us</a>
+              <a href="mailto:hello@paybacker.co.uk" className="hover:text-white transition-all">Contact</a>
             </div>
             <p>Need help? Email <a href="mailto:support@paybacker.co.uk" className="text-amber-500 hover:text-amber-400">support@paybacker.co.uk</a></p>
             <p>© 2026 Paybacker LTD. UK consumer law. Automated.</p>
