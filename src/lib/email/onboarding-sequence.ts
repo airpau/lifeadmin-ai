@@ -230,22 +230,22 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
         <li>Subscription tracker + manual add</li>
         <li>Dashboard overview</li>
       </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">AVAILABLE NOW — ESSENTIAL (£9.99/mo)</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">ESSENTIAL (£9.99/mo)</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0 0 16px;line-height:2;font-size:14px;">
-        <li>Unlimited complaint letters</li>
+        <li>Unlimited complaint and form letters</li>
         <li>1 bank account with daily auto-sync</li>
+        <li>Monthly email and opportunity re-scans</li>
         <li>Full spending intelligence dashboard</li>
-        <li>AI cancellation emails with legal context</li>
+        <li>Cancellation emails with legal context</li>
         <li>Renewal reminders (30, 14, 7 days before)</li>
       </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">AVAILABLE NOW — PRO (£19.99/mo)</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">PRO (£19.99/mo)</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2;font-size:14px;">
         <li>Everything in Essential</li>
         <li>Unlimited bank accounts</li>
-        <li>Full transaction analysis</li>
+        <li>Unlimited email and opportunity scans</li>
+        <li>Full transaction-level analysis</li>
         <li>Priority support</li>
-        <li>Email inbox scanning (2 years of history)</li>
-        <li>Deal finder (coming soon)</li>
       </ul>
     </div>
 

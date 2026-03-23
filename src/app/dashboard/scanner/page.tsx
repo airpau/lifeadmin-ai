@@ -235,7 +235,7 @@ export default function ScannerPage() {
         </p>
       </div>
 
-      {/* Tier gate - Essential+ only */}
+      {/* Connect prompt */}
       {!loading && connectedAccounts.length === 0 && (
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 mb-8 text-center">
           <ScanSearch className="h-12 w-12 text-amber-500/40 mx-auto mb-4" />
@@ -244,8 +244,8 @@ export default function ScannerPage() {
             Connect your Gmail or Outlook and our AI will scan up to 2 years of email history to find overcharges, forgotten subscriptions, and savings opportunities.
           </p>
           <p className="text-slate-500 text-sm">
-            Available on Essential and Pro plans. You can also connect your bank account from the <a href="/dashboard/subscriptions" className="text-amber-400 hover:text-amber-300 underline">Subscriptions</a> page.
-        </p>
+            All plans include a free scan. Essential and Pro get monthly re-scans.
+          </p>
         </div>
       )}
 

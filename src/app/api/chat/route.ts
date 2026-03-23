@@ -57,9 +57,9 @@ When directing users to make a complaint, say: "Go to the Complaints section in 
 Users can add subscriptions manually from the Subscriptions page, or connect their bank account to detect them automatically. The bank scan finds all recurring payments and direct debits.
 
 ## Plans
-- Free: 3 complaint letters/month, unlimited subscription tracking, one-time bank scan, basic spending overview, AI chatbot
-- Essential (£9.99/month): Unlimited complaints, 1 bank account with daily auto-sync, full spending dashboard, cancellation emails with legal context, renewal reminders
-- Pro (£19.99/month): Everything in Essential plus unlimited bank accounts, full transaction analysis, priority support
+- Free: 3 complaint/form letters per month, unlimited subscription tracking (manual add), one-time bank scan, one-time email inbox scan, one-time opportunity scan, basic spending overview (top 5 categories), AI chatbot
+- Essential (£9.99/month): Unlimited complaint and form letters, 1 bank account with daily auto-sync, monthly email and opportunity re-scans, full spending dashboard, cancellation emails with legal context, renewal reminders, contract end date tracking
+- Pro (£19.99/month): Everything in Essential plus unlimited bank accounts, unlimited email and opportunity scans, full transaction-level analysis, priority support, automated cancellations (coming soon)
 
 ## UK Consumer Rights You Can Share
 - Consumer Rights Act 2015: goods must be satisfactory quality, fit for purpose, match description. 30-day right to reject faulty goods.
@@ -154,18 +154,20 @@ ALWAYS say: "Sign up for free and our AI will cite the exact legislation for you
 IMPORTANT PLAN GATING RULES — you MUST follow these:
 ${userTier === 'free' ? `
 - This user is on the FREE plan
-- They can: generate 3 complaint letters/month, track unlimited subscriptions, do ONE bank scan, basic spending overview
-- They CANNOT: do ongoing bank sync, get full spending dashboard, generate cancellation emails, receive renewal reminders
-- If they ask about ongoing bank sync or full features: "You have used your free bank scan. Upgrade to Essential for daily auto-sync and full spending insights, just £9.99/month."` : ''}
+- They can: 3 complaint/form letters per month, unlimited subscription tracking (manual add), one-time bank scan, one-time email inbox scan, one-time opportunity scan, basic spending overview (top 5 categories), AI chatbot
+- They CANNOT: ongoing bank sync, full spending dashboard, cancellation emails, renewal reminders, monthly re-scans, contract tracking
+- If they ask about daily sync or ongoing features: "Upgrade to Essential for daily bank sync, monthly re-scans, cancellation emails, and renewal reminders. Just £9.99/month."
+- If they've used their one-time scan: "You've used your free scan. Upgrade to Essential for monthly re-scans."` : ''}
 ${userTier === 'essential' ? `
 - This user is on the ESSENTIAL plan (£9.99/month)
-- They have: unlimited complaints, 1 bank with daily sync, full spending dashboard, cancellation emails, renewal reminders
-- They do NOT have: multiple bank accounts, email scanning, automated cancellations, deal switching
-- If they ask about multiple banks or Pro features: "Upgrade to Pro (£19.99/month) to connect all your bank accounts and unlock premium features."` : ''}
+- They have: unlimited complaints and forms, 1 bank with daily sync, monthly email and opportunity re-scans, full spending dashboard, cancellation emails, renewal reminders, contract tracking
+- They do NOT have: multiple bank accounts, unlimited scans, transaction-level analysis, priority support
+- If they ask about multiple banks or unlimited scans: "Upgrade to Pro (£19.99/month) for unlimited bank accounts, unlimited scans, and full transaction analysis."` : ''}
 ${userTier === 'pro' ? `
-- This user is on the PRO plan (£19.99/month)
-- They have: unlimited complaints, unlimited bank accounts, full spending dashboard, cancellation emails, renewal reminders, full transaction analysis, priority support
-- Coming soon: email scanning, automated cancellations, deal comparison and switching` : ''}`;
+- This user is on the PRO plan (£19.99/month). They have ALL current features.
+- Unlimited: complaints, forms, bank accounts, email scans, opportunity scans
+- Full transaction-level analysis, priority support
+- Coming soon: automated cancellations, deal comparison` : ''}`;
 
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',

@@ -19,20 +19,16 @@ export async function POST(request: NextRequest) {
   // Plan and rate limit checks
   const plan = await getUserPlan(user.id);
   const usageCheck = await checkUsageLimit(user.id, 'scan_run');
-
-  // Allow admin to always scan for testing
   const isAdmin = user.email === 'aireypaul@googlemail.com';
 
   if (!isAdmin) {
-    if (plan.tier === 'free') {
-      return NextResponse.json(
-        { error: 'Upgrade to Essential to use this feature', upgradeRequired: true },
-        { status: 403 }
-      );
-    }
+    // Free users get one-time scan, Essential gets monthly, Pro gets unlimited
     if (!usageCheck.allowed) {
+      const message = plan.tier === 'free'
+        ? 'You have used your free scan. Upgrade to Essential for monthly re-scans.'
+        : 'Monthly scan limit reached. Upgrade to Pro for unlimited scans.';
       return NextResponse.json(
-        { error: 'Monthly scan limit reached', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+        { error: message, upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
         { status: 403 }
       );
     }

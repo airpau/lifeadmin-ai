@@ -11,18 +11,18 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     complaintsPerMonth: 3,
-    scanRunsPerMonth: 1,
-    features: ['complaints', 'basic_scanner'],
+    scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
+    features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan'],
   },
   essential: {
     complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    features: ['complaints', 'scanner', 'email_scanner', 'subscriptions'],
+    scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending'],
   },
   pro: {
     complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    features: ['complaints', 'scanner', 'email_scanner', 'subscriptions', 'open_banking'],
+    scanRunsPerMonth: null, // unlimited everything
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support'],
   },
 };
 

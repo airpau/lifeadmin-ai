@@ -312,20 +312,18 @@ export default function Home() {
                 </thead>
                 <tbody className="text-sm">
                   {[
-                    { feature: 'AI complaint and debt letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { feature: 'HMRC, council tax, DVLA, NHS letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { feature: 'Flight delay compensation claims', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { feature: 'Subscription tracker', free: true, essential: true, pro: true },
-                    { feature: 'Personalised deals page', free: 'Coming soon', essential: 'Coming soon', pro: 'Coming soon' },
-                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
-                    { feature: 'Loyalty rewards and referrals', free: true, essential: true, pro: true },
+                    { feature: 'AI complaint and form letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { feature: 'Subscription tracker', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
                     { feature: 'Bank scan', free: 'One-time', essential: '1 bank, daily sync', pro: 'Unlimited banks' },
+                    { feature: 'Email inbox scanning', free: 'One-time', essential: 'Monthly', pro: 'Unlimited' },
+                    { feature: 'Opportunity scanner', free: 'One-time', essential: 'Monthly', pro: 'Unlimited' },
                     { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
-                    { feature: 'Smart cancellation with legal letters', free: false, essential: true, pro: true },
+                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
+                    { feature: 'Cancellation emails with legal context', free: false, essential: true, pro: true },
                     { feature: 'Renewal reminders (30/14/7 days)', free: false, essential: true, pro: true },
-                    { feature: 'Targeted deal alerts', free: 'Coming soon', essential: 'Coming soon', pro: 'Coming soon' },
-                    { feature: 'Email inbox scanning', free: false, essential: false, pro: true },
-                    { feature: 'Automated cancellations', free: false, essential: false, pro: 'Coming soon' },
+                    { feature: 'Contract end date tracking', free: false, essential: true, pro: true },
+                    { feature: 'Deal comparison (coming soon)', free: false, essential: true, pro: true },
+                    { feature: 'Automated cancellations (coming soon)', free: false, essential: false, pro: true },
                     { feature: 'Priority support', free: false, essential: false, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-slate-800/50">
