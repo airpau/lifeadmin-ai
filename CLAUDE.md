@@ -91,11 +91,20 @@ ANTHROPIC_AGENTS_API_KEY=  # Separate key for AI executive agents (cost tracking
 - Typography: Clean, modern sans-serif
 - UK-specific copy (£ symbols, British spelling)
 
-### Git Workflow
-- Main branch is production
+### Git Workflow & Deployment Safety
+- Main branch is production — every commit is a backup point
 - Feature branches: feature/description
 - Commit messages: Conventional Commits format
 - Always include Co-Authored-By: Claude when pair programming
+
+### CRITICAL: Deployment Safety Rules
+1. **NEVER deploy without a clean git state** — all changes must be committed before deploying
+2. **ALWAYS run `npx tsc --noEmit` before deploying** — zero type errors required
+3. **Tag releases before major deploys** — `git tag v[date]-[description]` for easy rollback
+4. **If a deploy breaks something** — revert immediately with `vercel rollback` or `git revert`
+5. **Database migrations are additive only** — never DROP columns/tables in production, only ADD
+6. **Test API routes locally before deploying** — especially agent changes
+7. **The AI proposal system must NEVER auto-execute code changes** — only config/prompt/schedule changes can auto-execute; code changes create GitHub issues for human review
 
 ## Monetization Strategy
 1. **Waitlist Phase**: Collect emails, validate demand
