@@ -209,12 +209,12 @@ export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel for comprehensive scanning
-  // Scan up to 500 emails per query for thorough coverage (2 years of history)
+  // Scan up to 250 emails per query for thorough coverage (2 years of history)
   const [subjectMessages, senderMessages1, senderMessages2, senderMessages3] = await Promise.all([
-    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 500),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 500),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 500),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 500),
+    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 250),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 250),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 250),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 250),
   ]);
 
   const seen = new Set<string>();
@@ -226,10 +226,10 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Scan all found emails for comprehensive financial intelligence
+  // Scan emails for comprehensive financial intelligence
   // Process in batches of 25 to avoid Gmail rate limits
   const batchSize = 25;
-  const emailsToScan = allMessages.slice(0, 500);
+  const emailsToScan = allMessages.slice(0, 200);
   const allDetails: PromiseSettledResult<EmailData>[] = [];
 
   for (let i = 0; i < emailsToScan.length; i += batchSize) {
@@ -251,12 +251,12 @@ export async function scanEmailsForOpportunities(
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
+  // Use Sonnet for better financial intelligence
+  const SCAN_MODEL = 'claude-sonnet-4-6';
 
-  // Truncate email bodies to keep within token limits
-  // Each email gets max 300 chars of body. Subject + from + snippet are usually enough.
+  // Truncate email bodies but keep enough for amounts and dates
   const emailSummaries = emails
-    .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${(e.body || '').substring(0, 300)}`)
+    .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${(e.body || '').substring(0, 500)}`)
     .join('\n\n');
 
   // If still too large, process in chunks
