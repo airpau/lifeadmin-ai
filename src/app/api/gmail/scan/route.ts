@@ -78,9 +78,21 @@ export async function POST(request: NextRequest) {
     const { opportunities, emailsFound, emailsScanned } = await scanEmailsForOpportunities(accessToken);
     await recordClaudeCall(user.id, usageCheck.tier);
     await incrementUsage(user.id, 'scan_run');
-    return NextResponse.json({ opportunities, emailsFound, emailsScanned, scannedAt: new Date().toISOString() });
+    return NextResponse.json({
+      opportunities,
+      emailsFound,
+      emailsScanned,
+      opportunityCount: opportunities.length,
+      scannedAt: new Date().toISOString(),
+    });
   } catch (err: any) {
-    console.error('Gmail scan error:', err);
-    return NextResponse.json({ error: err.message || 'Scan failed', opportunities: [], emailsFound: 0, emailsScanned: 0 }, { status: 500 });
+    console.error('Gmail scan error:', err.message, err.stack);
+    return NextResponse.json({
+      error: err.message || 'Scan failed',
+      errorDetail: err.stack?.substring(0, 500),
+      opportunities: [],
+      emailsFound: 0,
+      emailsScanned: 0,
+    }, { status: 500 });
   }
 }
