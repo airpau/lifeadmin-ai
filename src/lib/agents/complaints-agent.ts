@@ -42,15 +42,16 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Debt harassment: report to Trading Standards, complain to FCA, consider police report under Protection from Harassment Act
 
 ## Writing rules:
-- CRITICAL: Include ALL specific details the user has provided — names, dates, amounts, addresses, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
+- CRITICAL: Include ALL specific details the user has provided. Names, dates, amounts, addresses, account numbers, reference numbers, email content they pasted. The letter must be specific to THEIR situation, not generic.
 - Formal UK business letter format with date, addressee, subject line
 - State facts chronologically and precisely (dates, amounts, reference numbers)
 - Cite the exact legal provision violated
 - State the specific remedy required (refund amount, service credit, etc.)
 - Set a firm 14-day deadline for response
 - State clearly which ombudsman/regulator you will contact if unresolved
-- Professional tone — firm but never aggressive
-- Use [YOUR NAME], [YOUR ADDRESS], [YOUR ACCOUNT NUMBER] as placeholders where needed
+- Professional tone, firm but never aggressive
+- Only use [YOUR NAME], [YOUR ADDRESS], [YOUR PHONE NUMBER], [YOUR EMAIL], [YOUR ACCOUNT NUMBER] as placeholders if the user has NOT provided those details
+- IMPORTANT: When the user provides feedback or revisions (e.g. "add my address as 123 High Street"), you MUST replace ALL matching placeholder text with the real details. Never leave a [PLACEHOLDER] in the letter if the user has given you that information. Remove the brackets entirely and insert the real value.
 
 ## JSON output format:
 Return ONLY a JSON object with these exact keys:
@@ -101,8 +102,8 @@ ${input.amount ? `Amount Involved: £${input.amount}` : ''}
 ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}
 ${input.incidentDate ? `Incident Date: ${input.incidentDate}` : ''}
 ${previousContact ? `Previous Contact: ${previousContact}` : ''}
-${input.feedback ? `\nUser feedback on previous version: ${input.feedback}` : ''}
-${input.previousLetter ? `\nPrevious letter to improve upon:\n${input.previousLetter}` : ''}
+${input.feedback ? `\nUser has requested these changes to the letter: ${input.feedback}\nIMPORTANT: Apply these changes AND replace any remaining [PLACEHOLDER] text with the real details the user has now provided. Remove all square bracket placeholders where real information is available.` : ''}
+${input.previousLetter ? `\nPrevious letter to revise (apply the changes above to this letter):\n${input.previousLetter}` : ''}
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 
