@@ -16,31 +16,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Block free-tier users at API level
+  // Plan and rate limit checks
   const plan = await getUserPlan(user.id);
-  if (plan.tier === 'free') {
-    return NextResponse.json(
-      { error: 'Upgrade to Essential to use this feature', upgradeRequired: true },
-      { status: 403 }
-    );
-  }
-
-  // Check plan limit
   const usageCheck = await checkUsageLimit(user.id, 'scan_run');
-  if (!usageCheck.allowed) {
-    return NextResponse.json(
-      { error: 'Monthly scan limit reached', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
-      { status: 403 }
-    );
-  }
 
-  // Check Claude rate limit
-  const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded. Please try again later.' },
-      { status: 429 }
-    );
+  // Allow admin to always scan for testing
+  const isAdmin = user.email === 'aireypaul@googlemail.com';
+
+  if (!isAdmin) {
+    if (plan.tier === 'free') {
+      return NextResponse.json(
+        { error: 'Upgrade to Essential to use this feature', upgradeRequired: true },
+        { status: 403 }
+      );
+    }
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Monthly scan limit reached', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+        { status: 403 }
+      );
+    }
+    const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
+    }
   }
 
   const admin = createAdminClient(
@@ -170,9 +172,11 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
     });
 
     let opportunities: any[] = [];
+    let debugClaudeResponse = '';
     const text = claudeRes.content[0];
     if (text.type === 'text') {
       let raw = text.text.trim();
+      debugClaudeResponse = raw.substring(0, 1000);
       raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
       const jsonMatch = raw.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
@@ -181,14 +185,18 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
       }
     }
 
-    await recordClaudeCall(user.id, usageCheck.tier);
-    await incrementUsage(user.id, 'scan_run');
+    if (!isAdmin) {
+      await recordClaudeCall(user.id, usageCheck.tier);
+      await incrementUsage(user.id, 'scan_run');
+    }
 
     return NextResponse.json({
       opportunities,
       emailsFound,
       emailsScanned: emailDetails.length,
       opportunityCount: opportunities.length,
+      providersFound: senderMap.size,
+      debugClaudeResponse: isAdmin ? debugClaudeResponse : undefined,
       scannedAt: new Date().toISOString(),
     });
   } catch (err: any) {
