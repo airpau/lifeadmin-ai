@@ -10,22 +10,26 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 
 ## AI Executive Team — Full Roster
 
-| Role | Agent Name | Schedule | Model | Colour (UI) | Emails To |
-|------|-----------|----------|-------|-------------|-----------|
-| **CFO** | Alex | Daily 7am UTC | Claude Haiku 4.5 | Green | aireypaul@googlemail.com |
-| **CTO** | Morgan | Weekly (Monday 7am UTC) | Claude Haiku 4.5 | Blue | aireypaul@googlemail.com |
-| **CAO** | Jamie | Daily 7am UTC | Claude Haiku 4.5 | Purple | aireypaul@googlemail.com |
-| **CMO** | Taylor | Daily 7am UTC | Claude Haiku 4.5 | Pink | aireypaul@googlemail.com |
-| **Exec Assistant** | Charlie | 3x daily (7am, 12pm, 5pm) | Claude Haiku 4.5 | Cyan | hello@paybacker.co.uk |
-| **Support Lead** | Sam | Hourly | Claude Haiku 4.5 | Amber | DB only |
-| **Support Agent** | Riley | Every 15 minutes | Claude Haiku 4.5 | Slate | DB only |
+| Role | Agent Name | Schedule | Runs/Day | Model | Colour (UI) | Emails To |
+|------|-----------|----------|----------|-------|-------------|-----------|
+| **CFO** | Alex | 7am, 1pm, 6pm | 3x | Claude Haiku 4.5 | Green | aireypaul@googlemail.com |
+| **CTO** | Morgan | 8:30am, 2:30pm, 7:30pm | 3x | Claude Haiku 4.5 | Blue | aireypaul@googlemail.com |
+| **CAO** | Jamie | 8am, 12pm, 5pm | 3x | Claude Haiku 4.5 | Purple | aireypaul@googlemail.com |
+| **CMO** | Taylor | 7:30am, 1:30pm, 5:30pm | 3x | Claude Haiku 4.5 | Pink | aireypaul@googlemail.com |
+| **Exec Assistant** | Charlie | 7am, 9am, 11am, 1pm, 3pm, 5pm, 7pm | 7x | Claude Haiku 4.5 | Cyan | hello@paybacker.co.uk |
+| **Support Lead** | Sam | Every 30 minutes | 48x | Claude Haiku 4.5 | Amber | DB only |
+| **Support Agent** | Riley | Every 15 minutes | 96x | Claude Haiku 4.5 | Slate | DB only |
+
+**Total: ~163 agent runs per day. Estimated cost: ~$0.50-1.00/day (Claude Haiku at ~$0.003/run)**
+
+**Cron:** Vercel Pro plan, `/api/cron/executive-agents` runs every 15 minutes. Each agent's DB schedule determines whether it actually executes.
 
 ---
 
 ## Agent Profiles — What Each One Does
 
 ### Alex — CFO (Chief Financial Officer)
-**Schedule:** Daily at 7am UTC (`0 7 * * *`)
+**Schedule:** 3x daily at 7am, 1pm, 6pm UTC (`0 7,13,18 * * *`)
 **What it does autonomously:**
 - Queries MRR, ARR, tier breakdown (free/essential/pro user counts)
 - Calculates API costs from `agent_runs` (last 24h and 7 days)
@@ -44,7 +48,7 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 ---
 
 ### Morgan — CTO (Chief Technology Officer)
-**Schedule:** Weekly on Mondays at 7am UTC (`0 7 * * 1`)
+**Schedule:** 3x daily at 8:30am, 2:30pm, 7:30pm UTC (`30 8,14,19 * * *`)
 **What it does autonomously:**
 - Reviews all `agent_runs` — total, completed, failed counts
 - Calculates success rate across all AI operations
@@ -64,7 +68,7 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 ---
 
 ### Jamie — CAO (Chief Admin Officer)
-**Schedule:** Daily at 7am UTC (`0 7 * * *`)
+**Schedule:** 3x daily at 8am, 12pm, 5pm UTC (`0 8,12,17 * * *`)
 **What it does autonomously:**
 - Tracks total users, new signups (24h), and onboarding completion rates
 - Monitors feature adoption: subscriptions tracked, tasks by type, bank connections
@@ -83,7 +87,7 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 ---
 
 ### Taylor — CMO (Chief Marketing Officer)
-**Schedule:** Daily at 7am UTC (`0 7 * * *`)
+**Schedule:** 3x daily at 7:30am, 1:30pm, 5:30pm UTC (`30 7,13,17 * * *`)
 **What it does autonomously:**
 - Analyses social media post performance (created, approved, posted counts)
 - Tracks waitlist growth and conversion funnel
@@ -103,7 +107,7 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 ---
 
 ### Charlie — Executive Assistant
-**Schedule:** 3x daily at 7am, 12pm, 5pm UTC (`0 7,12,17 * * *`)
+**Schedule:** 7x daily at 7am, 9am, 11am, 1pm, 3pm, 5pm, 7pm UTC (`0 7,9,11,13,15,17,19 * * *`)
 **Emails to:** hello@paybacker.co.uk
 **What it does autonomously:**
 - Reads the latest reports from ALL other AI executives (Alex, Morgan, Jamie, Taylor)
@@ -130,7 +134,7 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 ---
 
 ### Sam — Support Lead
-**Schedule:** Hourly (`0 * * * *`)
+**Schedule:** Every 30 minutes (`*/30 * * * *`)
 **What it does autonomously:**
 - Reviews all open and in-progress tickets
 - Counts urgent tickets and overdue tickets (no response > 1 hour)
@@ -167,6 +171,43 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 - Trigger manually: AI Team → "Run Now" button
 - Review AI responses: Admin Dashboard → Tickets → click a ticket to see the conversation
 - API: `POST /api/admin/agents/{riley-id}` with CRON_SECRET
+
+---
+
+## Agent Coordination — Action Items System
+
+Agents communicate via the `agent_action_items` table. When any agent spots something that needs attention, it flags an action item with a priority, category, and assignment.
+
+### Flow
+```
+Alex/Morgan/Jamie/Taylor spot issue → flag action item (priority + category)
+    ↓
+Sam spots urgent ticket → flags action item
+    ↓
+Charlie reads ALL action items + ALL agent reports (7x daily)
+    ↓
+Compiles numbered, prioritised task list → emails hello@paybacker.co.uk
+```
+
+### Action Item Fields
+- **title** — Short description
+- **description** — What needs doing and why
+- **priority** — urgent, high, medium, low
+- **category** — finance, technical, operations, marketing, support, compliance, growth
+- **flagged_by** — Which agent role created it
+- **assigned_to** — `human` (for Paul) or an agent role
+- **source_report_id** — Links back to the originating report
+- **status** — open, in_progress, done, dismissed
+
+### Staggered Schedule — Agents Build on Each Other
+```
+7:00  Alex (CFO) + Charlie brief #1
+7:30  Taylor (CMO) — has Alex's data
+8:00  Jamie (CAO) — has Alex + Taylor's data
+8:30  Morgan (CTO) — has all morning reports
+9:00  Charlie brief #2 — compiles ALL morning findings
+...pattern repeats at midday and evening
+```
 
 ---
 

@@ -10,7 +10,7 @@ import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function getAdmin() {
   return createClient(
