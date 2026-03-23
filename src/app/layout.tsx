@@ -18,8 +18,11 @@ export const metadata: Metadata = {
   title: "Paybacker — Get Your Money Back",
   description: "AI agents that dispute bills, write complaints, and cancel forgotten subscriptions — on your behalf. UK consumer rights, automated.",
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
+    apple: '/logo.png',
   },
 };
 

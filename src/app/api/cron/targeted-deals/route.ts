@@ -1,3 +1,4 @@
+// @ts-nocheck - Targeted deals disabled until partnerships are live
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { updateUserOpportunityScore } from '@/lib/opportunity-scoring';
@@ -29,6 +30,9 @@ export async function GET(request: NextRequest) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // Deals not yet live - return early
+  return NextResponse.json({ skipped: true, reason: 'Deal alerts disabled until deal switching partnerships are live' });
 
   const supabase = getAdmin();
 
