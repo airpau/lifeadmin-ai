@@ -296,7 +296,7 @@ export default function ScannerPage() {
             <Loader2 className="h-12 w-12 text-amber-500 animate-spin mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">Deep scanning your inbox</h3>
             <p className="text-slate-400 text-sm mb-4">
-              Analysing up to 50 emails for subscriptions, bills, loans, insurance, renewals, and savings opportunities. This may take up to a minute.
+              Scanning up to 2 years of emails for subscriptions, bills, loans, insurance, renewals, and savings opportunities. This may take up to a minute.
             </p>
             <div className="flex items-center gap-6 text-xs text-slate-500">
               <span>Searching emails</span>

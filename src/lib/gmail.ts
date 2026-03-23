@@ -252,21 +252,44 @@ export async function scanEmailsForOpportunities(
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const SCAN_MODEL = 'claude-haiku-4-5-20251001';
+
+  // Truncate email bodies to keep within token limits
+  // Each email gets max 300 chars of body. Subject + from + snippet are usually enough.
   const emailSummaries = emails
-    .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${e.body}`)
+    .map((e, i) => `--- Email ${i + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${(e.body || '').substring(0, 300)}`)
     .join('\n\n');
 
-  logClaudeCall({
-    userId: 'gmail-scan',
-    route: '/api/gmail/scan (lib/gmail)',
-    model: SCAN_MODEL,
-    estimatedInputTokens: Math.round(emailSummaries.length / 4) + 500,
-    estimatedOutputTokens: 1500,
-  });
+  // If still too large, process in chunks
+  const MAX_CHARS = 600000; // ~150k tokens, well within Haiku's 200k limit
+  const allOpportunities: Opportunity[] = [];
 
-  const message = await anthropic.messages.create({
-    model: SCAN_MODEL,
-    max_tokens: 4096,
+  const chunks: string[] = [];
+  if (emailSummaries.length > MAX_CHARS) {
+    // Split emails into chunks
+    const perEmail = emailSummaries.length / emails.length;
+    const emailsPerChunk = Math.floor(MAX_CHARS / perEmail);
+    for (let i = 0; i < emails.length; i += emailsPerChunk) {
+      const chunkEmails = emails.slice(i, i + emailsPerChunk);
+      chunks.push(chunkEmails
+        .map((e, j) => `--- Email ${i + j + 1} (id: ${e.id}) ---\nFrom: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nSnippet: ${e.snippet}\nBody: ${(e.body || '').substring(0, 300)}`)
+        .join('\n\n'));
+    }
+  } else {
+    chunks.push(emailSummaries);
+  }
+
+  for (const chunk of chunks) {
+    logClaudeCall({
+      userId: 'gmail-scan',
+      route: '/api/gmail/scan (lib/gmail)',
+      model: SCAN_MODEL,
+      estimatedInputTokens: Math.round(chunk.length / 4) + 500,
+      estimatedOutputTokens: 2000,
+    });
+
+    const message = await anthropic.messages.create({
+      model: SCAN_MODEL,
+      max_tokens: 4096,
     system: `You are a UK consumer finance intelligence analyst. Your job is to extract EVERY piece of financial information from these emails to help the user save money.
 
 Return a JSON array of opportunities. Each must have:
@@ -304,20 +327,23 @@ Confidence guide: 80+ = definite financial item, 60-79 = likely, 40-59 = possibl
 Include everything with confidence >= 40.
 Multiple entries per provider are fine if they represent different products/accounts.
 Return ONLY the JSON array, no markdown.`,
-    messages: [{ role: 'user', content: `Analyse these emails:\n\n${emailSummaries}` }],
+    messages: [{ role: 'user', content: `Analyse these emails:\n\n${chunk}` }],
   });
 
   const content = message.content[0];
-  if (content.type !== 'text') return { opportunities: [], emailsFound: allMessages.length, emailsScanned: emails.length };
+  if (content.type === 'text') {
+    try {
+      const raw = content.text.trim();
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsed: Opportunity[] = JSON.parse(jsonMatch[0]);
+        allOpportunities.push(...parsed.map((o) => ({ ...o, status: 'new' as const })));
+      }
+    } catch {
+      console.error('[gmail] Failed to parse chunk response');
+    }
+    }
+  } // end chunks loop
 
-  try {
-    const raw = content.text.trim();
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return { opportunities: [], emailsFound: allMessages.length, emailsScanned: emails.length };
-    const parsed: Opportunity[] = JSON.parse(jsonMatch[0]);
-    const opportunities = parsed.map((o) => ({ ...o, status: 'new' as const }));
-    return { opportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
-  } catch {
-    return { opportunities: [], emailsFound: allMessages.length, emailsScanned: emails.length };
-  }
+  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
 }
