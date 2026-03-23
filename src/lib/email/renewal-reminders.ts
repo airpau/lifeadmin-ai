@@ -68,9 +68,17 @@ export function buildRenewalEmail(
       ${rows}
     </table>
 
-    <div style="text-align: center; margin: 32px 0;">
-      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px; margin-right: 12px;">Review Subscriptions</a>
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #1e293b; color: #ffffff; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px;">Find Better Deals</a>
+    <!-- Personalised deal suggestions -->
+    <div style="background: #0f172a; border: 1px solid #f59e0b44; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+      <div style="color: #f59e0b; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
+      <div style="color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
+        Before these renew, check if you can save by switching. Your personalised deals page shows alternatives based on your current providers.
+      </div>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Personalised Deals →</a>
+    </div>
+
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #1e293b; color: #ffffff; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px;">Review Subscriptions</a>
     </div>
 
     <div style="background: #0f172a; border: 1px solid #1e293b44; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
