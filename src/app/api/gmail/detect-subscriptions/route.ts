@@ -6,22 +6,27 @@ import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
-// Two focused queries instead of one giant OR — Gmail handles shorter queries more reliably
 const SUBJECT_QUERY =
-  'subject:(subscription OR renewal OR "direct debit" OR "standing order" OR "recurring payment" OR invoice OR receipt OR membership OR "auto-renew" OR "payment received" OR "thank you for your payment" OR "plan renewed" OR "trial ended" OR "billing statement") newer_than:365d';
+  'subject:(subscription OR renewal OR "direct debit" OR "standing order" OR "recurring payment" OR invoice OR receipt OR membership OR "auto-renew" OR "payment received" OR "plan renewed" OR "trial ended" OR "billing statement" OR "your bill" OR "payment due" OR "price change" OR "contract end" OR "notice period") newer_than:730d';
 
 const PROVIDER_QUERY =
-  'from:(netflix OR spotify OR amazon OR apple OR google OR microsoft OR adobe OR dropbox OR sky OR virginmedia OR bt.com OR talktalk OR vodafone OR o2.co.uk OR three.co.uk OR ee.co.uk OR davidlloyd OR puregym OR anytime OR nuffield OR disney OR britbox OR nowtv OR nordvpn OR expressvpn OR proton.me OR linkedin OR canva OR grammarly OR notion OR slack OR zoom OR britishgas OR edfenergy OR octopusenergy OR bulb OR shell OR hulu OR paramount OR peacock OR duolingo OR headspace OR calm OR audible OR kindle OR icloud OR onedrive OR dropbox OR lastpass OR dashlane OR mcafee OR norton OR avast OR github OR figma OR loom OR miro OR airtable OR hubspot OR mailchimp OR squarespace OR wix OR godaddy OR namecheap OR cloudflare OR heroku OR aws OR azure OR deliveroo OR hellofresh OR gousto OR mindful OR peloton OR classpass OR strava OR garmin OR myprotein) newer_than:365d';
+  'from:(netflix OR spotify OR amazon OR apple OR google OR microsoft OR adobe OR sky OR virginmedia OR bt.com OR talktalk OR vodafone OR o2.co.uk OR three.co.uk OR ee.co.uk OR davidlloyd OR puregym OR disney OR britbox OR nowtv OR nordvpn OR linkedin OR canva OR notion OR slack OR zoom OR britishgas OR edfenergy OR octopusenergy OR ovo OR shell OR deliveroo OR hellofresh OR gousto OR peloton OR strava OR audible OR icloud OR dropbox OR github OR figma OR openai OR anthropic OR vercel OR communityfibre OR plusnet OR hyperoptic) newer_than:730d';
 
-async function fetchMessageIds(query: string, accessToken: string, maxResults = 50): Promise<string[]> {
-  const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const data = await res.json();
-  return (data.messages || []).map((m: { id: string }) => m.id);
+async function fetchMessageIds(query: string, accessToken: string, maxResults = 200): Promise<string[]> {
+  const allIds: string[] = [];
+  let pageToken = '';
+  for (let page = 0; page < 3 && allIds.length < maxResults; page++) {
+    const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) break;
+    const data = await res.json();
+    for (const m of data.messages || []) allIds.push(m.id);
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return allIds.slice(0, maxResults);
 }
 
 export async function POST(request: NextRequest) {
@@ -29,22 +34,17 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Check plan limit
-  const usageCheck = await checkUsageLimit(user.id, 'scan_run');
-  if (!usageCheck.allowed) {
-    return NextResponse.json(
-      { error: 'Monthly scan limit reached', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
-      { status: 403 }
-    );
-  }
+  const isAdmin = user.email === 'aireypaul@googlemail.com';
 
-  // Check Claude rate limit
-  const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded. Please try again later.' },
-      { status: 429 }
-    );
+  if (!isAdmin) {
+    const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+    if (!usageCheck.allowed) {
+      return NextResponse.json({ error: 'Monthly scan limit reached', upgradeRequired: true }, { status: 403 });
+    }
+    const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: 'Rate limit exceeded. Try again later.' }, { status: 429 });
+    }
   }
 
   const admin = createAdminClient(
@@ -71,83 +71,120 @@ export async function POST(request: NextRequest) {
     }).eq('user_id', user.id);
   }
 
-  // Run both queries in parallel and deduplicate by message ID
+  // Fetch emails from both queries
   const [subjectIds, providerIds] = await Promise.all([
-    fetchMessageIds(SUBJECT_QUERY, accessToken, 200),
-    fetchMessageIds(PROVIDER_QUERY, accessToken, 200),
+    fetchMessageIds(SUBJECT_QUERY, accessToken),
+    fetchMessageIds(PROVIDER_QUERY, accessToken),
   ]);
 
   const allIds = Array.from(new Set([...subjectIds, ...providerIds]));
   if (!allIds.length) return NextResponse.json({ subscriptions: [] });
 
-  // Token optimisation: truncated to reduce API costs — max 15 emails
-  const details = await Promise.allSettled(
-    allIds.slice(0, 15).map(async (id: string) => {
-      const res = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const msg = await res.json();
-      const headers = msg.payload?.headers || [];
-      const get = (name: string) => headers.find((h: any) => h.name === name)?.value || '';
-      // Token optimisation: truncated to reduce API costs
-      return { subject: get('Subject'), from: get('From'), date: get('Date'), snippet: (msg.snippet || '').slice(0, 300) };
-    })
-  );
+  // Fetch metadata for up to 100 emails
+  const idsToFetch = allIds.slice(0, 100);
+  const emailDetails: Array<{ from: string; subject: string; date: string; snippet: string }> = [];
 
-  const emails = details
-    .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
-    .map((r) => r.value);
+  for (let i = 0; i < idsToFetch.length; i += 25) {
+    const batch = idsToFetch.slice(i, i + 25);
+    const results = await Promise.allSettled(
+      batch.map(async (id) => {
+        const res = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!res.ok) return null;
+        const msg = await res.json();
+        const headers = msg.payload?.headers || [];
+        const get = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+        return { from: get('From'), subject: get('Subject'), date: get('Date'), snippet: (msg.snippet || '').substring(0, 200) };
+      })
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) emailDetails.push(r.value);
+    }
+  }
+
+  // Group by sender
+  const senderMap = new Map<string, { from: string; subjects: string[]; snippet: string; count: number }>();
+  for (const e of emailDetails) {
+    const key = e.from.substring(0, 50).toLowerCase();
+    if (!senderMap.has(key)) {
+      senderMap.set(key, { from: e.from, subjects: [], snippet: e.snippet, count: 0 });
+    }
+    const g = senderMap.get(key)!;
+    if (g.subjects.length < 3) g.subjects.push(e.subject);
+    g.count++;
+  }
+
+  const providerList = Array.from(senderMap.values())
+    .map((g, i) => `${i + 1}. From: ${g.from} (${g.count} emails)\n   Subjects: ${g.subjects.join(' | ')}\n   Snippet: ${g.snippet}`)
+    .join('\n');
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const DETECT_MODEL = 'claude-haiku-4-5-20251001';
-  logClaudeCall({
-    userId: user.id,
-    route: '/api/gmail/detect-subscriptions',
-    model: DETECT_MODEL,
-    estimatedInputTokens: 3000,
-    estimatedOutputTokens: 1000,
-  });
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192,
+      system: `You are a subscription and contract detection assistant for UK consumers. Analyse these email providers and identify every recurring payment, subscription, and contract.
 
-  const message = await anthropic.messages.create({
-    model: DETECT_MODEL,
-    max_tokens: 2000,
-    system: `You are a subscription detection assistant for UK consumers. Analyse these emails and identify recurring subscriptions.
-
-Return a JSON array of detected subscriptions. Each object must have:
-- provider_name: clean company/service name (e.g. "Netflix", "Spotify", "Adobe Creative Cloud")
-- amount: cost in GBP as a number. Extract from snippet/subject if visible (e.g. "£9.99" → 9.99). For yearly plans divide by 12 for monthly equivalent. Use 0 if truly unknown.
-- billing_cycle: "monthly" | "yearly" | "quarterly" — infer from context ("annual", "per year" → yearly; "per month", "monthly" → monthly)
-- category: "streaming" | "software" | "fitness" | "news" | "shopping" | "gaming" | "utilities" | "other"
-- confidence: 0-100
+Return a JSON array. Each subscription must have:
+- provider_name: clean company name (e.g. "Netflix", "Spotify", "Community Fibre")
+- amount: monthly cost in GBP. Extract from snippet if visible. For yearly plans divide by 12. Use 0 if unknown.
+- billing_cycle: "monthly" | "yearly" | "quarterly"
+- category: "streaming" | "software" | "fitness" | "news" | "broadband" | "mobile" | "utility" | "insurance" | "mortgage" | "loan" | "food" | "shopping" | "other"
+- confidence: 60-95
+- contract_end_date: ISO date string if any email mentions contract end, renewal date, or notice period. null if unknown.
+- is_ending_soon: true if contract appears to be ending within 90 days based on email content. false otherwise.
+- cancel_suggestion: true if the subscription looks unused, expensive relative to alternatives, or is a free trial about to convert. false otherwise.
+- notes: brief note about what was found (e.g. "Price increase notification in Feb", "Contract ends April 2026", "Multiple receipts suggest active use")
 
 Rules:
-- Include anything with confidence >= 35. Better to surface candidates the user can dismiss than to miss real subscriptions.
-- Deduplicate: if multiple emails are from the same provider, list it once with the most recent/accurate amount.
-- Infer provider from the "From" email domain if the subject doesn't name it (e.g. "noreply@netflix.com" → "Netflix").
-- Common UK amounts to watch: Spotify £10.99, Netflix £4.99–17.99, Amazon Prime £8.99/mo, iCloud £0.99–6.99, Microsoft 365 £5.99–12.99, Adobe £54.98/mo or £599/yr, Sky £25+, broadband £20–50.
-- Do NOT include one-off purchases (Amazon order confirmations for physical goods, etc.) unless there are clear subscription signals.
+- Include EVERY provider that looks like a recurring payment. A normal inbox should have 10-30+ subscriptions.
+- If you see multiple emails from a company, it's likely a subscription.
+- Look for price increase notifications, these are important for the user to know about.
+- Look for contract end dates, renewal notices, and "your contract is ending" emails.
+- Deduplicate: one entry per provider.
+- Return ONLY the JSON array. No markdown fences. No explanation.`,
+      messages: [{
+        role: 'user',
+        content: `Detect all subscriptions and contracts from these ${senderMap.size} email providers:\n\n${providerList}`,
+      }],
+    });
 
-Return ONLY the JSON array, no markdown, no explanation.`,
-    messages: [{
-      role: 'user',
-      content: `Detect subscriptions from these ${emails.length} emails:\n\n${emails.map((e, i) =>
-        `${i + 1}. From: ${e.from}\nSubject: ${e.subject}\nDate: ${e.date}\nPreview: ${e.snippet}`
-      ).join('\n\n')}`,
-    }],
-  });
+    if (!isAdmin) {
+      const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+      await recordClaudeCall(user.id, usageCheck.tier);
+      await incrementUsage(user.id, 'scan_run');
+    }
 
-  await recordClaudeCall(user.id, usageCheck.tier);
-  await incrementUsage(user.id, 'scan_run');
+    let subscriptions: any[] = [];
+    const text = message.content[0];
+    if (text.type === 'text') {
+      let raw = text.text.trim();
+      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+      let jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        const truncated = raw.match(/\[[\s\S]*/);
+        if (truncated) {
+          const lastBrace = truncated[0].lastIndexOf('}');
+          if (lastBrace > 0) jsonMatch = [truncated[0].substring(0, lastBrace + 1) + ']'];
+        }
+      }
+      if (jsonMatch) {
+        const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
+        subscriptions = JSON.parse(cleaned);
+      }
+    }
 
-  try {
-    let raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]';
-    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-    const match = raw.match(/\[[\s\S]*\]/);
-    const subscriptions = match ? JSON.parse(match[0]) : [];
-    return NextResponse.json({ subscriptions });
-  } catch {
-    return NextResponse.json({ subscriptions: [] });
+    return NextResponse.json({
+      subscriptions,
+      emailsFound: allIds.length,
+      emailsScanned: emailDetails.length,
+      providersFound: senderMap.size,
+    });
+  } catch (err: any) {
+    console.error('Detect subscriptions error:', err.message);
+    return NextResponse.json({ error: err.message, subscriptions: [] }, { status: 500 });
   }
 }
