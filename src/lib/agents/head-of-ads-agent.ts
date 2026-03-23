@@ -92,5 +92,5 @@ export async function runHeadOfAdsAgent(agentConfig: AgentConfig): Promise<Agent
 
 Please analyse this data and produce your advertising report. If data is limited because campaigns just launched, say so and recommend what metrics to watch over the coming days. Focus on estimated CPA and whether the current budget is appropriate for our growth targets.`;
 
-  return runExecutiveAgent(agentConfig, contextPrompt);
+  return runExecutiveAgent(agentConfig, contextPrompt, { useSonnet: true });
 }
