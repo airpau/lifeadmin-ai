@@ -233,6 +233,35 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
       await incrementUsage(user.id, 'scan_run');
     }
 
+    // Save opportunities to database for persistence
+    if (opportunities.length > 0) {
+      // Get existing opportunity titles to avoid duplicates
+      const { data: existing } = await admin
+        .from('tasks')
+        .select('title')
+        .eq('user_id', user.id)
+        .eq('type', 'opportunity')
+        .in('status', ['pending_review', 'in_progress']);
+
+      const existingTitles = new Set((existing || []).map((t: any) => t.title));
+
+      const newOpps = opportunities.filter((o: any) => !existingTitles.has(o.title));
+
+      if (newOpps.length > 0) {
+        await admin.from('tasks').insert(
+          newOpps.map((o: any) => ({
+            user_id: user.id,
+            type: 'opportunity',
+            title: o.title,
+            description: JSON.stringify(o),
+            provider_name: o.provider,
+            status: 'pending_review',
+            priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
+          }))
+        );
+      }
+    }
+
     return NextResponse.json({
       opportunities,
       emailsFound,

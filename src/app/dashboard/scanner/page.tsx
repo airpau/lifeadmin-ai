@@ -119,6 +119,40 @@ export default function ScannerPage() {
     if (gmail) accounts.push({ provider: 'gmail', email: gmail.email });
     if (outlook) accounts.push({ provider: 'outlook', email: outlook.email });
     setConnectedAccounts(accounts);
+
+    // Load saved opportunities from database
+    const { data: savedOpps } = await supabase
+      .from('tasks')
+      .select('id, title, description, provider_name, priority, created_at')
+      .eq('user_id', user.id)
+      .eq('type', 'opportunity')
+      .in('status', ['pending_review', 'in_progress'])
+      .order('created_at', { ascending: false });
+
+    if (savedOpps && savedOpps.length > 0) {
+      const loaded: Opportunity[] = savedOpps.map((t: any) => {
+        try {
+          const parsed = JSON.parse(t.description);
+          return { ...parsed, id: t.id, status: 'new' };
+        } catch {
+          return {
+            id: t.id,
+            type: 'other',
+            title: t.title,
+            description: t.description,
+            amount: 0,
+            confidence: 50,
+            provider: t.provider_name || 'Unknown',
+            detected: t.created_at?.substring(0, 10),
+            status: 'new',
+            emailId: '',
+          };
+        }
+      });
+      setOpportunities(loaded);
+      setScannedAt(savedOpps[0]?.created_at || null);
+    }
+
     setLoading(false);
   };
 
@@ -135,7 +169,6 @@ export default function ScannerPage() {
     if (!connectedAccounts.length) return;
     setScanning(true);
     setError(null);
-    setOpportunities([]);
 
     try {
       // Scan all connected providers in parallel
@@ -157,16 +190,16 @@ export default function ScannerPage() {
       const totalScanned = results.reduce((s, d) => s + (d.emailsScanned || 0), 0);
       setScanDebug({ emailsFound: totalFound, emailsScanned: totalScanned });
 
-      // Deduplicate by title+provider in case both inboxes have same email
-      const seen = new Set<string>();
-      const deduped = all.filter((o) => {
+      // Merge with existing, dedup by title+provider
+      const existingKeys = new Set(opportunities.map(o => `${o.provider}-${o.title}`));
+      const newOnly = all.filter((o) => {
         const key = `${o.provider}-${o.title}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
         return true;
       });
 
-      setOpportunities(deduped);
+      setOpportunities(prev => [...prev, ...newOnly]);
       setScannedAt(new Date().toISOString());
     } catch (err: any) {
       setError(err.message || 'Scan failed. Try disconnecting and reconnecting your inbox.');
@@ -462,39 +495,39 @@ export default function ScannerPage() {
                           <span className="text-sm font-semibold text-white">{opp.confidence}%</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {opp.type === 'forgotten_subscription' ? (
+                          {/* Add to subscriptions - for subscriptions, bills, utilities */}
+                          {['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) && (
                             <button
                               disabled={actionLoading === opp.id}
                               onClick={async () => {
                                 setActionLoading(opp.id);
                                 try {
-                                  const res = await fetch('/api/subscriptions', {
+                                  await fetch('/api/subscriptions', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
                                       provider_name: opp.provider,
-                                      category: 'other',
-                                      amount: opp.amount ?? 0,
-                                      billing_cycle: 'monthly',
-                                      usage_frequency: 'rarely',
+                                      category: opp.category || 'other',
+                                      amount: opp.paymentAmount || opp.amount || 0,
+                                      billing_cycle: opp.paymentFrequency || 'monthly',
+                                      source: 'email',
                                     }),
                                   });
-                                  if (!res.ok) {
-                                    const d = await res.json();
-                                    throw new Error(d.error || 'Failed to save subscription');
-                                  }
+                                  setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
                                 } catch (err: any) {
-                                  setError(`Track failed: ${err.message}`);
+                                  setError(`Failed to add: ${err.message}`);
                                 } finally {
                                   setActionLoading(null);
-                                  router.push('/dashboard/subscriptions');
                                 }
                               }}
-                              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
+                              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                             >
-                              {actionLoading === opp.id ? 'Saving...' : (actionLabels[opp.suggestedAction || 'track']?.text || 'Track')}
+                              {actionLoading === opp.id ? 'Adding...' : 'Add to Subscriptions'}
                             </button>
-                          ) : (
+                          )}
+
+                          {/* Write complaint letter - for overcharges, disputes, price increases */}
+                          {['overcharge', 'price_increase', 'debt_dispute'].includes(opp.type) && (
                             <button
                               onClick={() => {
                                 const params = new URLSearchParams({
@@ -504,14 +537,64 @@ export default function ScannerPage() {
                                 });
                                 router.push(`/dashboard/complaints?${params}`);
                               }}
-                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
+                              className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                             >
-                              Raise Complaint
+                              Write Complaint Letter
                             </button>
                           )}
+
+                          {/* Claim compensation - for flight delays */}
+                          {opp.type === 'flight_delay' && (
+                            <button
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  company: opp.provider,
+                                  issue: opp.description,
+                                  amount: opp.amount > 0 ? String(opp.amount) : '520',
+                                });
+                                router.push(`/dashboard/complaints?${params}`);
+                              }}
+                              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Claim Compensation
+                            </button>
+                          )}
+
+                          {/* Tax rebate - for HMRC related */}
+                          {opp.type === 'tax_rebate' && (
+                            <button
+                              onClick={() => router.push('/dashboard/forms')}
+                              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Generate HMRC Letter
+                            </button>
+                          )}
+
+                          {/* Generic track button for anything else */}
+                          {!['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance', 'overcharge', 'price_increase', 'debt_dispute', 'flight_delay', 'tax_rebate'].includes(opp.type) && (
+                            <button
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  company: opp.provider,
+                                  issue: opp.description,
+                                  amount: opp.amount > 0 ? String(opp.amount) : '',
+                                });
+                                router.push(`/dashboard/complaints?${params}`);
+                              }}
+                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Take Action
+                            </button>
+                          )}
+
+                          {/* Dismiss - always available */}
                           <button
-                            onClick={() => setOpportunities((prev) => prev.filter((o) => o.id !== opp.id))}
-                            className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2 rounded-lg transition-all text-sm"
+                            onClick={async () => {
+                              setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
+                              // Mark as dismissed in DB
+                              try { await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id); } catch {};
+                            }}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-4 py-2 rounded-lg transition-all text-sm"
                           >
                             Dismiss
                           </button>
