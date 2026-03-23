@@ -283,7 +283,7 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {loading && (
+      {loading && !scanning && (
         <div className="text-center py-16">
           <Loader2 className="h-8 w-8 text-slate-500 mx-auto animate-spin" />
         </div>

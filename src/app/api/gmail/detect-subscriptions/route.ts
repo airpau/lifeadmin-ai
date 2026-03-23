@@ -73,8 +73,8 @@ export async function POST(request: NextRequest) {
 
   // Run both queries in parallel and deduplicate by message ID
   const [subjectIds, providerIds] = await Promise.all([
-    fetchMessageIds(SUBJECT_QUERY, accessToken, 50),
-    fetchMessageIds(PROVIDER_QUERY, accessToken, 50),
+    fetchMessageIds(SUBJECT_QUERY, accessToken, 200),
+    fetchMessageIds(PROVIDER_QUERY, accessToken, 200),
   ]);
 
   const allIds = Array.from(new Set([...subjectIds, ...providerIds]));

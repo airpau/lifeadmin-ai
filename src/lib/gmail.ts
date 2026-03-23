@@ -290,43 +290,47 @@ export async function scanEmailsForOpportunities(
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
       max_tokens: 4096,
-    system: `You are a UK consumer finance intelligence analyst. Your job is to extract EVERY piece of financial information from these emails to help the user save money.
+    system: `You are a UK consumer finance analyst. Your job is to find EVERY financial opportunity in these emails. Be aggressive: if an email is from a known provider, that IS an opportunity.
 
-Return a JSON array of opportunities. Each must have:
+CRITICAL: The sender email address and subject line are your primary signals. Even if the body is truncated, you can identify:
+- Any email from Netflix, Spotify, Disney+, Amazon, Apple = active subscription (suggest tracking/cancelling if unused)
+- Any email from BT, Sky, Virgin Media, Vodafone, EE, Three = broadband/mobile contract (suggest checking if overpaying)
+- Any email from British Gas, EDF, Octopus, OVO, E.ON = energy bill (suggest switching if on standard variable tariff)
+- Any email from an airline (Ryanair, easyJet, BA, Jet2, Wizz, TUI) = check for flight delay compensation under UK261 (up to £520 per person for delays over 3 hours)
+- Any email from a debt collector or solicitor = suggest formal dispute response citing Consumer Credit Act 1974
+- Any email mentioning "price increase", "new prices", "tariff change" = dispute opportunity
+- Any email mentioning "renewal", "renewing", "contract end" = switching opportunity
+- Any email from insurance companies = renewal comparison opportunity
+- Any email from banks, loan companies, credit cards = track balances and suggest better rates
+- Any email from councils = council tax band challenge opportunity
+- Any email from HMRC = potential tax rebate opportunity
+
+Return a JSON array. Each entry must have:
 - id: unique string (e.g. "opp_1")
-- emailId: the email id it came from
-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay"
+- emailId: the email id
+- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay" | "debt_dispute" | "tax_rebate"
 - category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "gambling" | "other"
 - title: short actionable title (max 80 chars)
-- description: 2-3 sentences explaining what was found and what the user can do about it
-- amount: GBP amount (number, 0 if unknown) — extract exact amounts from emails
-- confidence: 0-100
-- provider: company name (clean format, e.g. "British Gas" not "britishgas@email.britishgas.co.uk")
+- description: 2-3 sentences explaining what was found and what the user should do. Include specific UK consumer rights where relevant.
+- amount: GBP amount if visible, 0 if unknown
+- confidence: 0-100 (80+ = definitely from a known provider, 60-79 = likely financial, 40-59 = possible)
+- provider: company name (clean format)
 - detected: "${new Date().toISOString().split('T')[0]}"
 - status: "new"
-- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_refund" | "monitor"
-- contractEndDate: ISO date string if found in email, null otherwise
-- paymentAmount: exact payment amount if found, null otherwise
+- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_refund" | "claim_compensation" | "monitor"
+- contractEndDate: ISO date if found, null otherwise
+- paymentAmount: exact amount if found, null otherwise
 - paymentFrequency: "monthly" | "quarterly" | "yearly" | "one-time" | null
-- accountNumber: account/reference number if found, null otherwise
+- accountNumber: reference number if found, null otherwise
 
-Extract EVERYTHING from these emails:
-- Active subscriptions (streaming, software, gym, SaaS) with exact amounts
-- Utility bills (energy, water, broadband) with amounts and any price changes
-- Loan statements, credit card statements with balances and payment amounts
-- Insurance policies with renewal dates and premium amounts
-- Flight bookings (check for delays — EU261/UK261 compensation up to £520)
-- Price increase notifications — these are dispute opportunities
-- Renewal reminders — chance to switch to a better deal
-- Refund confirmations or outstanding refund requests
-- Contract end date notifications
-- Direct debit setup/change confirmations with amounts
-- Any mention of account numbers, reference numbers, or contract terms
-
-Confidence guide: 80+ = definite financial item, 60-79 = likely, 40-59 = possible.
-Include everything with confidence >= 40.
-Multiple entries per provider are fine if they represent different products/accounts.
-Return ONLY the JSON array, no markdown.`,
+IMPORTANT:
+- You MUST return at least one entry for every unique provider/service you can identify from the emails. A normal inbox should have 10-50+ opportunities.
+- Group emails by provider: if you see 5 emails from Netflix, create ONE opportunity for Netflix.
+- For flight bookings, always suggest checking for delay compensation.
+- For debt collection emails, always suggest a formal dispute response.
+- For any subscription over 1 year old, suggest reviewing if still needed.
+- Include confidence >= 40. When in doubt, include it.
+- Return ONLY the JSON array, no markdown, no explanation.`,
     messages: [{ role: 'user', content: `Analyse these emails:\n\n${chunk}` }],
   });
 
