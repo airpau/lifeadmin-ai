@@ -209,11 +209,12 @@ export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel for comprehensive scanning
+  // Scan up to 500 emails per query for thorough coverage (2 years of history)
   const [subjectMessages, senderMessages1, senderMessages2, senderMessages3] = await Promise.all([
-    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 100),
-    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 500),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 500),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 500),
+    fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 500),
   ]);
 
   const seen = new Set<string>();
@@ -225,10 +226,10 @@ export async function scanEmailsForOpportunities(
 
   if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
 
-  // Scan up to 100 emails for comprehensive financial intelligence
-  // Process in batches of 20 to avoid Gmail rate limits
-  const batchSize = 20;
-  const emailsToScan = allMessages.slice(0, 100);
+  // Scan all found emails for comprehensive financial intelligence
+  // Process in batches of 25 to avoid Gmail rate limits
+  const batchSize = 25;
+  const emailsToScan = allMessages.slice(0, 500);
   const allDetails: PromiseSettledResult<EmailData>[] = [];
 
   for (let i = 0; i < emailsToScan.length; i += batchSize) {

@@ -60,7 +60,7 @@ const plans = [
       'Everything in Essential',
       'Unlimited bank accounts connected',
       'Biggest transactions analysis',
-      'Email inbox scanning (coming soon)',
+      'Email inbox scanning (2 years of history)',
       'Automated cancellations on your behalf (coming soon)',
       'Spending anomaly alerts (coming soon)',
       'Priority support',

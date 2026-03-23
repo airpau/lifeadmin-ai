@@ -324,7 +324,7 @@ export default function Home() {
                     { feature: 'Smart cancellation with legal letters', free: false, essential: true, pro: true },
                     { feature: 'Renewal reminders (30/14/7 days)', free: false, essential: true, pro: true },
                     { feature: 'Targeted deal alerts', free: 'Coming soon', essential: 'Coming soon', pro: 'Coming soon' },
-                    { feature: 'Email inbox scanning', free: false, essential: false, pro: 'Coming soon' },
+                    { feature: 'Email inbox scanning', free: false, essential: false, pro: true },
                     { feature: 'Automated cancellations', free: false, essential: false, pro: 'Coming soon' },
                     { feature: 'Priority support', free: false, essential: false, pro: true },
                   ].map((row, i) => (

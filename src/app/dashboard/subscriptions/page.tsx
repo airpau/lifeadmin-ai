@@ -497,13 +497,14 @@ export default function SubscriptionsPage() {
         </div>
         <div className="flex gap-3">
           <button
-            disabled
-            className="flex items-center gap-2 bg-slate-800 opacity-50 cursor-not-allowed text-slate-400 font-medium px-4 py-3 rounded-lg text-sm"
-            title="Email inbox scanning is coming soon"
+            onClick={handleDetectFromInbox}
+            disabled={detectingFromInbox}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-medium px-4 py-3 rounded-lg transition-all text-sm"
           >
-            <Inbox className="h-4 w-4" />
-            Detect from Inbox
-            <span className="text-[9px] bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full">Soon</span>
+            {detectingFromInbox
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Inbox className="h-4 w-4" />}
+            {detectingFromInbox ? 'Scanning...' : 'Detect from Inbox'}
           </button>
           <button
             onClick={() => setShowAddForm(true)}
