@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
     const res = await fetch(awinUrl);
     console.log(`Awin S2S signup: ref=${orderRef} awc=${awcRaw || 'none'} status=${res.status}`);
-    return NextResponse.json({ ok: true, ref: decodeURIComponent(orderRef) });
+    return NextResponse.json({ ok: true, ref: decodeURIComponent(orderRef), awc: awcRaw || '' });
   } catch (err: any) {
     console.error('Awin signup tracking failed:', err.message);
     return NextResponse.json({ ok: false });

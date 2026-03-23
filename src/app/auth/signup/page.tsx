@@ -78,11 +78,12 @@ export default function SignupPage() {
         }
 
         // Fire Awin S2S lead tracking — must be awaited before navigation
-        await fetch('/api/awin/signup', {
+        const awinRes = await fetch('/api/awin/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: data.user!.id, email }),
-        }).catch(() => {});
+        }).then(r => r.json()).catch(() => ({ awc: '' }));
+        const awinAwc = awinRes.awc || '';
 
         // Send welcome email (fire and forget)
         fetch('/api/auth/welcome', {
@@ -93,24 +94,12 @@ export default function SignupPage() {
 
         capture('user_signed_up', { email, referral: refCode || undefined });
 
-        // Awin fallback pixel — wait for Mastertag to load before firing
-        // so the bId cookie is present in the request (fixes "Missing MasterTag" warning)
+        // Awin fallback pixel — wait 800ms for Mastertag bId cookie to be set
         const userId = data.user!.id;
-        const fireAwinPixel = () => {
-          const awcMatch = document.cookie.match(/(?:^|;\s*)awc=([^;]+)/);
-          const awcVal = awcMatch ? awcMatch[1] : '';
+        setTimeout(() => {
           const awinPixel = new window.Image(0, 0);
-          awinPixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=0.00&cr=GBP&ref=signup-${userId}&parts=DEFAULT:0.00&vc=&ch=aw&customeracquisition=NEW${awcVal ? `&cks=${encodeURIComponent(awcVal)}` : ''}`;
-        };
-        // Wait up to 1s for window.AWIN to be initialised by the Mastertag
-        const waitForMastertag = (attempts = 0) => {
-          if ((window as any).AWIN?.Tracking || attempts >= 10) {
-            fireAwinPixel();
-          } else {
-            setTimeout(() => waitForMastertag(attempts + 1), 100);
-          }
-        };
-        waitForMastertag();
+          awinPixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=0.00&cr=GBP&ref=signup-${userId}&parts=DEFAULT:0.00&vc=&ch=aw&customeracquisition=NEW${awinAwc ? `&cks=${encodeURIComponent(awinAwc)}` : ''}`;
+        }, 800);
 
         router.push('/dashboard');
         router.refresh();
