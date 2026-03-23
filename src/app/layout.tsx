@@ -15,8 +15,52 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Paybacker — Get Your Money Back",
-  description: "AI agents that dispute bills, write complaints, and cancel forgotten subscriptions — on your behalf. UK consumer rights, automated.",
+  metadataBase: new URL('https://paybacker.co.uk'),
+  title: {
+    default: 'Paybacker - AI-Powered Money Recovery for UK Consumers',
+    template: '%s | Paybacker',
+  },
+  description: 'AI complaint letters citing UK consumer law, subscription tracking, bank scanning, and spending insights. Dispute bills, cancel subscriptions, and get your money back automatically.',
+  keywords: ['complaint letter generator', 'UK consumer rights', 'subscription tracker', 'cancel subscriptions', 'energy bill dispute', 'debt dispute letter', 'flight delay compensation', 'parking charge appeal'],
+  authors: [{ name: 'Paybacker LTD' }],
+  creator: 'Paybacker LTD',
+  publisher: 'Paybacker LTD',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_GB',
+    url: 'https://paybacker.co.uk',
+    siteName: 'Paybacker',
+    title: 'Paybacker - AI-Powered Money Recovery for UK Consumers',
+    description: 'AI complaint letters citing UK consumer law, subscription tracking, bank scanning, and spending insights. Get your money back automatically.',
+    images: [
+      {
+        url: '/logo.png',
+        width: 512,
+        height: 512,
+        alt: 'Paybacker',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Paybacker - AI-Powered Money Recovery',
+    description: 'AI complaint letters, subscription tracking, and spending insights for UK consumers.',
+    images: ['/logo.png'],
+  },
+  alternates: {
+    canonical: 'https://paybacker.co.uk',
+  },
   icons: {
     icon: [
       { url: '/logo.png', type: 'image/png' },
