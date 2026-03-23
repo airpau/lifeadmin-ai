@@ -10,7 +10,8 @@ export async function POST(request: NextRequest) {
     const awc = encodeURIComponent(request.cookies.get('awc')?.value || '');
     const orderRef = encodeURIComponent(`signup-${userId || email}`);
     const awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=125502&amount=0.00&ch=aw&parts=DEFAULT:0.00&vc=&cr=GBP&ref=${orderRef}&cks=${awc}&customeracquisition=NEW`;
-    fetch(awinUrl).catch(() => {});
+    await fetch(awinUrl).catch(err => console.error('Awin S2S failed:', err.message));
+    console.log(`Awin S2S signup fired: ref=${orderRef} awc=${awc || 'none'}`);
 
     const sent = await sendOnboardingEmail(email, name || 'there', 'welcome');
     return NextResponse.json({ sent });
