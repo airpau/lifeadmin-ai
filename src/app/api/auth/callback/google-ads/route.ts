@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
-        client_id: process.env.GOOGLE_ADS_CLIENT_ID || '',
-        client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET || '',
+        client_id: process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_ADS_CLIENT_ID || '',
+        client_secret: process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_ADS_CLIENT_SECRET || '',
         redirect_uri: 'https://paybacker.co.uk/api/auth/callback/google-ads',
         grant_type: 'authorization_code',
       }),
