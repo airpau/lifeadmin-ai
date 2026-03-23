@@ -26,6 +26,22 @@ export default function DashboardPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
 
+  // Awin fallback pixel for free signups — fires on dashboard (confirmation page)
+  useEffect(() => {
+    if (searchParams.get('signup') === '1') {
+      const ref = sessionStorage.getItem('awin_ref') || '';
+      const awc = sessionStorage.getItem('awin_awc') || '';
+      sessionStorage.removeItem('awin_ref');
+      sessionStorage.removeItem('awin_awc');
+      if (ref) {
+        setTimeout(() => {
+          const pixel = new window.Image(0, 0);
+          pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=0.00&cr=GBP&ref=${encodeURIComponent(ref)}&parts=DEFAULT:0.00&vc=&ch=aw&customeracquisition=NEW${awc ? `&cks=${encodeURIComponent(awc)}` : ''}`;
+        }, 1000);
+      }
+    }
+  }, [searchParams]);
+
   // Sync subscription after Stripe checkout redirect
   useEffect(() => {
     if (searchParams.get('success') === 'true' || searchParams.get('upgraded')) {

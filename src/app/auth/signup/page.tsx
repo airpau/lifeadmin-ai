@@ -94,14 +94,11 @@ export default function SignupPage() {
 
         capture('user_signed_up', { email, referral: refCode || undefined });
 
-        // Awin fallback pixel — wait 800ms for Mastertag bId cookie to be set
-        const userId = data.user!.id;
-        setTimeout(() => {
-          const awinPixel = new window.Image(0, 0);
-          awinPixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=0.00&cr=GBP&ref=signup-${userId}&parts=DEFAULT:0.00&vc=&ch=aw&customeracquisition=NEW${awinAwc ? `&cks=${encodeURIComponent(awinAwc)}` : ''}`;
-        }, 800);
+        // Store awc for fallback pixel — fired on dashboard (confirmation page)
+        if (awinAwc) sessionStorage.setItem('awin_awc', awinAwc);
+        sessionStorage.setItem('awin_ref', `signup-${data.user!.id}`);
 
-        router.push('/dashboard');
+        router.push('/dashboard?signup=1');
         router.refresh();
       } else {
         capture('user_signup_verify', { email });
