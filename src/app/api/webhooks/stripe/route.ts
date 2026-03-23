@@ -95,6 +95,14 @@ export async function POST(request: NextRequest) {
           .select('id, subscription_tier')
           .single();
 
+        // Awin server-to-server conversion tracking
+        if (!updateError) {
+          const amount = tier === 'pro' ? '19.99' : '9.99';
+          const orderRef = `sub-${session.subscription || session.id}`;
+          const awinUrl = `https://www.awin1.com/conversion.php?tt=ss&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=DEFAULT:${amount}&ref=${orderRef}&vc=&cr=GBP&testmode=0`;
+          fetch(awinUrl).catch(err => console.error('Awin S2S tracking failed:', err.message));
+        }
+
         // Process referral subscription reward
         if (!updateError && userId) {
           import('@/lib/referrals').then(({ processReferralSubscription }) => {
