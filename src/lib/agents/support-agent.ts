@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { AgentConfig, AgentReport } from './executive-agent';
+import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 
 // Separate API key for AI executive agents — allows tracking staff costs independently
 const anthropic = new Anthropic({
@@ -104,6 +105,53 @@ What action should be taken for this ticket?`;
           status: 'in_progress',
           first_response_at: new Date().toISOString(),
         }).eq('id', ticket.id);
+
+        // Email the user if we have their user_id
+        if (ticket.user_id) {
+          try {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('email, full_name')
+              .eq('id', ticket.user_id)
+              .single();
+
+            if (profile?.email) {
+              await resend.emails.send({
+                from: FROM_EMAIL,
+                replyTo: REPLY_TO,
+                to: profile.email,
+                subject: `Re: ${ticket.subject} (${ticket.ticket_number})`,
+                html: `
+                  <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 40px; border-radius: 16px;">
+                    <div style="border-bottom: 2px solid #f59e0b; padding-bottom: 16px; margin-bottom: 24px;">
+                      <h1 style="color: #f59e0b; font-size: 22px; margin: 0;">Paybacker Support</h1>
+                      <p style="color: #64748b; font-size: 14px; margin: 4px 0 0;">Ticket ${ticket.ticket_number}</p>
+                    </div>
+                    <p style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">
+                      Hi${profile.full_name ? ` ${profile.full_name.split(' ')[0]}` : ''},
+                    </p>
+                    <p style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">
+                      We've looked into your request: <strong style="color: #e2e8f0;">${ticket.subject}</strong>
+                    </p>
+                    <div style="background: #1e293b; border-left: 3px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 20px 0;">
+                      <p style="color: #e2e8f0; font-size: 14px; line-height: 1.6; margin: 0; white-space: pre-wrap;">${result.response}</p>
+                    </div>
+                    <p style="color: #94a3b8; font-size: 14px;">
+                      Reply to this email if you need further help.
+                    </p>
+                    <hr style="border: none; border-top: 1px solid #1e293b; margin: 24px 0;" />
+                    <p style="color: #475569; font-size: 12px; margin: 0;">
+                      Paybacker Ltd &middot; support@paybacker.co.uk
+                    </p>
+                  </div>
+                `,
+              });
+              console.log(`[support-agent] Emailed response to ${profile.email} for ${ticket.ticket_number}`);
+            }
+          } catch (emailErr) {
+            console.error(`[support-agent] Email failed for ${ticket.ticket_number}:`, emailErr);
+          }
+        }
 
         actions.push(`Responded to ${ticket.ticket_number}: "${ticket.subject}"`);
         responded++;
