@@ -35,10 +35,40 @@ export default function DashboardPage() {
           if (data.synced && data.tier && data.tier !== 'free') {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
-            // Awin sale conversion tracking
+            // Awin order confirmation tracking
             const amount = data.tier === 'pro' ? '19.99' : '9.99';
-            const img = new window.Image();
-            img.src = `https://www.awin1.com/sread.php?tt=ns&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=DEFAULT:${amount}&ref=sub-${Date.now()}&vc=&cr=GBP&testmode=0`;
+            const productName = data.tier === 'pro' ? 'Paybacker Pro' : 'Paybacker Essential';
+            const orderRef = data.subscriptionId || `sub-${Date.now()}`;
+            const commissionGroup = data.tier === 'pro' ? 'PRO' : 'ESSENTIAL';
+
+            // Fallback pixel (mandatory)
+            const pixel = new window.Image(0, 0);
+            pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=${amount}&cr=GBP&ref=${orderRef}&parts=${commissionGroup}:${amount}&vc=&ch=aw&customeracquisition=NEW`;
+
+            // Conversion tag (mandatory)
+            const w = window as any;
+            w.AWIN = w.AWIN || {};
+            w.AWIN.Tracking = w.AWIN.Tracking || {};
+            w.AWIN.Tracking.Sale = {
+              amount,
+              orderRef,
+              parts: `${commissionGroup}:${amount}`,
+              voucher: '',
+              currency: 'GBP',
+              channel: 'aw',
+              customerAcquisition: 'NEW',
+            };
+
+            // Product level tracking
+            const form = document.createElement('form');
+            form.style.display = 'none';
+            form.name = 'aw_basket_form';
+            form.id = 'aw_basket_form';
+            const textarea = document.createElement('textarea');
+            textarea.id = 'aw_basket';
+            textarea.value = `AW:P|125502|${orderRef}|${data.tier}|${productName}|${amount}|1|${data.tier}-monthly|${commissionGroup}|Subscription`;
+            form.appendChild(textarea);
+            document.body.appendChild(form);
           }
         })
         .catch(() => {});

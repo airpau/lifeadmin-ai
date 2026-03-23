@@ -141,6 +141,7 @@ export async function POST() {
       status: sub.status,
       pendingChange,
       currentPeriodEnd,
+      subscriptionId: sub.id,
     });
   } catch (err: any) {
     console.error('Stripe sync error:', err.message);
