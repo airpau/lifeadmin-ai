@@ -103,7 +103,13 @@ export async function POST(
     config: agent.config || {},
   };
 
-  const report = await runner(config);
+  let report;
+  try {
+    report = await runner(config);
+  } catch (err: any) {
+    console.error(`Agent ${agent.role} failed:`, err.message, err.stack);
+    return NextResponse.json({ error: `Agent failed: ${err.message}` }, { status: 500 });
+  }
 
   // Save report
   const { data: savedReport } = await supabase
