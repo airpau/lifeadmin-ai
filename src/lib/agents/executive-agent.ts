@@ -65,7 +65,6 @@ export async function runExecutiveAgent(
   raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    // If Claude didn't return JSON, wrap the text as content
     return {
       title: `${agent.name} Report`,
       reportType: agent.role,
@@ -75,7 +74,24 @@ export async function runExecutiveAgent(
     };
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  // Clean common JSON issues: trailing commas, unescaped newlines in strings
+  let jsonStr = jsonMatch[0];
+  jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1'); // Remove trailing commas
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    // If JSON still fails, return the raw text as content
+    console.error(`[executive-agent] JSON parse failed for ${agent.role}, returning raw text`);
+    return {
+      title: `${agent.name} Report`,
+      reportType: agent.role,
+      content: raw.substring(0, 2000),
+      data: {},
+      recommendations: [],
+    };
+  }
 
   return {
     title: parsed.title || `${agent.name} Report`,
