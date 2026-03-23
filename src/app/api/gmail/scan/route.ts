@@ -173,15 +173,48 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
 
     let opportunities: any[] = [];
     let debugClaudeResponse = '';
+    let debugParseError = '';
     const text = claudeRes.content[0];
     if (text.type === 'text') {
       let raw = text.text.trim();
       debugClaudeResponse = raw.substring(0, 1000);
+
+      // Strip code fences
       raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+
+      // Find JSON array
       const jsonMatch = raw.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
-        opportunities = JSON.parse(cleaned).map((o: any) => ({ ...o, status: 'new' }));
+        // Clean common issues
+        let cleaned = jsonMatch[0];
+        cleaned = cleaned.replace(/,\s*([}\]])/g, '$1'); // trailing commas
+        cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, ' '); // control characters
+        cleaned = cleaned.replace(/\n/g, '\\n'); // unescape newlines in strings
+
+        // Try parsing, if it fails try a more aggressive cleanup
+        try {
+          opportunities = JSON.parse(cleaned).map((o: any) => ({ ...o, status: 'new' }));
+        } catch (e1) {
+          // Try replacing problematic unicode
+          try {
+            cleaned = cleaned.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"');
+            // Try to find each object individually
+            const objects = cleaned.match(/\{[^{}]*\}/g) || [];
+            for (const obj of objects) {
+              try {
+                const parsed = JSON.parse(obj.replace(/\\n/g, ' '));
+                opportunities.push({ ...parsed, status: 'new' });
+              } catch {
+                // Skip malformed individual objects
+              }
+            }
+            debugParseError = `Full parse failed, recovered ${opportunities.length} of ${objects.length} objects. Error: ${(e1 as Error).message}`;
+          } catch (e2) {
+            debugParseError = `Parse failed: ${(e1 as Error).message}`;
+          }
+        }
+      } else {
+        debugParseError = 'No JSON array found in response';
       }
     }
 
@@ -197,6 +230,7 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
       opportunityCount: opportunities.length,
       providersFound: senderMap.size,
       debugClaudeResponse: isAdmin ? debugClaudeResponse : undefined,
+      debugParseError: isAdmin ? debugParseError : undefined,
       scannedAt: new Date().toISOString(),
     });
   } catch (err: any) {
