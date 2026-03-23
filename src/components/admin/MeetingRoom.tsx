@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Users, Send, Loader2, X, TrendingUp, Brain,
-  Megaphone, ClipboardList, Headphones, Bot,
+  Megaphone, ClipboardList, Headphones, Bot, Lightbulb, Check,
 } from 'lucide-react';
 
 interface MeetingMessage {
@@ -53,7 +53,32 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
   const [messages, setMessages] = useState<MeetingMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [proposalSent, setProposalSent] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const createProposal = async (msg: MeetingMessage, index: number) => {
+    try {
+      await fetch('/api/admin/proposals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${CRON_SECRET}`,
+        },
+        body: JSON.stringify({
+          title: `${msg.agent}: ${msg.content.slice(0, 80)}...`,
+          description: msg.content,
+          implementation: `Suggested by ${msg.agent} during executive meeting. Review and implement as appropriate.`,
+          category: 'feature',
+          priority: 'medium',
+          proposed_by: msg.agentRole || 'meeting',
+          send_email: true,
+        }),
+      });
+      setProposalSent(prev => new Set(prev).add(index));
+    } catch {
+      // silent fail
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -198,6 +223,18 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
                   <p className={`text-xs ${color} mb-1 font-medium`}>{msg.agent}</p>
                   <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-slate-200">
                     {msg.content}
+                  </div>
+                  <div className="mt-1">
+                    {proposalSent.has(i) ? (
+                      <span className="text-xs text-green-400 flex items-center gap-1"><Check className="h-3 w-3" /> Proposal sent to email</span>
+                    ) : (
+                      <button
+                        onClick={() => createProposal(msg, i)}
+                        className="text-xs text-slate-500 hover:text-amber-400 flex items-center gap-1 transition-all"
+                      >
+                        <Lightbulb className="h-3 w-3" /> Make this a proposal
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

@@ -81,7 +81,7 @@ export async function runExecutiveAgent(
     title: parsed.title || `${agent.name} Report`,
     reportType: agent.role,
     content: parsed.summary || raw,
-    data: parsed.metrics || parsed,
+    data: { ...(parsed.metrics || parsed), improvements: parsed.improvements || [] },
     recommendations: parsed.recommendations || [],
     actionItems: parsed.action_items || parsed.urgent_tasks || [],
   };

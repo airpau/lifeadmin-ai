@@ -138,6 +138,69 @@ export async function GET(request: NextRequest) {
         else console.log(`[executive-agents] ${agent.role} flagged ${items.length} action items`);
       }
 
+      // Create improvement proposals from agent suggestions
+      const improvements = report.data?.improvements || [];
+      if (improvements.length > 0) {
+        const { randomBytes } = await import('crypto');
+        for (const imp of improvements) {
+          const approval_token = randomBytes(32).toString('hex');
+          const { data: proposal } = await supabase.from('improvement_proposals').insert({
+            title: imp.title || 'Improvement suggestion',
+            description: imp.description || '',
+            implementation: imp.implementation || 'Review and implement as appropriate.',
+            category: imp.category || 'feature',
+            priority: imp.priority || 'medium',
+            estimated_impact: imp.estimated_impact || null,
+            proposed_by: agent.role,
+            source_report_id: savedReport?.id || null,
+            approval_token,
+            status: 'pending',
+          }).select('id').single();
+
+          // Send approval email
+          if (proposal) {
+            const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk';
+            const approveUrl = `${SITE_URL}/api/admin/proposals/approve?token=${approval_token}&action=approve`;
+            const rejectUrl = `${SITE_URL}/api/admin/proposals/approve?token=${approval_token}&action=reject`;
+
+            try {
+              await resend.emails.send({
+                from: FROM_EMAIL,
+                to: 'hello@paybacker.co.uk',
+                subject: `[Approve/Reject] ${imp.title}`,
+                html: `
+                  <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 40px; border-radius: 16px;">
+                    <div style="border-bottom: 2px solid #f59e0b; padding-bottom: 16px; margin-bottom: 24px;">
+                      <h1 style="color: #f59e0b; font-size: 20px; margin: 0;">Improvement Proposal</h1>
+                      <p style="color: #64748b; font-size: 13px; margin: 4px 0 0;">From: ${agent.name} · ${(imp.priority || 'medium').toUpperCase()} · ${imp.category || 'feature'}</p>
+                    </div>
+                    <h2 style="color: #fff; font-size: 18px; margin: 0 0 12px;">${imp.title}</h2>
+                    <div style="background: #1e293b; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                      <p style="color: #f59e0b; font-weight: bold; font-size: 12px; margin: 0 0 8px;">WHY</p>
+                      <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0;">${imp.description}</p>
+                    </div>
+                    <div style="background: #1e293b; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                      <p style="color: #f59e0b; font-weight: bold; font-size: 12px; margin: 0 0 8px;">HOW</p>
+                      <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0; white-space: pre-wrap;">${imp.implementation}</p>
+                    </div>
+                    ${imp.estimated_impact ? `<div style="background: #1e293b; border-radius: 8px; padding: 16px; margin: 16px 0;"><p style="color: #f59e0b; font-weight: bold; font-size: 12px; margin: 0 0 8px;">EXPECTED IMPACT</p><p style="color: #94a3b8; font-size: 14px; margin: 0;">${imp.estimated_impact}</p></div>` : ''}
+                    <div style="margin: 24px 0; text-align: center;">
+                      <a href="${approveUrl}" style="display: inline-block; background: #22c55e; color: #fff; font-weight: bold; padding: 12px 32px; border-radius: 8px; text-decoration: none; margin-right: 12px; font-size: 14px;">Approve</a>
+                      <a href="${rejectUrl}" style="display: inline-block; background: #ef4444; color: #fff; font-weight: bold; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 14px;">Reject</a>
+                    </div>
+                    <hr style="border: none; border-top: 1px solid #1e293b; margin: 24px 0;" />
+                    <p style="color: #475569; font-size: 11px; margin: 0;">Paybacker AI · Improvement Proposals</p>
+                  </div>
+                `,
+              });
+            } catch (emailErr) {
+              console.error(`Failed to send proposal email for ${imp.title}:`, emailErr);
+            }
+          }
+        }
+        console.log(`[executive-agents] ${agent.role} proposed ${improvements.length} improvements`);
+      }
+
       // Update agent last_run_at
       await supabase
         .from('ai_executives')
