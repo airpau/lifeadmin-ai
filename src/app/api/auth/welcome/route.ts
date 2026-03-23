@@ -6,14 +6,7 @@ export async function POST(request: NextRequest) {
     const { email, name, userId } = await request.json();
     if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
 
-    // Awin S2S lead tracking for all new signups (free and paid)
-    const awc = encodeURIComponent(request.cookies.get('awc')?.value || '');
-    const orderRef = encodeURIComponent(`signup-${userId || email}`);
-    const awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=125502&amount=0.00&ch=aw&parts=DEFAULT:0.00&vc=&cr=GBP&ref=${orderRef}&cks=${awc}&customeracquisition=NEW`;
-    await fetch(awinUrl).catch(err => console.error('Awin S2S failed:', err.message));
-    console.log(`Awin S2S signup fired: ref=${orderRef} awc=${awc || 'none'}`);
-
-    const sent = await sendOnboardingEmail(email, name || 'there', 'welcome');
+const sent = await sendOnboardingEmail(email, name || 'there', 'welcome');
     return NextResponse.json({ sent });
   } catch (err: any) {
     console.error('Welcome email error:', err.message);
