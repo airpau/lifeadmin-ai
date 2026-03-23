@@ -43,6 +43,8 @@ export default function RootLayout({
           gtag('js', new Date());
           gtag('config', 'G-GRL9XKYTN1');
         `}} />
+        {/* Awin Mastertag */}
+        <script async src="https://www.dwin1.com/125502.js" type="text/javascript" defer />
       </head>
       <body className="min-h-full flex flex-col">
         <PostHogProvider>

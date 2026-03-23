@@ -35,6 +35,10 @@ export default function DashboardPage() {
           if (data.synced && data.tier && data.tier !== 'free') {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
+            // Awin sale conversion tracking
+            const amount = data.tier === 'pro' ? '19.99' : '9.99';
+            const img = new window.Image();
+            img.src = `https://www.awin1.com/sread.php?tt=ns&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=DEFAULT:${amount}&ref=sub-${Date.now()}&vc=&cr=GBP&testmode=0`;
           }
         })
         .catch(() => {});

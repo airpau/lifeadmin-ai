@@ -52,6 +52,11 @@ export default function Home() {
       if (data.count) setWaitlistCount(data.count);
       setSuccess(true);
       capture('waitlist_signup', { email, count: data.count });
+      // Awin lead conversion tracking
+      if (typeof window !== 'undefined') {
+        const img = new window.Image();
+        img.src = `https://www.awin1.com/sread.php?tt=ns&tv=2&merchant=125502&amount=0.00&ch=aw&parts=DEFAULT:0.00&ref=waitlist-${Date.now()}&vc=&cr=GBP&testmode=0`;
+      }
       setName('');
       setEmail('');
     } catch (err: any) {
