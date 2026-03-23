@@ -6,6 +6,7 @@ import { runCFOAgent } from '@/lib/agents/cfo-agent';
 import { runCTOAgent } from '@/lib/agents/cto-agent';
 import { runCAOAgent } from '@/lib/agents/cao-agent';
 import { runCMOAgent } from '@/lib/agents/cmo-agent';
+import { runExecAssistantAgent } from '@/lib/agents/exec-assistant-agent';
 import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
@@ -26,6 +27,7 @@ const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
   cto: runCTOAgent,
   cao: runCAOAgent,
   cmo: runCMOAgent,
+  exec_assistant: runExecAssistantAgent,
   support_lead: runSupportLeadAgent,
   support_agent: runSupportAgent,
 };
@@ -124,12 +126,16 @@ export async function GET(request: NextRequest) {
         .update({ last_run_at: new Date().toISOString() })
         .eq('id', agent.id);
 
-      // Email report to admin (for CFO, CTO, CAO — not support agents)
-      if (['cfo', 'cto', 'cao', 'cmo'].includes(agent.role)) {
+      // Email report to admin (for executive agents — not support agents)
+      if (['cfo', 'cto', 'cao', 'cmo', 'exec_assistant'].includes(agent.role)) {
         try {
+          // Charlie (exec assistant) emails hello@, others go to admin
+          const emailTo = agent.role === 'exec_assistant'
+            ? 'hello@paybacker.co.uk'
+            : ADMIN_EMAIL;
           await resend.emails.send({
             from: FROM_EMAIL,
-            to: ADMIN_EMAIL,
+            to: emailTo,
             subject: `[Paybacker AI] ${report.title}`,
             html: `
               <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 40px; border-radius: 16px;">
@@ -162,7 +168,7 @@ export async function GET(request: NextRequest) {
           if (savedReport?.id) {
             await supabase.from('executive_reports').update({
               status: 'sent',
-              sent_to: ADMIN_EMAIL,
+              sent_to: emailTo,
               sent_at: new Date().toISOString(),
             }).eq('id', savedReport.id);
           }

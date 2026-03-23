@@ -5,6 +5,7 @@ import { runCFOAgent } from '@/lib/agents/cfo-agent';
 import { runCTOAgent } from '@/lib/agents/cto-agent';
 import { runCAOAgent } from '@/lib/agents/cao-agent';
 import { runCMOAgent } from '@/lib/agents/cmo-agent';
+import { runExecAssistantAgent } from '@/lib/agents/exec-assistant-agent';
 import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
@@ -23,6 +24,7 @@ const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
   cto: runCTOAgent,
   cao: runCAOAgent,
   cmo: runCMOAgent,
+  exec_assistant: runExecAssistantAgent,
   support_lead: runSupportLeadAgent,
   support_agent: runSupportAgent,
 };
