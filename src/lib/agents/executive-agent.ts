@@ -1,7 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 
+// Separate API key for AI executive agents — allows tracking staff costs independently
+// Falls back to the main key if ANTHROPIC_AGENTS_API_KEY is not set
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_AGENTS_API_KEY || process.env.ANTHROPIC_API_KEY,
 });
 
 const EXECUTIVE_MODEL = 'claude-haiku-4-5-20251001';

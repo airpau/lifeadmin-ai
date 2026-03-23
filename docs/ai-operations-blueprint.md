@@ -259,6 +259,17 @@ Human Admin (Paul) — final decision authority via Tickets tab
 - CFO, CTO, CAO, CMO reports emailed to admin; support reports saved to DB only
 - Estimated monthly cost at scale: ~£5-20 for all agents combined
 
+### Separate API Key for AI Staff Costs
+All AI executive agents use `ANTHROPIC_AGENTS_API_KEY` instead of the main `ANTHROPIC_API_KEY`. This means:
+- **ANTHROPIC_API_KEY** — Used by user-facing features (chatbot, complaint letters, cancellation emails). Tracks user-driven costs.
+- **ANTHROPIC_AGENTS_API_KEY** — Used exclusively by the 6 AI executives (Alex, Morgan, Jamie, Taylor, Sam, Riley). Tracks autonomous staff costs.
+
+Both keys are from the Anthropic console. Create a second API key in your Anthropic account, set it as `ANTHROPIC_AGENTS_API_KEY` in Vercel env vars. If not set, agents fall back to `ANTHROPIC_API_KEY`.
+
+This separation lets you see at a glance:
+- How much the AI staff is costing you (Anthropic dashboard → filter by agents key)
+- How much user activity is costing you (Anthropic dashboard → filter by main key)
+
 ---
 
 ## Data Access Matrix

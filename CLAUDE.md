@@ -74,6 +74,7 @@ ANTHROPIC_API_KEY=
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 RESEND_API_KEY=
+ANTHROPIC_AGENTS_API_KEY=  # Separate key for AI executive agents (cost tracking)
 ```
 
 ### AI Agent Guidelines

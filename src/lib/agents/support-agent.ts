@@ -2,8 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { AgentConfig, AgentReport } from './executive-agent';
 
+// Separate API key for AI executive agents — allows tracking staff costs independently
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_AGENTS_API_KEY || process.env.ANTHROPIC_API_KEY,
 });
 
 function getAdmin() {
