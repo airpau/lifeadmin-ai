@@ -1,48 +1,66 @@
 'use client';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { TrendingUp, Clock, CheckCircle, Sparkles } from 'lucide-react';
-
-interface Stats {
-  moneySaved: number;
-  activeTasks: number;
-  completedTasks: number;
-}
+import {
+  CreditCard, FileText, Building2, BarChart3, CheckCircle,
+  ArrowRight, Loader2, AlertTriangle, Clock, Sparkles,
+} from 'lucide-react';
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<Stats>({
-    moneySaved: 0,
-    activeTasks: 0,
-    completedTasks: 0,
-  });
-  const [recentWins, setRecentWins] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [subscriptionCount, setSubscriptionCount] = useState(0);
+  const [monthlySpend, setMonthlySpend] = useState(0);
+  const [complaintsGenerated, setComplaintsGenerated] = useState(0);
+  const [bankConnected, setBankConnected] = useState(false);
+  const [expiringContracts, setExpiringContracts] = useState(0);
+  const [userTier, setUserTier] = useState('free');
   const supabase = createClient();
   const searchParams = useSearchParams();
 
-  // Awin fallback pixel for free signups — fires on dashboard (confirmation page)
+  // Awin tracking for free signups
   useEffect(() => {
     if (searchParams.get('signup') === '1') {
       const ref = sessionStorage.getItem('awin_ref') || '';
       const awc = sessionStorage.getItem('awin_awc') || '';
       sessionStorage.removeItem('awin_ref');
       sessionStorage.removeItem('awin_awc');
-      if (ref) {
-        setTimeout(() => {
+      if (!ref) return;
+
+      let fired = false;
+      let attempts = 0;
+      const fire = () => {
+        if (fired) return;
+        fired = true;
+        const w = window as any;
+        w.AWIN = w.AWIN || {};
+        w.AWIN.Tracking = w.AWIN.Tracking || {};
+        w.AWIN.Tracking.Sale = {
+          amount: '1.00', orderRef: ref, parts: 'LEAD:1.00',
+          voucher: '', currency: 'GBP', channel: 'aw', customerAcquisition: 'NEW',
+        };
+        if (typeof w.AWIN?.Tracking?.saleSubmit === 'function') {
+          w.AWIN.Tracking.saleSubmit();
+        } else {
           const pixel = new window.Image(0, 0);
-          pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=0.00&cr=GBP&ref=${encodeURIComponent(ref)}&parts=DEFAULT:0.00&vc=&ch=aw&customeracquisition=NEW${awc ? `&cks=${encodeURIComponent(awc)}` : ''}`;
-        }, 1000);
-      }
+          pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=1.00&cr=GBP&ref=${encodeURIComponent(ref)}&parts=LEAD:1.00&vc=&ch=aw&customeracquisition=NEW${awc ? `&cks=${encodeURIComponent(awc)}` : ''}`;
+        }
+      };
+      const poll = () => {
+        const w = window as any;
+        if (typeof w.AWIN?.Tracking?.saleSubmit === 'function' || attempts >= 40) { fire(); }
+        else { attempts++; setTimeout(poll, 250); }
+      };
+      poll();
     }
   }, [searchParams]);
 
-  // Sync subscription after Stripe checkout redirect
+  // Sync subscription after Stripe checkout
   useEffect(() => {
     if (searchParams.get('success') === 'true' || searchParams.get('upgraded')) {
       fetch('/api/stripe/sync', { method: 'POST' })
@@ -51,40 +69,6 @@ export default function DashboardPage() {
           if (data.synced && data.tier && data.tier !== 'free') {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
-            // Awin order confirmation tracking
-            const amount = data.tier === 'pro' ? '19.99' : '9.99';
-            const productName = data.tier === 'pro' ? 'Paybacker Pro' : 'Paybacker Essential';
-            const orderRef = data.subscriptionId || `sub-${Date.now()}`;
-            const commissionGroup = data.tier === 'pro' ? 'PRO' : 'ESSENTIAL';
-
-            // Fallback pixel (mandatory)
-            const pixel = new window.Image(0, 0);
-            pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=${amount}&cr=GBP&ref=${orderRef}&parts=${commissionGroup}:${amount}&vc=&ch=aw&customeracquisition=NEW`;
-
-            // Conversion tag (mandatory)
-            const w = window as any;
-            w.AWIN = w.AWIN || {};
-            w.AWIN.Tracking = w.AWIN.Tracking || {};
-            w.AWIN.Tracking.Sale = {
-              amount,
-              orderRef,
-              parts: `${commissionGroup}:${amount}`,
-              voucher: '',
-              currency: 'GBP',
-              channel: 'aw',
-              customerAcquisition: 'NEW',
-            };
-
-            // Product level tracking
-            const form = document.createElement('form');
-            form.style.display = 'none';
-            form.name = 'aw_basket_form';
-            form.id = 'aw_basket_form';
-            const textarea = document.createElement('textarea');
-            textarea.id = 'aw_basket';
-            textarea.value = `AW:P|125502|${orderRef}|${data.tier}|${productName}|${amount}|1|${data.tier}-monthly|${commissionGroup}|Subscription`;
-            form.appendChild(textarea);
-            document.body.appendChild(form);
           }
         })
         .catch(() => {});
@@ -95,60 +79,63 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        
-        if (user) {
-          // Fetch profile stats
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('total_money_recovered, total_tasks_completed')
-            .eq('id', user.id)
-            .single();
+        if (!user) return;
 
-          // Fetch active tasks count
-          const { count: activeCount } = await supabase
-            .from('tasks')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .in('status', ['pending_review', 'in_progress', 'awaiting_response']);
+        const [profile, subs, tasks, banks] = await Promise.all([
+          supabase.from('profiles').select('subscription_tier').eq('id', user.id).single(),
+          supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
+            .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
+          supabase.from('tasks').select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id).eq('type', 'complaint_letter'),
+          supabase.from('bank_connections').select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id).eq('status', 'active'),
+        ]);
 
-          // Fetch recent wins
-          const { data: wins } = await supabase
-            .from('tasks')
-            .select('title, money_recovered, resolved_at, provider_name')
-            .eq('user_id', user.id)
-            .eq('status', 'resolved_success')
-            .order('resolved_at', { ascending: false })
-            .limit(5);
+        setUserTier(profile.data?.subscription_tier || 'free');
+        setBankConnected((banks.count || 0) > 0);
+        setComplaintsGenerated(tasks.count || 0);
 
-          setStats({
-            moneySaved: profile?.total_money_recovered || 0,
-            activeTasks: activeCount || 0,
-            completedTasks: profile?.total_tasks_completed || 0,
-          });
+        const subsList = subs.data || [];
+        setSubscriptionCount(subsList.length);
 
-          setRecentWins(wins || []);
-        }
+        // Calculate monthly spend
+        const monthly = subsList.reduce((sum, s) => {
+          const amt = parseFloat(String(s.amount)) || 0;
+          if (s.billing_cycle === 'yearly') return sum + amt / 12;
+          if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+          return sum + amt;
+        }, 0);
+        setMonthlySpend(monthly);
+
+        // Count contracts expiring within 30 days
+        const now = new Date();
+        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const expiring = subsList.filter(s =>
+          s.contract_end_date &&
+          new Date(s.contract_end_date) >= now &&
+          new Date(s.contract_end_date) <= thirtyDays
+        ).length;
+        setExpiringContracts(expiring);
+
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [supabase]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-slate-400">Loading dashboard...</div>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl">
-      {/* Subscription sync message */}
       {syncMessage && (
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
           <CheckCircle className="h-4 w-4" />
@@ -156,97 +143,148 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2">Overview</h1>
-        <p className="text-slate-400">Track your money recovery and active tasks</p>
+        <p className="text-slate-400">Your financial snapshot and quick actions</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Money Saved */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center">
-              <TrendingUp className="h-6 w-6 text-green-500" />
-            </div>
-            <span className="text-xs text-slate-500">This month</span>
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            £{stats.moneySaved.toFixed(2)}
-          </h3>
-          <p className="text-slate-400 text-sm">Money recovered</p>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <CreditCard className="h-6 w-6 text-amber-500 mb-3" />
+          <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
+          <p className="text-slate-400 text-sm">Subscriptions tracked</p>
         </div>
-
-        {/* Active Tasks */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center">
-              <Clock className="h-6 w-6 text-amber-500" />
-            </div>
-            <span className="text-xs text-slate-500">In progress</span>
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {stats.activeTasks}
-          </h3>
-          <p className="text-slate-400 text-sm">Active tasks</p>
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
+          <p className="text-3xl font-bold text-white">£{monthlySpend.toFixed(0)}</p>
+          <p className="text-slate-400 text-sm">Monthly spend</p>
         </div>
-
-        {/* Completed */}
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 text-blue-500" />
-            </div>
-            <span className="text-xs text-slate-500">All time</span>
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {stats.completedTasks}
-          </h3>
-          <p className="text-slate-400 text-sm">Tasks completed</p>
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <FileText className="h-6 w-6 text-blue-400 mb-3" />
+          <p className="text-3xl font-bold text-white">{complaintsGenerated}</p>
+          <p className="text-slate-400 text-sm">Complaints generated</p>
+        </div>
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <Building2 className="h-6 w-6 text-green-400 mb-3" />
+          <p className="text-3xl font-bold text-white">{bankConnected ? 'Connected' : 'Not set up'}</p>
+          <p className="text-slate-400 text-sm">Bank account</p>
         </div>
       </div>
 
-      {/* Recent Wins */}
-      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-          <Sparkles className="h-6 w-6 text-amber-500" />
-          Recent Wins
-        </h2>
+      {/* Alerts */}
+      {expiringContracts > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400" />
+            <div>
+              <p className="text-white font-semibold text-sm">{expiringContracts} contract{expiringContracts > 1 ? 's' : ''} expiring within 30 days</p>
+              <p className="text-slate-400 text-xs">Review these before they auto-renew at a higher rate</p>
+            </div>
+          </div>
+          <Link href="/dashboard/subscriptions" className="text-amber-400 hover:text-amber-300 text-sm font-medium flex items-center gap-1">
+            View <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
 
-        {recentWins.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-slate-400 mb-4">No wins yet — let's get started!</p>
-            <a
-              href="/dashboard/complaints"
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-lg transition-all"
-            >
-              Create your first complaint
-            </a>
+      {!bankConnected && (
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Building2 className="h-5 w-5 text-blue-400" />
+            <div>
+              <p className="text-white font-semibold text-sm">Connect your bank account</p>
+              <p className="text-slate-400 text-xs">Automatically detect all your subscriptions and recurring payments</p>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {recentWins.map((win, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800"
-              >
-                <div className="flex-1">
-                  <h4 className="text-white font-medium mb-1">{win.title}</h4>
-                  <p className="text-slate-400 text-sm">{win.provider_name}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-green-500 font-bold text-lg">
-                    +£{win.money_recovered}
-                  </p>
-                  <p className="text-slate-500 text-xs">
-                    {new Date(win.resolved_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Link href="/dashboard/subscriptions" className="text-blue-400 hover:text-blue-300 text-sm font-medium flex items-center gap-1">
+            Connect <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-amber-500" />
+        Quick Actions
+      </h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <Link
+          href="/dashboard/complaints"
+          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+        >
+          <FileText className="h-8 w-8 text-amber-500 mb-3" />
+          <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Write a Complaint Letter</h3>
+          <p className="text-slate-400 text-sm">Generate a formal letter citing UK consumer law. Energy bills, broadband, debt, refunds, and more.</p>
+          <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">Get started <ArrowRight className="h-3 w-3" /></span>
+        </Link>
+
+        <Link
+          href="/dashboard/subscriptions"
+          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+        >
+          <CreditCard className="h-8 w-8 text-green-500 mb-3" />
+          <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Track Subscriptions</h3>
+          <p className="text-slate-400 text-sm">See every subscription in one place. Sync from your bank or add manually. Cancel what you don't need.</p>
+          <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">Manage <ArrowRight className="h-3 w-3" /></span>
+        </Link>
+
+        <Link
+          href="/dashboard/forms"
+          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+        >
+          <Building2 className="h-8 w-8 text-purple-500 mb-3" />
+          <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Generate Legal Forms</h3>
+          <p className="text-slate-400 text-sm">HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
+          <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">Browse forms <ArrowRight className="h-3 w-3" /></span>
+        </Link>
+
+        {userTier !== 'free' && (
+          <Link
+            href="/dashboard/spending"
+            className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+          >
+            <BarChart3 className="h-8 w-8 text-sky-500 mb-3" />
+            <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Spending Insights</h3>
+            <p className="text-slate-400 text-sm">See where every pound goes. Category breakdown, monthly trends, and smart savings suggestions.</p>
+            <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">View insights <ArrowRight className="h-3 w-3" /></span>
+          </Link>
         )}
+
+        {userTier === 'free' && (
+          <Link
+            href="/pricing"
+            className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+          >
+            <Sparkles className="h-8 w-8 text-amber-500 mb-3" />
+            <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Upgrade Your Plan</h3>
+            <p className="text-slate-400 text-sm">Get unlimited complaints, daily bank sync, spending insights, cancellation emails, and renewal reminders.</p>
+            <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">View plans <ArrowRight className="h-3 w-3" /></span>
+          </Link>
+        )}
+      </div>
+
+      {/* What's Coming */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Clock className="h-5 w-5 text-slate-400" />
+          Coming Soon
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
+            <p className="text-white font-medium text-sm mb-1">Deal Comparison</p>
+            <p className="text-slate-500 text-xs">Compare energy, broadband, insurance, and more. Switch and save directly from your dashboard.</p>
+          </div>
+          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
+            <p className="text-white font-medium text-sm mb-1">Email Inbox Scanning</p>
+            <p className="text-slate-500 text-xs">Connect Gmail or Outlook to automatically find subscriptions, overcharges, and renewal dates from your emails.</p>
+          </div>
+          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
+            <p className="text-white font-medium text-sm mb-1">Automated Cancellations</p>
+            <p className="text-slate-500 text-xs">Let our AI handle the cancellation process for you. We'll contact the provider and confirm once it's done.</p>
+          </div>
+        </div>
       </div>
     </div>
   );
