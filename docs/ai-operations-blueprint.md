@@ -4,7 +4,7 @@
 
 ## Overview
 
-Paybacker operates with an autonomous AI executive team that manages day-to-day business operations, supported by a human oversight layer for edge cases and strategic decisions. The system comprises 7 AI agents, a full support ticketing system, and comprehensive contract tracking for deal targeting.
+Paybacker operates with an autonomous AI executive team that manages day-to-day business operations, supported by a human oversight layer for edge cases and strategic decisions. The system comprises 7 AI agents, a full support ticketing system, comprehensive contract tracking for deal targeting, an executive meeting room for live agent interaction, and a self-improving proposal system with one-click email approval.
 
 ---
 
@@ -211,6 +211,76 @@ Compiles numbered, prioritised task list → emails hello@paybacker.co.uk
 
 ---
 
+## Executive Meeting Room
+
+The admin dashboard has a **"Call a Meeting"** button that opens a full-screen boardroom interface.
+
+### How It Works
+- Type a message to address your AI executive team
+- All 6 agents (Alex, Morgan, Jamie, Taylor, Charlie, Sam) respond simultaneously in character
+- Uses Claude Sonnet for all agents in meetings (higher quality for live interaction)
+- Conversation history maintained for multi-turn discussions
+- Each agent responds only from their area of expertise
+
+### "Make This a Proposal" Button
+Every agent message in the meeting has a **"Make this a proposal"** button. Click it to:
+1. Create a formal improvement proposal in the DB
+2. Send you an approval email with Approve/Reject links
+
+### When to Use It
+- Brainstorming strategy ("How should we approach the waitlist launch?")
+- Troubleshooting live issues ("Users aren't completing onboarding — ideas?")
+- Getting quick consensus on decisions ("Should we prioritise mobile or broadband deals?")
+- Ad-hoc status checks ("What are our top priorities this week?")
+
+---
+
+## Self-Improving System — Improvement Proposals
+
+The system can propose its own improvements. Agents suggest changes in their reports, and you approve or reject them via one-click email links.
+
+### Flow
+```
+Agent runs → spots improvement → includes in report
+    ↓
+Cron saves proposal to DB → emails hello@paybacker.co.uk
+    ↓
+You receive email: [Approve] [Reject] buttons
+    ↓
+Approve:
+  Config/prompt/schedule → auto-executed immediately
+  Code/feature/bugfix → creates GitHub issue
+    ↓
+Reject: dismissed, recorded
+```
+
+### Three Ways Proposals Are Created
+1. **Automatically** — Agents include improvements in their 3x daily reports
+2. **From meetings** — Click "Make this a proposal" on an agent message
+3. **Manually** — POST to `/api/admin/proposals`
+
+### What Happens on Approval
+
+| Category | On Approve |
+|----------|-----------|
+| `prompt` | Agent's system prompt updated in DB immediately |
+| `schedule` | Agent's cron schedule updated immediately |
+| `config`, `data` | Logged — applied in next Claude Code session |
+| `code`, `feature`, `bugfix`, `infrastructure` | Creates GitHub issue (requires `GITHUB_TOKEN` env var) |
+
+### API Endpoints
+- `GET /api/admin/proposals` — List proposals (filter by status)
+- `POST /api/admin/proposals` — Create proposal + send approval email
+- `GET /api/admin/proposals/approve?token=X&action=approve|reject` — One-click approve/reject
+
+### Database Table: `improvement_proposals`
+Key columns: title, description, implementation, category, priority, estimated_impact, status, approval_token, github_issue_url
+
+### Environment Variable
+`GITHUB_TOKEN` — GitHub personal access token with `repo` scope. Required for auto-creating issues on approval of code/feature proposals.
+
+---
+
 ## How to Access Everything
 
 ### Admin Dashboard
@@ -385,14 +455,15 @@ All access via service role key (bypasses RLS). No agent has access to raw user 
 
 ```
 src/lib/agents/
-├── executive-agent.ts      # Base runner (Claude call, JSON parsing, types)
-├── cfo-agent.ts            # Alex — financial data gathering + report
-├── cto-agent.ts            # Morgan — tech health data gathering + report
-├── cao-agent.ts            # Jamie — ops data gathering + report
-├── cmo-agent.ts            # Taylor — marketing data gathering + report
-├── support-lead-agent.ts   # Sam — ticket triage data gathering + report
-├── support-agent.ts        # Riley — auto-respond/escalate logic
-└── complaints-agent.ts     # (existing) complaint letter generation
+├── executive-agent.ts        # Base runner (Claude call, JSON parsing, types)
+├── cfo-agent.ts              # Alex — financial data gathering + report
+├── cto-agent.ts              # Morgan — tech health data gathering + report
+├── cao-agent.ts              # Jamie — ops data gathering + report
+├── cmo-agent.ts              # Taylor — marketing data gathering + report
+├── exec-assistant-agent.ts   # Charlie — compiles all reports + action items (uses Sonnet)
+├── support-lead-agent.ts     # Sam — ticket triage data gathering + report
+├── support-agent.ts          # Riley — auto-respond/escalate logic
+└── complaints-agent.ts       # (existing) complaint letter generation
 
 src/app/api/
 ├── support/
@@ -400,19 +471,25 @@ src/app/api/
 │   ├── tickets/[id]/route.ts         # GET detail, PUT update
 │   ├── tickets/[id]/messages/route.ts # POST add message
 │   └── inbound-email/route.ts        # POST webhook
-├── admin/agents/
-│   ├── route.ts                      # GET list agents
-│   └── [id]/
-│       ├── route.ts                  # PUT update, POST trigger
-│       └── reports/route.ts          # GET report history
-└── cron/executive-agents/route.ts    # Hourly cron runner
+├── admin/
+│   ├── agents/route.ts               # GET list agents
+│   ├── agents/[id]/route.ts          # PUT update, POST manual trigger
+│   ├── agents/[id]/reports/route.ts  # GET report history
+│   ├── meeting/route.ts              # POST live meeting with all agents
+│   ├── proposals/route.ts            # GET list, POST create proposal
+│   └── proposals/approve/route.ts    # GET one-click approve/reject via email link
+└── cron/executive-agents/route.ts    # Every 15 mins cron runner
 
 src/components/admin/
 ├── TicketList.tsx           # Ticket list + detail + reply UI
-└── AITeamPanel.tsx          # Agent cards with controls + reports
+├── AITeamPanel.tsx          # Agent cards with controls + reports
+└── MeetingRoom.tsx          # Live boardroom meeting with all agents
 
 supabase/migrations/
-└── 20260322000000_support_and_agents.sql  # Tables + seed data
+├── 20260322000000_support_and_agents.sql                        # Tickets + agents + seed data
+├── 20260323000000_contract_tracking_indexes_exec_assistant.sql  # Contract fields + indexes + Charlie
+├── 20260323010000_agent_action_items.sql                        # Cross-agent coordination
+└── 20260323020000_improvement_proposals.sql                     # Self-improving proposal system
 ```
 
 ---
@@ -471,6 +548,20 @@ The `subscriptions` table tracks every financial commitment for every user — n
 | `ticket_messages` | Conversation thread per ticket | ticket_id, sender_type, sender_name, message |
 | `ai_executives` | Agent definitions and config | role, name, system_prompt, schedule, status, last_run_at |
 | `executive_reports` | Reports produced by agents | agent_id, title, content, data (JSONB), recommendations (JSONB), status |
+| `agent_action_items` | Cross-agent coordination | flagged_by, assigned_to, title, description, priority, category, status |
+| `improvement_proposals` | Self-improving system | title, description, implementation, category, priority, approval_token, status, github_issue_url |
+
+---
+
+## Environment Variables (Operations)
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | User-facing Claude calls (chatbot, complaints, cancellations) |
+| `ANTHROPIC_AGENTS_API_KEY` | AI executive agent calls (tracks staff costs separately) |
+| `CRON_SECRET` | Auth for all cron and admin API routes |
+| `GITHUB_TOKEN` | GitHub PAT with `repo` scope — enables auto-creating issues from approved proposals |
+| `NEXT_PUBLIC_SITE_URL` | Base URL for approval email links (default: https://paybacker.co.uk) |
 
 ---
 
@@ -481,7 +572,8 @@ The `subscriptions` table tracks every financial commitment for every user — n
 3. **Sentiment analysis** — Track user satisfaction across ticket interactions
 4. **Knowledge base agent** — AI that learns from resolved tickets to improve responses
 5. **Slack/Telegram notifications** — Real-time alerts for urgent tickets
-6. **Multi-agent collaboration** — Agents that consult each other (e.g., CFO flags cost spike → CTO investigates)
-7. **Performance scoring** — Track AI agent accuracy and improve prompts based on outcomes
+6. **Performance scoring** — Track AI agent accuracy and improve prompts based on outcomes
+7. **Auto-execute code proposals** — Claude Code integration to implement approved code changes automatically
+8. **Proposal analytics** — Track approval rates, implementation success, business impact of approved changes
 8. **CRO agent** — Conversion rate optimisation, A/B test recommendations
 9. **Compliance agent** — Monitor for GDPR, FCA, and UK consumer law compliance
