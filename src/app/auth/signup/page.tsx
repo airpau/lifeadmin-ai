@@ -77,11 +77,11 @@ export default function SignupPage() {
           localStorage.removeItem('pb_ref');
         }
 
-        // Send welcome email immediately
+        // Send welcome email immediately (also fires Awin S2S lead tracking server-side)
         fetch('/api/auth/welcome', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, name: firstName.trim() }),
+          body: JSON.stringify({ email, name: firstName.trim(), userId: data.user!.id }),
         }).catch(() => {});
 
         capture('user_signed_up', { email, referral: refCode || undefined });

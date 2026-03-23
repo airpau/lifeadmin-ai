@@ -98,13 +98,12 @@ export async function POST(request: NextRequest) {
         // Awin server-to-server conversion tracking (full spec)
         if (!updateError) {
           const amount = tier === 'pro' ? '19.99' : '9.99';
-          const commissionGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
           const productName = tier === 'pro' ? 'Paybacker+Pro' : 'Paybacker+Essential';
           const orderRef = encodeURIComponent(`sub-${session.subscription || session.id}`);
           const awc = encodeURIComponent(session.metadata?.awc || '');
           const sku = tier === 'pro' ? 'pro-monthly' : 'essential-monthly';
-          const productLevel = `AW:P|125502|${orderRef}|${tier}|${productName}|${amount}|1|${sku}|${commissionGroup}|Subscription`;
-          const awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=${commissionGroup}:${amount}&vc=&cr=GBP&ref=${orderRef}&cks=${awc}&customeracquisition=NEW&bd[0]=${encodeURIComponent(productLevel)}`;
+          const productLevel = `AW:P|125502|${orderRef}|${tier}|${productName}|${amount}|1|${sku}|DEFAULT|Subscription`;
+          const awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=DEFAULT:${amount}&vc=&cr=GBP&ref=${orderRef}&cks=${awc}&customeracquisition=NEW&bd[0]=${encodeURIComponent(productLevel)}`;
           fetch(awinUrl).catch(err => console.error('Awin S2S tracking failed:', err.message));
           console.log(`Awin S2S fired: tier=${tier} amount=${amount} awc=${awc ? 'present' : 'none'}`);
         }
