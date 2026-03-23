@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { awardPoints } from '@/lib/loyalty';
 
 export const maxDuration = 60;
 
@@ -229,8 +230,8 @@ Return as JSON with keys:
     await incrementUsage(user.id, 'complaint_generated');
 
     // Award loyalty points
-    import('@/lib/loyalty').then(({ awardPoints }) => {
-      awardPoints(user.id, 'complaint_generated', { type: formType });
+    awardPoints(user.id, 'complaint_generated', { type: formType }).then(result => {
+      if (result.awarded) console.log(`[loyalty] +${result.points} points for form:${formType}`);
     }).catch(() => {});
 
     return NextResponse.json({ ...result, taskId: task?.id, formType: formConfig.label });

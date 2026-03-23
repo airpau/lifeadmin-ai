@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
+import { awardPoints } from '@/lib/loyalty';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 export const maxDuration = 60;
@@ -114,9 +115,9 @@ export async function POST(request: NextRequest) {
     await incrementUsage(user.id, 'complaint_generated');
 
     // Award loyalty points
-    import('@/lib/loyalty').then(({ awardPoints }) => {
-      awardPoints(user.id, 'complaint_generated', { company: body.companyName });
-    }).catch(() => {});
+    awardPoints(user.id, 'complaint_generated', { company: body.companyName })
+      .then(result => { if (result.awarded) console.log(`[loyalty] +${result.points} points for complaint`); })
+      .catch(err => console.error('[loyalty] Failed to award points:', err.message));
 
     return NextResponse.json({ ...result, taskId: task?.id });
   } catch (error: any) {

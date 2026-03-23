@@ -18,10 +18,12 @@ const CATEGORY_MAP: Record<string, string> = {
 
 // Keywords to categorise transactions by description
 const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'lendinvest', 'skipton', 'halifax mort', 'nationwide mort'], category: 'mortgage' },
-  { keywords: ['loan', 'auto finance', 'novuna', 'santander loan', 'natwest loan'], category: 'loans' },
-  { keywords: ['barclaycard', 'credit card', 'amex', 'klarna', 'clearpay'], category: 'credit' },
-  { keywords: ['council', 'testvalley', 'winchester', 'hounslow', 'lbh'], category: 'council_tax' },
+  { keywords: ['mortgage', 'lendinvest', 'skipton', 'halifax mort', 'nationwide mort', 'skipton b.s'], category: 'mortgage' },
+  { keywords: ['natwest loan', 'santander loans', 'novuna personal', 'ca auto finance', 'auto finance', 'tesco bank'], category: 'loans' },
+  { keywords: ['klarna', 'clearpay', 'afterpay'], category: 'credit' },
+  { keywords: ['council', 'testvalley', 'winchester city counci', 'hounslow', 'lbh'], category: 'council_tax' },
+  { keywords: ['hmrc', 'hm revenue'], category: 'tax' },
+  { keywords: ['auriga advocates', 'solicitor', 'accountant', 'property accountant'], category: 'professional' },
   { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },
   { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
   { keywords: ['sky', 'virgin media', 'bt ', 'talktalk', 'plusnet', 'communityfibre', 'vodafone broad'], category: 'broadband' },
@@ -67,6 +69,8 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: stri
   gambling: { label: 'Gambling', color: '#dc2626', icon: '🎰' },
   childcare: { label: 'Childcare', color: '#f472b6', icon: '👶' },
   software: { label: 'Software', color: '#7c3aed', icon: '💻' },
+  tax: { label: 'Tax (HMRC)', color: '#dc2626', icon: '🏛️' },
+  professional: { label: 'Professional Services', color: '#7c3aed', icon: '👔' },
   bills: { label: 'Bills', color: '#64748b', icon: '📄' },
   transfers: { label: 'Transfers', color: '#475569', icon: '↔️' },
   cash: { label: 'Cash', color: '#78716c', icon: '💵' },
@@ -106,19 +110,31 @@ export async function GET() {
       amount: parseFloat(String(tx.amount)),
     }));
 
-    // Filter out internal transfers (not real spending)
+    // Filter out internal transfers and credit card payments (not real spending)
     const isTransfer = (tx: typeof categorised[0]) => {
       const cat = tx.category?.toUpperCase() || '';
       const desc = (tx.description || '').toLowerCase();
 
-      // All TRANSFER category transactions are likely internal movements
+      // All TRANSFER category transactions are internal movements
       if (cat === 'TRANSFER') return true;
 
-      // Also catch transfers disguised as other categories
+      // Credit card payments (paying off balance, not actual purchases)
+      if (desc.includes('barclaycard') && !desc.includes('fee')) return true;
+      if (desc.includes('mbna') && desc.includes('tpp')) return true;
+      if (desc.includes('halifax credit')) return true;
+      if (desc.includes('hsbc bank visa')) return true;
+      if (desc.includes('virgin money') && desc.includes('tpp')) return true;
+      if (desc.includes('santander') && desc.includes('tpp')) return true;
+      if (desc.includes('securepay.bos')) return true;
+
+      // Bank-to-bank transfers
       if (desc.includes('revolut') && !desc.includes('deliveroo') && !desc.includes('uber')) return true;
       if (desc.includes('monzo') || desc.includes('starling')) return true;
       if (desc.includes('savings') || desc.includes('isa ')) return true;
       if (desc.includes('via mobile') && desc.includes('pymt')) return true;
+      if (desc.includes('via mobile xfer')) return true;
+      if (desc.includes('personal transfer')) return true;
+      if (desc.includes('to a/c ')) return true;
 
       return false;
     };
