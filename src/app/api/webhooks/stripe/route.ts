@@ -95,20 +95,22 @@ export async function POST(request: NextRequest) {
           .select('id, subscription_tier')
           .single();
 
-        // Awin server-to-server conversion tracking (full spec)
+        // Awin server-to-server conversion tracking
+        // Commission: 20% of first month (Essential £2, Pro £4)
         if (!updateError) {
-          const amount = tier === 'pro' ? '19.99' : '9.99';
-          const productName = tier === 'pro' ? 'Paybacker+Pro' : 'Paybacker+Essential';
+          const awinAdvId = process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID || '125502';
+          const commission = tier === 'pro' ? '4.00' : '2.00';
+          const commissionGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
           const orderRef = encodeURIComponent(`sub-${session.subscription || session.id}`);
           const awcRaw = session.metadata?.awc;
-          const sku = tier === 'pro' ? 'pro-monthly' : 'essential-monthly';
-          const productLevel = `AW:P|125502|${orderRef}|${tier}|${productName}|${amount}|1|${sku}|DEFAULT|Subscription`;
-          let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=DEFAULT:${amount}&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW&bd[0]=${encodeURIComponent(productLevel)}`;
+          let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=${awinAdvId}` +
+            `&amount=${commission}&ch=aw&parts=${commissionGroup}:${commission}` +
+            `&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW`;
           if (awcRaw) {
             awinUrl += `&cks=${encodeURIComponent(awcRaw)}`;
           }
-          fetch(awinUrl).catch(err => console.error('Awin S2S tracking failed:', err.message));
-          console.log(`Awin S2S fired: tier=${tier} amount=${amount} awc=${awcRaw ? 'present' : 'none'}`);
+          fetch(awinUrl).catch(err => console.error('[awin] S2S tracking failed:', err.message));
+          console.log(`[awin] Conversion: tier=${tier} commission=£${commission} awc=${awcRaw ? 'present' : 'none'}`);
         }
 
         // Process referral subscription reward

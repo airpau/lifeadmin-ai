@@ -1,21 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Called synchronously after every signup to fire Awin S2S lead tracking
+const AWIN_ADVERTISER_ID = process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID || '125502';
+
+// Fired on every signup. Tracks as a £1 lead commission for the referring influencer.
 export async function POST(request: NextRequest) {
   try {
     const { userId, email } = await request.json();
     const awcRaw = request.cookies.get('awc')?.value;
     const orderRef = encodeURIComponent(`signup-${userId || email}`);
-    let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=125502&amount=0.00&ch=aw&parts=DEFAULT:0.00&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW`;
+
+    // Commission: £1 for free signup (LEAD commission group)
+    let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=${AWIN_ADVERTISER_ID}` +
+      `&amount=1.00&ch=aw&parts=LEAD:1.00&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW`;
+
     if (awcRaw) {
       awinUrl += `&cks=${encodeURIComponent(awcRaw)}`;
     }
 
     const res = await fetch(awinUrl);
-    console.log(`Awin S2S signup: ref=${orderRef} awc=${awcRaw || 'none'} status=${res.status}`);
+    console.log(`[awin] Signup tracked: ref=${orderRef} awc=${awcRaw || 'none'} status=${res.status}`);
     return NextResponse.json({ ok: true, ref: decodeURIComponent(orderRef), awc: awcRaw || '' });
   } catch (err: any) {
-    console.error('Awin signup tracking failed:', err.message);
+    console.error('[awin] Signup tracking failed:', err.message);
     return NextResponse.json({ ok: false });
   }
 }

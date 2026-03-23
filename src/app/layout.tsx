@@ -34,8 +34,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        {/* Awin Mastertag — loaded async in head to ensure it fires before any conversion pixels */}
-        <script async src="https://www.dwin1.com/125502.js" type="text/javascript" />
+        {/* Awin Advertiser Mastertag. Set NEXT_PUBLIC_AWIN_ADVERTISER_ID in Vercel to activate. */}
+        {process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID && (
+          <script async src={`https://www.dwin1.com/${process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID}.js`} type="text/javascript" />
+        )}
         {/* PostHog + GA4 loaded via Script component in PostHogProvider */}
         {/* Google Analytics GA4 */}
         <script async src="https://www.googletagmanager.com/gtag/js?id=G-GRL9XKYTN1" />
