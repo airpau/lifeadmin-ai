@@ -1,23 +1,24 @@
 # Paybacker AI Operations Blueprint
 
-> Last updated: 22 March 2026
+> Last updated: 23 March 2026
 
 ## Overview
 
-Paybacker operates with an autonomous AI executive team that manages day-to-day business operations, supported by a human oversight layer for edge cases and strategic decisions. The system comprises 6 AI agents and a full support ticketing system.
+Paybacker operates with an autonomous AI executive team that manages day-to-day business operations, supported by a human oversight layer for edge cases and strategic decisions. The system comprises 7 AI agents, a full support ticketing system, and comprehensive contract tracking for deal targeting.
 
 ---
 
 ## AI Executive Team — Full Roster
 
-| Role | Agent Name | Schedule | Model | Colour (UI) |
-|------|-----------|----------|-------|-------------|
-| **CFO** | Alex | Daily 7am UTC | Claude Haiku 4.5 | Green |
-| **CTO** | Morgan | Weekly (Monday 7am UTC) | Claude Haiku 4.5 | Blue |
-| **CAO** | Jamie | Daily 7am UTC | Claude Haiku 4.5 | Purple |
-| **CMO** | Taylor | Daily 7am UTC | Claude Haiku 4.5 | Pink |
-| **Support Lead** | Sam | Hourly | Claude Haiku 4.5 | Amber |
-| **Support Agent** | Riley | Every 15 minutes | Claude Haiku 4.5 | Slate |
+| Role | Agent Name | Schedule | Model | Colour (UI) | Emails To |
+|------|-----------|----------|-------|-------------|-----------|
+| **CFO** | Alex | Daily 7am UTC | Claude Haiku 4.5 | Green | aireypaul@googlemail.com |
+| **CTO** | Morgan | Weekly (Monday 7am UTC) | Claude Haiku 4.5 | Blue | aireypaul@googlemail.com |
+| **CAO** | Jamie | Daily 7am UTC | Claude Haiku 4.5 | Purple | aireypaul@googlemail.com |
+| **CMO** | Taylor | Daily 7am UTC | Claude Haiku 4.5 | Pink | aireypaul@googlemail.com |
+| **Exec Assistant** | Charlie | 3x daily (7am, 12pm, 5pm) | Claude Haiku 4.5 | Cyan | hello@paybacker.co.uk |
+| **Support Lead** | Sam | Hourly | Claude Haiku 4.5 | Amber | DB only |
+| **Support Agent** | Riley | Every 15 minutes | Claude Haiku 4.5 | Slate | DB only |
 
 ---
 
@@ -98,6 +99,33 @@ Paybacker operates with an autonomous AI executive team that manages day-to-day 
 - View reports: Admin Dashboard → AI Team → expand Taylor's card
 - Trigger manually: AI Team → "Run Now" button
 - API: `POST /api/admin/agents/{taylor-id}` with CRON_SECRET
+
+---
+
+### Charlie — Executive Assistant
+**Schedule:** 3x daily at 7am, 12pm, 5pm UTC (`0 7,12,17 * * *`)
+**Emails to:** hello@paybacker.co.uk
+**What it does autonomously:**
+- Reads the latest reports from ALL other AI executives (Alex, Morgan, Jamie, Taylor)
+- Checks support ticket status (open, urgent, escalated to human, overdue)
+- Monitors user growth metrics and MRR
+- Scans for contracts expiring within 30 days (deal targeting opportunities)
+- Compiles a prioritised task list of things Paul needs to action TODAY
+- Includes agent health status (which agents ran, which didn't)
+
+**Output:** Executive Brief emailed to hello@paybacker.co.uk with:
+- Urgent tasks (with source: which agent flagged it)
+- Agent update summary (key finding from each agent's latest report)
+- Ticket summary (open, urgent, human-required counts)
+- Business metrics snapshot (MRR, total users, new users)
+- Recommendations
+
+**What it CANNOT do:** Take any actions. Charlie is purely a reporter and task compiler.
+
+**How to interact:**
+- Check your hello@paybacker.co.uk inbox — 3 briefs per day
+- View reports: Admin Dashboard → AI Team → expand Charlie's card
+- Trigger manually: AI Team → "Run Now" button
 
 ---
 
@@ -242,6 +270,7 @@ Human Admin (Paul) — final decision authority via Tickets tab
 | CTO (Morgan) | Generate reports | No code changes or deployments |
 | CAO (Jamie) | Generate reports, flag churn risks | No user communications |
 | CMO (Taylor) | Generate reports, suggest campaigns | No social posting or email sends |
+| Exec Assistant (Charlie) | Compile briefs, email task lists | No actions — reporting only |
 | Support Lead (Sam) | Triage tickets, adjust priorities | Cannot close tickets or issue refunds |
 | Support Agent (Riley) | Respond to simple tickets | Cannot make account changes or promises |
 
@@ -280,6 +309,7 @@ This separation lets you see at a glance:
 | CTO (Morgan) | - | - | - | - | - | Read (all) | Read (status) | - | - |
 | CAO (Jamie) | Read (growth) | Read (types) | Read (counts) | Read (counts) | - | - | - | Read (counts) | - |
 | CMO (Taylor) | Read (counts) | - | - | - | - | - | Read (all) | Read (all) | Read (counts) |
+| Exec Asst (Charlie) | Read (tiers) | - | Read (expiring) | - | Read (counts) | - | - | - | - |
 | Support Lead (Sam) | - | - | - | - | Read/Write | - | - | - | - |
 | Support Agent (Riley) | - | - | - | - | Read/Write | - | - | - | - |
 
@@ -343,6 +373,52 @@ src/components/admin/
 supabase/migrations/
 └── 20260322000000_support_and_agents.sql  # Tables + seed data
 ```
+
+---
+
+## Contract & Deal Tracking
+
+The `subscriptions` table tracks every financial commitment for every user — not just streaming subscriptions, but mortgages, loans, insurance, energy contracts, and more. This enables targeted deal recommendations.
+
+### Contract Types Tracked
+`subscription` | `fixed_contract` | `mortgage` | `loan` | `insurance` | `lease` | `membership` | `utility` | `other`
+
+### Provider Types (for deal matching)
+`energy` | `broadband` | `mobile` | `tv` | `insurance_home` | `insurance_car` | `insurance_pet` | `insurance_life` | `insurance_travel` | `mortgage` | `loan` | `credit_card` | `streaming` | `software` | `fitness` | `news` | `council_tax` | `water` | `other`
+
+### Key Contract Fields
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `contract_type` | What kind of commitment | `mortgage`, `fixed_contract` |
+| `contract_start_date` | When the contract began | `2024-06-01` |
+| `contract_end_date` | When it expires (key for deal targeting) | `2026-06-01` |
+| `contract_term_months` | Length of commitment | `24` |
+| `auto_renews` | Whether it rolls over automatically | `true` |
+| `early_exit_fee` | Penalty for leaving early | `£150.00` |
+| `annual_cost` | Total yearly cost | `£1,200.00` |
+| `total_contract_value` | Full value over the term | `£2,400.00` |
+| `interest_rate` | APR for loans/mortgages | `4.5` |
+| `remaining_balance` | Outstanding on loans/mortgages | `£185,000.00` |
+| `monthly_payment` | Monthly amount due | `£850.00` |
+| `provider_type` | Category for deal matching | `energy`, `mortgage` |
+| `current_tariff` | Current plan name | `"EDF Standard Variable"` |
+| `postcode` | For location-specific deals | `"SW1A 1AA"` |
+| `property_type` | For energy/insurance comparison | `semi` |
+| `bedrooms` | For energy comparison | `3` |
+| `data_allowance` | Mobile/broadband data | `"unlimited"` |
+| `speed_mbps` | Broadband speed | `80` |
+
+### How This Enables Deal Targeting
+1. **Contract ending soon** → alert user with better deals before renewal
+2. **High annual cost + known provider_type** → compare against Awin affiliate deals
+3. **Mortgage rate + remaining balance** → suggest remortgage when rates drop
+4. **Energy tariff + postcode + bedrooms** → accurate energy comparison
+5. **Broadband speed + postcode** → show faster/cheaper alternatives available in their area
+
+### Indexed Queries
+- `contract_end_date` — find all contracts expiring within N days
+- `provider_type` — group by type for deal matching
+- `auto_renews + contract_end_date` — find auto-renewing contracts expiring soon (highest value alerts)
 
 ---
 
