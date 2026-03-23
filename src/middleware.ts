@@ -13,7 +13,7 @@ export function middleware(request: NextRequest) {
       httpOnly: true,
       secure: true,
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: 60 * 60 * 24 * 365,
       path: '/',
     });
   }
