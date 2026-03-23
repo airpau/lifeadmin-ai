@@ -293,9 +293,31 @@ src/app/
 
 ---
 
+## SEO and Discoverability
+
+**Fixed 23 March 2026:**
+- robots.txt created at /public/robots.txt (allows all crawlers, references sitemap)
+- sitemap.xml generated at /src/app/sitemap.ts (11 public pages)
+- Open Graph tags added (title, description, image, locale en_GB)
+- Twitter card tags added
+- Canonical URLs set via metadataBase
+- Keywords meta tag added
+- robots meta set to index: true, follow: true
+- Root cause of invisibility: /robots.txt was 404, which served a page containing noindex meta tag
+
+**Still needed:**
+- Google Search Console verification (need to download HTML file and add to /public/)
+- Submit sitemap to Google Search Console
+- Request indexing for all key pages
+- Bing Webmaster Tools (optional)
+- Monitor indexing status weekly
+
+---
+
 ## Outstanding Items
 
-1. Meta Ads setup (need Pixel ID)
+1. **Google Search Console setup** (download verification file, submit sitemap, request indexing)
+2. Meta Ads setup (need Pixel ID)
 2. Google Ads API data in Jordan's reports
 3. Scanner learning from dismissals
 4. Onboarded_at trigger
