@@ -351,20 +351,14 @@ export default function ProfilePage() {
 
             {/* Pending downgrade or cancellation notice */}
             {pendingChange && (
-              <div className={`flex items-start gap-3 p-4 rounded-lg border ${
-                pendingChange.type === 'cancel'
-                  ? 'bg-red-500/5 border-red-500/20'
-                  : 'bg-amber-500/5 border-amber-500/20'
-              }`}>
-                <AlertCircle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
-                  pendingChange.type === 'cancel' ? 'text-red-400' : 'text-amber-400'
-                }`} />
+              <div className="flex items-start gap-3 p-4 rounded-lg border bg-amber-500/5 border-amber-500/20">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-400" />
                 <div>
                   {pendingChange.type === 'cancel' ? (
                     <>
-                      <p className="text-sm text-red-400 font-medium">Subscription cancelling</p>
+                      <p className="text-sm text-amber-400 font-medium">Subscription set to not renew</p>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Your {effectiveTier} plan will be cancelled on {pendingChange.date}. You will keep access until then and be moved to the Free plan.
+                        Your {effectiveTier} plan will not renew after {pendingChange.date}. You keep full access until then. To continue your subscription, click Manage Billing and reactivate.
                       </p>
                     </>
                   ) : (
