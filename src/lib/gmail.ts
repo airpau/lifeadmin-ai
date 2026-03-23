@@ -282,18 +282,18 @@ export async function scanEmailsForOpportunities(
 
   console.log(`[gmail] Grouped ${emails.length} emails into ${senderMap.size} unique senders. Summary: ${senderSummary.length} chars`);
 
+  // If summary is too long, truncate to fit within token limits
+  const truncatedSummary = senderSummary.length > 400000 ? senderSummary.substring(0, 400000) : senderSummary;
+
   logClaudeCall({
     userId: 'gmail-scan',
     route: '/api/gmail/scan (lib/gmail)',
     model: SCAN_MODEL,
-    estimatedInputTokens: Math.round(senderSummary.length / 4) + 1000,
+    estimatedInputTokens: Math.round(truncatedSummary.length / 4) + 1000,
     estimatedOutputTokens: 4000,
   });
 
-  // Single Claude call with grouped sender data
-  {
-    const chunk = senderSummary;
-
+  try {
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
       max_tokens: 4096,
@@ -338,28 +338,35 @@ IMPORTANT:
 - For any subscription over 1 year old, suggest reviewing if still needed.
 - Include confidence >= 40. When in doubt, include it.
 - Return ONLY the JSON array, no markdown, no explanation.`,
-    messages: [{ role: 'user', content: `Analyse these emails:\n\n${chunk}` }],
+    messages: [{ role: 'user', content: `Analyse these email providers and find financial opportunities:\n\n${truncatedSummary}` }],
   });
 
   const content = message.content[0];
   if (content.type === 'text') {
-    const raw = content.text.trim();
-    console.log(`[gmail] Claude response: ${raw.length} chars. First 300: ${raw.substring(0, 300)}`);
-    try {
-      const jsonMatch = raw.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
+    let raw = content.text.trim();
+    console.log(`[gmail] Claude response: ${raw.length} chars. First 500: ${raw.substring(0, 500)}`);
+
+    // Strip markdown code fences if present
+    raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+
+    // Find JSON array
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
         const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
         const parsed: Opportunity[] = JSON.parse(cleaned);
         console.log(`[gmail] Found ${parsed.length} opportunities`);
         allOpportunities.push(...parsed.map((o) => ({ ...o, status: 'new' as const })));
-      } else {
-        console.error(`[gmail] No JSON array in response. Starts with: ${raw.substring(0, 200)}`);
+      } catch (e) {
+        console.error(`[gmail] JSON parse error:`, e);
       }
-    } catch (e) {
-      console.error(`[gmail] Parse error:`, e);
+    } else {
+      console.error(`[gmail] No JSON array found. Response: ${raw.substring(0, 300)}`);
     }
-    }
-  } // end chunks loop
+  }
+  } catch (claudeErr: any) {
+    console.error(`[gmail] Claude API error: ${claudeErr.message}`);
+  }
 
   return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
 }
