@@ -139,11 +139,15 @@ function urgencyLabel(days: number): { text: string; color: string; bg: string }
   return { text: `Ends in ${Math.ceil(days / 30)} months`, color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/30' };
 }
 
+// Deals are coming soon. Check if Awin publisher ID is configured.
+const DEALS_LIVE = !!AWIN_AFF_ID && AWIN_AFF_ID !== '!!!REPLACE_WITH_AWIN_ID!!!';
+
 function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   const [tracking, setTracking] = useState(false);
 
   const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
+    if (!DEALS_LIVE) return; // Don't navigate if deals aren't live
     setTracking(true);
     try {
       await fetch('/api/deals/click', {
@@ -166,9 +170,9 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   };
 
   return (
-    <div className={`bg-slate-900/50 backdrop-blur-sm border rounded-2xl p-6 hover:border-slate-600 transition-all flex flex-col gap-4 ${
+    <div className={`bg-slate-900/50 backdrop-blur-sm border rounded-2xl p-6 transition-all flex flex-col gap-4 ${
       highlight ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-slate-800'
-    }`}>
+    } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-slate-600'}`}>
       <div className="flex-1">
         <h3 className="text-lg font-semibold text-white mb-1">{deal.provider}</h3>
         <p className="text-slate-400 text-sm">{deal.headline}</p>
@@ -177,14 +181,20 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
         <span className="text-sm font-semibold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full">
           {deal.saving}
         </span>
-        <a
-          href={buildAwinUrl(deal.awinMid, deal.providerUrl)}
-          onClick={handleClick}
-          className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
-        >
-          {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          View Deal →
-        </a>
+        {DEALS_LIVE ? (
+          <a
+            href={buildAwinUrl(deal.awinMid, deal.providerUrl)}
+            onClick={handleClick}
+            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
+          >
+            {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            View Deal →
+          </a>
+        ) : (
+          <span className="bg-slate-700 text-slate-400 font-medium px-4 py-2 rounded-lg text-sm cursor-not-allowed">
+            Coming Soon
+          </span>
+        )}
       </div>
     </div>
   );
@@ -260,6 +270,14 @@ export default function DealsPage() {
         <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Find Better Deals</h1>
         <p className="text-slate-400">Personalised savings based on your contracts and bills.</p>
       </div>
+
+      {/* Coming soon banner */}
+      {!DEALS_LIVE && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-5 py-4 mb-8">
+          <p className="text-amber-400 font-semibold text-sm mb-1">Deal switching is coming soon</p>
+          <p className="text-slate-400 text-sm">We're setting up partnerships with energy, broadband, insurance, and mortgage providers. Once live, you'll be able to compare and switch directly from this page based on your current contracts. Check back soon.</p>
+        </div>
+      )}
 
       {/* Affiliate disclosure */}
       <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-3 mb-8">
