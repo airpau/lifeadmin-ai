@@ -85,6 +85,13 @@ export default function SignupPage() {
         }).catch(() => {});
 
         capture('user_signed_up', { email, referral: refCode || undefined });
+
+        // Awin lead pixel for free account creation
+        const awcMatch = document.cookie.match(/(?:^|;\s*)awc=([^;]+)/);
+        const awcVal = awcMatch ? awcMatch[1] : '';
+        const awinPixel = new window.Image(0, 0);
+        awinPixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=0.00&cr=GBP&ref=signup-${data.user!.id}&parts=FREE:0.00&vc=&ch=aw&customeracquisition=NEW${awcVal ? `&cks=${encodeURIComponent(awcVal)}` : ''}`;
+
         router.push('/dashboard');
         router.refresh();
       } else {
