@@ -10,143 +10,178 @@ function getAdmin() {
   );
 }
 
-interface InboundEmailBody {
-  from: string;
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-}
-
-// Extract email address from "Name <email@example.com>" format
 function extractEmail(from: string): string {
   const match = from.match(/<([^>]+)>/);
   return match ? match[1] : from.trim();
 }
 
-// Extract ticket number from subject line, e.g. "Re: Some subject (TKT-ABC12345)"
 function extractTicketNumber(subject: string): string | null {
   const match = subject.match(/(TKT-[0-9]+)/);
   return match ? match[1] : null;
 }
 
-export async function POST(request: NextRequest) {
+// Fetch full email content from Resend API (webhooks only include metadata)
+async function fetchEmailContent(emailId: string): Promise<{ text: string; html: string } | null> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || !emailId) return null;
+
   try {
-    const body: InboundEmailBody = await request.json();
+    const res = await fetch(`https://api.resend.com/emails/${emailId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { text: data.text || data.html || '', html: data.html || '' };
+  } catch {
+    return null;
+  }
+}
 
-    // Basic validation
-    if (!body.from || !body.subject || !body.text) {
-      return NextResponse.json(
-        { error: 'from, subject, and text are required' },
-        { status: 400 }
-      );
-    }
+async function processEmail(
+  from: string,
+  to: string,
+  subject: string,
+  text: string,
+  metadata?: Record<string, any>
+) {
+  const supabase = getAdmin();
+  const senderEmail = extractEmail(from);
+  const ticketNumber = extractTicketNumber(subject);
 
-    const supabase = getAdmin();
-    const senderEmail = extractEmail(body.from);
-    const ticketNumber = extractTicketNumber(body.subject);
+  // Look up user by sender email
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', senderEmail)
+    .single();
 
-    // Look up user by sender email
-    const { data: profile } = await supabase
-      .from('profiles')
+  const userId = profile?.id || null;
+
+  // If subject contains a ticket number, add message to existing ticket
+  if (ticketNumber) {
+    const { data: existingTicket } = await supabase
+      .from('support_tickets')
       .select('id')
-      .eq('email', senderEmail)
+      .eq('ticket_number', ticketNumber)
       .single();
 
-    const userId = profile?.id || null;
+    if (existingTicket) {
+      const { error: msgError } = await supabase
+        .from('ticket_messages')
+        .insert({
+          ticket_id: existingTicket.id,
+          sender_type: 'user',
+          sender_name: senderEmail,
+          message: text,
+        });
 
-    // If subject contains a ticket number, add message to existing ticket
-    if (ticketNumber) {
-      const { data: existingTicket } = await supabase
+      if (msgError) {
+        console.error('Failed to add message to ticket:', msgError);
+        return { action: 'error', error: msgError.message };
+      }
+
+      // Reopen if resolved/closed, update timestamp
+      const { data: ticket } = await supabase
         .from('support_tickets')
-        .select('id')
-        .eq('ticket_number', ticketNumber)
+        .select('status')
+        .eq('id', existingTicket.id)
         .single();
 
-      if (existingTicket) {
-        // Add message to existing ticket
-        const { error: msgError } = await supabase
-          .from('ticket_messages')
-          .insert({
-            ticket_id: existingTicket.id,
-            sender_type: 'user',
-            sender_name: senderEmail,
-            message: body.text,
-          });
-
-        if (msgError) {
-          console.error('Failed to add message to ticket:', msgError);
-          return NextResponse.json(
-            { error: 'Failed to add message', details: msgError.message },
-            { status: 500 }
-          );
-        }
-
-        // Update ticket timestamp and reopen if it was resolved/closed
-        await supabase
-          .from('support_tickets')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', existingTicket.id);
-
-        return NextResponse.json({
-          action: 'message_added',
-          ticket_id: existingTicket.id,
-          ticket_number: ticketNumber,
-        });
+      const update: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (ticket?.status === 'resolved' || ticket?.status === 'closed') {
+        update.status = 'open';
+        update.resolved_at = null;
       }
+      await supabase.from('support_tickets').update(update).eq('id', existingTicket.id);
+
+      return { action: 'message_added', ticket_id: existingTicket.id, ticket_number: ticketNumber };
     }
+  }
 
-    // Create new ticket
-    const { data: ticket, error: ticketError } = await supabase
-      .from('support_tickets')
-      .insert({
-        user_id: userId,
-        subject: body.subject,
-        description: body.text,
-        category: 'general',
-        priority: 'medium',
-        source: 'email',
-        status: 'open',
-        metadata: { from: body.from, to: body.to },
-      })
-      .select('*')
-      .single();
+  // Create new ticket
+  const { data: ticket, error: ticketError } = await supabase
+    .from('support_tickets')
+    .insert({
+      user_id: userId,
+      subject: subject || 'Support request',
+      description: text || 'No content',
+      category: 'general',
+      priority: 'medium',
+      source: 'email',
+      status: 'open',
+      metadata: { from, to, ...metadata },
+    })
+    .select('*')
+    .single();
 
-    if (ticketError) {
-      console.error('Failed to create ticket from email:', ticketError);
-      return NextResponse.json(
-        { error: 'Failed to create ticket', details: ticketError.message },
-        { status: 500 }
+  if (ticketError) {
+    console.error('Failed to create ticket from email:', ticketError);
+    return { action: 'error', error: ticketError.message };
+  }
+
+  // Insert the email body as the first message
+  await supabase.from('ticket_messages').insert({
+    ticket_id: ticket.id,
+    sender_type: 'user',
+    sender_name: senderEmail,
+    message: text,
+  });
+
+  return { action: 'ticket_created', ticket_id: ticket.id, ticket_number: ticket.ticket_number };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+
+    // Handle Resend webhook format (email.received event)
+    if (body.type === 'email.received' && body.data) {
+      const { email_id, from: fromField, to, subject } = body.data;
+
+      // Extract sender email from Resend format
+      const senderEmail = typeof fromField === 'string'
+        ? fromField
+        : fromField?.email || fromField?.[0]?.email || 'unknown';
+
+      const recipientEmail = Array.isArray(to) ? to[0] : to;
+
+      // Fetch full email content from Resend API
+      let emailText = `Email received from ${senderEmail} (content being fetched)`;
+      const content = await fetchEmailContent(email_id);
+      if (content?.text) {
+        emailText = content.text;
+      } else if (content?.html) {
+        // Strip HTML tags as fallback
+        emailText = content.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      const result = await processEmail(
+        senderEmail,
+        recipientEmail,
+        subject || 'Support request',
+        emailText,
+        { resend_email_id: email_id }
       );
+
+      console.log(`[inbound-email] Resend webhook: ${result.action} from ${senderEmail}`);
+      return NextResponse.json(result, { status: result.action === 'error' ? 500 : 201 });
     }
 
-    // Insert the email body as the first message
-    const { error: msgError } = await supabase
-      .from('ticket_messages')
-      .insert({
-        ticket_id: ticket.id,
-        sender_type: 'user',
-        sender_name: senderEmail,
-        message: body.text,
-      });
+    // Handle direct POST format (manual/testing)
+    if (body.from && body.subject) {
+      if (!body.text && !body.html) {
+        return NextResponse.json({ error: 'text or html content required' }, { status: 400 });
+      }
 
-    if (msgError) {
-      console.error('Failed to create initial message:', msgError);
+      const text = body.text || body.html?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || '';
+      const result = await processEmail(body.from, body.to || '', body.subject, text);
+
+      return NextResponse.json(result, { status: result.action === 'error' ? 500 : 201 });
     }
 
-    return NextResponse.json(
-      {
-        action: 'ticket_created',
-        ticket_id: ticket.id,
-        ticket_number: ticket.ticket_number,
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ error: 'Unrecognised payload format' }, { status: 400 });
   } catch (err) {
     console.error('Inbound email error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
