@@ -210,10 +210,8 @@ export async function GET(request: NextRequest) {
       // Email report to admin (for executive agents — not support agents)
       if (['cfo', 'cto', 'cao', 'cmo', 'exec_assistant'].includes(agent.role)) {
         try {
-          // Charlie (exec assistant) emails hello@, others go to admin
-          const emailTo = agent.role === 'exec_assistant'
-            ? 'hello@paybacker.co.uk'
-            : ADMIN_EMAIL;
+          // All agent emails go to hello@paybacker.co.uk
+          const emailTo = 'hello@paybacker.co.uk';
           await resend.emails.send({
             from: FROM_EMAIL,
             to: emailTo,
