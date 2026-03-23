@@ -112,6 +112,9 @@ export async function POST(request: NextRequest) {
     // Always create a fresh Stripe checkout session requiring payment
     const appUrl = 'https://paybacker.co.uk';
 
+    // Read Awin awc cookie for attribution tracking
+    const awcCookie = request.cookies.get('awc')?.value || '';
+
     const session = await stripePost('/checkout/sessions', {
       customer: customerId,
       'line_items[0][price]': priceId,
@@ -121,6 +124,7 @@ export async function POST(request: NextRequest) {
       cancel_url: `${appUrl}/pricing?canceled=true`,
       'metadata[user_id]': user.id,
       'metadata[billing_cycle]': billingCycle || 'monthly',
+      'metadata[awc]': awcCookie,
       'subscription_data[metadata][user_id]': user.id,
     });
 

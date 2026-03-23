@@ -98,8 +98,11 @@ export async function POST(request: NextRequest) {
         // Awin server-to-server conversion tracking
         if (!updateError) {
           const amount = tier === 'pro' ? '19.99' : '9.99';
+          const commissionGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
           const orderRef = `sub-${session.subscription || session.id}`;
-          const awinUrl = `https://www.awin1.com/conversion.php?tt=ss&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=DEFAULT:${amount}&ref=${orderRef}&vc=&cr=GBP&testmode=0`;
+          const awc = session.metadata?.awc || '';
+          const cks = awc ? `&cks=${encodeURIComponent(awc)}` : '';
+          const awinUrl = `https://www.awin1.com/conversion.php?tt=ss&tv=2&merchant=125502&amount=${amount}&ch=aw&parts=${commissionGroup}:${amount}&ref=${orderRef}&vc=&cr=GBP${cks}&testmode=0`;
           fetch(awinUrl).catch(err => console.error('Awin S2S tracking failed:', err.message));
         }
 
