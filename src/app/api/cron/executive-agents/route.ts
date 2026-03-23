@@ -11,7 +11,7 @@ import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
