@@ -6,6 +6,18 @@ export async function proxy(request: NextRequest) {
     request,
   });
 
+  // Awin 1st-party cookie tracking — capture ?awc= on every request
+  const awc = request.nextUrl.searchParams.get('awc');
+  if (awc) {
+    supabaseResponse.cookies.set('awc', awc, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 365,
+      path: '/',
+    });
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
