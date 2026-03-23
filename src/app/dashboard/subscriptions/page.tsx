@@ -497,14 +497,13 @@ export default function SubscriptionsPage() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={handleDetectFromInbox}
-            disabled={detectingFromInbox}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-medium px-4 py-3 rounded-lg transition-all text-sm"
+            disabled
+            className="flex items-center gap-2 bg-slate-800 opacity-50 cursor-not-allowed text-slate-400 font-medium px-4 py-3 rounded-lg text-sm"
+            title="Email inbox scanning is coming soon"
           >
-            {detectingFromInbox
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Inbox className="h-4 w-4" />}
-            {detectingFromInbox ? 'Scanning...' : 'Detect from Inbox'}
+            <Inbox className="h-4 w-4" />
+            Detect from Inbox
+            <span className="text-[9px] bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full">Soon</span>
           </button>
           <button
             onClick={() => setShowAddForm(true)}
@@ -632,9 +631,20 @@ export default function SubscriptionsPage() {
                         <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
                       )}
                     </div>
-                    {sub.source === 'bank' && sub.bank_description && (
-                      <p className="text-xs text-slate-500 mt-1 truncate max-w-md" title={sub.bank_description}>
-                        Bank: {sub.bank_description}
+                    {sub.source === 'bank' && (
+                      <p className="text-xs text-slate-500 mt-1 truncate max-w-md" title={sub.bank_description || ''}>
+                        <Building2 className="h-3 w-3 inline mr-1" />
+                        {sub.bank_description || 'Detected from bank account'}
+                      </p>
+                    )}
+                    {sub.source === 'manual' && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        <Pencil className="h-3 w-3 inline mr-1" />Added manually
+                      </p>
+                    )}
+                    {sub.source === 'email' && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        <Mail className="h-3 w-3 inline mr-1" />Detected from email
                       </p>
                     )}
                     {sub.last_used_date && (

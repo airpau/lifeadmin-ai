@@ -191,7 +191,18 @@ export default function ScannerPage() {
         </h1>
         <p className="text-slate-400">
           AI scans your inbox for overcharges, renewals, and forgotten subscriptions
-          <span className="text-slate-600 ml-2 text-sm">· Last 12 months of emails</span>
+        </p>
+      </div>
+
+      {/* Coming soon banner */}
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 mb-8 text-center">
+        <ScanSearch className="h-12 w-12 text-amber-500/40 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-white mb-2">Email scanning is coming soon</h2>
+        <p className="text-slate-400 text-sm max-w-lg mx-auto mb-4">
+          We're finalising our email scanning integration with Google and Microsoft. Once approved, you'll be able to connect your Gmail or Outlook and our AI will scan up to 2 years of email history to find overcharges, forgotten subscriptions, and savings opportunities.
+        </p>
+        <p className="text-slate-500 text-sm">
+          In the meantime, connect your bank account from the <a href="/dashboard/subscriptions" className="text-amber-400 hover:text-amber-300 underline">Subscriptions</a> page to automatically detect all your recurring payments.
         </p>
       </div>
 
