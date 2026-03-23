@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     const claudeRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: `You are a UK consumer finance analyst. Analyse the email providers below and return a JSON array of financial opportunities.
 
 For EVERY provider you recognise, create an entry. A normal inbox should have 10-50+ opportunities.
@@ -182,14 +182,24 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
       // Strip code fences
       raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
 
-      // Find JSON array
-      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      // Find JSON array (also match truncated arrays without closing bracket)
+      let jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        // Try to recover truncated response by adding closing bracket
+        const truncatedMatch = raw.match(/\[[\s\S]*/);
+        if (truncatedMatch) {
+          // Find last complete object (ends with })
+          const lastBrace = truncatedMatch[0].lastIndexOf('}');
+          if (lastBrace > 0) {
+            jsonMatch = [truncatedMatch[0].substring(0, lastBrace + 1) + ']'];
+            debugParseError = 'Response was truncated, recovered partial array';
+          }
+        }
+      }
       if (jsonMatch) {
         // Clean common issues
         let cleaned = jsonMatch[0];
         cleaned = cleaned.replace(/,\s*([}\]])/g, '$1'); // trailing commas
-        cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, ' '); // control characters
-        cleaned = cleaned.replace(/\n/g, '\\n'); // unescape newlines in strings
 
         // Try parsing, if it fails try a more aggressive cleanup
         try {
