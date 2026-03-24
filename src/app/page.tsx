@@ -494,7 +494,7 @@ export default function Home() {
               </div>
               <div className="flex items-start gap-3">
                 <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                <span className="text-slate-400">AI processing uses Anthropic (Claude), who are contractually prohibited from using your data for training.</span>
+                <span className="text-slate-400">Our AI providers are contractually prohibited from using your data for training or any other purpose.</span>
               </div>
               <div className="flex items-start gap-3">
                 <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
