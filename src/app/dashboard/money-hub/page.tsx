@@ -926,33 +926,13 @@ export default function MoneyHubPage() {
                     </button>
                     {/* Inline recategorise dropdown trigger */}
                     {isPaid && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setRecatDropdown(recatDropdown === cat.category ? null : cat.category)}
-                          className="text-slate-600 hover:text-slate-400 p-1"
-                          title="Recategorise"
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                        {recatDropdown === cat.category && (
-                          <div className="absolute right-0 top-6 z-30 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 w-40 max-h-56 overflow-y-auto">
-                            {Object.entries(CATEGORY_LABELS).map(([key, val]) => (
-                              <button
-                                key={key}
-                                onClick={() => {
-                                  // Recategorise all transactions for the top merchant in this category
-                                  const topMerchant = data.spending.topMerchants.find(m => true);
-                                  recategorise(cat.category, key);
-                                }}
-                                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 flex items-center gap-2 ${key === cat.category ? 'text-amber-400' : 'text-slate-300'}`}
-                              >
-                                <span>{val.icon}</span>
-                                <span>{val.label}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => loadDrillDown(cat.category)}
+                        className="text-slate-600 hover:text-amber-400 p-1"
+                        title="View transactions and recategorise"
+                      >
+                        <ArrowRight className="h-3 w-3" />
+                      </button>
                     )}
                   </div>
                 </div>

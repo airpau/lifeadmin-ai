@@ -23,15 +23,23 @@ export async function POST(request: NextRequest) {
   if (applyToAll && merchantPattern) {
     const pattern = merchantPattern.toLowerCase().trim();
 
-    // Save merchant override for future transactions
+    // Strip date prefixes to get core merchant name for smarter matching
+    // Bank descriptions often look like "9384 06MAR26 REVOLUT**3017* LONDON GB"
+    // We want to match on "revolut**3017*" not the full string with dates
+    const corePattern = pattern
+      .replace(/^\d{4}\s+\d{2}[a-z]{3}\d{2}\s+/i, '') // strip "9384 06MAR26 " prefix
+      .replace(/\s+(london|gb|uk|manchester|birmingham)\s*(gb|uk)?$/i, '') // strip city/country suffix
+      .replace(/\s+fp\s+\d{2}\/\d{2}\/\d{2}.*$/i, '') // strip "FP 01/02/26 ..." suffix
+      .trim();
+
+    // Save both the exact pattern and the core pattern as overrides
     await admin.from('money_hub_category_overrides').upsert({
       user_id: user.id,
-      merchant_pattern: pattern,
+      merchant_pattern: corePattern || pattern,
       user_category: newCategory,
     }, { onConflict: 'user_id,merchant_pattern' }).select();
 
     // Update all existing transactions from this merchant
-    // Match by merchant_name OR description containing the pattern
     const { data: matching } = await admin.from('bank_transactions')
       .select('id, description, merchant_name')
       .eq('user_id', user.id);
@@ -40,15 +48,22 @@ export async function POST(request: NextRequest) {
     for (const txn of matching || []) {
       const merchantName = (txn.merchant_name || '').toLowerCase();
       const desc = (txn.description || '').toLowerCase();
-      // Match if the merchant name or description matches the pattern
-      // Also match if the truncated form (first 30 chars) matches - this is how the UI groups merchants
       const descTruncated = desc.substring(0, 30).trim();
+
+      // Also strip date prefix from this transaction's description for comparison
+      const txnCore = desc
+        .replace(/^\d{4}\s+\d{2}[a-z]{3}\d{2}\s+/i, '')
+        .replace(/\s+(london|gb|uk|manchester|birmingham)\s*(gb|uk)?$/i, '')
+        .replace(/\s+fp\s+\d{2}\/\d{2}\/\d{2}.*$/i, '')
+        .trim();
 
       if (
         merchantName === pattern ||
         merchantName.includes(pattern) ||
         desc.includes(pattern) ||
-        descTruncated === pattern
+        descTruncated === pattern ||
+        // Core pattern matching (strips dates so "revolut**3017*" matches across months)
+        (corePattern.length > 3 && (txnCore.includes(corePattern) || txnCore.startsWith(corePattern)))
       ) {
         await admin.from('bank_transactions')
           .update({ user_category: newCategory })
