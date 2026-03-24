@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 import { config } from '../config';
 
 function getSupabase() {
@@ -121,7 +122,40 @@ const proposeImprovement: ToolDef = {
     if (error) {
       return `Failed to create proposal: ${error.message}`;
     }
-    return `Proposal created (id: ${data.id}, token: ${approvalToken}): "${args.title}". Send an approval email to get founder sign-off.`;
+
+    // Automatically send approval email with the correct token
+    const baseUrl = config.SITE_URL;
+    const approveUrl = `${baseUrl}/api/admin/proposals/approve?token=${approvalToken}&action=approve`;
+    const rejectUrl = `${baseUrl}/api/admin/proposals/approve?token=${approvalToken}&action=reject`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2 style="color: #0f172a;">Improvement Proposal: ${args.title}</h2>
+        <p><strong>From:</strong> ${agentRole} | <strong>Category:</strong> ${args.category} | <strong>Priority:</strong> ${args.priority || 'medium'}</p>
+        <h3>Why</h3><p>${args.description}</p>
+        <h3>How</h3><p>${args.implementation}</p>
+        <h3>Impact</h3><p>${args.estimated_impact}</p>
+        <div style="margin: 30px 0;">
+          <a href="${approveUrl}" style="background: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-right: 12px;">Approve</a>
+          <a href="${rejectUrl}" style="background: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Reject</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px;">Paybacker AI - Improvement Proposal</p>
+      </div>
+    `;
+
+    try {
+      const resend = new Resend(config.RESEND_API_KEY);
+      await resend.emails.send({
+        from: config.FROM_EMAIL,
+        to: config.FOUNDER_EMAIL,
+        subject: `[Approve/Reject] ${args.title}`,
+        html,
+      });
+    } catch (emailErr: any) {
+      return `Proposal saved (id: ${data.id}) but email failed: ${emailErr.message}`;
+    }
+
+    return `Proposal created and approval email sent (id: ${data.id}): "${args.title}"`;
   },
 };
 

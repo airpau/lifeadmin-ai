@@ -142,5 +142,5 @@ const sendApprovalEmail: ToolDef = {
   },
 };
 
-export const emailTools: ToolDef[] = [sendReportEmail, sendApprovalEmail];
-export const userEmailTools: ToolDef[] = [sendReportEmail, sendApprovalEmail, sendUserEmail];
+export const emailTools: ToolDef[] = [sendReportEmail];
+export const userEmailTools: ToolDef[] = [sendReportEmail, sendUserEmail];
