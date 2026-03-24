@@ -114,6 +114,11 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Mytrip (ID: 112832)
+- Rates: TBC (visible after approval)
+- Same Etraveli Group and terms as Gotogate
+- No voucher codes, no cashback, no subnetworks
+
 ### Gotogate (ID: 112834)
 - Rates: TBC (visible after approval)
 - Etraveli Group (also operates Flightnetwork, MyTrip)
