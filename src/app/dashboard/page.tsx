@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [bankConnected, setBankConnected] = useState(false);
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
+  const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -42,7 +43,7 @@ export default function DashboardPage() {
         w.AWIN = w.AWIN || {};
         w.AWIN.Tracking = w.AWIN.Tracking || {};
         w.AWIN.Tracking.Sale = {
-          amount: '1.00', orderRef: ref, parts: 'LEAD:1.00',
+          amount: '1', orderRef: ref, parts: 'LEAD:1',
           voucher: '', currency: 'GBP', channel: 'aw', customerAcquisition: 'NEW',
         };
         if (typeof w.AWIN?.Tracking?.saleSubmit === 'function') {
@@ -82,7 +83,7 @@ export default function DashboardPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const [profile, subs, tasks, banks] = await Promise.all([
+        const [profile, subs, tasks, banks, userTasks] = await Promise.all([
           supabase.from('profiles').select('subscription_tier').eq('id', user.id).single(),
           supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
@@ -90,11 +91,15 @@ export default function DashboardPage() {
             .eq('user_id', user.id).eq('type', 'complaint_letter'),
           supabase.from('bank_connections').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).eq('status', 'active'),
+          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
+            .eq('user_id', user.id).eq('status', 'pending_review')
+            .order('created_at', { ascending: false }).limit(20),
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
         setBankConnected((banks.count || 0) > 0);
         setComplaintsGenerated(tasks.count || 0);
+        setPendingTasks(userTasks.data || []);
 
         const subsList = subs.data || [];
         setSubscriptionCount(subsList.length);
@@ -201,6 +206,65 @@ export default function DashboardPage() {
           <Link href="/dashboard/subscriptions" className="text-blue-400 hover:text-blue-300 text-sm font-medium flex items-center gap-1">
             Connect <ArrowRight className="h-4 w-4" />
           </Link>
+        </div>
+      )}
+
+      {/* Pending Tasks */}
+      {pendingTasks.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Clock className="h-5 w-5 text-amber-500" />
+            Your Action Items ({pendingTasks.length})
+          </h2>
+          <div className="space-y-3">
+            {pendingTasks.map((task) => (
+              <div key={task.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      task.type === 'opportunity' ? 'bg-amber-500/10 text-amber-400' :
+                      task.type === 'complaint_letter' ? 'bg-blue-500/10 text-blue-400' :
+                      'bg-slate-700 text-slate-400'
+                    }`}>{task.type === 'opportunity' ? 'Opportunity' : task.type === 'complaint_letter' ? 'Complaint' : 'Task'}</span>
+                    {task.provider_name && <span className="text-slate-500 text-xs">{task.provider_name}</span>}
+                    {task.disputed_amount && <span className="text-green-400 text-xs font-medium">£{parseFloat(task.disputed_amount).toFixed(0)}</span>}
+                  </div>
+                  <p className="text-white text-sm font-medium truncate">{task.title}</p>
+                  {task.description && <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.description}</p>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {task.type === 'opportunity' && (
+                    <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
+                      View Deals
+                    </Link>
+                  )}
+                  {task.type === 'complaint_letter' && (
+                    <Link href="/dashboard/complaints" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
+                      Write Letter
+                    </Link>
+                  )}
+                  <button
+                    onClick={async () => {
+                      await supabase.from('tasks').update({ status: 'completed', resolved_at: new Date().toISOString() }).eq('id', task.id);
+                      setPendingTasks(prev => prev.filter(t => t.id !== task.id));
+                    }}
+                    className="bg-green-500/10 hover:bg-green-500/20 text-green-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  >
+                    Done
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await supabase.from('tasks').update({ status: 'dismissed', resolved_at: new Date().toISOString() }).eq('id', task.id);
+                      setPendingTasks(prev => prev.filter(t => t.id !== task.id));
+                    }}
+                    className="text-slate-500 hover:text-slate-400 text-xs transition-all"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
