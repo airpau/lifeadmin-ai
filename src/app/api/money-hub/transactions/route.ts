@@ -8,13 +8,14 @@ function getAdmin() {
   return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
+// MUST match the main /api/money-hub/route.ts categorisation exactly
 const DESC_CATS: Array<{ keywords: string[]; category: string }> = [
   { keywords: ['mortgage', 'lendinvest', 'skipton b.s'], category: 'mortgage' },
   { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank'], category: 'loans' },
   { keywords: ['council', 'winchester city'], category: 'council_tax' },
   { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power'], category: 'energy' },
   { keywords: ['thames water', 'severn trent'], category: 'water' },
-  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre'], category: 'broadband' },
+  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'vodafone broad'], category: 'broadband' },
   { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff'], category: 'mobile' },
   { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'youtube'], category: 'streaming' },
   { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton'], category: 'fitness' },
@@ -24,16 +25,33 @@ const DESC_CATS: Array<{ keywords: string[]; category: string }> = [
   { keywords: ['insurance', 'admiral', 'aviva', 'direct line'], category: 'insurance' },
   { keywords: ['dvla', 'trainline', 'tfl', 'uber', 'bolt', 'parking'], category: 'transport' },
   { keywords: ['hmrc'], category: 'tax' },
-  { keywords: ['amazon', 'ebay', 'asos', 'argos', 'currys'], category: 'shopping' },
+  { keywords: ['amazon', 'ebay', 'asos', 'next ', 'argos', 'john lewis', 'currys'], category: 'shopping' },
 ];
+
+const CATEGORY_MAP: Record<string, string> = {
+  PURCHASE: 'shopping', DEBIT: 'shopping', DIRECT_DEBIT: 'bills',
+  STANDING_ORDER: 'bills', TRANSFER: 'transfers', ATM: 'cash',
+  CREDIT: 'income', FEE: 'fees',
+};
 
 function categorise(desc: string, bankCat: string): string {
   const d = desc.toLowerCase();
   for (const { keywords, category } of DESC_CATS) {
     if (keywords.some(kw => d.includes(kw))) return category;
   }
-  const MAP: Record<string, string> = { PURCHASE: 'shopping', DEBIT: 'shopping', DIRECT_DEBIT: 'bills', STANDING_ORDER: 'bills', CREDIT: 'income' };
-  return MAP[bankCat] || 'other';
+  return CATEGORY_MAP[bankCat] || 'other';
+}
+
+function isTransfer(desc: string, bankCat: string): boolean {
+  const cat = bankCat.toUpperCase();
+  const d = desc.toLowerCase();
+  if (cat === 'TRANSFER') return true;
+  if (d.includes('personal transfer') || d.includes('from a/c') || d.includes('via mobile xfer')) return true;
+  if (d.includes('internal') || d.includes('between accounts') || d.includes('via online - pymt')) return true;
+  if (d.includes('barclaycard') && !d.includes('fee')) return true;
+  if (d.includes('mbna') && d.includes('tpp')) return true;
+  if (d.includes('halifax credit') || d.includes('hsbc bank visa')) return true;
+  return false;
 }
 
 export async function GET(request: NextRequest) {
@@ -45,17 +63,34 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category');
   const incomeType = searchParams.get('income_type');
   const months = parseInt(searchParams.get('months') || '1');
+  const selectedMonth = searchParams.get('month'); // e.g. "2026-02"
 
   const admin = getAdmin();
-  const since = new Date();
-  since.setMonth(since.getMonth() - months);
 
-  const { data: txns } = await admin.from('bank_transactions')
+  // Calculate date range — respect selected month if provided
+  let since: Date;
+  let until: Date | null = null;
+  if (selectedMonth) {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    since = new Date(y, m - 1, 1);
+    until = new Date(y, m, 0, 23, 59, 59); // last day of month
+  } else {
+    since = new Date();
+    since.setMonth(since.getMonth() - months);
+  }
+
+  let query = admin.from('bank_transactions')
     .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
     .eq('user_id', user.id)
     .gte('timestamp', since.toISOString())
     .order('timestamp', { ascending: false })
     .limit(500);
+
+  if (until) {
+    query = query.lte('timestamp', until.toISOString());
+  }
+
+  const { data: txns } = await query;
 
   let filtered = (txns || []).map(t => ({
     ...t,
@@ -67,7 +102,6 @@ export async function GET(request: NextRequest) {
   if (incomeType) {
     filtered = filtered.filter(t => t.amount > 0 && (t.income_type || 'other') === incomeType);
 
-    // Group by source (sender)
     const sourceTotals: Record<string, { total: number; count: number }> = {};
     for (const t of filtered) {
       const source = t.merchant_name || (t.description || '').replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 40) || 'Unknown';
@@ -95,7 +129,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Spending drill-down mode (existing behavior)
+  // Spending drill-down — filter out transfers (matching main route logic)
+  filtered = filtered.filter(t => !isTransfer(t.description || '', t.category || ''));
+
   if (category) {
     filtered = filtered.filter(t => t.spending_category === category);
   }

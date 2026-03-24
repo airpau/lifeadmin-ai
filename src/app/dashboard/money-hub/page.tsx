@@ -282,7 +282,8 @@ export default function MoneyHubPage() {
     setDrillCategory(category);
     setDrillLoading(true);
     try {
-      const res = await fetch(`/api/money-hub/transactions?category=${category}&months=1`);
+      const monthParam = selectedMonth ? `&month=${selectedMonth}` : '&months=1';
+      const res = await fetch(`/api/money-hub/transactions?category=${category}${monthParam}`);
       const d = await res.json();
       setDrillData(d);
     } catch { /* silent */ }
@@ -299,8 +300,10 @@ export default function MoneyHubPage() {
   const loadIncomeDrillDown = async (incomeType: string) => {
     setDrillIncomeType(incomeType);
     setDrillIncomeLoading(true);
+    setExpandedIncomeSource(null);
     try {
-      const res = await fetch(`/api/money-hub/transactions?income_type=${incomeType}&months=1`);
+      const monthParam = selectedMonth ? `&month=${selectedMonth}` : '&months=1';
+      const res = await fetch(`/api/money-hub/transactions?income_type=${incomeType}${monthParam}`);
       const d = await res.json();
       setDrillIncomeData(d);
     } catch { /* silent */ }
