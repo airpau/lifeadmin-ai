@@ -34,14 +34,17 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
   { keywords: ['experian', 'adobe', 'microsoft', 'google', 'openai', 'anthropic', 'github', 'canva', 'notion', 'figma'], category: 'software' },
 ];
 
-// Income detection patterns
+// Income detection patterns - expanded for real-world bank descriptions
 const INCOME_PATTERNS: Array<{ keywords: string[]; type: string }> = [
-  { keywords: ['salary', 'wages', 'payroll', 'pay ref'], type: 'salary' },
+  { keywords: ['salary', 'wages', 'payroll', 'pay ref', 'director'], type: 'salary' },
   { keywords: ['hmrc', 'tax refund', 'tax credit'], type: 'benefits' },
   { keywords: ['dwp', 'universal credit', 'child benefit', 'pension credit'], type: 'benefits' },
-  { keywords: ['rent received', 'rental income', 'tenant'], type: 'rental' },
-  { keywords: ['dividend', 'interest earned'], type: 'investment' },
-  { keywords: ['refund', 'rebate', 'cashback'], type: 'refund' },
+  { keywords: ['rent ', 'rental', 'tenant'], type: 'rental' },
+  { keywords: ['dividend', 'interest earned', 'interest payment'], type: 'investment' },
+  { keywords: ['refund', 'rebate', 'cashback', 'booking.com'], type: 'refund' },
+  { keywords: ['loan repayment', 'loan repay'], type: 'loan_repayment' },
+  { keywords: ['gift'], type: 'gift' },
+  { keywords: ['from a/c', 'via mobile xfer', 'personal transfer'], type: 'transfer' },
 ];
 
 function categoriseTransaction(desc: string, bankCategory: string): string {
@@ -150,12 +153,38 @@ export async function POST() {
       finalCategory = isXfer ? 'transfers' : categoriseTransaction(desc, txn.category || '');
     }
 
-    // Detect income type for credits
+    // Detect income type for credits with smarter logic
     let incomeType = txn.income_type;
     if (!incomeType && amount > 0) {
       incomeType = detectIncomeType(desc);
-      if (!incomeType && amount > 500) {
-        incomeType = 'salary'; // large credits are likely salary
+
+      // Smarter fallback classification
+      if (!incomeType) {
+        const d = desc.toLowerCase();
+        // Company payments with "FP" (Faster Payment) from named entities are likely business income
+        if (d.includes(' fp ') && amount >= 500 && !d.includes('from a/c') && !d.includes('via mobile')) {
+          incomeType = 'salary';
+        }
+        // Transfers from own accounts
+        else if (d.includes('from a/c') || d.includes('via mobile xfer') || d.includes('personal transfer')) {
+          incomeType = 'transfer';
+        }
+        // Named person payments with "RENT" in description
+        else if (d.includes('rent')) {
+          incomeType = 'rental';
+        }
+        // Named person payments (likely personal/family transfers)
+        else if (amount >= 1000 && d.match(/^[a-z]+ [a-z]+\s/)) {
+          incomeType = 'transfer';
+        }
+        // Small credits are likely refunds
+        else if (amount < 50) {
+          incomeType = 'refund';
+        }
+        // Everything else
+        else {
+          incomeType = 'other';
+        }
       }
       if (incomeType) incomeDetected++;
     }

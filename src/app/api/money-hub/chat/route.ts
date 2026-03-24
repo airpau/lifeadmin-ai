@@ -56,28 +56,43 @@ export async function POST(request: NextRequest) {
   }
   const catSummary = Object.entries(catSpend).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${c}: £${v.toFixed(0)}`).join(', ');
 
-  // Income breakdown
+  // Income breakdown by type AND by source (sender)
   const incByType: Record<string, number> = {};
+  const incBySender: Record<string, { total: number; type: string; count: number }> = {};
   for (const t of allTxns.filter(t => parseFloat(t.amount) > 0)) {
     const type = t.income_type || 'other';
     incByType[type] = (incByType[type] || 0) + parseFloat(t.amount);
+    // Group by sender for granular detail
+    const sender = (t.description || '').replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 30) || 'Unknown';
+    if (!incBySender[sender]) incBySender[sender] = { total: 0, type, count: 0 };
+    incBySender[sender].total += parseFloat(t.amount);
+    incBySender[sender].count++;
   }
-  const incSummary = Object.entries(incByType).map(([t, v]) => `${t}: £${v.toFixed(0)}`).join(', ');
+  const incSummary = Object.entries(incByType).sort((a, b) => b[1] - a[1]).map(([t, v]) => `${t}: £${v.toFixed(0)}`).join(', ');
+  const incDetail = Object.entries(incBySender).sort((a, b) => b[1].total - a[1].total).slice(0, 10)
+    .map(([sender, data]) => `${sender} (${data.type}): £${data.total.toFixed(0)} x${data.count}`).join(', ');
 
   const subsSummary = (subs.data || []).map(s => `${s.provider_name}: £${s.amount}/${s.billing_cycle}`).join(', ');
   const budgetSummary = (budgets.data || []).map(b => `${b.category}: £${b.monthly_limit}/month`).join(', ');
   const goalsSummary = (goals.data || []).map(g => `${g.goal_name}: £${g.current_amount}/${g.target_amount}`).join(', ');
 
   const financialContext = `User's ACTUAL financial data this month (from bank transactions):
-- Total income: £${income.toFixed(2)} (${incSummary || 'breakdown unavailable'})
-- Total outgoings: £${outgoings.toFixed(2)}
-- Net position: £${(income - outgoings).toFixed(2)}
-- Spending by category: ${catSummary || 'no spending data'}
-- Active subscriptions (${(subs.data || []).length}): ${subsSummary || 'none'}
-- Budget limits: ${budgetSummary || 'none set'}
-- Savings goals: ${goalsSummary || 'none'}
-- Active alerts: ${(alerts.data || []).map(a => a.title).join(', ') || 'none'}
-- Total transactions this month: ${allTxns.length}`;
+
+INCOME: £${income.toFixed(2)} total
+- By type: ${incSummary || 'not classified yet'}
+- By source: ${incDetail || 'no detail'}
+
+OUTGOINGS: £${outgoings.toFixed(2)} total
+- By category: ${catSummary || 'no spending data'}
+
+NET POSITION: £${(income - outgoings).toFixed(2)}
+SUBSCRIPTIONS: ${(subs.data || []).length} active (${subsSummary || 'none'})
+BUDGETS: ${budgetSummary || 'none set'}
+GOALS: ${goalsSummary || 'none'}
+ALERTS: ${(alerts.data || []).map(a => a.title).join(', ') || 'none'}
+TRANSACTIONS: ${allTxns.length} this month
+
+When the user asks about income, give the specific breakdown by source name and type. Do not say "grouped as other" if you have source names.`;
 
   const systemPrompt = `You are the Paybacker Money Hub AI assistant. You help Pro users manage their finances through conversation.
 
