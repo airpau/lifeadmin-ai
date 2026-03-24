@@ -11,9 +11,6 @@ const runningAgents = new Set<string>();
 // Queue for agents that need to run immediately (triggered by other agents)
 const urgentQueue = new Set<string>();
 
-// Track last run time per agent to enforce minimum intervals
-const lastRunTimes: Record<string, number> = {};
-
 // Minimum interval between runs (milliseconds) - prevents burning API credits
 // COST SAVING MODE: All agents run once per day in sequence.
 // Only Riley checks for support tickets more often.
@@ -92,7 +89,6 @@ async function executeAgent(role: string) {
   runningAgents.add(role);
   try {
     const result = await runAgent(role);
-    lastRunTimes[role] = Date.now();
     if (result.success) {
       console.log(`[Loop] ${role} completed. Cost: $${result.cost?.toFixed(4) || '0'}`);
     } else {
@@ -146,33 +142,33 @@ async function mainLoop() {
       }
     }
 
-    // 3. Run agents whose minimum interval has elapsed
+    // 3. Check database for last_run_at and only run if interval elapsed
+    const sb = getSupabase();
+    const { data: agents } = await sb.from('ai_executives')
+      .select('role, last_run_at')
+      .eq('status', 'active');
+
+    const dbLastRuns: Record<string, number> = {};
+    for (const a of agents || []) {
+      dbLastRuns[a.role] = a.last_run_at ? new Date(a.last_run_at).getTime() : 0;
+    }
+
     for (const [role, agentDef] of Object.entries(agentRegistry)) {
       if (runningAgents.has(role)) continue;
 
-      const lastRun = lastRunTimes[role] || 0;
+      const lastRun = dbLastRuns[role] || 0;
       const interval = MIN_INTERVALS[role] || 24 * 60 * 60 * 1000;
       const timeSinceLastRun = Date.now() - lastRun;
 
-      // Only run if interval has passed
       if (timeSinceLastRun < interval) continue;
 
-      // For first run after server start, stagger agents over 30 minutes
-      const isFirstRun = lastRun === 0;
-      if (isFirstRun) {
-        const allRoles = Object.keys(agentRegistry);
-        const myIndex = allRoles.indexOf(role);
-        const staggerDelay = myIndex * 2 * 60 * 1000; // 2 mins apart
-        if (Date.now() - startTime < staggerDelay) continue;
-      }
-
-      console.log(`[Loop] Running ${agentDef.name} (interval elapsed)`);
+      console.log(`[Loop] Running ${agentDef.name} (last run: ${lastRun ? new Date(lastRun).toISOString() : 'never'})`);
       executeAgent(role);
-      await sleep(5000); // 5s between launches to avoid rate limits
+      await sleep(5000);
     }
 
-    // 4. Sleep 5 minutes between cycles (not 1 minute)
-    await sleep(5 * 60 * 1000);
+    // 4. Sleep 10 minutes between cycles
+    await sleep(10 * 60 * 1000);
   }
 }
 
@@ -258,8 +254,8 @@ export function getAgentStatuses(): Array<{
     role: a.role,
     name: a.name,
     running: runningAgents.has(a.role),
-    lastRun: lastRunTimes[a.role] ? new Date(lastRunTimes[a.role]).toISOString() : null,
-    minInterval: `${Math.round((MIN_INTERVALS[a.role] || 3600000) / 60000)}m`,
+    lastRun: null,
+    minInterval: `${Math.round((MIN_INTERVALS[a.role] || 86400000) / 3600000)}h`,
     queued: urgentQueue.has(a.role),
   }));
 }
