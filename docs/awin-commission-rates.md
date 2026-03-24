@@ -114,6 +114,14 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Talkmobile (ID: 2351)
+- Rates: TBC (visible after approval)
+- 3-month validation period before commission processed
+- Runs on Vodafone network (MVNO)
+- Must use approved Vodafone reference text only
+- No subnetworks or ad networks
+- No brand PPC bidding
+
 ### giffgaff Handsets (ID: 5719)
 - Rates: TBC (visible after approval)
 - Covers: handset sales, SIM sales, cashback
