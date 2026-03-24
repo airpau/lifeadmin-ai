@@ -73,15 +73,30 @@ export async function POST(request: NextRequest) {
       action_items: actionItems,
     }).eq('id', meetingId);
 
-    // Save key decisions to agent memory
+    // Save key decisions to agent memory AND create agent_tasks so agents can work on them
     if (actionItems.length > 0) {
+      const { createAgentTask } = await import('@/lib/agents/agent-workflow');
+
       for (const item of actionItems) {
+        const assignedTo = item.assigned_to || 'exec_assistant';
+
+        // Save to memory
         await supabase.from('agent_memory').insert({
-          agent_role: item.assigned_to || 'exec_assistant',
+          agent_role: assignedTo,
           memory_type: 'decision',
           title: `Meeting action: ${item.task?.substring(0, 80)}`,
           content: item.task || '',
           importance: 7,
+        });
+
+        // Create actionable task so the agent can work on it autonomously
+        await createAgentTask({
+          createdBy: 'meeting',
+          assignedTo,
+          title: item.task || 'Meeting action item',
+          description: item.task || '',
+          priority: 'high',
+          sourceMeetingId: meetingId,
         });
       }
     }

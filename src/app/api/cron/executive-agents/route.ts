@@ -238,6 +238,17 @@ export async function GET(request: NextRequest) {
         console.log(`[executive-agents] ${agent.role} proposed ${improvements.length} improvements`);
       }
 
+      // Process any pending tasks assigned to this agent
+      try {
+        const { processAgentTasks } = await import('@/lib/agents/agent-workflow');
+        const taskResult = await processAgentTasks(agent.role, agent.name, agent.system_prompt);
+        if (taskResult.processed > 0) {
+          console.log(`[executive-agents] ${agent.role} processed ${taskResult.processed} tasks`);
+        }
+      } catch (workflowErr: any) {
+        console.error(`[executive-agents] ${agent.role} workflow error: ${workflowErr.message}`);
+      }
+
       // Update agent last_run_at
       await supabase
         .from('ai_executives')

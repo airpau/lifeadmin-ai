@@ -26,6 +26,7 @@ export async function runExecAssistantAgent(agentConfig: AgentConfig): Promise<A
     expiringContracts,
     agentStatuses,
     openActionItems,
+    agentWorkflowTasks,
   ] = await Promise.all([
     supabase.from('executive_reports')
       .select('title, content, data, recommendations, created_at, agent_id')
@@ -60,6 +61,12 @@ export async function runExecAssistantAgent(agentConfig: AgentConfig): Promise<A
       .eq('status', 'open')
       .order('created_at', { ascending: false })
       .limit(20),
+    // Agent workflow tasks
+    supabase.from('agent_tasks')
+      .select('title, created_by, assigned_to, status, result, created_at')
+      .in('status', ['pending', 'in_progress', 'completed', 'blocked'])
+      .order('created_at', { ascending: false })
+      .limit(15),
   ]);
 
   // Calculate MRR
@@ -129,12 +136,21 @@ ${agentReportSummaries || 'No reports in the last 24 hours.'}
 ## Contracts Expiring Within 30 Days
 ${contractAlerts || 'No contracts expiring soon.'}
 
+## Agent Workflow Tasks
+${(agentWorkflowTasks.data || []).length > 0 ? (agentWorkflowTasks.data || []).map((t: any) => `- [${t.status.toUpperCase()}] "${t.title}" (${t.created_by} > ${t.assigned_to})${t.result ? ': ' + t.result.substring(0, 80) : ''}`).join('\n') : 'No active agent tasks.'}
+
 Compile your executive brief. Include:
 1. A numbered list of tasks Paul needs to action TODAY, ordered by priority
 2. For each task, note which agent flagged it and why it matters
 3. A summary of what each agent has been doing since the last brief
 4. The business metrics snapshot
 5. If there are open action items from other agents that are assigned to 'human', highlight these prominently`;
+
+  // Send workflow digest alongside Charlie's brief
+  try {
+    const { sendWorkflowDigest } = await import('@/lib/agents/agent-workflow');
+    await sendWorkflowDigest();
+  } catch {}
 
   return runExecutiveAgent(agentConfig, contextPrompt, { useSonnet: true });
 }
