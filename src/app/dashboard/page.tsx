@@ -262,7 +262,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Pending Tasks */}
+      {/* Action Items */}
       {pendingTasks.length > 0 && (
         <div className="mb-8">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -270,53 +270,82 @@ export default function DashboardPage() {
             Your Action Items ({pendingTasks.length})
           </h2>
           <div className="space-y-3">
-            {pendingTasks.map((task) => (
-              <div key={task.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      task.type === 'opportunity' ? 'bg-amber-500/10 text-amber-400' :
-                      task.type === 'complaint_letter' ? 'bg-blue-500/10 text-blue-400' :
-                      'bg-slate-700 text-slate-400'
-                    }`}>{task.type === 'opportunity' ? 'Opportunity' : task.type === 'complaint_letter' ? 'Complaint' : 'Task'}</span>
-                    {task.provider_name && <span className="text-slate-500 text-xs">{task.provider_name}</span>}
-                    {task.disputed_amount && <span className="text-green-400 text-xs font-medium">£{parseFloat(task.disputed_amount).toFixed(0)}</span>}
+            {pendingTasks.map((task) => {
+              // Determine the best action based on task type and content
+              const isOvercharge = task.type === 'opportunity' && ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(task.description?.split(' ')[0]?.toLowerCase() || '');
+              const isComplaint = task.type === 'complaint_letter' || isOvercharge;
+              const isDeal = task.type === 'opportunity' && ['renewal', 'forgotten_subscription', 'insurance'].includes(task.description?.split(' ')[0]?.toLowerCase() || '');
+              const isFlightDelay = task.description?.toLowerCase().includes('flight') || task.type === 'flight_delay';
+
+              // Build complaint URL with pre-filled data
+              const complaintParams = new URLSearchParams();
+              if (task.provider_name) complaintParams.set('provider', task.provider_name);
+              if (task.title) complaintParams.set('subject', task.title);
+              if (task.disputed_amount) complaintParams.set('amount', task.disputed_amount);
+              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+
+              return (
+                <div key={task.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          isComplaint ? 'bg-red-500/10 text-red-400' :
+                          isDeal ? 'bg-amber-500/10 text-amber-400' :
+                          task.type === 'complaint_letter' ? 'bg-blue-500/10 text-blue-400' :
+                          'bg-slate-700 text-slate-400'
+                        }`}>{
+                          isComplaint ? 'Dispute' :
+                          isDeal ? 'Switch and Save' :
+                          isFlightDelay ? 'Compensation' :
+                          task.type === 'complaint_letter' ? 'Complaint' : 'Action'
+                        }</span>
+                        {task.provider_name && <span className="text-slate-500 text-xs">{task.provider_name}</span>}
+                        {task.disputed_amount && <span className="text-green-400 text-xs font-medium">£{parseFloat(task.disputed_amount).toFixed(0)}</span>}
+                      </div>
+                      <p className="text-white text-sm font-medium">{task.title}</p>
+                      {task.description && <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.description}</p>}
+                    </div>
                   </div>
-                  <p className="text-white text-sm font-medium truncate">{task.title}</p>
-                  {task.description && <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.description}</p>}
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800">
+                    {/* Primary action - context aware */}
+                    {(isComplaint || task.type === 'complaint_letter') && (
+                      <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Write Complaint Letter
+                      </Link>
+                    )}
+                    {isDeal && (
+                      <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Compare Deals
+                      </Link>
+                    )}
+                    {isFlightDelay && (
+                      <Link href="/dashboard/forms?type=flight_delay" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Claim Compensation
+                      </Link>
+                    )}
+                    {!isComplaint && !isDeal && !isFlightDelay && task.type !== 'complaint_letter' && (
+                      <Link href={complaintUrl} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Take Action
+                      </Link>
+                    )}
+
+                    <div className="flex-1" />
+
+                    {/* Remove */}
+                    <button
+                      onClick={async () => {
+                        await supabase.from('tasks').update({ status: 'dismissed', resolved_at: new Date().toISOString() }).eq('id', task.id);
+                        setPendingTasks(prev => prev.filter(t => t.id !== task.id));
+                      }}
+                      className="text-slate-500 hover:text-slate-400 text-xs transition-all px-3 py-1.5"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {task.type === 'opportunity' && (
-                    <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-                      View Deals
-                    </Link>
-                  )}
-                  {task.type === 'complaint_letter' && (
-                    <Link href="/dashboard/complaints" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all">
-                      Write Letter
-                    </Link>
-                  )}
-                  <button
-                    onClick={async () => {
-                      await supabase.from('tasks').update({ status: 'completed', resolved_at: new Date().toISOString() }).eq('id', task.id);
-                      setPendingTasks(prev => prev.filter(t => t.id !== task.id));
-                    }}
-                    className="bg-green-500/10 hover:bg-green-500/20 text-green-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                  >
-                    Done
-                  </button>
-                  <button
-                    onClick={async () => {
-                      await supabase.from('tasks').update({ status: 'dismissed', resolved_at: new Date().toISOString() }).eq('id', task.id);
-                      setPendingTasks(prev => prev.filter(t => t.id !== task.id));
-                    }}
-                    className="text-slate-500 hover:text-slate-400 text-xs transition-all"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
