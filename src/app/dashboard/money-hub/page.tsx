@@ -9,7 +9,8 @@ import {
   Wallet, TrendingUp, TrendingDown, CreditCard, BarChart3,
   AlertTriangle, Clock, Target, PiggyBank, FileText, Building2,
   ArrowRight, Loader2, Lock, RefreshCw, Plus, ChevronDown, ChevronUp,
-  Shield, Zap, Mail, Calendar, DollarSign,
+  Shield, Zap, Mail, Calendar, DollarSign, X, Send, MessageCircle,
+  ArrowLeft,
 } from 'lucide-react';
 
 interface MoneyHubData {
@@ -66,6 +67,77 @@ export default function MoneyHubPage() {
   const [data, setData] = useState<MoneyHubData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  // Category drill-down
+  const [drillCategory, setDrillCategory] = useState<string | null>(null);
+  const [drillData, setDrillData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
+  const [drillLoading, setDrillLoading] = useState(false);
+
+  // Budget form
+  const [showBudgetForm, setShowBudgetForm] = useState<string | null>(null); // category name
+  const [budgetAmount, setBudgetAmount] = useState('');
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  // AI Chat (Pro)
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const loadDrillDown = async (category: string) => {
+    setDrillCategory(category);
+    setDrillLoading(true);
+    try {
+      const res = await fetch(`/api/money-hub/transactions?category=${category}&months=1`);
+      const d = await res.json();
+      setDrillData(d);
+    } catch {}
+    setDrillLoading(false);
+  };
+
+  const saveBudget = async (category: string) => {
+    if (!budgetAmount) return;
+    setSavingBudget(true);
+    try {
+      await fetch('/api/money-hub/budgets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, monthly_limit: parseFloat(budgetAmount) }),
+      });
+      // Refresh data
+      const res = await fetch('/api/money-hub');
+      const d = await res.json();
+      if (!d.error) setData(d);
+      setShowBudgetForm(null);
+      setBudgetAmount('');
+    } catch {}
+    setSavingBudget(false);
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const msg = chatInput.trim();
+    const updated = [...chatMessages, { role: 'user', content: msg }];
+    setChatMessages(updated);
+    setChatInput('');
+    setChatLoading(true);
+    try {
+      const res = await fetch('/api/money-hub/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, history: updated }),
+      });
+      const d = await res.json();
+      if (d.reply) {
+        setChatMessages([...updated, { role: 'assistant', content: d.reply }]);
+      } else if (d.error) {
+        setChatMessages([...updated, { role: 'assistant', content: d.error }]);
+      }
+    } catch {
+      setChatMessages([...updated, { role: 'assistant', content: 'Sorry, something went wrong.' }]);
+    }
+    setChatLoading(false);
+  };
 
   useEffect(() => {
     fetch('/api/money-hub')
@@ -197,18 +269,62 @@ export default function MoneyHubPage() {
             {data.spending.categories.map(cat => {
               const info = CATEGORY_LABELS[cat.category] || CATEGORY_LABELS.other;
               const pct = data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0;
+              const budget = data.budgets.find((b: any) => b.category === cat.category);
+              const budgetPct = budget ? (cat.total / budget.monthly_limit) * 100 : 0;
               return (
-                <div key={cat.category} className="flex items-center gap-3">
-                  <span className="text-lg w-7">{info.icon}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-white text-xs font-medium">{info.label}</span>
-                      <span className="text-white text-xs font-bold">£{cat.total.toFixed(0)}</span>
+                <div key={cat.category}>
+                  <button
+                    onClick={() => isPaid ? loadDrillDown(cat.category) : undefined}
+                    className={`flex items-center gap-3 w-full text-left ${isPaid ? 'hover:bg-slate-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
+                  >
+                    <span className="text-lg w-7">{info.icon}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-white text-xs font-medium">{info.label}</span>
+                        <div className="flex items-center gap-2">
+                          {budget && (
+                            <span className={`text-[10px] ${budgetPct > 100 ? 'text-red-400' : budgetPct > 80 ? 'text-amber-400' : 'text-green-400'}`}>
+                              {budgetPct.toFixed(0)}% of £{budget.monthly_limit} budget
+                            </span>
+                          )}
+                          <span className="text-white text-xs font-bold">£{cat.total.toFixed(0)}</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-700 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: info.color }} />
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-700 rounded-full h-1.5">
-                      <div className="h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: info.color }} />
+                  </button>
+                  {isPaid && (
+                    <div className="flex justify-end mt-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowBudgetForm(cat.category); setBudgetAmount(budget?.monthly_limit?.toString() || ''); }}
+                        className="text-[10px] text-slate-500 hover:text-amber-400"
+                      >
+                        {budget ? 'Edit budget' : 'Set budget'}
+                      </button>
                     </div>
-                  </div>
+                  )}
+                  {showBudgetForm === cat.category && (
+                    <div className="flex items-center gap-2 mt-1 ml-10">
+                      <span className="text-slate-400 text-xs">£</span>
+                      <input
+                        type="number"
+                        value={budgetAmount}
+                        onChange={(e) => setBudgetAmount(e.target.value)}
+                        placeholder="Monthly limit"
+                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-24 focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        onClick={() => saveBudget(cat.category)}
+                        disabled={savingBudget}
+                        className="bg-amber-500 text-slate-950 text-xs px-2 py-1 rounded font-medium disabled:opacity-50"
+                      >
+                        {savingBudget ? '...' : 'Save'}
+                      </button>
+                      <button onClick={() => setShowBudgetForm(null)} className="text-slate-500 text-xs">Cancel</button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -499,6 +615,133 @@ export default function MoneyHubPage() {
             Upgrade to Essential
           </Link>
         </div>
+      )}
+
+      {/* Category Drill-Down Modal */}
+      {drillCategory && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setDrillCategory(null); setDrillData(null); }} className="text-slate-400 hover:text-white">
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h2 className="text-white font-semibold">
+                  {(CATEGORY_LABELS[drillCategory] || CATEGORY_LABELS.other).icon} {(CATEGORY_LABELS[drillCategory] || CATEGORY_LABELS.other).label}
+                </h2>
+              </div>
+              {drillData && <span className="text-amber-400 font-bold">£{drillData.totalSpent.toFixed(2)}</span>}
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {drillLoading ? (
+                <div className="text-center py-8"><Loader2 className="h-6 w-6 text-amber-500 animate-spin mx-auto" /></div>
+              ) : drillData ? (
+                <div className="space-y-6">
+                  {/* Merchant breakdown */}
+                  {drillData.merchants.length > 0 && (
+                    <div>
+                      <h3 className="text-white text-sm font-semibold mb-3">Merchants</h3>
+                      <div className="space-y-2">
+                        {drillData.merchants.map((m, i) => (
+                          <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
+                            <div>
+                              <span className="text-white text-sm">{m.merchant}</span>
+                              <span className="text-slate-500 text-xs ml-2">{m.count} transactions</span>
+                            </div>
+                            <span className="text-white font-medium text-sm">£{m.total.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Transaction list */}
+                  <div>
+                    <h3 className="text-white text-sm font-semibold mb-3">Transactions ({drillData.transactions.length})</h3>
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {drillData.transactions.map((t, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-slate-800/50">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-slate-300 truncate block">{t.description?.substring(0, 40)}</span>
+                            <span className="text-slate-500 text-xs">{t.date}</span>
+                          </div>
+                          <span className={`font-medium ml-2 ${t.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                            {t.amount < 0 ? '-' : '+'}£{Math.abs(t.amount).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Chat Panel (Pro only) */}
+      {isPro && (
+        <>
+          {!chatOpen && (
+            <button
+              onClick={() => setChatOpen(true)}
+              className="fixed bottom-20 left-6 z-40 bg-purple-500 hover:bg-purple-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 lg:bottom-6"
+            >
+              <MessageCircle className="h-5 w-5" />
+            </button>
+          )}
+          {chatOpen && (
+            <div className="fixed bottom-20 left-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] bg-slate-900 border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden lg:bottom-6 lg:left-6">
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 text-purple-400" />
+                  <div>
+                    <p className="text-white text-sm font-semibold">Money Hub AI</p>
+                    <p className="text-purple-400 text-xs">Pro feature</p>
+                  </div>
+                </div>
+                <button onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {chatMessages.length === 0 && (
+                  <div className="text-center py-6">
+                    <MessageCircle className="h-8 w-8 text-purple-400/30 mx-auto mb-2" />
+                    <p className="text-slate-400 text-sm mb-3">Ask me about your finances</p>
+                    <div className="space-y-1">
+                      {['How much did I spend on eating out?', 'What subscriptions could I cancel?', 'Set a budget for groceries'].map(q => (
+                        <button key={q} onClick={() => { setChatInput(q); }} className="block w-full text-left text-xs text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded px-3 py-1.5">{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-200'}`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-start"><div className="bg-slate-800 rounded-2xl px-3 py-2"><Loader2 className="h-4 w-4 text-purple-400 animate-spin" /></div></div>
+                )}
+              </div>
+              <div className="p-3 border-t border-slate-700">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text" value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
+                    placeholder="Ask about your finances..."
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    disabled={chatLoading}
+                  />
+                  <button onClick={sendChatMessage} disabled={!chatInput.trim() || chatLoading} className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white w-9 h-9 rounded-xl flex items-center justify-center">
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
