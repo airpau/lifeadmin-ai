@@ -30,28 +30,53 @@ const sendReportEmail: ToolDef = {
   },
   handler: async (args) => {
     const resend = getResend();
-    const priorityEmoji: Record<string, string> = { low: '', medium: '', high: '[HIGH] ', urgent: '[URGENT] ' };
+    const priorityPrefix: Record<string, string> = { low: '', medium: '', high: '[HIGH] ', urgent: '[URGENT] ' };
     const recs = args.recommendations || [];
     const recsHtml = recs.length > 0
-      ? `<h3>Recommendations</h3><ul>${recs.map((r: string) => `<li>${r}</li>`).join('')}</ul>`
+      ? `<div style="background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:20px;margin-top:20px;">
+           <div style="color:#f59e0b;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Recommendations</div>
+           ${recs.map((r: string) => `<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="color:#f59e0b;">-</span><span style="color:#cbd5e1;font-size:14px;">${r}</span></div>`).join('')}
+         </div>`
       : '';
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h2 style="color: #0f172a;">${args.title}</h2>
-        <div style="white-space: pre-wrap; line-height: 1.6;">${args.content}</div>
-        ${recsHtml}
-        <hr style="margin-top: 20px;">
-        <p style="color: #64748b; font-size: 12px;">Paybacker AI Agent Report</p>
-      </div>
-    `;
+    const priorityBanner = args.priority === 'urgent' ? `
+      <div style="background:#ef444422;border:1px solid #ef444444;border-radius:8px;padding:12px;text-align:center;margin-bottom:20px;">
+        <span style="color:#ef4444;font-weight:700;font-size:13px;">URGENT - Requires immediate attention</span>
+      </div>` : args.priority === 'high' ? `
+      <div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:8px;padding:12px;text-align:center;margin-bottom:20px;">
+        <span style="color:#f59e0b;font-weight:700;font-size:13px;">HIGH PRIORITY</span>
+      </div>` : '';
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;">
+    <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
+      <table style="width:100%;border-collapse:collapse;"><tr>
+        <td style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></td>
+        <td style="text-align:right;color:#475569;font-size:12px;">${args.title}</td>
+      </tr></table>
+    </div>
+    <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
+      ${priorityBanner}
+      <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0 0 16px;line-height:1.3;">${args.title}</h1>
+      <div style="color:#e2e8f0;font-size:14px;line-height:1.8;white-space:pre-wrap;">${args.content}</div>
+      ${recsHtml}
+    </div>
+    <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
+      <table style="width:100%;border-collapse:collapse;"><tr>
+        <td style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</td>
+        <td style="text-align:right;"><a href="https://paybacker.co.uk/dashboard/admin" style="color:#f59e0b;font-size:11px;text-decoration:none;">View Dashboard</a></td>
+      </tr></table>
+    </div>
+  </div>
+</body></html>`;
 
     try {
       await resend.emails.send({
         from: config.FROM_EMAIL,
         to: config.FOUNDER_EMAIL,
         replyTo: config.REPLY_TO,
-        subject: `${priorityEmoji[args.priority || 'medium']}${args.subject}`,
+        subject: `${priorityPrefix[args.priority || 'medium']}${args.subject}`,
         html,
       });
       return `Report email sent to ${config.FOUNDER_EMAIL}`;

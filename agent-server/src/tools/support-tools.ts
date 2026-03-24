@@ -140,7 +140,24 @@ const respondToTicket: ToolDef = {
             to: profile.email,
             replyTo: 'support@paybacker.co.uk',
             subject: `Re: Your support request`,
-            html: `<div style="font-family: Arial, sans-serif;"><p>${args.message.replace(/\n/g, '<br>')}</p><hr><p style="color: #64748b; font-size: 12px;">Paybacker Support Team</p></div>`,
+            html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;">
+    <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
+      <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    </div>
+    <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
+      <div style="color:#e2e8f0;font-size:14px;line-height:1.8;">${args.message.replace(/\n/g, '<br>')}</div>
+      <div style="margin-top:24px;">
+        <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">View Your Dashboard</a>
+      </div>
+    </div>
+    <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
+      <div style="color:#475569;font-size:11px;">Paybacker Support Team - paybacker.co.uk</div>
+      <div style="color:#334155;font-size:10px;margin-top:4px;">Reply to this email or visit your dashboard for more help.</div>
+    </div>
+  </div>
+</body></html>`,
           });
         } catch (e) {
           // Email failure shouldn't block ticket response
