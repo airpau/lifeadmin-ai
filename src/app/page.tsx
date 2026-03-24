@@ -251,7 +251,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">Email Inbox Scanning</h3>
                 <p className="text-slate-400 text-sm mb-3">Connect Gmail or Outlook. We scan 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications.</p>
-                <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-1 rounded-full">One-time scan free</span>
+                <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">Coming soon</span>
               </div>
 
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">

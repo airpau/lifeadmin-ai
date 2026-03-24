@@ -1,3 +1,4 @@
+// @ts-nocheck - Scanner disabled while Google OAuth verification is pending
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -72,6 +73,29 @@ const OutlookIcon = () => (
 );
 
 export default function ScannerPage() {
+  // Email scanning is temporarily disabled while Google OAuth verification is pending
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-white mb-2">Email Scanner</h1>
+        <p className="text-slate-400">Scan your email inbox for hidden savings opportunities</p>
+      </div>
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 text-center">
+        <Mail className="h-12 w-12 text-amber-400 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-white mb-2">Coming Soon</h2>
+        <p className="text-slate-400 max-w-md mx-auto mb-4">
+          Our email scanning feature is currently being verified by Google to ensure the highest security standards for your data. This will be available shortly.
+        </p>
+        <p className="text-slate-500 text-sm">
+          In the meantime, connect your bank account to detect subscriptions and spending patterns automatically.
+        </p>
+        <a href="/dashboard/subscriptions" className="inline-block mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-xl transition-all">
+          Connect Bank Account Instead
+        </a>
+      </div>
+    </div>
+  );
+
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);

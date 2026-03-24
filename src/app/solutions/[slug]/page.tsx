@@ -236,10 +236,10 @@ const PAGES: Record<string, SolutionPage> = {
     iconColor: 'text-rose-400',
     heroStat: '2 years',
     heroStatLabel: 'of email history scanned',
-    ctaText: 'Scan Your Inbox Free',
+    ctaText: 'Join the Waitlist - Coming Soon',
     ctaLink: '/auth/signup',
     benefits: [
-      'Scans Gmail and Outlook (read-only, Google OAuth verified)',
+      'Coming soon - currently being verified by Google for highest security standards',
       'Detects price increase notifications you may have missed',
       'Finds flight booking confirmations for delay compensation claims',
       'Identifies subscription receipts and renewal notices',
