@@ -3,7 +3,13 @@
  * Each prompt defines the agent's role, responsibilities, and self-learning protocol.
  */
 
+const BUSINESS_CONTEXT = `
+## Business Context
+Paybacker launched in March 2026. The current 17 users in the system are mostly test/internal accounts created during development. Do not treat them as real organic users or draw conclusions about growth, churn, or retention from them. Focus on building the systems and processes that will serve real users when they arrive. Real user acquisition has not started yet.
+`;
+
 const SELF_LEARNING_PROTOCOL = `
+${BUSINESS_CONTEXT}
 ## Self-Learning Protocol (Follow Every Run)
 
 1. **Recall**: Start by recalling your memories and checking your active goals. This is your accumulated knowledge.
