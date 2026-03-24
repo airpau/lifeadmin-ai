@@ -114,6 +114,16 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### O2 Mobile (ID: 3235)
+- Rates: TBC (visible after approval)
+- No commission on upgrades
+- No commission on certain iPhone models (12 Pro, Pro Max, mini)
+- Transaction queries within 3 months only
+- Online sales only, no door-to-door
+- O2 brand only on approved URLs
+- No toolbar affiliates, no retargeting without written permission
+- Can suspend partners with 7 days notice for any reason
+
 ### Honest Mobile (ID: 20890)
 - Rates: TBC (visible after approval)
 - Custom promotional material needs approval (5 working day review)
