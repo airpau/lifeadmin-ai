@@ -66,7 +66,19 @@ function LockedSection({ title, children }: { title: string; children?: React.Re
 export default function MoneyHubPage() {
   const [data, setData] = useState<MoneyHubData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+
+  const syncMoneyHub = async () => {
+    setSyncing(true);
+    try {
+      await fetch('/api/money-hub/sync', { method: 'POST' });
+      const res = await fetch('/api/money-hub');
+      const d = await res.json();
+      if (!d.error) setData(d);
+    } catch {}
+    setSyncing(false);
+  };
 
   // Category drill-down
   const [drillCategory, setDrillCategory] = useState<string | null>(null);
@@ -184,11 +196,21 @@ export default function MoneyHubPage() {
           </h1>
           <p className="text-slate-400 mt-1">Your complete financial intelligence centre</p>
         </div>
-        <div className="text-right">
-          <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
-            {data.score}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={syncMoneyHub}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-all"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing...' : 'Sync'}
+          </button>
+          <div className="text-right">
+            <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+              {data.score}
+            </div>
+            <p className="text-slate-500 text-xs">Financial Health Score</p>
           </div>
-          <p className="text-slate-500 text-xs">Financial Health Score</p>
         </div>
       </div>
 

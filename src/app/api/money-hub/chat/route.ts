@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
   const [txns, subs, budgets, goals, alerts] = await Promise.all([
-    admin.from('bank_transactions').select('amount, description, category, timestamp')
-      .eq('user_id', user.id).gte('timestamp', startOfMonth).order('timestamp', { ascending: false }).limit(50),
+    admin.from('bank_transactions').select('amount, description, category, timestamp, user_category, income_type, merchant_name')
+      .eq('user_id', user.id).gte('timestamp', startOfMonth).order('timestamp', { ascending: false }).limit(100),
     admin.from('subscriptions').select('provider_name, amount, billing_cycle, category, status')
       .eq('user_id', user.id).is('dismissed_at', null).eq('status', 'active'),
     admin.from('money_hub_budgets').select('category, monthly_limit').eq('user_id', user.id),
@@ -44,22 +44,40 @@ export async function POST(request: NextRequest) {
     admin.from('money_hub_alerts').select('title, value_gbp, alert_type').eq('user_id', user.id).eq('status', 'active').limit(5),
   ]);
 
-  const income = (txns.data || []).filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
-  const outgoings = (txns.data || []).filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+  const allTxns = txns.data || [];
+  const income = allTxns.filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
+  const outgoings = allTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+
+  // Category spending breakdown from actual data
+  const catSpend: Record<string, number> = {};
+  for (const t of allTxns.filter(t => parseFloat(t.amount) < 0)) {
+    const cat = t.user_category || t.category || 'other';
+    catSpend[cat] = (catSpend[cat] || 0) + Math.abs(parseFloat(t.amount));
+  }
+  const catSummary = Object.entries(catSpend).sort((a, b) => b[1] - a[1]).map(([c, v]) => `${c}: £${v.toFixed(0)}`).join(', ');
+
+  // Income breakdown
+  const incByType: Record<string, number> = {};
+  for (const t of allTxns.filter(t => parseFloat(t.amount) > 0)) {
+    const type = t.income_type || 'other';
+    incByType[type] = (incByType[type] || 0) + parseFloat(t.amount);
+  }
+  const incSummary = Object.entries(incByType).map(([t, v]) => `${t}: £${v.toFixed(0)}`).join(', ');
 
   const subsSummary = (subs.data || []).map(s => `${s.provider_name}: £${s.amount}/${s.billing_cycle}`).join(', ');
   const budgetSummary = (budgets.data || []).map(b => `${b.category}: £${b.monthly_limit}/month`).join(', ');
   const goalsSummary = (goals.data || []).map(g => `${g.goal_name}: £${g.current_amount}/${g.target_amount}`).join(', ');
 
-  const financialContext = `User's financial data this month:
-- Income: £${income.toFixed(2)}
-- Outgoings: £${outgoings.toFixed(2)}
-- Net: £${(income - outgoings).toFixed(2)}
-- Active subscriptions: ${(subs.data || []).length} (${subsSummary || 'none'})
-- Budgets set: ${budgetSummary || 'none'}
+  const financialContext = `User's ACTUAL financial data this month (from bank transactions):
+- Total income: £${income.toFixed(2)} (${incSummary || 'breakdown unavailable'})
+- Total outgoings: £${outgoings.toFixed(2)}
+- Net position: £${(income - outgoings).toFixed(2)}
+- Spending by category: ${catSummary || 'no spending data'}
+- Active subscriptions (${(subs.data || []).length}): ${subsSummary || 'none'}
+- Budget limits: ${budgetSummary || 'none set'}
 - Savings goals: ${goalsSummary || 'none'}
 - Active alerts: ${(alerts.data || []).map(a => a.title).join(', ') || 'none'}
-- Recent transactions (last 10): ${(txns.data || []).slice(0, 10).map(t => `${t.description?.substring(0, 25)}: £${Math.abs(parseFloat(t.amount)).toFixed(2)}`).join(', ')}`;
+- Total transactions this month: ${allTxns.length}`;
 
   const systemPrompt = `You are the Paybacker Money Hub AI assistant. You help Pro users manage their finances through conversation.
 

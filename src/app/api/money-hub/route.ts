@@ -30,7 +30,7 @@ export async function GET() {
       transactions, bankConns, subscriptions, budgets,
       assets, liabilities, goals, alerts, tasks,
     ] = await Promise.all([
-      admin.from('bank_transactions').select('amount, description, category, timestamp, merchant_name')
+      admin.from('bank_transactions').select('amount, description, category, timestamp, merchant_name, user_category, income_type')
         .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }),
       admin.from('bank_connections').select('id, bank_name, status, last_synced_at').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
@@ -98,7 +98,8 @@ export async function GET() {
     const categoryTotals: Record<string, number> = {};
     const merchantTotals: Record<string, number> = {};
     for (const t of spendingTxns) {
-      const cat = categorise(t.description || '', t.category || '');
+      // Prefer user_category (set by user or Money Hub sync), fall back to auto-categorise
+      const cat = t.user_category || categorise(t.description || '', t.category || '');
       const amt = Math.abs(parseFloat(t.amount));
       categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
       const merchant = t.merchant_name || (t.description || '').substring(0, 30);
@@ -113,6 +114,13 @@ export async function GET() {
       .map(([name, total]) => ({ merchant: name, total: parseFloat(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
+
+    // Income breakdown by type
+    const incomeByType: Record<string, number> = {};
+    for (const t of thisMonthTxns.filter(t => parseFloat(t.amount) > 0)) {
+      const type = t.income_type || 'other';
+      incomeByType[type] = (incomeByType[type] || 0) + parseFloat(t.amount);
+    }
 
     // Monthly trends (last 6 months)
     const monthlyTrends: Array<{ month: string; income: number; outgoings: number }> = [];
@@ -178,6 +186,7 @@ export async function GET() {
         monthProgress,
         dayOfMonth,
         daysInMonth,
+        incomeBreakdown: incomeByType,
       },
       accounts: bankConns.data || [],
       spending: {
