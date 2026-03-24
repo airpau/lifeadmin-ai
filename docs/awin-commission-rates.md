@@ -114,6 +114,14 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Trip.com (ID: 22405)
+- Rates: TBC (visible after approval)
+- Validated upon travel or stay completion
+- Cancelled bookings = no commission
+- Use uk.trip.com for UK traffic
+- Hotel commission includes VAT, flights does not
+- No transactions from ctrip.com (Chinese site)
+
 ### Three Mobile (ID: 10210)
 - Rates: TBC (visible after approval, check H3G Affiliate Interface)
 - Commission trigger: 45 days after customer purchase and contract activation

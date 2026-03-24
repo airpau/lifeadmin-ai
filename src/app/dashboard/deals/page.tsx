@@ -83,6 +83,9 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'aa-loans', provider: 'AA Loans', headline: 'Personal loans from 7.9% APR representative', saving: '£50 cashback on completion', awinMid: '3953', providerUrl: 'https://www.theaa.com/loans', category: 'Loans' },
     { id: 'loan-co-uk', provider: 'Loan.co.uk', headline: 'Secured loans - consolidate debts and save', saving: 'Up to £300 cashback', awinMid: '18915', providerUrl: 'https://www.loan.co.uk', category: 'Loans' },
   ],
+  Travel: [
+    { id: 'trip-com', provider: 'Trip.com', headline: 'Flights, hotels and holidays - compare and save', saving: 'Save on travel', awinMid: '22405', providerUrl: 'https://uk.trip.com', category: 'Travel' },
+  ],
   'Car Finance': [
     { id: 'carwow-finance', provider: 'Carwow', headline: 'Compare car finance deals - PCP, HP, and personal loans', saving: 'Save on car finance', awinMid: '18621', providerUrl: 'https://www.carwow.co.uk/car-finance', category: 'Car Finance' },
     { id: 'zuto', provider: 'Zuto', headline: 'Car finance comparison - all credit scores welcome', saving: 'Rates from 6.9% APR', awinMid: '16944', providerUrl: 'https://www.zuto.com', category: 'Car Finance' },
