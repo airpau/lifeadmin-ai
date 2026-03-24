@@ -125,6 +125,14 @@ export default function PricingPage() {
       }
 
       if (data.url) {
+        // Store transaction data before Stripe redirect (for Awin tracking on return)
+        const tier = planName.toLowerCase();
+        const amount = tier === 'pro' ? '19.99' : '9.99';
+        const commGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
+        sessionStorage.setItem('awin_checkout', JSON.stringify({
+          tier, amount, commGroup,
+          orderRef: `conversion-${tier}-${Date.now()}`,
+        }));
         window.location.href = data.url;
       } else if (data.alreadySubscribed) {
         alert('You are already on this plan.');

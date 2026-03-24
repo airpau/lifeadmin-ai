@@ -66,9 +66,21 @@ export default function DashboardPage() {
     }
   }, [searchParams]);
 
-  // Sync subscription after Stripe checkout + Awin conversion tracking
+  // Sync subscription after Stripe checkout + Awin/Meta conversion tracking
   useEffect(() => {
     if (searchParams.get('success') === 'true' || searchParams.get('upgraded')) {
+      // Recall transaction data stored before Stripe redirect
+      const savedCheckout = (() => {
+        try {
+          const raw = sessionStorage.getItem('awin_checkout');
+          if (raw) {
+            sessionStorage.removeItem('awin_checkout');
+            return JSON.parse(raw);
+          }
+        } catch {}
+        return null;
+      })();
+
       fetch('/api/stripe/sync', { method: 'POST' })
         .then(r => r.json())
         .then(data => {
@@ -76,37 +88,41 @@ export default function DashboardPage() {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
 
+            // Use saved checkout data or fall back to sync response
+            const tier = savedCheckout?.tier || data.tier;
+            const amount = savedCheckout?.amount || (tier === 'pro' ? '19.99' : '9.99');
+            const commGroup = savedCheckout?.commGroup || (tier === 'pro' ? 'PRO' : 'ESSENTIAL');
+            const orderRef = savedCheckout?.orderRef || `conversion-${tier}-${Date.now()}`;
+
             // Meta Pixel Purchase event
             if (typeof (window as any).fbq === 'function') {
               (window as any).fbq('track', 'Purchase', {
-                value: data.tier === 'pro' ? 19.99 : 9.99,
+                value: parseFloat(amount),
                 currency: 'GBP',
               });
             }
 
+            // Push to dataLayer for GTM/Awin
+            const w = window as any;
+            w.dataLayer = w.dataLayer || [];
+            w.dataLayer.push({ event: 'OrderReference', value: orderRef });
+            w.dataLayer.push({ event: 'TotalOrderValue', value: amount });
+            w.dataLayer.push({ event: 'CommissionGroup', value: commGroup });
+
             // Awin conversion tracking (client-side via mastertag)
-            const commissions: Record<string, { amount: string; group: string }> = {
-              essential: { amount: '9.99', group: 'ESSENTIAL' },
-              pro: { amount: '19.99', group: 'PRO' },
+            w.AWIN = w.AWIN || {};
+            w.AWIN.Tracking = w.AWIN.Tracking || {};
+            w.AWIN.Tracking.Sale = {
+              amount,
+              orderRef,
+              parts: `${commGroup}:${amount}`,
+              voucher: '',
+              currency: 'GBP',
+              channel: 'aw',
+              customerAcquisition: 'NEW',
             };
-            const comm = commissions[data.tier];
-            if (comm) {
-              const w = window as any;
-              const orderRef = `conversion-${data.tier}-${Date.now()}`;
-              w.AWIN = w.AWIN || {};
-              w.AWIN.Tracking = w.AWIN.Tracking || {};
-              w.AWIN.Tracking.Sale = {
-                amount: comm.amount,
-                orderRef,
-                parts: `${comm.group}:${comm.amount}`,
-                voucher: '',
-                currency: 'GBP',
-                channel: 'aw',
-                customerAcquisition: 'NEW',
-              };
-              if (typeof w.AWIN?.Tracking?.saleSubmit === 'function') {
-                w.AWIN.Tracking.saleSubmit();
-              }
+            if (typeof w.AWIN?.Tracking?.saleSubmit === 'function') {
+              w.AWIN.Tracking.saleSubmit();
             }
           }
         })
