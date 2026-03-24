@@ -1,26 +1,33 @@
 /**
  * External API integrations for content generation and social posting.
  *
+ * Architecture:
+ * - fal.ai: ALL image and video generation
+ * - Late (getlate.dev): ALL social media posting
+ * - Perplexity API: ALL web research
+ * - PostHog: ALL product analytics
+ *
  * Required env vars:
- * - FAL_API_KEY: fal.ai API key for Flux Pro image generation
- * - RUNWAY_API_KEY: Runway ML API key for Gen-3 Alpha video generation
- * - TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET: Twitter/X API v2
- * - LINKEDIN_ACCESS_TOKEN: LinkedIn Marketing API
- * - TIKTOK_ACCESS_TOKEN: TikTok Content Posting API
- * - META_ACCESS_TOKEN: already configured for Instagram/Facebook
+ * - FAL_KEY: fal.ai API key
+ * - RUNWAY_API_KEY: Runway ML backup for premium video renders
+ * - LATE_API_KEY: Late API for social posting
+ * - PERPLEXITY_API_KEY: Perplexity for web research
+ * - POSTHOG_API_KEY: PostHog for analytics
+ * - POSTHOG_HOST: PostHog host URL
+ * - IPAPI_KEY: ipapi.co for IP fraud checks
  */
 
-// ─── Image Generation (fal.ai Flux Pro) ─────────────────────────────────────
+// ─── fal.ai Image Generation ─────────────────────────────────────────────────
 
-export async function generateImage(prompt: string): Promise<{ url: string } | null> {
-  const apiKey = process.env.FAL_API_KEY;
+export async function generateImageFal(prompt: string, model: string = 'fal-ai/flux-pro'): Promise<{ url: string } | null> {
+  const apiKey = process.env.FAL_KEY;
   if (!apiKey) {
-    console.log('[content-apis] FAL_API_KEY not set, skipping image generation');
+    console.log('[content-apis] FAL_KEY not set, skipping image generation');
     return null;
   }
 
   try {
-    const res = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
+    const res = await fetch(`https://fal.run/${model}`, {
       method: 'POST',
       headers: {
         Authorization: `Key ${apiKey}`,
@@ -30,58 +37,80 @@ export async function generateImage(prompt: string): Promise<{ url: string } | n
         prompt,
         image_size: { width: 1080, height: 1080 },
         num_images: 1,
-        safety_tolerance: '2',
       }),
     });
 
     if (!res.ok) {
-      console.error('[content-apis] fal.ai error:', res.status, await res.text());
+      console.error(`[content-apis] fal.ai ${model} error:`, res.status);
       return null;
     }
 
     const data = await res.json();
-    const url = data.images?.[0]?.url;
-    return url ? { url } : null;
+    return data.images?.[0]?.url ? { url: data.images[0].url } : null;
   } catch (err: any) {
     console.error('[content-apis] fal.ai failed:', err.message);
     return null;
   }
 }
 
-// ─── Video Generation (Runway ML Gen-3 Alpha) ───────────────────────────────
+// ─── fal.ai Video Generation ─────────────────────────────────────────────────
 
-export async function generateVideo(prompt: string): Promise<{ url: string } | null> {
-  const apiKey = process.env.RUNWAY_API_KEY;
+export async function generateVideoFal(prompt: string): Promise<{ url: string } | null> {
+  const apiKey = process.env.FAL_KEY;
   if (!apiKey) {
-    console.log('[content-apis] RUNWAY_API_KEY not set, skipping video generation');
+    console.log('[content-apis] FAL_KEY not set, skipping video generation');
     return null;
   }
 
   try {
-    // Start generation task
-    const res = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
+    const res = await fetch('https://fal.run/fal-ai/kling-video/v1.6/standard/text-to-video', {
+      method: 'POST',
+      headers: {
+        Authorization: `Key ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        duration: '5',
+        aspect_ratio: '9:16',
+      }),
+    });
+
+    if (!res.ok) {
+      console.error('[content-apis] fal.ai kling-video error:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data.video?.url ? { url: data.video.url } : null;
+  } catch (err: any) {
+    console.error('[content-apis] fal.ai video failed:', err.message);
+    return null;
+  }
+}
+
+// ─── Runway ML Video Generation (backup) ─────────────────────────────────────
+
+export async function generateVideoRunway(prompt: string): Promise<{ url: string } | null> {
+  const apiKey = process.env.RUNWAY_API_KEY;
+  if (!apiKey) {
+    console.log('[content-apis] RUNWAY_API_KEY not set');
+    return null;
+  }
+
+  try {
+    const res = await fetch('https://api.dev.runwayml.com/v1/text_to_video', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'X-Runway-Version': '2024-11-06',
       },
-      body: JSON.stringify({
-        model: 'gen3a_turbo',
-        promptText: prompt,
-        duration: 5,
-        watermark: false,
-      }),
+      body: JSON.stringify({ model: 'gen3a_turbo', promptText: prompt, duration: 5 }),
     });
 
-    if (!res.ok) {
-      console.error('[content-apis] Runway error:', res.status, await res.text());
-      return null;
-    }
-
+    if (!res.ok) return null;
     const data = await res.json();
-    // Runway returns a task ID, need to poll for completion
-    // For now return the task info
     return data.output?.[0] ? { url: data.output[0] } : null;
   } catch (err: any) {
     console.error('[content-apis] Runway failed:', err.message);
@@ -89,93 +118,142 @@ export async function generateVideo(prompt: string): Promise<{ url: string } | n
   }
 }
 
-// ─── Twitter/X Posting ───────────────────────────────────────────────────────
+// ─── Late API: Social Media Posting ──────────────────────────────────────────
 
-export async function postToTwitter(text: string): Promise<{ postId: string } | null> {
-  const token = process.env.TWITTER_ACCESS_TOKEN;
-  if (!token) {
-    console.log('[content-apis] TWITTER_ACCESS_TOKEN not set, skipping Twitter post');
+export async function postViaLate(params: {
+  platform: string;
+  text: string;
+  mediaUrl?: string;
+}): Promise<{ postId: string; platform: string } | null> {
+  const apiKey = process.env.LATE_API_KEY;
+  if (!apiKey) {
+    console.log(`[content-apis] LATE_API_KEY not set, skipping ${params.platform} post`);
     return null;
   }
 
   try {
-    const res = await fetch('https://api.twitter.com/2/tweets', {
+    const res = await fetch('https://api.getlate.dev/v1/posts', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text }),
-    });
-
-    if (!res.ok) {
-      console.error('[content-apis] Twitter error:', res.status);
-      return null;
-    }
-
-    const data = await res.json();
-    return { postId: data.data?.id };
-  } catch (err: any) {
-    console.error('[content-apis] Twitter failed:', err.message);
-    return null;
-  }
-}
-
-// ─── LinkedIn Posting ────────────────────────────────────────────────────────
-
-export async function postToLinkedIn(text: string): Promise<{ postId: string } | null> {
-  const token = process.env.LINKEDIN_ACCESS_TOKEN;
-  if (!token) {
-    console.log('[content-apis] LINKEDIN_ACCESS_TOKEN not set, skipping LinkedIn post');
-    return null;
-  }
-
-  try {
-    // LinkedIn requires the person URN. This would need to be configured.
-    const authorUrn = process.env.LINKEDIN_AUTHOR_URN || '';
-    const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        author: authorUrn,
-        lifecycleState: 'PUBLISHED',
-        specificContent: {
-          'com.linkedin.ugc.ShareContent': {
-            shareCommentary: { text },
-            shareMediaCategory: 'NONE',
-          },
-        },
-        visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
+        platforms: [params.platform],
+        text: params.text,
+        media: params.mediaUrl ? [{ url: params.mediaUrl }] : undefined,
       }),
     });
 
     if (!res.ok) {
-      console.error('[content-apis] LinkedIn error:', res.status);
+      console.error(`[content-apis] Late ${params.platform} error:`, res.status);
       return null;
     }
 
     const data = await res.json();
-    return { postId: data.id };
+    return { postId: data.id || data.posts?.[0]?.id || 'posted', platform: params.platform };
   } catch (err: any) {
-    console.error('[content-apis] LinkedIn failed:', err.message);
+    console.error(`[content-apis] Late failed:`, err.message);
     return null;
   }
 }
 
-// ─── TikTok Posting ──────────────────────────────────────────────────────────
+// ─── Late API: Fetch Performance Metrics ─────────────────────────────────────
 
-export async function postToTikTok(caption: string, videoUrl: string): Promise<{ postId: string } | null> {
-  const token = process.env.TIKTOK_ACCESS_TOKEN;
-  if (!token) {
-    console.log('[content-apis] TIKTOK_ACCESS_TOKEN not set, skipping TikTok post');
+export async function getPostMetrics(postId: string): Promise<Record<string, any> | null> {
+  const apiKey = process.env.LATE_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`https://api.getlate.dev/v1/posts/${postId}/metrics`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ─── Perplexity API: Web Research ────────────────────────────────────────────
+
+export async function searchPerplexity(query: string): Promise<string | null> {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) {
+    console.log('[content-apis] PERPLEXITY_API_KEY not set');
     return null;
   }
 
-  // TikTok Content Posting API requires video upload flow
-  // This is a simplified version
-  console.log('[content-apis] TikTok posting not yet fully implemented');
-  return null;
+  try {
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'sonar',
+        messages: [
+          { role: 'system', content: 'You are a research assistant. Provide concise, factual answers with sources.' },
+          { role: 'user', content: query },
+        ],
+        max_tokens: 1024,
+      }),
+    });
+
+    if (!res.ok) {
+      console.error('[content-apis] Perplexity error:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch (err: any) {
+    console.error('[content-apis] Perplexity failed:', err.message);
+    return null;
+  }
+}
+
+// ─── PostHog API: Analytics Queries ──────────────────────────────────────────
+
+export async function queryPostHog(eventName: string, days: number = 7): Promise<any> {
+  const apiKey = process.env.POSTHOG_API_KEY;
+  const host = process.env.POSTHOG_HOST || 'https://app.posthog.com';
+  if (!apiKey) {
+    console.log('[content-apis] POSTHOG_API_KEY not set');
+    return null;
+  }
+
+  try {
+    const res = await fetch(`${host}/api/event/?event=${eventName}&after=-${days}d&limit=100`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ─── IP Fraud Check ──────────────────────────────────────────────────────────
+
+export async function checkIPFraud(ip: string): Promise<{ isProxy: boolean; isDatacenter: boolean; country: string } | null> {
+  try {
+    const apiKey = process.env.IPAPI_KEY;
+    const url = apiKey
+      ? `https://ipapi.co/${ip}/json/?key=${apiKey}`
+      : `https://ipapi.co/${ip}/json/`;
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    return {
+      isProxy: data.is_proxy === true,
+      isDatacenter: data.org?.toLowerCase().includes('hosting') || data.org?.toLowerCase().includes('cloud') || data.org?.toLowerCase().includes('datacenter') || false,
+      country: data.country_name || 'Unknown',
+    };
+  } catch {
+    return null;
+  }
 }

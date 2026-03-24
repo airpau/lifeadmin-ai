@@ -40,6 +40,7 @@ const roleIcons: Record<string, any> = {
   clo: Shield,
   cio: Eye,
   cxo: Sparkles,
+  cfraudo: Shield,
   support_lead: Headphones,
   support_agent: Bot,
 };
@@ -57,6 +58,7 @@ const roleColors: Record<string, string> = {
   clo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
   cio: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
   cxo: 'text-teal-400 bg-teal-500/10 border-teal-500/30',
+  cfraudo: 'text-red-400 bg-red-500/10 border-red-500/30',
   support_lead: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
   support_agent: 'text-slate-400 bg-slate-500/10 border-slate-500/30',
 };

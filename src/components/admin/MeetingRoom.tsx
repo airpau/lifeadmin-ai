@@ -26,6 +26,7 @@ const roleIcons: Record<string, any> = {
   clo: Shield,
   cio: Eye,
   cxo: Sparkles,
+  cfraudo: Shield,
   exec_assistant: ClipboardList,
   support_lead: Headphones,
   support_agent: Bot,
@@ -43,6 +44,7 @@ const roleColors: Record<string, string> = {
   clo: 'text-indigo-400',
   cio: 'text-yellow-400',
   cxo: 'text-teal-400',
+  cfraudo: 'text-red-400',
   exec_assistant: 'text-cyan-400',
   support_lead: 'text-amber-400',
   support_agent: 'text-slate-400',
@@ -60,6 +62,7 @@ const roleBgColors: Record<string, string> = {
   clo: 'bg-indigo-500/10 border-indigo-500/30',
   cio: 'bg-yellow-500/10 border-yellow-500/30',
   cxo: 'bg-teal-500/10 border-teal-500/30',
+  cfraudo: 'bg-red-500/10 border-red-500/30',
   exec_assistant: 'bg-cyan-500/10 border-cyan-500/30',
   support_lead: 'bg-amber-500/10 border-amber-500/30',
   support_agent: 'bg-slate-500/10 border-slate-500/30',
@@ -168,13 +171,13 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
             </div>
             <div>
               <h2 className="text-white font-semibold">Executive Meeting Room</h2>
-              <p className="text-slate-400 text-xs">14 agents online — speak to your AI team directly</p>
+              <p className="text-slate-400 text-xs">15 agents online — speak to your AI team directly</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Online indicators */}
             <div className="flex -space-x-1">
-              {['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'clo', 'cio', 'cxo', 'exec_assistant', 'support_lead', 'support_agent'].map((role) => {
+              {['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'clo', 'cio', 'cxo', 'cfraudo', 'exec_assistant', 'support_lead', 'support_agent'].map((role) => {
                 const Icon = roleIcons[role] || Bot;
                 return (
                   <div key={role} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-slate-800 ${roleBgColors[role]}`}>

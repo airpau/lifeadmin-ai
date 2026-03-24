@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { AgentConfig, AgentReport, runExecutiveAgent } from './executive-agent';
+import { resend, FROM_EMAIL } from '@/lib/resend';
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -9,64 +10,50 @@ export async function runCXOAgent(agentConfig: AgentConfig): Promise<AgentReport
   const supabase = getAdmin();
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  // Analyse support tickets for UX patterns
-  const [recentTickets, chatbotRuns, featureUsage] = await Promise.all([
+  const [tickets, chatbotRuns, usageLogs] = await Promise.all([
     supabase.from('support_tickets')
-      .select('subject, description, category, priority, source, status, created_at')
-      .gte('created_at', sevenDaysAgo)
-      .order('created_at', { ascending: false })
-      .limit(20),
-    // Chatbot conversations (from agent_runs) as proxy for confusion
-    supabase.from('agent_runs')
-      .select('input_data')
-      .eq('agent_type', 'chatbot')
-      .gte('created_at', sevenDaysAgo)
-      .limit(20),
-    // Feature usage patterns
-    supabase.from('usage_logs')
-      .select('action, count')
-      .eq('year_month', `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`),
+      .select('subject, description, category, priority, source, created_at')
+      .gte('created_at', sevenDaysAgo).order('created_at', { ascending: false }).limit(20),
+    supabase.from('agent_runs').select('input_data')
+      .eq('agent_type', 'chatbot').gte('created_at', sevenDaysAgo).limit(20),
+    supabase.from('usage_logs').select('action, count').eq('year_month', yearMonth),
   ]);
 
-  const ticketSummary = (recentTickets.data || []).map(t =>
-    `- [${t.category}/${t.priority}] ${t.subject}: ${(t.description || '').substring(0, 100)}`
+  const ticketSummary = (tickets.data || []).map(t =>
+    `[${t.category}/${t.priority}] ${t.subject}: ${(t.description || '').substring(0, 80)}`
   ).join('\n');
 
-  // Feature usage summary
   const usageByAction: Record<string, number> = {};
-  for (const u of featureUsage.data || []) {
-    usageByAction[u.action] = (usageByAction[u.action] || 0) + (u.count || 0);
-  }
+  for (const u of usageLogs.data || []) usageByAction[u.action] = (usageByAction[u.action] || 0) + (u.count || 0);
 
-  const contextPrompt = `Today is ${now.toISOString().split('T')[0]}.
+  const contextPrompt = `Today: ${now.toISOString().split('T')[0]}.
 
-## Support Tickets (Last 7 Days)
-Total tickets: ${(recentTickets.data || []).length}
-${ticketSummary || 'No tickets this week.'}
+## Support Tickets (7 days): ${(tickets.data || []).length}
+${ticketSummary || 'No tickets.'}
 
-## Chatbot Conversations
-Total chatbot sessions this week: ${(chatbotRuns.data || []).length}
-(High volume may indicate UI confusion)
+## Chatbot Sessions (7d): ${(chatbotRuns.data || []).length}
 
 ## Feature Usage This Month
-${Object.entries(usageByAction).map(([action, count]) => `- ${action}: ${count}`).join('\n') || 'No usage data.'}
+${Object.entries(usageByAction).map(([a, c]) => `${a}: ${c}`).join(', ') || 'None.'}
 
-## Known UX Areas to Monitor
-- Onboarding flow (0% completion rate was flagged by Charlie)
-- Scanner returning no results on first scan (was fixed)
-- Subscription detection from email (recently rebuilt)
-- Complaint letter placeholder replacement
-- Spending insights accuracy
-- Page load times on some tabs
+Identify: top 3 friction points, critical bugs, top 3 feature requests. Rank by impact. Send to Morgan (CTO).`;
 
-Analyse the tickets and usage data. Identify:
-1. Recurring friction points (what are users complaining about most?)
-2. Feature gaps (what are users asking for that we don't have?)
-3. Confusion points (what questions do users ask the chatbot most?)
-4. Rank improvement opportunities by potential impact on user satisfaction and retention.
+  const report = await runExecutiveAgent(agentConfig, contextPrompt, { useSonnet: true });
 
-Send your recommendations to Morgan (CTO) for implementation.`;
+  // Weekly email to Morgan (CTO) on Mondays
+  if (now.getDay() === 1) {
+    await resend.emails.send({
+      from: FROM_EMAIL, to: 'hello@paybacker.co.uk',
+      subject: '[UX Report] Weekly Improvement Priorities from Bella',
+      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:40px;border-radius:16px;">
+        <h1 style="color:#14b8a6;font-size:20px;margin:0 0 16px;">Weekly UX Report</h1>
+        <p style="color:#e2e8f0;white-space:pre-wrap;">${report.content}</p>
+        ${report.recommendations.length > 0 ? `<div style="background:#1e293b;border-radius:8px;padding:16px;margin:20px 0;"><p style="color:#f59e0b;font-weight:bold;margin:0 0 8px;">Priorities</p><ol style="color:#94a3b8;padding-left:20px;">${report.recommendations.map((r: string) => `<li>${r}</li>`).join('')}</ol></div>` : ''}
+        <p style="color:#475569;font-size:11px;margin-top:24px;">Bella (CXO)</p></div>`,
+    }).catch(() => {});
+  }
 
-  return runExecutiveAgent(agentConfig, contextPrompt, { useSonnet: true });
+  return report;
 }
