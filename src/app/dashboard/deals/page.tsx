@@ -36,6 +36,7 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'hyperoptic', provider: 'Hyperoptic', headline: '1Gbps full fibre - no speed caps', saving: 'Save up to £200/yr', awinMid: '5737', providerUrl: 'https://www.hyperoptic.com', category: 'Broadband' },
     { id: 'community-fibre', provider: 'Community Fibre', headline: 'London full fibre - ultrafast speeds', saving: 'Save up to £180/yr', awinMid: '19595', providerUrl: 'https://communityfibre.co.uk', category: 'Broadband' },
     { id: 'msm-broadband', provider: 'MoneySuperMarket', headline: 'Compare broadband deals from all providers', saving: 'Compare deals', awinMid: '25756', providerUrl: 'https://www.moneysupermarket.com/broadband/', category: 'Broadband' },
+    { id: 'onestream', provider: 'Onestream', headline: 'Simple, affordable full fibre broadband', saving: 'Save up to £160/yr', awinMid: '23296', providerUrl: 'https://www.onestream.co.uk', category: 'Broadband' },
     { id: 'broadband-genie', provider: 'Broadband Genie', headline: 'Independent broadband comparison', saving: 'Find cheapest deals', awinMid: '12213', providerUrl: 'https://www.broadbandgenie.co.uk', category: 'Broadband' },
   ],
   Insurance: [
