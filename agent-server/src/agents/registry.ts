@@ -6,7 +6,7 @@ import { AgentDefinition } from '../types';
  * Cost-optimised for launch phase:
  * - Most agents use Haiku ($0.10-0.15/run) instead of Sonnet ($0.30-0.60/run)
  * - Only Charlie (EA) uses Sonnet for synthesising all reports
- * - Support agents run frequently, others run 1-4x daily
+ * - Only Charlie can email the founder. Riley/Drew can email users.
  * - Estimated daily cost: ~$8-12/day (~$250-350/month)
  */
 export const agentRegistry: Record<string, AgentDefinition> = {
@@ -19,7 +19,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     maxBudgetUsd: 0.10,
     maxTurns: 8,
     toolGroups: ['supabase', 'support', 'email', 'memory', 'tasks', 'reports'],
-    canEmailUsers: true,
+    canEmailUsers: true,  // Riley emails users when responding to tickets
   },
   support_lead: {
     role: 'support_lead',
@@ -28,10 +28,10 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
     maxTurns: 8,
-    toolGroups: ['supabase', 'support', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'support', 'memory', 'tasks', 'reports'],  // No email
   },
 
-  // === EXECUTIVE ASSISTANT (Sonnet - needs to synthesise all reports) ===
+  // === EXECUTIVE ASSISTANT (Sonnet - only agent that emails founder) ===
   exec_assistant: {
     role: 'exec_assistant',
     name: 'Charlie - Executive Assistant',
@@ -39,11 +39,11 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-sonnet-4-6',
     maxBudgetUsd: 0.40,
     maxTurns: 12,
-    toolGroups: ['supabase', 'stripe', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'stripe', 'email', 'memory', 'tasks', 'reports'],  // Has email
     canEmailUsers: false,
   },
 
-  // === CORE EXECUTIVES (Haiku, 4x daily) ===
+  // === CORE EXECUTIVES (Haiku, no email) ===
   cfo: {
     role: 'cfo',
     name: 'Alex - CFO',
@@ -51,7 +51,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'stripe', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'stripe', 'memory', 'tasks', 'reports'],
   },
   cto: {
     role: 'cto',
@@ -60,7 +60,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cao: {
     role: 'cao',
@@ -69,7 +69,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cmo: {
     role: 'cmo',
@@ -78,10 +78,10 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
 
-  // === SPECIALISTS (Haiku, 2x daily) ===
+  // === SPECIALISTS (Haiku, no email except Drew) ===
   head_of_ads: {
     role: 'head_of_ads',
     name: 'Jordan - Head of Ads',
@@ -89,7 +89,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 8,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cco: {
     role: 'cco',
@@ -98,7 +98,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'content', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'content', 'memory', 'tasks', 'reports'],
   },
   cgo: {
     role: 'cgo',
@@ -108,7 +108,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     maxBudgetUsd: 0.15,
     maxTurns: 10,
     toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
-    canEmailUsers: true,
+    canEmailUsers: true,  // Drew sends engagement/activation emails to users
     supabaseWriteTables: ['profiles'],
   },
   cro: {
@@ -118,7 +118,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
     supabaseWriteTables: ['profiles'],
   },
   cxo: {
@@ -128,7 +128,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cfraudo: {
     role: 'cfraudo',
@@ -137,11 +137,11 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
     maxTurns: 8,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
     supabaseWriteTables: ['profiles'],
   },
 
-  // === RESEARCH (Haiku, 1x daily) ===
+  // === RESEARCH (Haiku, no email) ===
   clo: {
     role: 'clo',
     name: 'Leo - CLO',
@@ -149,7 +149,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'research', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'research', 'memory', 'tasks', 'reports'],
   },
   cio: {
     role: 'cio',
@@ -158,6 +158,6 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
     maxTurns: 10,
-    toolGroups: ['supabase', 'research', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'research', 'memory', 'tasks', 'reports'],
   },
 };
