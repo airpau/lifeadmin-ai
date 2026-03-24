@@ -352,10 +352,39 @@ Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these prioritie
 
 ## Outstanding Items
 
-### Priority 1: Agent Autonomy and Persistent Memory
-1. **Meeting persistence** - Save conversations to DB, meeting history tab, Charlie email summary after each meeting
-2. **Agent persistent memory** - Each agent needs memory of previous reports and decisions so they improve over time. New `agent_memory` table storing key learnings, decisions, and context per agent.
-3. **Cross-agent autonomous actions** - Agents need to trigger actions on each other without human intervention:
+### Priority 0: REBUILD AGENTS AS PERSISTENT SUB-AGENTS (Critical)
+
+**Current limitation:** Agents run as stateless serverless functions. Each meeting message is a fresh Claude API call with memory pasted into the prompt. This causes unreliable recall, no true conversation history, and no ability to work autonomously between runs.
+
+**Solution:** Rebuild using the **Claude Agent SDK** running as persistent processes on a dedicated server.
+
+**Architecture:**
+- Host: Railway, Fly.io, or EC2 (not Vercel serverless)
+- Each agent runs as a persistent process with its own conversation thread
+- Agents communicate via message passing (Supabase Realtime or Redis pub/sub)
+- True conversational memory within sessions, DB-backed long-term memory between sessions
+- Agents can proactively check for tasks and work on them continuously, not just on cron
+- Meeting room connects to live agent processes via WebSocket or SSE
+
+**Implementation steps:**
+1. Set up dedicated server (Railway recommended for simplicity)
+2. Install Claude Agent SDK
+3. Create persistent agent processes (one per agent or pooled)
+4. Migrate meeting room to connect to live agents instead of one-shot API calls
+5. Add inter-agent message bus for coordination
+6. Keep existing cron-based reporting as a fallback/supplement
+
+**What works today (interim):**
+- Cron-based agent runs with task processing (agents do work on assigned tasks during scheduled runs)
+- Meeting room with prompt-injected memory (unreliable but functional)
+- Agent workflow system (tasks assigned, processed, results saved)
+- Meeting history saved to DB
+
+### Priority 1: Agent Autonomy and Persistent Memory (current interim system)
+1. **Meeting persistence** - DONE: conversations saved to DB, summary emailed on end
+2. **Agent memory** - DONE but limited: agent_memory table stores learnings, loaded into prompts
+3. **Cross-agent tasks** - DONE: agent_tasks table, processed during cron runs
+4. **Cross-agent autonomous actions** - Agents trigger actions on each other during cron runs:
    - Drew (CGO) detects inactive user > triggers Resend email automatically
    - Pippa (CRO) identifies churn risk > notifies Alex (CFO) and Drew (CGO)
    - Leo (CLO) finds compliance issue > notifies Morgan (CTO) to fix
