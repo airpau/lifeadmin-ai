@@ -15,22 +15,25 @@ const urgentQueue = new Set<string>();
 const lastRunTimes: Record<string, number> = {};
 
 // Minimum interval between runs (milliseconds) - prevents burning API credits
+// Minimum intervals prevent burning API credits when there's no new work.
+// Agents still run IMMEDIATELY when triggered by another agent's task.
+// Estimated daily cost: ~$10-15/day with these intervals.
 const MIN_INTERVALS: Record<string, number> = {
-  support_agent: 5 * 60 * 1000,      // Riley: every 5 mins
-  support_lead: 10 * 60 * 1000,      // Sam: every 10 mins
-  exec_assistant: 30 * 60 * 1000,    // Charlie: every 30 mins
-  cfo: 60 * 60 * 1000,               // Alex: every hour
-  cto: 60 * 60 * 1000,               // Morgan: every hour
-  cao: 60 * 60 * 1000,               // Jamie: every hour
-  cmo: 60 * 60 * 1000,               // Taylor: every hour
-  head_of_ads: 2 * 60 * 60 * 1000,   // Jordan: every 2 hours
-  cco: 2 * 60 * 60 * 1000,           // Casey: every 2 hours
-  cgo: 2 * 60 * 60 * 1000,           // Drew: every 2 hours
-  cro: 60 * 60 * 1000,               // Pippa: every hour
-  clo: 4 * 60 * 60 * 1000,           // Leo: every 4 hours
-  cio: 6 * 60 * 60 * 1000,           // Nico: every 6 hours
-  cxo: 2 * 60 * 60 * 1000,           // Bella: every 2 hours
-  cfraudo: 60 * 60 * 1000,           // Finn: every hour
+  support_agent: 15 * 60 * 1000,     // Riley: every 15 mins (~$9/day)
+  support_lead: 30 * 60 * 1000,      // Sam: every 30 mins (~$5/day)
+  exec_assistant: 2 * 60 * 60 * 1000,// Charlie: every 2 hours (~$6/day)
+  cfo: 4 * 60 * 60 * 1000,           // Alex: every 4 hours (~$1/day)
+  cto: 4 * 60 * 60 * 1000,           // Morgan: every 4 hours (~$1/day)
+  cao: 4 * 60 * 60 * 1000,           // Jamie: every 4 hours (~$1/day)
+  cmo: 4 * 60 * 60 * 1000,           // Taylor: every 4 hours (~$1/day)
+  head_of_ads: 4 * 60 * 60 * 1000,   // Jordan: every 4 hours (~$1/day)
+  cco: 4 * 60 * 60 * 1000,           // Casey: every 4 hours (~$3/day)
+  cgo: 4 * 60 * 60 * 1000,           // Drew: every 4 hours (~$2/day)
+  cro: 4 * 60 * 60 * 1000,           // Pippa: every 4 hours (~$2/day)
+  clo: 8 * 60 * 60 * 1000,           // Leo: every 8 hours (~$2/day)
+  cio: 12 * 60 * 60 * 1000,          // Nico: every 12 hours (~$1/day)
+  cxo: 4 * 60 * 60 * 1000,           // Bella: every 4 hours (~$2/day)
+  cfraudo: 4 * 60 * 60 * 1000,       // Finn: every 4 hours (~$1/day)
 };
 
 function getSupabase() {
