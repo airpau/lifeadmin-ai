@@ -90,7 +90,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
               <span>{item.name}</span>
-              {'comingSoon' in item && item.comingSoon && (
+              {(item as any).comingSoon && (
                 <span className="text-[9px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-full ml-auto">Soon</span>
               )}
             </Link>
