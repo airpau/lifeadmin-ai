@@ -3,11 +3,9 @@ import { AgentDefinition } from '../types';
 /**
  * Complete registry of all 15 Paybacker AI agents.
  *
- * Cost-optimised for launch phase:
- * - Most agents use Haiku ($0.10-0.15/run) instead of Sonnet ($0.30-0.60/run)
- * - Only Charlie (EA) uses Sonnet for synthesising all reports
- * - Only Charlie can email the founder. Riley/Drew can email users.
- * - Estimated daily cost: ~$8-12/day (~$250-350/month)
+ * COST SAVING MODE: All agents Haiku, once daily, max 6 turns.
+ * Charlie uses Haiku too until we have real users.
+ * Target: ~$1-2/day (~$30-60/month)
  */
 export const agentRegistry: Record<string, AgentDefinition> = {
   // === SUPPORT (responsive, Haiku) ===
@@ -17,7 +15,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
-    maxTurns: 8,
+    maxTurns: 6,
     toolGroups: ['supabase', 'support', 'email', 'memory', 'tasks', 'reports'],
     canEmailUsers: true,  // Riley emails users when responding to tickets
   },
@@ -27,7 +25,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
-    maxTurns: 8,
+    maxTurns: 6,
     toolGroups: ['supabase', 'support', 'memory', 'tasks', 'reports'],  // No email
   },
 
@@ -36,9 +34,9 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     role: 'exec_assistant',
     name: 'Charlie - Executive Assistant',
     schedule: 'continuous',
-    model: 'claude-sonnet-4-6',
-    maxBudgetUsd: 0.40,
-    maxTurns: 12,
+    model: 'claude-haiku-4-5-20251001',
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'stripe', 'email', 'memory', 'tasks', 'reports'],  // Has email
     canEmailUsers: false,
   },
@@ -49,8 +47,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Alex - CFO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'stripe', 'memory', 'tasks', 'reports'],
   },
   cto: {
@@ -58,8 +56,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Morgan - CTO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cao: {
@@ -67,8 +65,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Jamie - CAO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cmo: {
@@ -76,8 +74,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Taylor - CMO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
 
@@ -87,8 +85,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Jordan - Head of Ads',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'google_ads', 'memory', 'tasks', 'reports'],
   },
   cco: {
@@ -96,8 +94,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Casey - CCO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'content', 'memory', 'tasks', 'reports'],
   },
   cgo: {
@@ -105,8 +103,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Drew - CGO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
     canEmailUsers: true,  // Drew sends engagement/activation emails to users
     supabaseWriteTables: ['profiles'],
@@ -116,8 +114,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Pippa - CRO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
     supabaseWriteTables: ['profiles'],
   },
@@ -126,8 +124,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Bella - CXO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
   },
   cfraudo: {
@@ -136,7 +134,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
-    maxTurns: 8,
+    maxTurns: 6,
     toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
     supabaseWriteTables: ['profiles'],
   },
@@ -147,8 +145,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Leo - CLO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'research', 'memory', 'tasks', 'reports'],
   },
   cio: {
@@ -156,8 +154,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     name: 'Nico - CIO',
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
-    maxBudgetUsd: 0.15,
-    maxTurns: 10,
+    maxBudgetUsd: 0.10,
+    maxTurns: 6,
     toolGroups: ['supabase', 'research', 'memory', 'tasks', 'reports'],
   },
 };

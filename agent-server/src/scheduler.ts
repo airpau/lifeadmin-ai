@@ -15,33 +15,28 @@ const urgentQueue = new Set<string>();
 const lastRunTimes: Record<string, number> = {};
 
 // Minimum interval between runs (milliseconds) - prevents burning API credits
-// Minimum intervals - agents ONLY run when this interval has passed AND they have work.
-// Target: ~$3-5/day (~$90-150/month)
+// COST SAVING MODE: All agents run once per day in sequence.
+// Only Riley checks for support tickets more often.
+// Target: ~$1-2/day (~$30-60/month)
 const MIN_INTERVALS: Record<string, number> = {
-  // SUPPORT - responsive to tickets
-  support_agent: 60 * 60 * 1000,       // Riley: every hour
-  support_lead: 2 * 60 * 60 * 1000,   // Sam: every 2 hours
+  // SUPPORT - Riley checks every 4 hours for tickets
+  support_agent: 4 * 60 * 60 * 1000,
+  support_lead: 24 * 60 * 60 * 1000,
 
-  // COORDINATOR
-  exec_assistant: 8 * 60 * 60 * 1000, // Charlie: every 8 hours (3x daily)
-
-  // CORE EXECUTIVES - 1x daily
-  cfo: 24 * 60 * 60 * 1000,           // Alex: daily
-  cto: 24 * 60 * 60 * 1000,           // Morgan: daily
-  cao: 24 * 60 * 60 * 1000,           // Jamie: daily
-  cmo: 24 * 60 * 60 * 1000,           // Taylor: daily
-
-  // SPECIALISTS - 1x daily
-  head_of_ads: 24 * 60 * 60 * 1000,   // Jordan: daily
-  cco: 24 * 60 * 60 * 1000,           // Casey: daily
-  cgo: 24 * 60 * 60 * 1000,           // Drew: daily
-  cro: 24 * 60 * 60 * 1000,           // Pippa: daily
-  cxo: 48 * 60 * 60 * 1000,           // Bella: every 2 days
-  cfraudo: 48 * 60 * 60 * 1000,       // Finn: every 2 days
-
-  // RESEARCH - infrequent
-  clo: 7 * 24 * 60 * 60 * 1000,       // Leo: weekly
-  cio: 14 * 24 * 60 * 60 * 1000,      // Nico: fortnightly
+  // ALL OTHERS - once per day
+  exec_assistant: 24 * 60 * 60 * 1000,
+  cfo: 24 * 60 * 60 * 1000,
+  cto: 24 * 60 * 60 * 1000,
+  cao: 24 * 60 * 60 * 1000,
+  cmo: 24 * 60 * 60 * 1000,
+  head_of_ads: 24 * 60 * 60 * 1000,
+  cco: 24 * 60 * 60 * 1000,
+  cgo: 24 * 60 * 60 * 1000,
+  cro: 24 * 60 * 60 * 1000,
+  cxo: 7 * 24 * 60 * 60 * 1000,       // Weekly
+  cfraudo: 7 * 24 * 60 * 60 * 1000,   // Weekly
+  clo: 14 * 24 * 60 * 60 * 1000,      // Fortnightly
+  cio: 30 * 24 * 60 * 60 * 1000,      // Monthly
 };
 
 function getSupabase() {
