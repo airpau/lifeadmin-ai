@@ -17,23 +17,33 @@ const lastRunTimes: Record<string, number> = {};
 // Minimum interval between runs (milliseconds) - prevents burning API credits
 // Minimum intervals prevent burning API credits when there's no new work.
 // Agents still run IMMEDIATELY when triggered by another agent's task.
-// Estimated daily cost: ~$10-15/day with these intervals.
+// All agents use Haiku except Charlie (Sonnet).
+// Estimated daily cost: ~$8-12/day (~$250-350/month)
 const MIN_INTERVALS: Record<string, number> = {
-  support_agent: 15 * 60 * 1000,     // Riley: every 15 mins (~$9/day)
-  support_lead: 30 * 60 * 1000,      // Sam: every 30 mins (~$5/day)
-  exec_assistant: 2 * 60 * 60 * 1000,// Charlie: every 2 hours (~$6/day)
-  cfo: 4 * 60 * 60 * 1000,           // Alex: every 4 hours (~$1/day)
-  cto: 4 * 60 * 60 * 1000,           // Morgan: every 4 hours (~$1/day)
-  cao: 4 * 60 * 60 * 1000,           // Jamie: every 4 hours (~$1/day)
-  cmo: 4 * 60 * 60 * 1000,           // Taylor: every 4 hours (~$1/day)
-  head_of_ads: 4 * 60 * 60 * 1000,   // Jordan: every 4 hours (~$1/day)
-  cco: 4 * 60 * 60 * 1000,           // Casey: every 4 hours (~$3/day)
-  cgo: 4 * 60 * 60 * 1000,           // Drew: every 4 hours (~$2/day)
-  cro: 4 * 60 * 60 * 1000,           // Pippa: every 4 hours (~$2/day)
-  clo: 8 * 60 * 60 * 1000,           // Leo: every 8 hours (~$2/day)
-  cio: 12 * 60 * 60 * 1000,          // Nico: every 12 hours (~$1/day)
-  cxo: 4 * 60 * 60 * 1000,           // Bella: every 4 hours (~$2/day)
-  cfraudo: 4 * 60 * 60 * 1000,       // Finn: every 4 hours (~$1/day)
+  // SUPPORT - responsive
+  support_agent: 15 * 60 * 1000,     // Riley: every 15 mins (Haiku ~$0.10/run, ~$3/day with skips)
+  support_lead: 30 * 60 * 1000,      // Sam: every 30 mins (Haiku ~$0.10/run, ~$1.50/day)
+
+  // COORDINATOR - frequent
+  exec_assistant: 4 * 60 * 60 * 1000,// Charlie: every 4 hours (Sonnet ~$0.40/run, ~$2.40/day)
+
+  // CORE EXECUTIVES - 4x daily
+  cfo: 6 * 60 * 60 * 1000,           // Alex: every 6 hours (Haiku ~$0.15/run, ~$0.60/day)
+  cto: 6 * 60 * 60 * 1000,           // Morgan: every 6 hours (~$0.60/day)
+  cao: 6 * 60 * 60 * 1000,           // Jamie: every 6 hours (~$0.60/day)
+  cmo: 6 * 60 * 60 * 1000,           // Taylor: every 6 hours (~$0.60/day)
+
+  // SPECIALISTS - 2x daily
+  head_of_ads: 12 * 60 * 60 * 1000,  // Jordan: every 12 hours (~$0.30/day)
+  cco: 12 * 60 * 60 * 1000,          // Casey: every 12 hours (~$0.30/day)
+  cgo: 12 * 60 * 60 * 1000,          // Drew: every 12 hours (~$0.30/day)
+  cro: 6 * 60 * 60 * 1000,           // Pippa: every 6 hours (~$0.60/day)
+  cxo: 12 * 60 * 60 * 1000,          // Bella: every 12 hours (~$0.30/day)
+  cfraudo: 12 * 60 * 60 * 1000,      // Finn: every 12 hours (~$0.20/day)
+
+  // RESEARCH - 1x daily
+  clo: 24 * 60 * 60 * 1000,          // Leo: daily (~$0.15/day)
+  cio: 48 * 60 * 60 * 1000,          // Nico: every 2 days (~$0.08/day)
 };
 
 function getSupabase() {
