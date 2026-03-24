@@ -30,6 +30,26 @@ export async function POST(request: NextRequest) {
 
   const { message, agents: requestedAgents, history, meetingId, action } = await request.json();
 
+  // If Railway agent server is configured, proxy the meeting request to it
+  const railwayUrl = process.env.RAILWAY_URL;
+  if (railwayUrl) {
+    try {
+      const railwayRes = await fetch(`${railwayUrl}/api/meeting`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message, agents: requestedAgents, history, meetingId, action }),
+      });
+      const railwayData = await railwayRes.json();
+      return NextResponse.json(railwayData);
+    } catch (e: any) {
+      console.error('[Meeting] Railway proxy failed, falling back to local:', e.message);
+      // Fall through to local execution
+    }
+  }
+
   const supabase = getAdmin();
 
   // Handle meeting end: generate summary and email
@@ -75,8 +95,6 @@ export async function POST(request: NextRequest) {
 
     // Save key decisions to agent memory AND create agent_tasks so agents can work on them
     if (actionItems.length > 0) {
-      const { createAgentTask } = await import('@/lib/agents/agent-workflow');
-
       for (const item of actionItems) {
         const assignedTo = item.assigned_to || 'exec_assistant';
 
@@ -90,13 +108,14 @@ export async function POST(request: NextRequest) {
         });
 
         // Create actionable task so the agent can work on it autonomously
-        await createAgentTask({
-          createdBy: 'meeting',
-          assignedTo,
+        await supabase.from('agent_tasks').insert({
+          created_by: 'meeting',
+          assigned_to: assignedTo,
           title: item.task || 'Meeting action item',
           description: item.task || '',
           priority: 'high',
-          sourceMeetingId: meetingId,
+          source_meeting_id: meetingId,
+          notes: [{ agent_role: 'meeting', note: `Action item from meeting`, timestamp: new Date().toISOString() }],
         });
       }
     }

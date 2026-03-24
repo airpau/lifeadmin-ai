@@ -1,21 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { AgentConfig } from '@/lib/agents/executive-agent';
-import { runCFOAgent } from '@/lib/agents/cfo-agent';
-import { runCTOAgent } from '@/lib/agents/cto-agent';
-import { runCAOAgent } from '@/lib/agents/cao-agent';
-import { runCMOAgent } from '@/lib/agents/cmo-agent';
-import { runExecAssistantAgent } from '@/lib/agents/exec-assistant-agent';
-import { runHeadOfAdsAgent } from '@/lib/agents/head-of-ads-agent';
-import { runCCOAgent } from '@/lib/agents/cco-agent';
-import { runCGOAgent } from '@/lib/agents/cgo-agent';
-import { runCROAgent } from '@/lib/agents/cro-agent';
-import { runCLOAgent } from '@/lib/agents/clo-agent';
-import { runCIOAgent } from '@/lib/agents/cio-agent';
-import { runCXOAgent } from '@/lib/agents/cxo-agent';
-import { runCFraudOAgent } from '@/lib/agents/cfraudo-agent';
-import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
-import { runSupportAgent } from '@/lib/agents/support-agent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -27,25 +11,7 @@ function getAdmin() {
   );
 }
 
-const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
-  cfo: runCFOAgent,
-  cto: runCTOAgent,
-  cao: runCAOAgent,
-  cmo: runCMOAgent,
-  exec_assistant: runExecAssistantAgent,
-  head_of_ads: runHeadOfAdsAgent,
-  cco: runCCOAgent,
-  cgo: runCGOAgent,
-  cro: runCROAgent,
-  clo: runCLOAgent,
-  cio: runCIOAgent,
-  cxo: runCXOAgent,
-  cfraudo: runCFraudOAgent,
-  support_lead: runSupportLeadAgent,
-  support_agent: runSupportAgent,
-};
-
-// PUT — update agent config
+// PUT - update agent config (still works via Supabase directly)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -83,7 +49,7 @@ export async function PUT(
   return NextResponse.json({ agent });
 }
 
-// POST — manually trigger agent run
+// POST - manually trigger agent run (proxies to Railway agent server)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -96,9 +62,10 @@ export async function POST(
   const { id } = await params;
   const supabase = getAdmin();
 
+  // Look up agent role from ID
   const { data: agent, error } = await supabase
     .from('ai_executives')
-    .select('*')
+    .select('role, name')
     .eq('id', id)
     .single();
 
@@ -106,47 +73,26 @@ export async function POST(
     return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
   }
 
-  const runner = agentRunners[agent.role];
-  if (!runner) {
-    return NextResponse.json({ error: `No runner for role: ${agent.role}` }, { status: 400 });
+  // Proxy to Railway agent server
+  const railwayUrl = process.env.RAILWAY_URL;
+  if (!railwayUrl) {
+    return NextResponse.json({
+      error: 'RAILWAY_URL not configured. Agent execution has moved to the Railway agent server.',
+    }, { status: 503 });
   }
 
-  const config: AgentConfig = {
-    id: agent.id,
-    role: agent.role,
-    name: agent.name,
-    systemPrompt: agent.system_prompt,
-    config: agent.config || {},
-  };
-
-  let report;
   try {
-    report = await runner(config);
+    const res = await fetch(`${railwayUrl}/api/trigger/${agent.role}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await res.json();
+    return NextResponse.json(data);
   } catch (err: any) {
-    console.error(`Agent ${agent.role} failed:`, err.message, err.stack);
-    return NextResponse.json({ error: `Agent failed: ${err.message}` }, { status: 500 });
+    return NextResponse.json({ error: `Railway proxy failed: ${err.message}` }, { status: 502 });
   }
-
-  // Save report
-  const { data: savedReport } = await supabase
-    .from('executive_reports')
-    .insert({
-      agent_id: agent.id,
-      report_type: report.reportType,
-      title: report.title,
-      content: report.content,
-      data: report.data,
-      recommendations: report.recommendations,
-      status: 'draft',
-    })
-    .select('*')
-    .single();
-
-  // Update last_run_at
-  await supabase
-    .from('ai_executives')
-    .update({ last_run_at: new Date().toISOString() })
-    .eq('id', id);
-
-  return NextResponse.json({ report: savedReport });
 }

@@ -14,6 +14,31 @@ function getAdmin() {
 // Auto-executable categories — these can be applied without code changes
 const AUTO_EXECUTABLE = ['config', 'prompt', 'schedule', 'data'];
 
+// Send feedback to Railway agent server for self-learning loop
+async function sendAgentFeedback(agentRole: string, eventType: string, sourceId: string, feedbackContent: string) {
+  const railwayUrl = process.env.RAILWAY_URL;
+  if (!railwayUrl) return;
+
+  try {
+    await fetch(`${railwayUrl}/api/feedback`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        agent_role: agentRole,
+        event_type: eventType,
+        source_id: sourceId,
+        feedback_content: feedbackContent,
+      }),
+    });
+  } catch (e) {
+    // Feedback failure should never block the approval flow
+    console.error('[Feedback] Failed to send to Railway:', e);
+  }
+}
+
 async function executeProposal(supabase: any, proposal: any): Promise<string> {
   // Execute based on category
   switch (proposal.category) {
@@ -121,6 +146,9 @@ export async function GET(request: NextRequest) {
       rejected_at: new Date().toISOString(),
     }).eq('id', proposal.id);
 
+    // Send feedback to Railway agent server for self-learning
+    await sendAgentFeedback(proposal.proposed_by, 'proposal_rejected', proposal.id, `Rejected: "${proposal.title}"`);
+
     return new NextResponse(renderHtml('Rejected', `"${proposal.title}" has been rejected.`, 'rejected'), {
       headers: { 'Content-Type': 'text/html' },
     });
@@ -152,6 +180,10 @@ export async function GET(request: NextRequest) {
     implementation_result: implementationResult,
     github_issue_url: githubUrl,
   }).eq('id', proposal.id);
+
+  // Send feedback to Railway agent server for self-learning
+  await sendAgentFeedback(proposal.proposed_by, 'proposal_approved', proposal.id, `Approved: "${proposal.title}"`);
+
 
   const message = AUTO_EXECUTABLE.includes(proposal.category)
     ? `"${proposal.title}" has been approved and implemented.\n\n${implementationResult}`
