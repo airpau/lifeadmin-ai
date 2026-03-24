@@ -88,8 +88,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     schedule: 'continuous',
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.15,
-    maxTurns: 8,
-    toolGroups: ['supabase', 'memory', 'tasks', 'reports'],
+    maxTurns: 10,
+    toolGroups: ['supabase', 'google_ads', 'memory', 'tasks', 'reports'],
   },
   cco: {
     role: 'cco',

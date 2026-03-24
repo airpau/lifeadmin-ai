@@ -19,7 +19,8 @@ export type ToolGroup =
   | 'research'
   | 'memory'
   | 'tasks'
-  | 'reports';
+  | 'reports'
+  | 'google_ads';
 
 export interface AgentRunContext {
   memories: MemoryRecord[];
