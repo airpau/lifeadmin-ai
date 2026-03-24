@@ -1,5 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config';
 
@@ -7,19 +5,29 @@ function getSupabase() {
   return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export const createTaskForAgent = tool(
-  'create_task_for_agent',
-  'Create a task and assign it to another agent. The assigned agent will pick it up on their next scheduled run. Use this for cross-functional collaboration.',
-  {
-    assigned_to: z.string().describe('Agent role to assign to (e.g. "cto", "cmo", "support_lead")'),
-    title: z.string().describe('Task title'),
-    description: z.string().describe('Detailed task description with context'),
-    priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
-    category: z.enum(['finance', 'technical', 'operations', 'marketing', 'content', 'support', 'compliance', 'growth', 'retention', 'intelligence', 'experience', 'fraud']).default('operations'),
-    due_in_hours: z.number().optional().describe('Hours from now until due'),
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
+const createTaskForAgent: ToolDef = {
+  name: 'create_task_for_agent',
+  description: 'Create a task and assign it to another agent. The assigned agent will pick it up on their next scheduled run. Use this for cross-functional collaboration.',
+  schema: {
+    type: 'object',
+    properties: {
+      assigned_to: { type: 'string', description: 'Agent role to assign to (e.g. "cto", "cmo", "support_lead")' },
+      title: { type: 'string', description: 'Task title' },
+      description: { type: 'string', description: 'Detailed task description with context' },
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
+      category: { type: 'string', enum: ['finance', 'technical', 'operations', 'marketing', 'content', 'support', 'compliance', 'growth', 'retention', 'intelligence', 'experience', 'fraud'], default: 'operations' },
+      due_in_hours: { type: 'number', description: 'Hours from now until due' },
+    },
+    required: ['assigned_to', 'title', 'description'],
   },
-  async (args, extra: any) => {
-    const agentRole = extra?.agentRole || 'unknown';
+  handler: async (args, agentRole) => {
     const sb = getSupabase();
 
     const record: Record<string, any> = {
@@ -27,8 +35,8 @@ export const createTaskForAgent = tool(
       assigned_to: args.assigned_to,
       title: args.title,
       description: args.description,
-      priority: args.priority,
-      category: args.category,
+      priority: args.priority || 'medium',
+      category: args.category || 'operations',
       notes: [{ agent_role: agentRole, note: `Task created: ${args.description}`, timestamp: new Date().toISOString() }],
     };
 
@@ -40,21 +48,23 @@ export const createTaskForAgent = tool(
 
     const { data, error } = await sb.from('agent_tasks').insert(record).select('id').single();
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Failed to create task: ${error.message}` }], isError: true };
+      return `Failed to create task: ${error.message}`;
     }
-    return { content: [{ type: 'text' as const, text: `Task created for ${args.assigned_to} (id: ${data.id}): "${args.title}"` }] };
-  }
-);
-
-export const getMyTasks = tool(
-  'get_my_tasks',
-  'Get tasks assigned to you. Check this at the start of each run to see what other agents need from you.',
-  {
-    status: z.enum(['pending', 'in_progress', 'all']).default('pending').describe('Filter by status'),
-    limit: z.number().max(10).default(5),
+    return `Task created for ${args.assigned_to} (id: ${data.id}): "${args.title}"`;
   },
-  async (args, extra: any) => {
-    const agentRole = extra?.agentRole || 'unknown';
+};
+
+const getMyTasks: ToolDef = {
+  name: 'get_my_tasks',
+  description: 'Get tasks assigned to you. Check this at the start of each run to see what other agents need from you.',
+  schema: {
+    type: 'object',
+    properties: {
+      status: { type: 'string', enum: ['pending', 'in_progress', 'all'], default: 'pending', description: 'Filter by status' },
+      limit: { type: 'number', maximum: 10, default: 5 },
+    },
+  },
+  handler: async (args, agentRole) => {
     const sb = getSupabase();
 
     let query = sb.from('agent_tasks')
@@ -62,21 +72,22 @@ export const getMyTasks = tool(
       .eq('assigned_to', agentRole)
       .order('priority', { ascending: true })
       .order('created_at', { ascending: true })
-      .limit(args.limit);
+      .limit(args.limit || 5);
 
-    if (args.status !== 'all') {
-      query = query.eq('status', args.status);
+    const status = args.status || 'pending';
+    if (status !== 'all') {
+      query = query.eq('status', status);
     } else {
       query = query.in('status', ['pending', 'in_progress']);
     }
 
     const { data, error } = await query;
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Failed to get tasks: ${error.message}` }], isError: true };
+      return `Failed to get tasks: ${error.message}`;
     }
 
     if (!data || data.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No pending tasks assigned to you.' }] };
+      return 'No pending tasks assigned to you.';
     }
 
     const formatted = data.map(t => {
@@ -84,24 +95,26 @@ export const getMyTasks = tool(
       return `[${t.priority}] ${t.title} (from: ${t.created_by}, status: ${t.status})\n  ${t.description}\n  Due: ${t.due_by || 'no deadline'}\n  Notes:\n${notes || '    (none)'}`;
     }).join('\n\n');
 
-    return { content: [{ type: 'text' as const, text: `${data.length} tasks:\n\n${formatted}` }] };
+    return `${data.length} tasks:\n\n${formatted}`;
   },
-  { annotations: { readOnlyHint: true } }
-);
+};
 
-export const completeTask = tool(
-  'complete_task',
-  'Mark a task as completed with a result description. The creating agent will see your result.',
-  {
-    task_id: z.string().uuid().describe('Task ID to complete'),
-    result: z.string().describe('What you did and what the outcome was'),
-    create_follow_up: z.boolean().default(false).describe('Should a follow-up task be created?'),
-    follow_up_for: z.string().optional().describe('Agent role for follow-up task'),
-    follow_up_title: z.string().optional().describe('Follow-up task title'),
-    follow_up_description: z.string().optional().describe('Follow-up task description'),
+const completeTask: ToolDef = {
+  name: 'complete_task',
+  description: 'Mark a task as completed with a result description. The creating agent will see your result.',
+  schema: {
+    type: 'object',
+    properties: {
+      task_id: { type: 'string', format: 'uuid', description: 'Task ID to complete' },
+      result: { type: 'string', description: 'What you did and what the outcome was' },
+      create_follow_up: { type: 'boolean', default: false, description: 'Should a follow-up task be created?' },
+      follow_up_for: { type: 'string', description: 'Agent role for follow-up task' },
+      follow_up_title: { type: 'string', description: 'Follow-up task title' },
+      follow_up_description: { type: 'string', description: 'Follow-up task description' },
+    },
+    required: ['task_id', 'result'],
   },
-  async (args, extra: any) => {
-    const agentRole = extra?.agentRole || 'unknown';
+  handler: async (args, agentRole) => {
     const sb = getSupabase();
 
     // Get current task to append note
@@ -117,7 +130,7 @@ export const completeTask = tool(
     }).eq('id', args.task_id);
 
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Failed to complete task: ${error.message}` }], isError: true };
+      return `Failed to complete task: ${error.message}`;
     }
 
     // Create follow-up if requested
@@ -131,20 +144,23 @@ export const completeTask = tool(
       });
     }
 
-    return { content: [{ type: 'text' as const, text: `Task completed. Result: "${args.result}"` }] };
-  }
-);
-
-export const addTaskNote = tool(
-  'add_task_note',
-  'Add a progress note to a task. Use this when you are working on a task but not yet done.',
-  {
-    task_id: z.string().uuid().describe('Task ID'),
-    note: z.string().describe('Progress note'),
-    new_status: z.enum(['in_progress', 'blocked']).optional().describe('Optionally update status'),
+    return `Task completed. Result: "${args.result}"`;
   },
-  async (args, extra: any) => {
-    const agentRole = extra?.agentRole || 'unknown';
+};
+
+const addTaskNote: ToolDef = {
+  name: 'add_task_note',
+  description: 'Add a progress note to a task. Use this when you are working on a task but not yet done.',
+  schema: {
+    type: 'object',
+    properties: {
+      task_id: { type: 'string', format: 'uuid', description: 'Task ID' },
+      note: { type: 'string', description: 'Progress note' },
+      new_status: { type: 'string', enum: ['in_progress', 'blocked'], description: 'Optionally update status' },
+    },
+    required: ['task_id', 'note'],
+  },
+  handler: async (args, agentRole) => {
     const sb = getSupabase();
 
     const { data: task } = await sb.from('agent_tasks').select('notes').eq('id', args.task_id).single();
@@ -157,10 +173,10 @@ export const addTaskNote = tool(
 
     const { error } = await sb.from('agent_tasks').update(update).eq('id', args.task_id);
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Failed to add note: ${error.message}` }], isError: true };
+      return `Failed to add note: ${error.message}`;
     }
-    return { content: [{ type: 'text' as const, text: `Note added to task.` }] };
-  }
-);
+    return `Note added to task.`;
+  },
+};
 
-export const taskTools = [createTaskForAgent, getMyTasks, completeTask, addTaskNote];
+export const taskTools: ToolDef[] = [createTaskForAgent, getMyTasks, completeTask, addTaskNote];

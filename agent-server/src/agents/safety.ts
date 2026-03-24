@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import type { HookCallback, HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
 import { config } from '../config';
 import { AgentDefinition } from '../types';
 
@@ -23,14 +22,15 @@ const AGENT_SYSTEM_WRITE_TABLES = [
   'agent_run_audit',
 ];
 
+export interface SafetyDecision {
+  allowed: boolean;
+  reason?: string;
+}
+
 /**
- * Create safety hook matchers for an agent run.
- * Returns PreToolUse and PostToolUse hook matchers.
+ * Pre-tool-use safety check. Returns whether the tool call should be allowed.
  */
-export function createSafetyHooks(agentDef: AgentDefinition, runId: string): {
-  preToolUse: HookCallbackMatcher[];
-  postToolUse: HookCallbackMatcher[];
-} {
+export function createSafetyChecker(agentDef: AgentDefinition, runId: string) {
   const allowedWriteTables = [
     ...AGENT_SYSTEM_WRITE_TABLES,
     ...(agentDef.supabaseWriteTables || []),
@@ -43,24 +43,14 @@ export function createSafetyHooks(agentDef: AgentDefinition, runId: string): {
   const MAX_SUPABASE_CALLS = 30;
   const MAX_EMAIL_CALLS = 5;
 
-  const preToolUseHook: HookCallback = async (input, _toolUseID, _options) => {
-    const hookInput = input as any;
-    const toolName: string = hookInput.tool_name || '';
-    const toolInput: Record<string, any> = hookInput.tool_input || {};
-
+  async function checkPreToolUse(toolName: string, toolInput: Record<string, any>): Promise<SafetyDecision> {
     // Rate limit supabase calls
     if (toolName.includes('query_table') || toolName.includes('insert_row') ||
         toolName.includes('update_row') || toolName.includes('count_rows') ||
         toolName.includes('run_sql')) {
       supabaseCallCount++;
       if (supabaseCallCount > MAX_SUPABASE_CALLS) {
-        return {
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'deny' as const,
-            permissionDecisionReason: `Rate limit: max ${MAX_SUPABASE_CALLS} database calls per run.`,
-          },
-        };
+        return { allowed: false, reason: `Rate limit: max ${MAX_SUPABASE_CALLS} database calls per run.` };
       }
     }
 
@@ -68,13 +58,7 @@ export function createSafetyHooks(agentDef: AgentDefinition, runId: string): {
     if (toolName.includes('send_') && toolName.includes('email')) {
       emailCallCount++;
       if (emailCallCount > MAX_EMAIL_CALLS) {
-        return {
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'deny' as const,
-            permissionDecisionReason: `Rate limit: max ${MAX_EMAIL_CALLS} emails per run.`,
-          },
-        };
+        return { allowed: false, reason: `Rate limit: max ${MAX_EMAIL_CALLS} emails per run.` };
       }
     }
 
@@ -83,63 +67,37 @@ export function createSafetyHooks(agentDef: AgentDefinition, runId: string): {
       const table = toolInput.table as string;
       if (table) {
         if (NEVER_WRITE_TABLES.includes(table)) {
-          return {
-            hookSpecificOutput: {
-              hookEventName: 'PreToolUse',
-              permissionDecision: 'deny' as const,
-              permissionDecisionReason: `Table "${table}" is never writable by agents.`,
-            },
-          };
+          return { allowed: false, reason: `Table "${table}" is never writable by agents.` };
         }
 
         if (!allowedWriteTables.includes(table)) {
-          return {
-            hookSpecificOutput: {
-              hookEventName: 'PreToolUse',
-              permissionDecision: 'deny' as const,
-              permissionDecisionReason: `Agent "${agentDef.role}" has no write access to "${table}".`,
-            },
-          };
+          return { allowed: false, reason: `Agent "${agentDef.role}" has no write access to "${table}".` };
         }
       }
     }
 
     // Block user emails if agent doesn't have permission
     if (toolName.includes('send_user_email') && !agentDef.canEmailUsers) {
-      return {
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny' as const,
-          permissionDecisionReason: `Agent "${agentDef.role}" cannot email users directly.`,
-        },
-      };
+      return { allowed: false, reason: `Agent "${agentDef.role}" cannot email users directly.` };
     }
 
-    return {};
-  };
+    return { allowed: true };
+  }
 
-  const postToolUseHook: HookCallback = async (input, _toolUseID, _options) => {
-    const hookInput = input as any;
-    // Audit log every tool call
+  async function auditToolCall(toolName: string, toolInput: any, toolOutput: string): Promise<void> {
     try {
       const sb = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
       await sb.from('agent_run_audit').insert({
         agent_role: agentDef.role,
         run_id: runId,
-        tool_name: hookInput.tool_name || 'unknown',
-        tool_input: hookInput.tool_input ? JSON.parse(JSON.stringify(hookInput.tool_input)) : null,
-        tool_output_summary: typeof hookInput.tool_result === 'string'
-          ? hookInput.tool_result.substring(0, 500)
-          : JSON.stringify(hookInput.tool_result)?.substring(0, 500),
+        tool_name: toolName,
+        tool_input: toolInput ? JSON.parse(JSON.stringify(toolInput)) : null,
+        tool_output_summary: toolOutput?.substring(0, 500) || null,
       });
     } catch {
       // Audit logging should never block agent execution
     }
-    return {};
-  };
+  }
 
-  return {
-    preToolUse: [{ hooks: [preToolUseHook] }],
-    postToolUse: [{ hooks: [postToolUseHook] }],
-  };
+  return { checkPreToolUse, auditToolCall };
 }

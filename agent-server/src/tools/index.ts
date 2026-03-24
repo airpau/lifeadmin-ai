@@ -1,4 +1,3 @@
-import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { supabaseTools, supabaseReadOnlyTools } from './supabase-tools';
 import { emailTools, userEmailTools } from './email-tools';
 import { memoryTools } from './memory-tools';
@@ -10,8 +9,15 @@ import { researchTools } from './research-tools';
 import { stripeTools } from './stripe-tools';
 import { ToolGroup } from '../types';
 
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
 // Tool group definitions
-const toolGroupMap: Record<ToolGroup, any[]> = {
+const toolGroupMap: Record<ToolGroup, ToolDef[]> = {
   supabase: supabaseReadOnlyTools,
   email: emailTools,
   stripe: stripeTools,
@@ -27,17 +33,17 @@ const toolGroupMap: Record<ToolGroup, any[]> = {
 const writeableSupabaseTools = supabaseTools;
 
 /**
- * Build an MCP server with only the tools an agent is permitted to use.
+ * Collect all ToolDef objects an agent is permitted to use.
  */
-export function buildToolServer(
+export function getToolsForAgent(
   agentRole: string,
   toolGroups: ToolGroup[],
   options?: {
     supabaseWriteTables?: string[];
     canEmailUsers?: boolean;
   }
-) {
-  const tools: any[] = [];
+): ToolDef[] {
+  const tools: ToolDef[] = [];
 
   for (const group of toolGroups) {
     if (group === 'supabase' && options?.supabaseWriteTables?.length) {
@@ -49,15 +55,11 @@ export function buildToolServer(
     }
   }
 
-  return createSdkMcpServer({
-    name: `paybacker-${agentRole}`,
-    version: '1.0.0',
-    tools,
-  });
+  return tools;
 }
 
 /**
- * Get the list of allowed tool names for an agent (for SDK allowedTools config)
+ * Get the list of allowed tool names for an agent.
  */
 export function getAllowedToolNames(
   agentRole: string,
@@ -67,18 +69,16 @@ export function getAllowedToolNames(
     canEmailUsers?: boolean;
   }
 ): string[] {
-  const serverName = `paybacker-${agentRole}`;
-  const tools: any[] = [];
-
-  for (const group of toolGroups) {
-    if (group === 'supabase' && options?.supabaseWriteTables?.length) {
-      tools.push(...writeableSupabaseTools);
-    } else if (group === 'email' && options?.canEmailUsers) {
-      tools.push(...userEmailTools);
-    } else {
-      tools.push(...(toolGroupMap[group] || []));
-    }
-  }
-
-  return tools.map(t => `mcp__${serverName}__${t.name || t._name}`);
+  const tools = getToolsForAgent(agentRole, toolGroups, options);
+  return tools.map(t => t.name);
 }
+
+export { supabaseTools, supabaseReadOnlyTools } from './supabase-tools';
+export { emailTools, userEmailTools } from './email-tools';
+export { memoryTools } from './memory-tools';
+export { taskTools } from './task-tools';
+export { reportTools } from './report-tools';
+export { supportTools } from './support-tools';
+export { contentTools } from './content-tools';
+export { researchTools } from './research-tools';
+export { stripeTools } from './stripe-tools';

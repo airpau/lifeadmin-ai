@@ -1,17 +1,26 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { config } from '../config';
 
-export const webResearch = tool(
-  'web_research',
-  'Research a topic using Perplexity AI. Use for regulatory changes, competitor analysis, market trends, and compliance updates. Returns current, real-time information.',
-  {
-    query: z.string().describe('Research query (be specific for better results)'),
-    focus: z.enum(['web', 'academic', 'news']).default('web').describe('Search focus area'),
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
+const webResearch: ToolDef = {
+  name: 'web_research',
+  description: 'Research a topic using Perplexity AI. Use for regulatory changes, competitor analysis, market trends, and compliance updates. Returns current, real-time information.',
+  schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Research query (be specific for better results)' },
+      focus: { type: 'string', enum: ['web', 'academic', 'news'], default: 'web', description: 'Search focus area' },
+    },
+    required: ['query'],
   },
-  async (args) => {
+  handler: async (args) => {
     if (!config.PERPLEXITY_API_KEY) {
-      return { content: [{ type: 'text' as const, text: 'PERPLEXITY_API_KEY not configured. Cannot perform web research.' }], isError: true };
+      return 'PERPLEXITY_API_KEY not configured. Cannot perform web research.';
     }
 
     try {
@@ -27,7 +36,7 @@ export const webResearch = tool(
             { role: 'system', content: 'You are a research assistant focused on UK consumer finance, regulations, and fintech. Provide concise, factual answers with sources.' },
             { role: 'user', content: args.query },
           ],
-          search_focus: args.focus,
+          search_focus: args.focus || 'web',
         }),
       });
 
@@ -35,15 +44,14 @@ export const webResearch = tool(
       const content = data.choices?.[0]?.message?.content;
 
       if (!content) {
-        return { content: [{ type: 'text' as const, text: `No results. Raw: ${JSON.stringify(data).substring(0, 500)}` }], isError: true };
+        return `No results. Raw: ${JSON.stringify(data).substring(0, 500)}`;
       }
 
-      return { content: [{ type: 'text' as const, text: content }] };
+      return content;
     } catch (err: any) {
-      return { content: [{ type: 'text' as const, text: `Research failed: ${err.message}` }], isError: true };
+      return `Research failed: ${err.message}`;
     }
   },
-  { annotations: { readOnlyHint: true, openWorldHint: true } }
-);
+};
 
-export const researchTools = [webResearch];
+export const researchTools: ToolDef[] = [webResearch];

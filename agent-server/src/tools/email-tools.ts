@@ -1,5 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { Resend } from 'resend';
 import { config } from '../config';
 
@@ -9,21 +7,33 @@ function getResend() {
   return _resend;
 }
 
-export const sendReportEmail = tool(
-  'send_report_email',
-  'Send a formatted report email to the founder (hello@paybacker.co.uk). Use this to deliver your analysis, recommendations, and alerts.',
-  {
-    subject: z.string().describe('Email subject line'),
-    title: z.string().describe('Report title'),
-    content: z.string().describe('Main report body (supports HTML)'),
-    recommendations: z.array(z.string()).default([]).describe('List of recommendations'),
-    priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
+const sendReportEmail: ToolDef = {
+  name: 'send_report_email',
+  description: 'Send a formatted report email to the founder (hello@paybacker.co.uk). Use this to deliver your analysis, recommendations, and alerts.',
+  schema: {
+    type: 'object',
+    properties: {
+      subject: { type: 'string', description: 'Email subject line' },
+      title: { type: 'string', description: 'Report title' },
+      content: { type: 'string', description: 'Main report body (supports HTML)' },
+      recommendations: { type: 'array', items: { type: 'string' }, default: [], description: 'List of recommendations' },
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
+    },
+    required: ['subject', 'title', 'content'],
   },
-  async (args) => {
+  handler: async (args) => {
     const resend = getResend();
-    const priorityEmoji = { low: '', medium: '', high: '[HIGH] ', urgent: '[URGENT] ' };
-    const recsHtml = args.recommendations.length > 0
-      ? `<h3>Recommendations</h3><ul>${args.recommendations.map(r => `<li>${r}</li>`).join('')}</ul>`
+    const priorityEmoji: Record<string, string> = { low: '', medium: '', high: '[HIGH] ', urgent: '[URGENT] ' };
+    const recs = args.recommendations || [];
+    const recsHtml = recs.length > 0
+      ? `<h3>Recommendations</h3><ul>${recs.map((r: string) => `<li>${r}</li>`).join('')}</ul>`
       : '';
 
     const html = `
@@ -41,26 +51,30 @@ export const sendReportEmail = tool(
         from: config.FROM_EMAIL,
         to: config.FOUNDER_EMAIL,
         replyTo: config.REPLY_TO,
-        subject: `${priorityEmoji[args.priority]}${args.subject}`,
+        subject: `${priorityEmoji[args.priority || 'medium']}${args.subject}`,
         html,
       });
-      return { content: [{ type: 'text' as const, text: `Report email sent to ${config.FOUNDER_EMAIL}` }] };
+      return `Report email sent to ${config.FOUNDER_EMAIL}`;
     } catch (err: any) {
-      return { content: [{ type: 'text' as const, text: `Email failed: ${err.message}` }], isError: true };
+      return `Email failed: ${err.message}`;
     }
-  }
-);
-
-export const sendUserEmail = tool(
-  'send_user_email',
-  'Send an email to a specific user. Only available to Support Agent and CGO. Use for ticket responses, activation emails, and engagement messages.',
-  {
-    to: z.string().email().describe('Recipient email address'),
-    subject: z.string().describe('Email subject'),
-    html_body: z.string().describe('Email HTML body'),
-    reply_to: z.string().email().optional(),
   },
-  async (args) => {
+};
+
+const sendUserEmail: ToolDef = {
+  name: 'send_user_email',
+  description: 'Send an email to a specific user. Only available to Support Agent and CGO. Use for ticket responses, activation emails, and engagement messages.',
+  schema: {
+    type: 'object',
+    properties: {
+      to: { type: 'string', format: 'email', description: 'Recipient email address' },
+      subject: { type: 'string', description: 'Email subject' },
+      html_body: { type: 'string', description: 'Email HTML body' },
+      reply_to: { type: 'string', format: 'email', description: 'Reply-to address' },
+    },
+    required: ['to', 'subject', 'html_body'],
+  },
+  handler: async (args) => {
     const resend = getResend();
     try {
       await resend.emails.send({
@@ -70,25 +84,29 @@ export const sendUserEmail = tool(
         subject: args.subject,
         html: args.html_body,
       });
-      return { content: [{ type: 'text' as const, text: `Email sent to ${args.to}` }] };
+      return `Email sent to ${args.to}`;
     } catch (err: any) {
-      return { content: [{ type: 'text' as const, text: `Email failed: ${err.message}` }], isError: true };
+      return `Email failed: ${err.message}`;
     }
-  }
-);
-
-export const sendApprovalEmail = tool(
-  'send_approval_email',
-  'Send an improvement proposal to the founder with approve/reject links. The founder clicks to approve or reject.',
-  {
-    title: z.string().describe('Proposal title'),
-    description: z.string().describe('What this improvement does and why'),
-    implementation: z.string().describe('How to implement this'),
-    category: z.enum(['config', 'code', 'data', 'prompt', 'schedule', 'feature', 'bugfix', 'infrastructure']),
-    priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
-    estimated_impact: z.string().describe('Expected business impact'),
   },
-  async (args) => {
+};
+
+const sendApprovalEmail: ToolDef = {
+  name: 'send_approval_email',
+  description: 'Send an improvement proposal to the founder with approve/reject links. The founder clicks to approve or reject.',
+  schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Proposal title' },
+      description: { type: 'string', description: 'What this improvement does and why' },
+      implementation: { type: 'string', description: 'How to implement this' },
+      category: { type: 'string', enum: ['config', 'code', 'data', 'prompt', 'schedule', 'feature', 'bugfix', 'infrastructure'] },
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
+      estimated_impact: { type: 'string', description: 'Expected business impact' },
+    },
+    required: ['title', 'description', 'implementation', 'category', 'estimated_impact'],
+  },
+  handler: async (args) => {
     // Generate approval token
     const token = crypto.randomUUID();
     const baseUrl = config.SITE_URL;
@@ -98,7 +116,7 @@ export const sendApprovalEmail = tool(
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px;">
         <h2 style="color: #0f172a;">Improvement Proposal: ${args.title}</h2>
-        <p><strong>Category:</strong> ${args.category} | <strong>Priority:</strong> ${args.priority}</p>
+        <p><strong>Category:</strong> ${args.category} | <strong>Priority:</strong> ${args.priority || 'medium'}</p>
         <h3>Why</h3><p>${args.description}</p>
         <h3>How</h3><p>${args.implementation}</p>
         <h3>Impact</h3><p>${args.estimated_impact}</p>
@@ -117,12 +135,12 @@ export const sendApprovalEmail = tool(
         subject: `[Approve/Reject] ${args.title}`,
         html,
       });
-      return { content: [{ type: 'text' as const, text: `Proposal sent for approval (token: ${token}). Title: "${args.title}"` }] };
+      return `Proposal sent for approval (token: ${token}). Title: "${args.title}"`;
     } catch (err: any) {
-      return { content: [{ type: 'text' as const, text: `Email failed: ${err.message}` }], isError: true };
+      return `Email failed: ${err.message}`;
     }
-  }
-);
+  },
+};
 
-export const emailTools = [sendReportEmail, sendApprovalEmail];
-export const userEmailTools = [sendReportEmail, sendApprovalEmail, sendUserEmail];
+export const emailTools: ToolDef[] = [sendReportEmail, sendApprovalEmail];
+export const userEmailTools: ToolDef[] = [sendReportEmail, sendApprovalEmail, sendUserEmail];

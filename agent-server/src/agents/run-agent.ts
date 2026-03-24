@@ -1,25 +1,53 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config';
 import { agentRegistry } from './registry';
 import { agentPrompts } from './prompts';
-import { buildToolServer, getAllowedToolNames } from '../tools';
-import { createSafetyHooks } from './safety';
+import { createSafetyChecker } from './safety';
+import { getToolsForAgent } from '../tools';
 import { AgentRunContext } from '../types';
+
+const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
 function getSupabase() {
   return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 /**
- * Load pre-run context for an agent: memories, tasks, feedback, goals, predictions
+ * Build tool definitions for the Anthropic API from an agent's permitted tool groups
+ */
+function buildTools(role: string): { tools: Anthropic.Tool[]; handlers: Record<string, (args: any, agentRole: string) => Promise<string>> } {
+  const agentDef = agentRegistry[role];
+  if (!agentDef) return { tools: [], handlers: {} };
+
+  const toolDefs = getToolsForAgent(role, agentDef.toolGroups, {
+    supabaseWriteTables: agentDef.supabaseWriteTables,
+    canEmailUsers: agentDef.canEmailUsers,
+  });
+
+  const tools: Anthropic.Tool[] = [];
+  const handlers: Record<string, (args: any, agentRole: string) => Promise<string>> = {};
+
+  for (const td of toolDefs) {
+    tools.push({
+      name: td.name,
+      description: td.description,
+      input_schema: td.schema as Anthropic.Tool.InputSchema,
+    });
+    handlers[td.name] = td.handler;
+  }
+
+  return { tools, handlers };
+}
+
+/**
+ * Load pre-run context for an agent
  */
 async function loadAgentContext(role: string): Promise<AgentRunContext> {
   const sb = getSupabase();
   const now = new Date().toISOString();
 
   const [memoriesRes, tasksRes, feedbackRes, goalsRes, predictionsRes, accuracyRes] = await Promise.all([
-    // Top 10 memories by importance
     sb.from('agent_memory')
       .select('id, agent_role, memory_type, title, content, importance, access_count, created_at')
       .eq('agent_role', role)
@@ -27,39 +55,29 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
       .order('importance', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(10),
-
-    // Pending tasks assigned to this agent
     sb.from('agent_tasks')
       .select('id, created_by, assigned_to, title, description, priority, category, status, notes, created_at, due_by')
       .eq('assigned_to', role)
       .in('status', ['pending', 'in_progress'])
-      .order('priority', { ascending: true })
+      .order('created_at', { ascending: true })
       .limit(5),
-
-    // Unprocessed feedback
     sb.from('agent_feedback_events')
       .select('id, agent_role, event_type, source, feedback_content, impact_score, created_at')
       .eq('agent_role', role)
       .eq('processed', false)
       .order('created_at', { ascending: false })
       .limit(5),
-
-    // Active goals
     sb.from('agent_goals')
       .select('id, agent_role, title, success_criteria, metric_name, target_value, current_value, baseline_value, status, progress_notes, deadline, created_at')
       .eq('agent_role', role)
       .eq('status', 'active')
       .limit(5),
-
-    // Predictions due for evaluation
     sb.from('agent_predictions')
       .select('id, agent_role, prediction, confidence, reasoning, evaluation_date, created_at')
       .eq('agent_role', role)
       .is('was_correct', null)
       .lte('evaluation_date', now)
       .limit(5),
-
-    // Prediction accuracy (last 30 days)
     sb.from('agent_predictions')
       .select('was_correct')
       .eq('agent_role', role)
@@ -67,7 +85,6 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
       .gte('evaluated_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
   ]);
 
-  // Calculate accuracy
   const evaluated = accuracyRes.data || [];
   const predictionAccuracy = evaluated.length > 0
     ? Math.round((evaluated.filter(p => p.was_correct).length / evaluated.length) * 100)
@@ -89,11 +106,10 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
 function buildRunMessage(role: string, context: AgentRunContext): string {
   const now = new Date();
   const parts: string[] = [
-    `It is ${now.toLocaleString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}. This is your scheduled run.`,
+    `It is ${now.toLocaleString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' })}. This is your scheduled run.`,
     '',
   ];
 
-  // Memories
   if (context.memories.length > 0) {
     parts.push('## Your Memories');
     for (const m of context.memories) {
@@ -102,7 +118,6 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
     parts.push('');
   }
 
-  // Feedback
   if (context.recentFeedback.length > 0) {
     parts.push('## Unprocessed Founder Feedback');
     for (const f of context.recentFeedback) {
@@ -112,7 +127,6 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
     parts.push('');
   }
 
-  // Goals
   if (context.activeGoals.length > 0) {
     parts.push('## Your Active Goals');
     for (const g of context.activeGoals) {
@@ -123,7 +137,6 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
     parts.push('');
   }
 
-  // Predictions due
   if (context.pendingPredictions.length > 0) {
     parts.push('## Predictions Due for Evaluation');
     for (const p of context.pendingPredictions) {
@@ -133,19 +146,12 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
     parts.push('');
   }
 
-  // Prediction accuracy
   if (context.predictionAccuracy !== null) {
     parts.push(`## Your Prediction Track Record`);
     parts.push(`Accuracy over the last 30 days: ${context.predictionAccuracy}%`);
-    if (context.predictionAccuracy < 50) {
-      parts.push('Your predictions have been below 50% accurate. Be more conservative and data-driven.');
-    } else if (context.predictionAccuracy > 80) {
-      parts.push('Strong prediction accuracy. You can be more confident in your forecasts.');
-    }
     parts.push('');
   }
 
-  // Pending tasks
   if (context.pendingTasks.length > 0) {
     parts.push('## Tasks Assigned to You');
     for (const t of context.pendingTasks) {
@@ -155,81 +161,116 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
     parts.push('');
   }
 
-  parts.push('Now investigate the business using your tools, process any tasks, and generate your report.');
+  parts.push('Now investigate the business using your tools, process any tasks, and generate your report. Use save_report to save your findings.');
 
   return parts.join('\n');
 }
 
 /**
- * Run a single agent using the Claude Agent SDK
+ * Run a single agent using the Anthropic API with tool use (agentic loop)
  */
 export async function runAgent(role: string): Promise<{ success: boolean; error?: string; cost?: number }> {
   const agentDef = agentRegistry[role];
-  if (!agentDef) {
-    return { success: false, error: `Unknown agent role: ${role}` };
-  }
+  if (!agentDef) return { success: false, error: `Unknown agent role: ${role}` };
 
   const systemPrompt = agentPrompts[role];
-  if (!systemPrompt) {
-    return { success: false, error: `No system prompt for role: ${role}` };
-  }
+  if (!systemPrompt) return { success: false, error: `No system prompt for role: ${role}` };
 
   console.log(`[${agentDef.name}] Starting scheduled run...`);
 
   try {
-    // Load pre-run context
     const context = await loadAgentContext(role);
-
-    // Build the run message
     const runMessage = buildRunMessage(role, context);
+    const { tools, handlers } = buildTools(role);
 
-    // Build tool server with agent's permitted tools
-    const toolServer = buildToolServer(role, agentDef.toolGroups, {
-      supabaseWriteTables: agentDef.supabaseWriteTables,
-      canEmailUsers: agentDef.canEmailUsers,
-    });
+    const messages: Anthropic.MessageParam[] = [
+      { role: 'user', content: runMessage },
+    ];
 
-    // Create safety hooks
-    const runId = crypto.randomUUID();
-    const safetyHooks = createSafetyHooks(agentDef, runId);
-
-    // Run the agent
     let totalCost = 0;
-    let resultText = '';
+    let turns = 0;
+    const maxTurns = agentDef.maxTurns;
+    const runId = crypto.randomUUID();
+    const sb = getSupabase();
+    const safety = createSafetyChecker(agentDef, runId);
 
-    for await (const message of query({
-      prompt: runMessage,
-      options: {
-        systemPrompt,
+    // Agentic loop: keep calling Claude until it stops using tools
+    while (turns < maxTurns) {
+      turns++;
+
+      const response = await anthropic.messages.create({
         model: agentDef.model,
-        maxTurns: agentDef.maxTurns,
-        maxBudgetUsd: agentDef.maxBudgetUsd,
-        mcpServers: { [`paybacker-${role}`]: toolServer },
-        allowedTools: [`mcp__paybacker-${role}__*`],
-        permissionMode: 'bypassPermissions',
-        hooks: {
-          PreToolUse: safetyHooks.preToolUse,
-          PostToolUse: safetyHooks.postToolUse,
-        },
-      },
-    })) {
-      if (message.type === 'result') {
-        totalCost = (message as any).total_cost_usd || 0;
-        if ((message as any).subtype === 'success') {
-          resultText = (message as any).result || '';
-        } else {
-          console.error(`[${agentDef.name}] Run ended with: ${(message as any).subtype}`);
+        max_tokens: 4096,
+        system: systemPrompt,
+        tools: tools as any,
+        messages,
+      });
+
+      // Track cost
+      const inputTokens = response.usage?.input_tokens || 0;
+      const outputTokens = response.usage?.output_tokens || 0;
+      const isHaiku = agentDef.model.includes('haiku');
+      totalCost += isHaiku
+        ? (inputTokens * 0.8 + outputTokens * 4) / 1_000_000
+        : (inputTokens * 3 + outputTokens * 15) / 1_000_000;
+
+      // Check budget
+      if (totalCost > agentDef.maxBudgetUsd) {
+        console.log(`[${agentDef.name}] Budget exceeded ($${totalCost.toFixed(4)} > $${agentDef.maxBudgetUsd}). Stopping.`);
+        break;
+      }
+
+      // If Claude wants to use tools, execute them
+      if (response.stop_reason === 'tool_use') {
+        const assistantContent = response.content;
+        messages.push({ role: 'assistant', content: assistantContent });
+
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+        for (const block of assistantContent) {
+          if (block.type === 'tool_use') {
+            const handler = handlers[block.name];
+            let result: string;
+
+            if (handler) {
+              try {
+                // Safety check
+                const check = await safety.checkPreToolUse(block.name, block.input as Record<string, any>);
+                if (!check.allowed) {
+                  result = `Blocked: ${check.reason}`;
+                } else {
+                  result = await handler(block.input as any, role);
+                }
+                // Audit log
+                await safety.auditToolCall(block.name, block.input, result);
+              } catch (err: any) {
+                result = `Tool error: ${err.message}`;
+              }
+            } else {
+              result = `Unknown tool: ${block.name}`;
+            }
+
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: result,
+            });
+          }
         }
+
+        messages.push({ role: 'user', content: toolResults });
+      } else {
+        // Claude is done (end_turn or max_tokens)
+        break;
       }
     }
 
     // Update last_run_at
-    const sb = getSupabase();
     await sb.from('ai_executives')
       .update({ last_run_at: new Date().toISOString() })
       .eq('role', role);
 
-    console.log(`[${agentDef.name}] Run complete. Cost: $${totalCost.toFixed(4)}`);
+    console.log(`[${agentDef.name}] Run complete. ${turns} turns, cost: $${totalCost.toFixed(4)}`);
     return { success: true, cost: totalCost };
 
   } catch (err: any) {
@@ -240,7 +281,6 @@ export async function runAgent(role: string): Promise<{ success: boolean; error?
 
 /**
  * Run an agent for a meeting (interactive mode)
- * Returns the agent's response to a specific message
  */
 export async function runAgentForMeeting(
   role: string,
@@ -250,47 +290,52 @@ export async function runAgentForMeeting(
   const agentDef = agentRegistry[role];
   if (!agentDef) return `Unknown agent: ${role}`;
 
-  const systemPrompt = agentPrompts[role] + `\n\nYou are in a live meeting with the founder. Respond concisely and directly to their message. You have access to your tools to look up data if needed.`;
+  const systemPrompt = (agentPrompts[role] || '') + `\n\nYou are in a live meeting with the founder. Respond concisely and directly. You have access to your tools to look up data if needed.`;
+  const { tools, handlers } = buildTools(role);
 
-  const toolServer = buildToolServer(role, agentDef.toolGroups, {
-    supabaseWriteTables: agentDef.supabaseWriteTables,
-    canEmailUsers: agentDef.canEmailUsers,
-  });
-
-  const runId = crypto.randomUUID();
-  const safetyHooks = createSafetyHooks(agentDef, runId);
-
-  // Build conversation context
   const historyContext = meetingHistory.length > 0
     ? `Previous messages in this meeting:\n${meetingHistory.map(m => `${m.agent || 'Founder'}: ${m.content}`).join('\n')}\n\n`
     : '';
 
-  let resultText = '';
+  const messages: Anthropic.MessageParam[] = [
+    { role: 'user', content: `${historyContext}Founder says: "${message}"\n\nRespond as ${agentDef.name}. Be concise (2-4 sentences unless detail is requested).` },
+  ];
 
   try {
-    for await (const msg of query({
-      prompt: `${historyContext}Founder says: "${message}"\n\nRespond as ${agentDef.name}. Be concise (2-4 sentences unless detail is requested). Use your tools if you need to look up data.`,
-      options: {
-        systemPrompt,
-        model: 'claude-haiku-4-5-20251001', // Always Haiku for meetings (cost control)
-        maxTurns: 5,
-        maxBudgetUsd: 0.05,
-        mcpServers: { [`paybacker-${role}`]: toolServer },
-        allowedTools: [`mcp__paybacker-${role}__*`],
-        permissionMode: 'bypassPermissions',
-        hooks: {
-          PreToolUse: safetyHooks.preToolUse,
-          PostToolUse: safetyHooks.postToolUse,
-        },
-      },
-    })) {
-      if (msg.type === 'result' && (msg as any).subtype === 'success') {
-        resultText = (msg as any).result || '';
+    // Allow up to 3 tool calls in meetings
+    for (let turn = 0; turn < 3; turn++) {
+      const response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        tools: tools as any,
+        messages,
+      });
+
+      if (response.stop_reason === 'tool_use') {
+        messages.push({ role: 'assistant', content: response.content });
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+        for (const block of response.content) {
+          if (block.type === 'tool_use') {
+            const handler = handlers[block.name];
+            let result = 'Unknown tool';
+            if (handler) {
+              try { result = await handler(block.input as any, role); } catch (e: any) { result = `Error: ${e.message}`; }
+            }
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+          }
+        }
+        messages.push({ role: 'user', content: toolResults });
+      } else {
+        // Extract text response
+        const textBlock = response.content.find(b => b.type === 'text');
+        return textBlock ? (textBlock as any).text : 'No response generated.';
       }
     }
-  } catch (err: any) {
-    resultText = `Sorry, I encountered an error: ${err.message}`;
-  }
 
-  return resultText || 'No response generated.';
+    return 'Meeting response limit reached.';
+  } catch (err: any) {
+    return `Sorry, I encountered an error: ${err.message}`;
+  }
 }

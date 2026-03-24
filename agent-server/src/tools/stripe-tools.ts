@@ -1,5 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config';
 
@@ -7,11 +5,21 @@ function getSupabase() {
   return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export const getMrr = tool(
-  'get_mrr',
-  'Calculate current Monthly Recurring Revenue (MRR) from active subscriptions. Queries the profiles table for subscription tier distribution.',
-  {},
-  async () => {
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
+const getMrr: ToolDef = {
+  name: 'get_mrr',
+  description: 'Calculate current Monthly Recurring Revenue (MRR) from active subscriptions. Queries the profiles table for subscription tier distribution.',
+  schema: {
+    type: 'object',
+    properties: {},
+  },
+  handler: async () => {
     const sb = getSupabase();
 
     const { data: profiles, error } = await sb.from('profiles')
@@ -19,7 +27,7 @@ export const getMrr = tool(
       .not('subscription_tier', 'is', null);
 
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true };
+      return `Error: ${error.message}`;
     }
 
     const tiers = (profiles || []).reduce((acc: Record<string, number>, p) => {
@@ -33,22 +41,22 @@ export const getMrr = tool(
       mrr += (prices[tier] || 0) * count;
     }
 
-    const text = `MRR: GBP ${mrr.toFixed(2)}\nARR: GBP ${(mrr * 12).toFixed(2)}\n\nTier breakdown:\n${Object.entries(tiers).map(([t, c]) => `  ${t}: ${c} users (GBP ${((prices[t] || 0) * c).toFixed(2)}/mo)`).join('\n')}\n\nTotal paying: ${Object.entries(tiers).filter(([t]) => t !== 'free').reduce((s, [, c]) => s + c, 0)} users`;
-
-    return { content: [{ type: 'text' as const, text }] };
+    return `MRR: GBP ${mrr.toFixed(2)}\nARR: GBP ${(mrr * 12).toFixed(2)}\n\nTier breakdown:\n${Object.entries(tiers).map(([t, c]) => `  ${t}: ${c} users (GBP ${((prices[t] || 0) * c).toFixed(2)}/mo)`).join('\n')}\n\nTotal paying: ${Object.entries(tiers).filter(([t]) => t !== 'free').reduce((s, [, c]) => s + c, 0)} users`;
   },
-  { annotations: { readOnlyHint: true } }
-);
+};
 
-export const getSubscriptionStats = tool(
-  'get_subscription_stats',
-  'Get detailed subscription statistics: signups over time, conversion rates, churn indicators.',
-  {
-    days: z.number().default(30).describe('Days of history to analyse'),
+const getSubscriptionStats: ToolDef = {
+  name: 'get_subscription_stats',
+  description: 'Get detailed subscription statistics: signups over time, conversion rates, churn indicators.',
+  schema: {
+    type: 'object',
+    properties: {
+      days: { type: 'number', default: 30, description: 'Days of history to analyse' },
+    },
   },
-  async (args) => {
+  handler: async (args) => {
     const sb = getSupabase();
-    const since = new Date(Date.now() - args.days * 24 * 60 * 60 * 1000).toISOString();
+    const since = new Date(Date.now() - (args.days || 30) * 24 * 60 * 60 * 1000).toISOString();
 
     const [totalRes, recentRes, paidRes] = await Promise.all([
       sb.from('profiles').select('*', { count: 'exact', head: true }),
@@ -61,14 +69,8 @@ export const getSubscriptionStats = tool(
     const paid = paidRes.count || 0;
     const convRate = total > 0 ? ((paid / total) * 100).toFixed(1) : '0';
 
-    return {
-      content: [{
-        type: 'text' as const,
-        text: `Total users: ${total}\nNew users (last ${args.days}d): ${recent}\nPaying users: ${paid}\nConversion rate: ${convRate}%\nFree users: ${total - paid}`,
-      }],
-    };
+    return `Total users: ${total}\nNew users (last ${args.days || 30}d): ${recent}\nPaying users: ${paid}\nConversion rate: ${convRate}%\nFree users: ${total - paid}`;
   },
-  { annotations: { readOnlyHint: true } }
-);
+};
 
-export const stripeTools = [getMrr, getSubscriptionStats];
+export const stripeTools: ToolDef[] = [getMrr, getSubscriptionStats];

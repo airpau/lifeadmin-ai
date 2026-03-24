@@ -1,5 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { config } from '../config';
@@ -8,31 +6,43 @@ function getSupabase() {
   return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export const listTickets = tool(
-  'list_tickets',
-  'List support tickets with optional filters. Use to understand current support load and identify priority issues.',
-  {
-    status: z.enum(['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed', 'all']).default('open'),
-    priority: z.enum(['low', 'medium', 'high', 'urgent', 'all']).default('all'),
-    limit: z.number().max(20).default(10),
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
+const listTickets: ToolDef = {
+  name: 'list_tickets',
+  description: 'List support tickets with optional filters. Use to understand current support load and identify priority issues.',
+  schema: {
+    type: 'object',
+    properties: {
+      status: { type: 'string', enum: ['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed', 'all'], default: 'open' },
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent', 'all'], default: 'all' },
+      limit: { type: 'number', maximum: 20, default: 10 },
+    },
   },
-  async (args) => {
+  handler: async (args) => {
     const sb = getSupabase();
     let query = sb.from('support_tickets')
       .select('id, ticket_number, subject, category, priority, status, assigned_to, source, created_at, first_response_at, user_id')
       .order('created_at', { ascending: false })
-      .limit(args.limit);
+      .limit(args.limit || 10);
 
-    if (args.status !== 'all') query = query.eq('status', args.status);
-    if (args.priority !== 'all') query = query.eq('priority', args.priority);
+    const status = args.status || 'open';
+    const priority = args.priority || 'all';
+    if (status !== 'all') query = query.eq('status', status);
+    if (priority !== 'all') query = query.eq('priority', priority);
 
     const { data, error } = await query;
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true };
+      return `Error: ${error.message}`;
     }
 
     if (!data || data.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No tickets found matching criteria.' }] };
+      return 'No tickets found matching criteria.';
     }
 
     const formatted = data.map(t => {
@@ -40,18 +50,21 @@ export const listTickets = tool(
       return `${t.ticket_number} [${t.priority}/${t.status}] ${t.subject} (${t.category}, from: ${t.source})${waitTime}`;
     }).join('\n');
 
-    return { content: [{ type: 'text' as const, text: `${data.length} tickets:\n${formatted}` }] };
+    return `${data.length} tickets:\n${formatted}`;
   },
-  { annotations: { readOnlyHint: true } }
-);
+};
 
-export const getTicket = tool(
-  'get_ticket',
-  'Get full ticket details including conversation history. Use before responding to understand full context.',
-  {
-    ticket_id: z.string().uuid().describe('Ticket ID'),
+const getTicket: ToolDef = {
+  name: 'get_ticket',
+  description: 'Get full ticket details including conversation history. Use before responding to understand full context.',
+  schema: {
+    type: 'object',
+    properties: {
+      ticket_id: { type: 'string', format: 'uuid', description: 'Ticket ID' },
+    },
+    required: ['ticket_id'],
   },
-  async (args) => {
+  handler: async (args) => {
     const sb = getSupabase();
     const [ticketRes, messagesRes] = await Promise.all([
       sb.from('support_tickets').select('*').eq('id', args.ticket_id).single(),
@@ -59,11 +72,11 @@ export const getTicket = tool(
     ]);
 
     if (ticketRes.error) {
-      return { content: [{ type: 'text' as const, text: `Error: ${ticketRes.error.message}` }], isError: true };
+      return `Error: ${ticketRes.error.message}`;
     }
 
     const t = ticketRes.data;
-    const msgs = (messagesRes.data || []).map(m =>
+    const msgs = (messagesRes.data || []).map((m: any) =>
       `[${m.sender_type}] ${m.sender_name || 'Unknown'}: ${m.message}`
     ).join('\n\n');
 
@@ -74,23 +87,23 @@ export const getTicket = tool(
       userEmail = profile?.email || '';
     }
 
-    const text = `Ticket: ${t.ticket_number}\nSubject: ${t.subject}\nCategory: ${t.category}\nPriority: ${t.priority}\nStatus: ${t.status}\nSource: ${t.source}\nUser email: ${userEmail}\nCreated: ${t.created_at}\nFirst response: ${t.first_response_at || 'NONE'}\n\nConversation:\n${msgs || '(no messages)'}`;
-
-    return { content: [{ type: 'text' as const, text }] };
+    return `Ticket: ${t.ticket_number}\nSubject: ${t.subject}\nCategory: ${t.category}\nPriority: ${t.priority}\nStatus: ${t.status}\nSource: ${t.source}\nUser email: ${userEmail}\nCreated: ${t.created_at}\nFirst response: ${t.first_response_at || 'NONE'}\n\nConversation:\n${msgs || '(no messages)'}`;
   },
-  { annotations: { readOnlyHint: true } }
-);
+};
 
-export const respondToTicket = tool(
-  'respond_to_ticket',
-  'Send a response to a support ticket. This adds the message to the conversation thread, updates the ticket status, and optionally emails the user.',
-  {
-    ticket_id: z.string().uuid().describe('Ticket ID'),
-    message: z.string().describe('Response message to the user'),
-    email_user: z.boolean().default(true).describe('Also send the response via email to the user'),
+const respondToTicket: ToolDef = {
+  name: 'respond_to_ticket',
+  description: 'Send a response to a support ticket. This adds the message to the conversation thread, updates the ticket status, and optionally emails the user.',
+  schema: {
+    type: 'object',
+    properties: {
+      ticket_id: { type: 'string', format: 'uuid', description: 'Ticket ID' },
+      message: { type: 'string', description: 'Response message to the user' },
+      email_user: { type: 'boolean', default: true, description: 'Also send the response via email to the user' },
+    },
+    required: ['ticket_id', 'message'],
   },
-  async (args, extra: any) => {
-    const agentRole = extra?.agentRole || 'support_agent';
+  handler: async (args, agentRole) => {
     const sb = getSupabase();
 
     // Insert message
@@ -102,7 +115,7 @@ export const respondToTicket = tool(
     });
 
     if (msgErr) {
-      return { content: [{ type: 'text' as const, text: `Failed to add message: ${msgErr.message}` }], isError: true };
+      return `Failed to add message: ${msgErr.message}`;
     }
 
     // Update ticket status
@@ -116,7 +129,8 @@ export const respondToTicket = tool(
     await sb.from('support_tickets').update(update).eq('id', args.ticket_id);
 
     // Email user if requested
-    if (args.email_user && ticket?.user_id) {
+    const shouldEmail = args.email_user !== false;
+    if (shouldEmail && ticket?.user_id) {
       const { data: profile } = await sb.from('profiles').select('email').eq('id', ticket.user_id).single();
       if (profile?.email) {
         try {
@@ -134,25 +148,28 @@ export const respondToTicket = tool(
       }
     }
 
-    return { content: [{ type: 'text' as const, text: `Response added to ticket. Status updated to awaiting_reply.` }] };
-  }
-);
-
-export const escalateTicket = tool(
-  'escalate_ticket',
-  'Escalate a ticket that needs human attention. Use when the issue is too complex for automated resolution.',
-  {
-    ticket_id: z.string().uuid().describe('Ticket ID to escalate'),
-    reason: z.string().describe('Why this needs human attention'),
-    new_priority: z.enum(['medium', 'high', 'urgent']).default('high'),
+    return `Response added to ticket. Status updated to awaiting_reply.`;
   },
-  async (args, extra: any) => {
-    const agentRole = extra?.agentRole || 'support_agent';
+};
+
+const escalateTicket: ToolDef = {
+  name: 'escalate_ticket',
+  description: 'Escalate a ticket that needs human attention. Use when the issue is too complex for automated resolution.',
+  schema: {
+    type: 'object',
+    properties: {
+      ticket_id: { type: 'string', format: 'uuid', description: 'Ticket ID to escalate' },
+      reason: { type: 'string', description: 'Why this needs human attention' },
+      new_priority: { type: 'string', enum: ['medium', 'high', 'urgent'], default: 'high' },
+    },
+    required: ['ticket_id', 'reason'],
+  },
+  handler: async (args, agentRole) => {
     const sb = getSupabase();
 
     await sb.from('support_tickets').update({
       assigned_to: 'Human Required',
-      priority: args.new_priority,
+      priority: args.new_priority || 'high',
       status: 'in_progress',
     }).eq('id', args.ticket_id);
 
@@ -163,20 +180,24 @@ export const escalateTicket = tool(
       message: `Escalated to human: ${args.reason}`,
     });
 
-    return { content: [{ type: 'text' as const, text: `Ticket escalated to human. Reason: ${args.reason}` }] };
-  }
-);
-
-export const updateTicketStatus = tool(
-  'update_ticket_status',
-  'Update a ticket status, priority, or assignment.',
-  {
-    ticket_id: z.string().uuid(),
-    status: z.enum(['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed']).optional(),
-    priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
-    assigned_to: z.string().optional(),
+    return `Ticket escalated to human. Reason: ${args.reason}`;
   },
-  async (args) => {
+};
+
+const updateTicketStatus: ToolDef = {
+  name: 'update_ticket_status',
+  description: 'Update a ticket status, priority, or assignment.',
+  schema: {
+    type: 'object',
+    properties: {
+      ticket_id: { type: 'string', format: 'uuid' },
+      status: { type: 'string', enum: ['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed'] },
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
+      assigned_to: { type: 'string' },
+    },
+    required: ['ticket_id'],
+  },
+  handler: async (args) => {
     const sb = getSupabase();
     const update: Record<string, any> = {};
     if (args.status) update.status = args.status;
@@ -188,10 +209,10 @@ export const updateTicketStatus = tool(
 
     const { error } = await sb.from('support_tickets').update(update).eq('id', args.ticket_id);
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true };
+      return `Error: ${error.message}`;
     }
-    return { content: [{ type: 'text' as const, text: `Ticket updated.` }] };
-  }
-);
+    return `Ticket updated.`;
+  },
+};
 
-export const supportTools = [listTickets, getTicket, respondToTicket, escalateTicket, updateTicketStatus];
+export const supportTools: ToolDef[] = [listTickets, getTicket, respondToTicket, escalateTicket, updateTicketStatus];

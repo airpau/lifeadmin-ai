@@ -1,5 +1,3 @@
-import { tool } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config';
 
@@ -7,22 +5,33 @@ function getSupabase() {
   return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export const generateImage = tool(
-  'generate_image',
-  'Generate an image using fal.ai. Returns the image URL. Images must NEVER contain text (AI produces garbled text). Use for social media posts, blog illustrations.',
-  {
-    prompt: z.string().describe('Image generation prompt. Do NOT include any text in the image.'),
-    model: z.enum(['fal-ai/flux-pro', 'fal-ai/recraft-v3']).default('fal-ai/flux-pro'),
-    width: z.number().default(1024),
-    height: z.number().default(1024),
+interface ToolDef {
+  name: string;
+  description: string;
+  schema: Record<string, any>;
+  handler: (args: any, agentRole: string) => Promise<string>;
+}
+
+const generateImage: ToolDef = {
+  name: 'generate_image',
+  description: 'Generate an image using fal.ai. Returns the image URL. Images must NEVER contain text (AI produces garbled text). Use for social media posts, blog illustrations.',
+  schema: {
+    type: 'object',
+    properties: {
+      prompt: { type: 'string', description: 'Image generation prompt. Do NOT include any text in the image.' },
+      model: { type: 'string', enum: ['fal-ai/flux-pro', 'fal-ai/recraft-v3'], default: 'fal-ai/flux-pro' },
+      width: { type: 'number', default: 1024 },
+      height: { type: 'number', default: 1024 },
+    },
+    required: ['prompt'],
   },
-  async (args) => {
+  handler: async (args) => {
     if (!config.FAL_KEY) {
-      return { content: [{ type: 'text' as const, text: 'FAL_KEY not configured. Cannot generate images.' }], isError: true };
+      return 'FAL_KEY not configured. Cannot generate images.';
     }
 
     try {
-      const response = await fetch(`https://queue.fal.run/${args.model}`, {
+      const response = await fetch(`https://queue.fal.run/${args.model || 'fal-ai/flux-pro'}`, {
         method: 'POST',
         headers: {
           'Authorization': `Key ${config.FAL_KEY}`,
@@ -30,40 +39,44 @@ export const generateImage = tool(
         },
         body: JSON.stringify({
           prompt: args.prompt,
-          image_size: { width: args.width, height: args.height },
+          image_size: { width: args.width || 1024, height: args.height || 1024 },
           num_images: 1,
         }),
       });
 
       const data: any = await response.json();
       if (data.images?.[0]?.url) {
-        return { content: [{ type: 'text' as const, text: `Image generated: ${data.images[0].url}` }] };
+        return `Image generated: ${data.images[0].url}`;
       }
 
       // If queued, return request ID for polling
       if (data.request_id) {
-        return { content: [{ type: 'text' as const, text: `Image generation queued (request_id: ${data.request_id}). Check status later.` }] };
+        return `Image generation queued (request_id: ${data.request_id}). Check status later.`;
       }
 
-      return { content: [{ type: 'text' as const, text: `Unexpected response: ${JSON.stringify(data)}` }], isError: true };
+      return `Unexpected response: ${JSON.stringify(data)}`;
     } catch (err: any) {
-      return { content: [{ type: 'text' as const, text: `Image generation failed: ${err.message}` }], isError: true };
+      return `Image generation failed: ${err.message}`;
     }
-  }
-);
-
-export const createContentDraft = tool(
-  'create_content_draft',
-  'Create a social media content draft for founder approval. Drafts are reviewed before posting. NEVER auto-post.',
-  {
-    platform: z.enum(['facebook', 'instagram', 'twitter', 'linkedin', 'tiktok']),
-    content_type: z.enum(['image_post', 'video_post', 'text_post', 'reel', 'story']),
-    caption: z.string().describe('Post caption/text'),
-    hashtags: z.string().optional().describe('Hashtags as comma-separated string'),
-    asset_url: z.string().optional().describe('URL to image/video asset'),
-    scheduled_time: z.string().optional().describe('ISO timestamp for scheduling'),
   },
-  async (args) => {
+};
+
+const createContentDraft: ToolDef = {
+  name: 'create_content_draft',
+  description: 'Create a social media content draft for founder approval. Drafts are reviewed before posting. NEVER auto-post.',
+  schema: {
+    type: 'object',
+    properties: {
+      platform: { type: 'string', enum: ['facebook', 'instagram', 'twitter', 'linkedin', 'tiktok'] },
+      content_type: { type: 'string', enum: ['image_post', 'video_post', 'text_post', 'reel', 'story'] },
+      caption: { type: 'string', description: 'Post caption/text' },
+      hashtags: { type: 'string', description: 'Hashtags as comma-separated string' },
+      asset_url: { type: 'string', description: 'URL to image/video asset' },
+      scheduled_time: { type: 'string', description: 'ISO timestamp for scheduling' },
+    },
+    required: ['platform', 'content_type', 'caption'],
+  },
+  handler: async (args) => {
     const sb = getSupabase();
     const { data, error } = await sb.from('content_drafts').insert({
       platform: args.platform,
@@ -76,44 +89,46 @@ export const createContentDraft = tool(
     }).select('id').single();
 
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Failed: ${error.message}` }], isError: true };
+      return `Failed: ${error.message}`;
     }
-    return { content: [{ type: 'text' as const, text: `Content draft created (id: ${data.id}) for ${args.platform}. Status: pending founder approval.` }] };
-  }
-);
-
-export const getRecentPosts = tool(
-  'get_recent_posts',
-  'Get recent social media posts and drafts to avoid repetition and understand what has been posted.',
-  {
-    days: z.number().default(7).describe('How many days back to look'),
-    limit: z.number().max(20).default(10),
+    return `Content draft created (id: ${data.id}) for ${args.platform}. Status: pending founder approval.`;
   },
-  async (args) => {
+};
+
+const getRecentPosts: ToolDef = {
+  name: 'get_recent_posts',
+  description: 'Get recent social media posts and drafts to avoid repetition and understand what has been posted.',
+  schema: {
+    type: 'object',
+    properties: {
+      days: { type: 'number', default: 7, description: 'How many days back to look' },
+      limit: { type: 'number', maximum: 20, default: 10 },
+    },
+  },
+  handler: async (args) => {
     const sb = getSupabase();
-    const since = new Date(Date.now() - args.days * 24 * 60 * 60 * 1000).toISOString();
+    const since = new Date(Date.now() - (args.days || 7) * 24 * 60 * 60 * 1000).toISOString();
 
     const { data, error } = await sb.from('content_drafts')
       .select('platform, content_type, caption, status, created_at, posted_at')
       .gte('created_at', since)
       .order('created_at', { ascending: false })
-      .limit(args.limit);
+      .limit(args.limit || 10);
 
     if (error) {
-      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true };
+      return `Error: ${error.message}`;
     }
 
     if (!data || data.length === 0) {
-      return { content: [{ type: 'text' as const, text: 'No recent posts found.' }] };
+      return 'No recent posts found.';
     }
 
-    const formatted = data.map(p =>
+    const formatted = data.map((p: any) =>
       `[${p.platform}/${p.status}] ${p.caption?.substring(0, 100)}...`
     ).join('\n');
 
-    return { content: [{ type: 'text' as const, text: formatted }] };
+    return formatted;
   },
-  { annotations: { readOnlyHint: true } }
-);
+};
 
-export const contentTools = [generateImage, createContentDraft, getRecentPosts];
+export const contentTools: ToolDef[] = [generateImage, createContentDraft, getRecentPosts];
