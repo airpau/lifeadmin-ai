@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
     const awcRaw = request.cookies.get('awc')?.value;
     const orderRef = encodeURIComponent(`signup-${userId || email}`);
 
-    // Commission: £1 for free signup (LEAD commission group)
+    // Commission: track 1 for lead (Awin multiplies fixed amount by tracked value)
     let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=${AWIN_ADVERTISER_ID}` +
-      `&amount=1.00&ch=aw&parts=LEAD:1.00&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW`;
+      `&amount=1&ch=aw&parts=LEAD:1&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW`;
 
     if (awcRaw) {
       awinUrl += `&cks=${encodeURIComponent(awcRaw)}`;
