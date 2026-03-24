@@ -25,9 +25,13 @@ export default function DashboardPage() {
   const supabase = createClient();
   const searchParams = useSearchParams();
 
-  // Awin tracking for free signups
+  // Meta Pixel + Awin tracking for free signups
   useEffect(() => {
     if (searchParams.get('signup') === '1') {
+      // Meta Pixel Lead event
+      if (typeof (window as any).fbq === 'function') {
+        (window as any).fbq('track', 'Lead');
+      }
       const ref = sessionStorage.getItem('awin_ref') || '';
       const awc = sessionStorage.getItem('awin_awc') || '';
       sessionStorage.removeItem('awin_ref');
@@ -71,6 +75,14 @@ export default function DashboardPage() {
           if (data.synced && data.tier && data.tier !== 'free') {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
+
+            // Meta Pixel Purchase event
+            if (typeof (window as any).fbq === 'function') {
+              (window as any).fbq('track', 'Purchase', {
+                value: data.tier === 'pro' ? 19.99 : 9.99,
+                currency: 'GBP',
+              });
+            }
 
             // Awin conversion tracking (client-side via mastertag)
             const commissions: Record<string, { amount: string; group: string }> = {
