@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Brain, TrendingUp, Users, Headphones, Bot, Megaphone, ClipboardList, Target,
+  Brain, TrendingUp, Users, Headphones, Bot, Megaphone, ClipboardList, Target, Palette,
   Play, Pause, Loader2, Clock, ChevronDown, ChevronUp,
   RefreshCw,
 } from 'lucide-react';
@@ -33,6 +33,7 @@ const roleIcons: Record<string, any> = {
   cmo: Megaphone,
   exec_assistant: ClipboardList,
   head_of_ads: Target,
+  cco: Palette,
   support_lead: Headphones,
   support_agent: Bot,
 };
@@ -44,6 +45,7 @@ const roleColors: Record<string, string> = {
   cmo: 'text-pink-400 bg-pink-500/10 border-pink-500/30',
   exec_assistant: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
   head_of_ads: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
+  cco: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
   support_lead: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
   support_agent: 'text-slate-400 bg-slate-500/10 border-slate-500/30',
 };
