@@ -124,11 +124,11 @@ export default function Home() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
-              Your AI-Powered Money Assistant
+              Your Complete Financial Control Centre
             </h1>
 
             <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Cancel forgotten subscriptions. Dispute unfair bills. Track every contract and subscription. Get your money back automatically.
+              Track every penny. Dispute unfair bills. Cancel forgotten subscriptions. AI-powered financial intelligence that finds you money and gets it back.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-10 text-sm text-slate-400">
@@ -143,102 +143,122 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Features Grid — All planned features */}
+          {/* Money Hub Hero Section */}
+          <div className="max-w-5xl mx-auto mb-24">
+            <div className="bg-gradient-to-r from-amber-500/10 to-purple-500/5 border border-amber-500/20 rounded-2xl p-8 md:p-12 mb-12">
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-5 w-5 text-amber-400" />
+                <span className="text-amber-400 text-sm font-semibold">Introducing the Money Hub</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Your complete financial intelligence centre</h2>
+              <p className="text-slate-300 text-lg mb-6 max-w-2xl">Connect your bank account and email. Paybacker analyses every transaction, detects every subscription, and tells you exactly where your money goes and how to keep more of it.</p>
+              <div className="grid md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800">
+                  <p className="text-amber-400 font-bold text-2xl">20+</p>
+                  <p className="text-slate-400 text-xs">Spending categories with AI categorisation</p>
+                </div>
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800">
+                  <p className="text-amber-400 font-bold text-2xl">Bank + Email</p>
+                  <p className="text-slate-400 text-xs">Two data sources no other app combines</p>
+                </div>
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800">
+                  <p className="text-amber-400 font-bold text-2xl">Self-learning</p>
+                  <p className="text-slate-400 text-xs">AI gets smarter with every correction you make</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {ctaButton}
+              </div>
+            </div>
+          </div>
+
+          {/* Features Grid */}
           <div className="max-w-6xl mx-auto mb-24">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Everything you need to take control of your money</h2>
-              <p className="text-slate-400 text-lg max-w-2xl mx-auto">AI-powered tools working around the clock to save you money, fight your corner, and find you better deals.</p>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto">AI-powered tools that analyse, alert, and act on your behalf.</p>
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Feature 1 */}
+              <div className="bg-slate-900/50 backdrop-blur-sm border border-amber-500/30 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
+                <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <BarChart3 className="h-6 w-6 text-amber-500" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">Money Hub Dashboard</h3>
+                <p className="text-slate-400 text-sm mb-3">Income vs outgoings, spending by category, budget tracking, net worth, savings goals, and a financial health score. All in one view, updated daily from your bank.</p>
+                <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
+              </div>
+
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <FileText className="h-6 w-6 text-amber-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">AI Complaint and Debt Letters</h3>
-                <p className="text-slate-400 text-sm mb-3">Generate formal complaint letters, debt dispute responses, and refund requests in seconds. Every letter cites exact UK legislation. Fight unfair charges, debt recovery, and service failures.</p>
+                <h3 className="text-lg font-semibold text-white mb-2">AI Complaint Letters</h3>
+                <p className="text-slate-400 text-sm mb-3">Generate formal complaint letters citing exact UK law in 30 seconds. Energy, broadband, debt disputes, parking appeals, flight delays (up to £520), HMRC, council tax, and more.</p>
                 <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">3 free per month</span>
               </div>
 
-              {/* Feature 2 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <Building2 className="h-6 w-6 text-purple-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Bank Scanning</h3>
-                <p className="text-slate-400 text-sm mb-3">Connect your bank account securely. We automatically detect every subscription, direct debit, and recurring payment. Free users get a one-time scan. Paid users get daily auto-sync.</p>
+                <h3 className="text-lg font-semibold text-white mb-2">Open Banking Integration</h3>
+                <p className="text-slate-400 text-sm mb-3">Connect your bank securely via Open Banking. We detect every subscription, categorise every transaction, and track your income and spending patterns automatically.</p>
                 <span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-1 rounded-full">One-time scan free</span>
               </div>
 
-              {/* Feature 3 */}
+              <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
+                <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <ScanSearch className="h-6 w-6 text-blue-500" />
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">Email Inbox Scanning</h3>
+                <p className="text-slate-400 text-sm mb-3">Connect Gmail or Outlook. We scan 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications.</p>
+                <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-1 rounded-full">One-time scan free</span>
+              </div>
+
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                   <CreditCard className="h-6 w-6 text-green-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Subscription Tracker</h3>
-                <p className="text-slate-400 text-sm mb-3">See every subscription in one place with smart categorisation. Know exactly what you pay for mortgages, loans, utilities, broadband, streaming, and more. Cancel anything with one click.</p>
-                <span className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded-full">Unlimited on all plans</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Subscription and Contract Tracker</h3>
+                <p className="text-slate-400 text-sm mb-3">Track every subscription, direct debit, mortgage, loan, and contract. See end dates, monthly costs, and get alerts before renewals. AI cancellation emails for anything you want to cancel.</p>
+                <span className="text-xs text-green-400 bg-green-500/10 px-2 py-1 rounded-full">Unlimited tracking</span>
               </div>
 
-              {/* Feature 4 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-rose-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Scale className="h-6 w-6 text-rose-500" />
+                  <Zap className="h-6 w-6 text-rose-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Personalised Deal Finder</h3>
-                <p className="text-slate-400 text-sm mb-3">We know what you pay and find cheaper alternatives. Energy, broadband, mobile, insurance, mortgages, credit cards, and loans. Switch and save from your dashboard.</p>
-                <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">Coming soon</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Financial Action Centre</h3>
+                <p className="text-slate-400 text-sm mb-3">A prioritised to-do list of money you can claim or save, ranked by value. Each action links directly to the right tool: complaint letter, cancellation email, or compensation claim.</p>
+                <span className="text-xs text-rose-400 bg-rose-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
               </div>
 
-              {/* Feature 5 */}
-              <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-indigo-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <FileText className="h-6 w-6 text-indigo-500" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">HMRC and Government Letters</h3>
-                <p className="text-slate-400 text-sm mb-3">Tax rebate claims, council tax band challenges, DVLA disputes, NHS complaints, parking charge appeals, and flight delay compensation. All with the correct legal references.</p>
-                <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded-full">All plans</span>
-              </div>
-
-              {/* Feature 6 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-sky-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <BarChart3 className="h-6 w-6 text-sky-500" />
+                  <Shield className="h-6 w-6 text-sky-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Spending Intelligence</h3>
-                <p className="text-slate-400 text-sm mb-3">See where every pound goes with 25 spending categories. Monthly trends, income vs outgoings, and smart savings suggestions. Know exactly how much you spend on energy, groceries, transport, and more.</p>
-                <span className="text-xs text-sky-400 bg-sky-500/10 px-2 py-1 rounded-full">Basic free, full on Essential+</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Budget Planner</h3>
+                <p className="text-slate-400 text-sm mb-3">Set spending limits per category. Real-time progress bars fill as transactions come in. Alerts at 80% and 100%. Rollover option for unused budget. Aligns to your payday.</p>
+                <span className="text-xs text-sky-400 bg-sky-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
               </div>
 
-              {/* Feature 7 */}
-              <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Bell className="h-6 w-6 text-amber-500" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Renewal Reminders and Deal Alerts</h3>
-                <p className="text-slate-400 text-sm mb-3">Get emailed 30, 14, and 7 days before any subscription renews with better deals we have found. Weekly personalised savings digest based on your actual bills. Never overpay again.</p>
-                <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
-              </div>
-
-              {/* Feature 8 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
                 <div className="bg-emerald-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Zap className="h-6 w-6 text-emerald-500" />
+                  <TrendingUp className="h-6 w-6 text-emerald-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Smart Cancellation</h3>
-                <p className="text-slate-400 text-sm mb-3">For every subscription, we show you exactly how to cancel — email address, phone number, direct link, and tips. Then generate a legally-backed cancellation letter with one click.</p>
-                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">Essential and Pro</span>
+                <h3 className="text-lg font-semibold text-white mb-2">Net Worth Tracker</h3>
+                <p className="text-slate-400 text-sm mb-3">Track your total assets (property, savings, investments, pensions) minus liabilities (mortgage, loans, credit cards). See your net worth grow over time.</p>
+                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">Pro</span>
               </div>
 
-              {/* Feature 9 */}
               <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
-                <div className="bg-yellow-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                  <Gift className="h-6 w-6 text-yellow-500" />
+                <div className="bg-indigo-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+                  <Users className="h-6 w-6 text-indigo-500" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Loyalty Rewards and Referrals</h3>
-                <p className="text-slate-400 text-sm mb-3">Earn points every time you use Paybacker — complaints filed, deals explored, subscriptions cancelled. Refer friends for bonus points. Redeem points for money off your subscription.</p>
-                <span className="text-xs text-yellow-400 bg-yellow-500/10 px-2 py-1 rounded-full">All members</span>
+                <h3 className="text-lg font-semibold text-white mb-2">AI Financial Assistant</h3>
+                <p className="text-slate-400 text-sm mb-3">Chat with AI about your finances using your real data. "How much did I spend on eating out?" "What subscriptions could I cancel?" "Set a budget for groceries."</p>
+                <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-1 rounded-full">Pro</span>
               </div>
             </div>
           </div>
@@ -313,17 +333,22 @@ export default function Home() {
                 <tbody className="text-sm">
                   {[
                     { feature: 'AI complaint and form letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { feature: 'Subscription tracker', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
-                    { feature: 'Bank scan', free: 'One-time', essential: '1 bank, daily sync', pro: 'Unlimited banks' },
+                    { feature: 'Subscription and contract tracker', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
+                    { feature: 'Bank connection', free: 'One-time scan', essential: '1 bank, daily sync', pro: 'Unlimited banks' },
                     { feature: 'Email inbox scanning', free: 'One-time', essential: 'Monthly', pro: 'Unlimited' },
                     { feature: 'Opportunity scanner', free: 'One-time', essential: 'Monthly', pro: 'Unlimited' },
-                    { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
-                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
+                    { feature: 'Money Hub dashboard', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + AI assistant' },
+                    { feature: 'Budget planner', free: false, essential: true, pro: true },
+                    { feature: 'Income and spending analysis', free: false, essential: 'Full breakdown', pro: 'Full + merchant drill-down' },
+                    { feature: 'Contract end date tracking', free: false, essential: true, pro: true },
                     { feature: 'Cancellation emails with legal context', free: false, essential: true, pro: true },
                     { feature: 'Renewal reminders (30/14/7 days)', free: false, essential: true, pro: true },
-                    { feature: 'Contract end date tracking', free: false, essential: true, pro: true },
-                    { feature: 'Deal comparison (coming soon)', free: false, essential: true, pro: true },
-                    { feature: 'Automated cancellations (coming soon)', free: false, essential: false, pro: true },
+                    { feature: 'Net worth tracker', free: false, essential: 'Manual', pro: 'Auto from banks' },
+                    { feature: 'Savings goals', free: false, essential: 'Up to 3', pro: 'Unlimited' },
+                    { feature: 'AI financial assistant (chat)', free: false, essential: false, pro: true },
+                    { feature: 'Self-learning categorisation', free: false, essential: false, pro: true },
+                    { feature: 'Weekly financial digest email', free: false, essential: true, pro: true },
+                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
                     { feature: 'Priority support', free: false, essential: false, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-slate-800/50">
