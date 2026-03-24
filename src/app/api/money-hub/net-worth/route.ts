@@ -37,7 +37,22 @@ export async function POST(request: NextRequest) {
       asset_name: body.asset_name, estimated_value: body.estimated_value,
     }).select('*').single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data, { status: 201 });
+
+    // If it's a property with a mortgage, also add the liability
+    if (body.asset_type === 'property' && body.mortgage_balance && parseFloat(body.mortgage_balance) > 0) {
+      await supabase.from('money_hub_liabilities').insert({
+        user_id: user.id,
+        liability_type: 'mortgage',
+        liability_name: `Mortgage - ${body.asset_name}`,
+        outstanding_balance: body.mortgage_balance,
+        monthly_payment: body.mortgage_payment || null,
+        interest_rate: body.mortgage_rate || null,
+      });
+    }
+
+    // Return updated totals
+    const totals = await getUpdatedTotals(supabase, user.id);
+    return NextResponse.json({ ...data, ...totals }, { status: 201 });
   }
 
   if (body.type === 'liability') {
@@ -47,10 +62,30 @@ export async function POST(request: NextRequest) {
       monthly_payment: body.monthly_payment, interest_rate: body.interest_rate,
     }).select('*').single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json(data, { status: 201 });
+
+    const totals = await getUpdatedTotals(supabase, user.id);
+    return NextResponse.json({ ...data, ...totals }, { status: 201 });
   }
 
   return NextResponse.json({ error: 'type must be asset or liability' }, { status: 400 });
+}
+
+async function getUpdatedTotals(supabase: any, userId: string) {
+  const [assets, liabilities] = await Promise.all([
+    supabase.from('money_hub_assets').select('*').eq('user_id', userId),
+    supabase.from('money_hub_liabilities').select('*').eq('user_id', userId),
+  ]);
+  const totalAssets = (assets.data || []).reduce((s: number, a: any) => s + (parseFloat(String(a.estimated_value)) || 0), 0);
+  const totalLiabilities = (liabilities.data || []).reduce((s: number, l: any) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
+  return {
+    updatedTotals: {
+      assets: parseFloat(totalAssets.toFixed(2)),
+      liabilities: parseFloat(totalLiabilities.toFixed(2)),
+      netWorth: parseFloat((totalAssets - totalLiabilities).toFixed(2)),
+      assetsList: assets.data || [],
+      liabilitiesList: liabilities.data || [],
+    },
+  };
 }
 
 export async function DELETE(request: NextRequest) {

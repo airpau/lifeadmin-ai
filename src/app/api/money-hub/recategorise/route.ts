@@ -82,5 +82,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ updated: 1, transactionId, category: newCategory });
   }
 
+  // Income recategorisation
+  if (body.newIncomeType && (transactionId || merchantPattern)) {
+    if (transactionId) {
+      await admin.from('bank_transactions')
+        .update({ income_type: body.newIncomeType })
+        .eq('id', transactionId)
+        .eq('user_id', user.id);
+      return NextResponse.json({ updated: 1, transactionId, incomeType: body.newIncomeType });
+    }
+
+    if (merchantPattern) {
+      const pattern = merchantPattern.toLowerCase().trim();
+      const { data: matching } = await admin.from('bank_transactions')
+        .select('id, description, merchant_name, amount')
+        .eq('user_id', user.id);
+
+      let updated = 0;
+      for (const txn of matching || []) {
+        if (parseFloat(txn.amount) <= 0) continue; // Only update income transactions
+        const merchantName = (txn.merchant_name || '').toLowerCase();
+        const desc = (txn.description || '').toLowerCase();
+        if (merchantName.includes(pattern) || desc.includes(pattern)) {
+          await admin.from('bank_transactions')
+            .update({ income_type: body.newIncomeType })
+            .eq('id', txn.id);
+          updated++;
+        }
+      }
+      return NextResponse.json({ updated, merchant: merchantPattern, incomeType: body.newIncomeType });
+    }
+  }
+
   return NextResponse.json({ error: 'transactionId or merchantPattern required' }, { status: 400 });
 }

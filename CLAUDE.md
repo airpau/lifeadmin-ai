@@ -317,6 +317,9 @@ All agents follow the same architectural pattern. Every agent must:
 - SMS notifications for urgent financial alerts (budget exceeded, contract expiring)
 - Native mobile app (iOS and Android) with push notifications
 - In-app push notifications for real-time budget tracking alerts
+- Savings goal affiliate links — contextual deals matching user goals (holiday savings → travel deals, car fund → car finance, wedding → venue/service deals)
+- Pro financial reports — automated email reports (daily/weekly/monthly) with budget progress, spending analysis, and savings tracking
+- Smart budget alerts — email/SMS/push notifications when approaching or exceeding budget limits
 
 ---
 

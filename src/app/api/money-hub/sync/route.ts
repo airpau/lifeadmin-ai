@@ -36,15 +36,18 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
 
 // Income detection patterns - expanded for real-world bank descriptions
 const INCOME_PATTERNS: Array<{ keywords: string[]; type: string }> = [
-  { keywords: ['salary', 'wages', 'payroll', 'pay ref', 'director'], type: 'salary' },
-  { keywords: ['hmrc', 'tax refund', 'tax credit'], type: 'benefits' },
-  { keywords: ['dwp', 'universal credit', 'child benefit', 'pension credit'], type: 'benefits' },
-  { keywords: ['rent ', 'rental', 'tenant'], type: 'rental' },
-  { keywords: ['dividend', 'interest earned', 'interest payment'], type: 'investment' },
-  { keywords: ['refund', 'rebate', 'cashback', 'booking.com'], type: 'refund' },
-  { keywords: ['loan repayment', 'loan repay'], type: 'loan_repayment' },
-  { keywords: ['gift'], type: 'gift' },
-  { keywords: ['from a/c', 'via mobile xfer', 'personal transfer'], type: 'transfer' },
+  // Specific patterns first — order matters (first match wins)
+  { keywords: ['salary', 'wages', 'payroll', 'pay ref', 'director', 'monthly pay', 'net pay'], type: 'salary' },
+  { keywords: ['freelance', 'invoice', 'consulting', 'contract pay'], type: 'freelance' },
+  { keywords: ['hmrc', 'tax credit', 'working tax', 'child tax'], type: 'benefits' },
+  { keywords: ['dwp', 'universal credit', 'child benefit', 'pension credit', 'pip ', 'esa ', 'jsa '], type: 'benefits' },
+  { keywords: ['rent ', 'rental income', 'tenant', 'letting'], type: 'rental' },
+  { keywords: ['dividend', 'interest earned', 'interest payment', 'investment return', 'capital gain'], type: 'investment' },
+  { keywords: ['from a/c', 'via mobile xfer', 'personal transfer', 'internal transfer', 'between accounts'], type: 'transfer' },
+  { keywords: ['loan repayment', 'loan repay', 'repayment received'], type: 'loan_repayment' },
+  { keywords: ['birthday', 'gift from', 'present from'], type: 'gift' },
+  // Refund pattern LAST and more specific — only match clear refund indicators
+  { keywords: ['refund from', 'refund -', 'refund:', 'your refund', 'cashback reward', 'cashback from'], type: 'refund' },
 ];
 
 function categoriseTransaction(desc: string, bankCategory: string): string {
@@ -164,15 +167,22 @@ export async function POST() {
       }
     }
 
-    // Priority 5: Income type detection
+    // Priority 5: Income type detection (for credits only)
     let incomeType: string | null = null;
     if (amount > 0) {
       incomeType = detectIncomeType(desc);
       if (!incomeType) {
         const d = desc.toLowerCase();
-        if (d.includes('from a/c') || d.includes('via mobile xfer')) incomeType = 'transfer';
-        else if (d.includes('rent')) incomeType = 'rental';
-        else if (d.includes('director') || d.includes('payroll')) incomeType = 'salary';
+        // More intelligent fallbacks
+        if (d.includes('from a/c') || d.includes('via mobile xfer') || d.includes('internal')) incomeType = 'transfer';
+        else if (d.includes('rent') && !d.includes('current')) incomeType = 'rental';
+        else if (d.includes('director') || d.includes('payroll') || d.includes('salary') || d.includes('wages')) incomeType = 'salary';
+        else if (d.includes('airbnb') || d.includes('booking.com') || d.includes('vrbo')) incomeType = 'rental';
+        else if (d.includes('hmrc') || d.includes('dwp') || d.includes('universal credit')) incomeType = 'benefits';
+        else if (d.includes('dividend') || d.includes('interest')) incomeType = 'investment';
+        else if (d.includes('invoice') || d.includes('freelance') || d.includes('consulting')) incomeType = 'freelance';
+        // Large recurring credits without clear description are likely salary
+        else if (amount > 1000 && !d.includes('transfer') && !d.includes('refund')) incomeType = 'salary';
       }
     }
 
@@ -210,12 +220,19 @@ export async function POST() {
 
 Categories for debits: mortgage, loans, council_tax, tax, energy, water, broadband, mobile, streaming, fitness, groceries, eating_out, fuel, shopping, insurance, transport, childcare, software, professional, bills, other.
 
-Income types for credits: salary, rental, benefits, investment, refund, loan_repayment, gift, transfer, freelance, other.
+Income types for credits (IMPORTANT — classify carefully):
+- "salary": Regular employment income, monthly pay, wages, director payments, PAYE
+- "freelance": Invoice payments, consulting fees, contract work, self-employed income
+- "benefits": Government payments — HMRC, DWP, Universal Credit, Child Benefit, PIP, Tax Credits
+- "rental": Rent from tenants, letting agent payments, Airbnb/Booking.com host payments
+- "investment": Dividends, interest earned, capital gains, ISA returns
+- "refund": ONLY when clearly a refund (e.g. "REFUND FROM AMAZON", "YOUR REFUND"). Do NOT classify regular income as refund.
+- "transfer": Money from own accounts, internal transfers, between-account movements
+- "loan_repayment": Someone repaying money they owe you
+- "gift": Birthday/Christmas money, gifts from family
+- "other": Only if none of the above fit
 
-If a credit is from a company name with "DIRECTOR" or regular large amounts, it is likely salary.
-If from a named person with "RENT", it is rental income.
-If from "BOOKING.COM" or similar, check context: could be a refund OR rental income from service accommodation.
-If from own account ("From A/C", "Via Mobile Xfer"), it is a transfer.
+CRITICAL: If the credit is a regular recurring amount from the same source (employer), classify as "salary" even if the description is unclear. If from Booking.com or Airbnb, classify as "rental" (host income), NOT "refund". If from HMRC, classify as "benefits" unless description says "tax refund" specifically.
 
 Return ONLY the JSON array.`,
           messages: [{ role: 'user', content: `Categorise:\n${txnList}` }],

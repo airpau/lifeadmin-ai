@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
+  const incomeType = searchParams.get('income_type');
   const months = parseInt(searchParams.get('months') || '1');
 
   const admin = getAdmin();
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
   since.setMonth(since.getMonth() - months);
 
   const { data: txns } = await admin.from('bank_transactions')
-    .select('id, amount, description, category, timestamp, merchant_name, user_category')
+    .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
     .eq('user_id', user.id)
     .gte('timestamp', since.toISOString())
     .order('timestamp', { ascending: false })
@@ -62,14 +63,46 @@ export async function GET(request: NextRequest) {
     amount: parseFloat(t.amount),
   }));
 
+  // Income drill-down mode
+  if (incomeType) {
+    filtered = filtered.filter(t => t.amount > 0 && (t.income_type || 'other') === incomeType);
+
+    // Group by source (sender)
+    const sourceTotals: Record<string, { total: number; count: number }> = {};
+    for (const t of filtered) {
+      const source = t.merchant_name || (t.description || '').replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 40) || 'Unknown';
+      if (!sourceTotals[source]) sourceTotals[source] = { total: 0, count: 0 };
+      sourceTotals[source].total += t.amount;
+      sourceTotals[source].count++;
+    }
+
+    const sources = Object.entries(sourceTotals)
+      .map(([name, data]) => ({ merchant: name, total: parseFloat(data.total.toFixed(2)), count: data.count }))
+      .sort((a, b) => b.total - a.total);
+
+    return NextResponse.json({
+      transactions: filtered.slice(0, 100).map(t => ({
+        id: t.id,
+        description: t.description,
+        merchant: t.merchant_name,
+        amount: t.amount,
+        category: t.income_type || 'other',
+        date: t.timestamp?.substring(0, 10),
+      })),
+      merchants: sources,
+      totalTransactions: filtered.length,
+      totalSpent: parseFloat(filtered.reduce((s, t) => s + t.amount, 0).toFixed(2)),
+    });
+  }
+
+  // Spending drill-down mode (existing behavior)
   if (category) {
     filtered = filtered.filter(t => t.spending_category === category);
   }
 
-  // Merchant breakdown within category
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
-    if (t.amount >= 0) continue; // skip income
+    if (t.amount >= 0) continue;
     const merchant = t.merchant_name || (t.description || '').substring(0, 30).trim();
     if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
     merchantTotals[merchant].total += Math.abs(t.amount);

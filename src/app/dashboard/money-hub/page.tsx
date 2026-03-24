@@ -95,6 +95,14 @@ const LIABILITY_TYPES = ['mortgage', 'loan', 'credit_card', 'overdraft', 'car_fi
 
 const GOAL_EMOJIS = ['🎯', '🏠', '✈️', '🚗', '💍', '🎓', '🏖️', '💻', '🎸', '🐕', '👶', '🏋️', '📱', '🎄', '💎', '🌍'];
 
+const EMOJI_GOAL_NAMES: Record<string, string> = {
+  '🎯': '', '🏠': 'House Deposit', '✈️': 'Holiday', '🚗': 'New Car',
+  '💍': 'Wedding', '🎓': 'Education', '🏖️': 'Holiday', '💻': 'New Laptop',
+  '🎸': 'Music Equipment', '🐕': 'Pet Fund', '👶': 'Baby Fund',
+  '🏋️': 'Gym Equipment', '📱': 'New Phone', '🎄': 'Christmas Fund',
+  '💎': 'Luxury Purchase', '🌍': 'Travel Fund',
+};
+
 const TOUR_STEPS: TourStep[] = [
   { target: 'tour-header', title: 'Welcome to Money Hub', description: 'Your complete financial intelligence centre. Everything you need to understand and improve your finances is right here.' },
   { target: 'tour-overview', title: 'Financial Overview', description: 'Your income and spending at a glance. See your net position and how far through the month you are.' },
@@ -202,7 +210,7 @@ export default function MoneyHubPage() {
   // Net worth forms
   const [showAssetForm, setShowAssetForm] = useState(false);
   const [showLiabilityForm, setShowLiabilityForm] = useState(false);
-  const [assetForm, setAssetForm] = useState({ type: 'savings', name: '', value: '' });
+  const [assetForm, setAssetForm] = useState<Record<string, string>>({ type: 'savings', name: '', value: '', mortgage_balance: '', mortgage_payment: '', mortgage_rate: '' });
   const [liabilityForm, setLiabilityForm] = useState({ type: 'loan', name: '', balance: '', monthly_payment: '', interest_rate: '' });
   const [nwSaving, setNwSaving] = useState(false);
   const [expandAssets, setExpandAssets] = useState(false);
@@ -271,6 +279,35 @@ export default function MoneyHubPage() {
     setDrillLoading(false);
   };
 
+  // ─── Income drill-down ───────────────────────────────────────────────────
+
+  const [drillIncomeType, setDrillIncomeType] = useState<string | null>(null);
+  const [drillIncomeData, setDrillIncomeData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
+  const [drillIncomeLoading, setDrillIncomeLoading] = useState(false);
+
+  const loadIncomeDrillDown = async (incomeType: string) => {
+    setDrillIncomeType(incomeType);
+    setDrillIncomeLoading(true);
+    try {
+      const res = await fetch(`/api/money-hub/transactions?income_type=${incomeType}&months=1`);
+      const d = await res.json();
+      setDrillIncomeData(d);
+    } catch { /* silent */ }
+    setDrillIncomeLoading(false);
+  };
+
+  const recategoriseIncome = async (merchantPattern: string, newIncomeType: string) => {
+    try {
+      await fetch('/api/money-hub/recategorise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ merchantPattern, newIncomeType, applyToAll: true }),
+      });
+      await refreshData();
+      if (drillIncomeType) loadIncomeDrillDown(drillIncomeType);
+    } catch { /* silent */ }
+  };
+
   // ─── Recategorise ─────────────────────────────────────────────────────────
 
   const recategorise = async (merchantPattern: string, newCategory: string) => {
@@ -330,10 +367,21 @@ export default function MoneyHubPage() {
       await fetch('/api/money-hub/net-worth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'asset', asset_type: assetForm.type, name: assetForm.name, value: parseFloat(assetForm.value) }),
+        body: JSON.stringify({
+          type: 'asset',
+          asset_type: assetForm.type,
+          asset_name: assetForm.name,
+          estimated_value: parseFloat(assetForm.value),
+          // Property mortgage fields
+          ...(assetForm.type === 'property' && (assetForm as any).mortgage_balance ? {
+            mortgage_balance: parseFloat((assetForm as any).mortgage_balance),
+            mortgage_payment: (assetForm as any).mortgage_payment ? parseFloat((assetForm as any).mortgage_payment) : undefined,
+            mortgage_rate: (assetForm as any).mortgage_rate ? parseFloat((assetForm as any).mortgage_rate) : undefined,
+          } : {}),
+        }),
       });
       await refreshData();
-      setAssetForm({ type: 'savings', name: '', value: '' });
+      setAssetForm({ type: 'savings', name: '', value: '', mortgage_balance: '', mortgage_payment: '', mortgage_rate: '' });
       setShowAssetForm(false);
     } catch { /* silent */ }
     setNwSaving(false);
@@ -349,7 +397,7 @@ export default function MoneyHubPage() {
         body: JSON.stringify({
           type: 'liability',
           liability_type: liabilityForm.type,
-          name: liabilityForm.name,
+          liability_name: liabilityForm.name,
           outstanding_balance: parseFloat(liabilityForm.balance),
           monthly_payment: liabilityForm.monthly_payment ? parseFloat(liabilityForm.monthly_payment) : undefined,
           interest_rate: liabilityForm.interest_rate ? parseFloat(liabilityForm.interest_rate) : undefined,
@@ -561,9 +609,9 @@ export default function MoneyHubPage() {
       }
     } catch { /* silent */ }
 
-    // Hide global ChatWidget for Pro users
-    (window as any).__pbHideChat = true;
-    return () => { (window as any).__pbHideChat = false; };
+    // Hide global ChatWidget for Pro users on Money Hub
+    document.body.dataset.hideChat = 'true';
+    return () => { delete document.body.dataset.hideChat; };
   }, []);
 
   // Auto-scroll chat
@@ -727,6 +775,7 @@ export default function MoneyHubPage() {
       <div id="tour-income" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
           <TrendingUp className="h-5 w-5 text-green-400" /> Income Breakdown
+          {isPaid && <span className="text-slate-500 text-xs font-normal ml-2">Click a category to see details</span>}
         </h2>
         {totalIncome > 0 ? (
           <div className="space-y-3">
@@ -736,7 +785,11 @@ export default function MoneyHubPage() {
                 const info = INCOME_LABELS[type] || INCOME_LABELS.other;
                 const pct = (amount / totalIncome) * 100;
                 return (
-                  <div key={type} className="flex items-center gap-3">
+                  <button
+                    key={type}
+                    onClick={() => isPaid ? loadIncomeDrillDown(type) : undefined}
+                    className={`flex items-center gap-3 w-full text-left ${isPaid ? 'hover:bg-slate-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
+                  >
                     <span className="text-lg w-7">{info.icon}</span>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
@@ -750,7 +803,7 @@ export default function MoneyHubPage() {
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: info.color }} />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             <div className="pt-2 border-t border-slate-800 flex justify-between">
@@ -1102,11 +1155,11 @@ export default function MoneyHubPage() {
                 {(data.netWorth.assetsList || []).map((a: any) => (
                   <div key={a.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
                     <div>
-                      <span className="text-white text-sm">{a.name}</span>
+                      <span className="text-white text-sm">{a.asset_name}</span>
                       <span className="text-slate-500 text-xs ml-2 capitalize">{a.asset_type?.replace('_', ' ')}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-green-400 font-medium text-sm">£{(a.value || 0).toLocaleString()}</span>
+                      <span className="text-green-400 font-medium text-sm">£{(parseFloat(String(a.estimated_value)) || 0).toLocaleString()}</span>
                       <button onClick={() => deleteNetWorthItem(a.id, 'asset')} className="text-slate-600 hover:text-red-400">
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -1134,11 +1187,45 @@ export default function MoneyHubPage() {
                     />
                     <input
                       type="number"
-                      placeholder="Value (£)"
+                      placeholder={assetForm.type === 'property' ? 'Property value (£)' : 'Value (£)'}
                       value={assetForm.value}
                       onChange={e => setAssetForm({ ...assetForm, value: e.target.value })}
                       className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
+                    {assetForm.type === 'property' && (
+                      <>
+                        <p className="text-slate-400 text-[10px] mt-1">Do you have a mortgage on this property?</p>
+                        <input
+                          type="number"
+                          placeholder="Mortgage balance outstanding (£, leave blank if none)"
+                          value={assetForm.mortgage_balance}
+                          onChange={e => setAssetForm({ ...assetForm, mortgage_balance: e.target.value })}
+                          className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                        {assetForm.mortgage_balance && (
+                          <>
+                            <input
+                              type="number"
+                              placeholder="Monthly mortgage payment (£)"
+                              value={assetForm.mortgage_payment}
+                              onChange={e => setAssetForm({ ...assetForm, mortgage_payment: e.target.value })}
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="Interest rate (%, e.g. 4.5)"
+                              value={assetForm.mortgage_rate}
+                              onChange={e => setAssetForm({ ...assetForm, mortgage_rate: e.target.value })}
+                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                            <p className="text-emerald-400 text-[10px]">
+                              Equity: £{((parseFloat(assetForm.value) || 0) - (parseFloat(assetForm.mortgage_balance) || 0)).toLocaleString()}
+                            </p>
+                          </>
+                        )}
+                      </>
+                    )}
                     <div className="flex gap-2">
                       <button onClick={addAsset} disabled={nwSaving} className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded font-medium disabled:opacity-50">
                         {nwSaving ? 'Saving...' : 'Add Asset'}
@@ -1169,18 +1256,25 @@ export default function MoneyHubPage() {
             {expandLiabilities && (
               <div className="space-y-2 ml-6">
                 {(data.netWorth.liabilitiesList || []).map((l: any) => (
-                  <div key={l.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
-                    <div>
-                      <span className="text-white text-sm">{l.name}</span>
-                      <span className="text-slate-500 text-xs ml-2 capitalize">{l.liability_type?.replace('_', ' ')}</span>
-                      {l.monthly_payment && <span className="text-slate-500 text-xs ml-2">£{l.monthly_payment}/mo</span>}
-                      {l.interest_rate && <span className="text-slate-500 text-xs ml-1">({l.interest_rate}% APR)</span>}
+                  <div key={l.id} className="bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white text-sm font-medium">{l.liability_name}</span>
+                        <span className="text-xs px-1.5 py-0.5 bg-slate-800 rounded text-slate-400 capitalize">{l.liability_type?.replace('_', ' ')}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-400 font-bold text-sm">£{(parseFloat(String(l.outstanding_balance)) || 0).toLocaleString()}</span>
+                        <button onClick={() => deleteNetWorthItem(l.id, 'liability')} className="text-slate-600 hover:text-red-400">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-red-400 font-medium text-sm">£{(l.outstanding_balance || 0).toLocaleString()}</span>
-                      <button onClick={() => deleteNetWorthItem(l.id, 'liability')} className="text-slate-600 hover:text-red-400">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                    <div className="flex gap-4 text-xs text-slate-500">
+                      {l.monthly_payment && <span>£{parseFloat(String(l.monthly_payment)).toLocaleString()}/month</span>}
+                      {l.interest_rate && <span>{l.interest_rate}% APR</span>}
+                      {l.monthly_payment && l.outstanding_balance && (
+                        <span className="text-slate-600">~{Math.ceil(parseFloat(String(l.outstanding_balance)) / parseFloat(String(l.monthly_payment)))} months remaining</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1456,7 +1550,14 @@ export default function MoneyHubPage() {
                   {GOAL_EMOJIS.map(e => (
                     <button
                       key={e}
-                      onClick={() => setGoalForm({ ...goalForm, emoji: e })}
+                      onClick={() => {
+                        const suggestedName = EMOJI_GOAL_NAMES[e] || '';
+                        setGoalForm({
+                          ...goalForm,
+                          emoji: e,
+                          ...(suggestedName && !goalForm.name ? { name: suggestedName } : {}),
+                        });
+                      }}
                       className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all ${goalForm.emoji === e ? 'bg-pink-500/30 ring-1 ring-pink-400' : 'bg-slate-800 hover:bg-slate-700'}`}
                     >
                       {e}
@@ -1681,6 +1782,76 @@ export default function MoneyHubPage() {
                           <span className={`font-medium ml-2 ${t.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
                             {t.amount < 0 ? '-' : '+'}£{Math.abs(t.amount).toFixed(2)}
                           </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Income Drill-Down Modal ═══ */}
+      {drillIncomeType && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-slate-700">
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setDrillIncomeType(null); setDrillIncomeData(null); }} className="text-slate-400 hover:text-white">
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h2 className="text-white font-semibold">
+                  {(INCOME_LABELS[drillIncomeType] || INCOME_LABELS.other).icon} {(INCOME_LABELS[drillIncomeType] || INCOME_LABELS.other).label}
+                </h2>
+              </div>
+              {drillIncomeData && <span className="text-green-400 font-bold">£{drillIncomeData.totalSpent.toFixed(2)}</span>}
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {drillIncomeLoading ? (
+                <div className="text-center py-8"><Loader2 className="h-6 w-6 text-green-500 animate-spin mx-auto" /></div>
+              ) : drillIncomeData ? (
+                <div className="space-y-6">
+                  {drillIncomeData.merchants.length > 0 && (
+                    <div>
+                      <h3 className="text-white text-sm font-semibold mb-3">Sources</h3>
+                      <div className="space-y-2">
+                        {drillIncomeData.merchants.map((m: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
+                            <div>
+                              <span className="text-white text-sm">{m.merchant}</span>
+                              <span className="text-slate-500 text-xs ml-2">{m.count} payments</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-400 font-medium text-sm">£{m.total.toFixed(2)}</span>
+                              <select
+                                defaultValue={drillIncomeType || ''}
+                                onChange={async (e) => {
+                                  await recategoriseIncome(m.merchant, e.target.value);
+                                }}
+                                className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
+                              >
+                                {Object.keys(INCOME_LABELS).map(c => (
+                                  <option key={c} value={c}>{INCOME_LABELS[c].label}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-white text-sm font-semibold mb-3">Transactions ({drillIncomeData.transactions.length})</h3>
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {drillIncomeData.transactions.map((t: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-slate-800/50">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-slate-300 truncate block">{t.description?.substring(0, 50)}</span>
+                            <span className="text-slate-500 text-xs">{t.date}</span>
+                          </div>
+                          <span className="text-green-400 font-medium ml-2">+£{Math.abs(t.amount).toFixed(2)}</span>
                         </div>
                       ))}
                     </div>

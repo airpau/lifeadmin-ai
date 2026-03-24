@@ -47,7 +47,12 @@ export async function GET() {
     const thisMonthTxns = txns.filter(t => t.timestamp >= startOfMonth);
 
     // Income vs outgoings
-    const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
+    const isXferTxn = (t: any) => {
+      const desc = (t.description || '').toLowerCase();
+      return desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
+             desc.includes('internal') || desc.includes('between accounts') || (t.income_type === 'transfer');
+    };
+    const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
     const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
 
     // Category breakdown
@@ -117,7 +122,7 @@ export async function GET() {
 
     // Income breakdown by type
     const incomeByType: Record<string, number> = {};
-    for (const t of thisMonthTxns.filter(t => parseFloat(t.amount) > 0)) {
+    for (const t of thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t))) {
       const type = t.income_type || 'other';
       incomeByType[type] = (incomeByType[type] || 0) + parseFloat(t.amount);
     }
@@ -128,7 +133,12 @@ export async function GET() {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const monthTxns = txns.filter(t => t.timestamp.startsWith(monthStr));
-      const inc = monthTxns.filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
+      const isXfer = (t: any) => {
+        const desc = (t.description || '').toLowerCase();
+        return desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
+               desc.includes('internal') || desc.includes('between accounts') || (t.income_type === 'transfer');
+      };
+      const inc = monthTxns.filter(t => parseFloat(t.amount) > 0 && !isXfer(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
       const out = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
       monthlyTrends.push({ month: monthStr, income: parseFloat(inc.toFixed(2)), outgoings: parseFloat(out.toFixed(2)) });
     }
