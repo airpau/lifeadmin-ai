@@ -60,6 +60,7 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'honest-mobile', provider: 'Honest Mobile', headline: 'Ethical mobile - plants trees with every plan', saving: 'Save up to £140/yr', awinMid: '20890', providerUrl: 'https://www.honestmobile.co.uk', category: 'Mobile' },
     { id: 'ee-payg', provider: 'EE Pay As You Go', headline: 'UK largest 5G network - no contract needed', saving: 'Flexible top-ups', awinMid: '118459', providerUrl: 'https://shop.ee.co.uk/pay-as-you-go', category: 'Mobile' },
     { id: 'o2-mobile', provider: 'O2', headline: 'Priority rewards and flexible plans', saving: 'Save up to £200/yr', awinMid: '3235', providerUrl: 'https://www.o2.co.uk', category: 'Mobile' },
+    { id: 'vodafone', provider: 'Vodafone', headline: 'Award-winning 5G network with extras', saving: 'Save up to £220/yr', awinMid: '1257', providerUrl: 'https://www.vodafone.co.uk', category: 'Mobile' },
   ],
   Mortgages: [
     { id: 'habito', provider: 'Habito', headline: 'Free online mortgage broker - compare 90+ lenders', saving: 'Save up to £3,000/yr', awinMid: '15441', providerUrl: 'https://www.habito.com', category: 'Mortgages' },

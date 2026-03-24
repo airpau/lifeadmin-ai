@@ -114,6 +114,16 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Vodafone (ID: 1257)
+- Rates: TBC (visible after approval)
+- Commission paid at least 2 full calendar months after signup
+- Declined if: product returned within 30 days, account in collections at validation
+- No commission on upgrades or existing customer purchases
+- No commission on accessories, 30-day SIMs, MBB, PAYG on loyalty sites
+- Cannot appear on music, fashion, motorsport sites
+- No subnetworks or ad networks
+- Breach of VOXI terms = suspension from Vodafone programme too
+
 ### O2 Mobile (ID: 3235)
 - Rates: TBC (visible after approval)
 - No commission on upgrades
