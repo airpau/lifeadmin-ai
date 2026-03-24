@@ -294,6 +294,7 @@ export default function MoneyHubPage() {
   const [drillIncomeType, setDrillIncomeType] = useState<string | null>(null);
   const [drillIncomeData, setDrillIncomeData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [drillIncomeLoading, setDrillIncomeLoading] = useState(false);
+  const [expandedIncomeSource, setExpandedIncomeSource] = useState<string | null>(null);
 
   const loadIncomeDrillDown = async (incomeType: string) => {
     setDrillIncomeType(incomeType);
@@ -1834,7 +1835,7 @@ export default function MoneyHubPage() {
                   {(INCOME_LABELS[drillIncomeType] || INCOME_LABELS.other).icon} {(INCOME_LABELS[drillIncomeType] || INCOME_LABELS.other).label}
                 </h2>
               </div>
-              {drillIncomeData && <span className="text-green-400 font-bold">£{drillIncomeData.totalSpent.toFixed(2)}</span>}
+              {drillIncomeData && <span className="text-green-400 font-bold">£{fmt(drillIncomeData.totalSpent)}</span>}
             </div>
             <div className="flex-1 overflow-y-auto p-6">
               {drillIncomeLoading ? (
@@ -1843,35 +1844,64 @@ export default function MoneyHubPage() {
                 <div className="space-y-6">
                   {drillIncomeData.merchants.length > 0 && (
                     <div>
-                      <h3 className="text-white text-sm font-semibold mb-3">Sources</h3>
+                      <h3 className="text-white text-sm font-semibold mb-3">Sources — click to see individual payments</h3>
                       <div className="space-y-2">
-                        {drillIncomeData.merchants.map((m: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
-                            <div>
-                              <span className="text-white text-sm">{m.merchant}</span>
-                              <span className="text-slate-500 text-xs ml-2">{m.count} payments</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-green-400 font-medium text-sm">£{m.total.toFixed(2)}</span>
-                              <select
-                                defaultValue={drillIncomeType || ''}
-                                onChange={async (e) => {
-                                  await recategoriseIncome(m.merchant, e.target.value);
-                                }}
-                                className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
+                        {drillIncomeData.merchants.map((m: any, i: number) => {
+                          const isExpanded = expandedIncomeSource === m.merchant;
+                          const sourceTxns = isExpanded ? drillIncomeData.transactions.filter((t: any) => {
+                            const txnSource = t.merchant || (t.description || '').replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 40);
+                            return txnSource === m.merchant || (t.description || '').includes(m.merchant);
+                          }) : [];
+                          return (
+                            <div key={i}>
+                              <button
+                                onClick={() => setExpandedIncomeSource(isExpanded ? null : m.merchant)}
+                                className="flex items-center justify-between w-full bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800 hover:bg-slate-800/50 transition-colors text-left"
                               >
-                                {Object.keys(INCOME_LABELS).map(c => (
-                                  <option key={c} value={c}>{INCOME_LABELS[c].label}</option>
-                                ))}
-                              </select>
+                                <div className="flex items-center gap-2">
+                                  {isExpanded ? <ChevronUp className="h-3 w-3 text-slate-500" /> : <ChevronDown className="h-3 w-3 text-slate-500" />}
+                                  <span className="text-white text-sm">{m.merchant}</span>
+                                  <span className="text-slate-500 text-xs">{m.count} payment{m.count !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-green-400 font-medium text-sm">£{fmt(m.total)}</span>
+                                  <select
+                                    defaultValue={drillIncomeType || ''}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={async (e) => {
+                                      await recategoriseIncome(m.merchant, e.target.value);
+                                    }}
+                                    className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
+                                  >
+                                    {Object.keys(INCOME_LABELS).map(c => (
+                                      <option key={c} value={c}>{INCOME_LABELS[c].label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </button>
+                              {isExpanded && (
+                                <div className="ml-5 mt-1 space-y-1 border-l-2 border-slate-800 pl-3">
+                                  {sourceTxns.length > 0 ? sourceTxns.map((t: any, j: number) => (
+                                    <div key={j} className="flex items-center justify-between text-sm py-1.5">
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-slate-300 truncate block text-xs">{t.description?.substring(0, 55)}</span>
+                                        <span className="text-slate-500 text-[10px]">{t.date}</span>
+                                      </div>
+                                      <span className="text-green-400 font-medium text-xs ml-2">+£{fmt(Math.abs(t.amount))}</span>
+                                    </div>
+                                  )) : (
+                                    <p className="text-slate-500 text-xs py-2">No individual transactions found</p>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
                   <div>
-                    <h3 className="text-white text-sm font-semibold mb-3">Transactions ({drillIncomeData.transactions.length})</h3>
+                    <h3 className="text-white text-sm font-semibold mb-3">All Transactions ({drillIncomeData.transactions.length})</h3>
                     <div className="space-y-1 max-h-64 overflow-y-auto">
                       {drillIncomeData.transactions.map((t: any, i: number) => (
                         <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-slate-800/50">
@@ -1879,7 +1909,7 @@ export default function MoneyHubPage() {
                             <span className="text-slate-300 truncate block">{t.description?.substring(0, 50)}</span>
                             <span className="text-slate-500 text-xs">{t.date}</span>
                           </div>
-                          <span className="text-green-400 font-medium ml-2">+£{Math.abs(t.amount).toFixed(2)}</span>
+                          <span className="text-green-400 font-medium ml-2">+£{fmt(Math.abs(t.amount))}</span>
                         </div>
                       ))}
                     </div>
