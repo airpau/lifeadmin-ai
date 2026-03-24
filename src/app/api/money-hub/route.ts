@@ -8,7 +8,7 @@ function getAdmin() {
   return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -21,9 +21,19 @@ export async function GET() {
     const isPaid = tier === 'essential' || tier === 'pro';
     const isPro = tier === 'pro';
 
+    // Support viewing a specific month (e.g. ?month=2026-02)
+    const url = new URL(request.url);
+    const selectedMonth = url.searchParams.get('month');
+
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString();
+    let viewDate = now;
+    if (selectedMonth) {
+      const [y, m] = selectedMonth.split('-').map(Number);
+      if (y && m) viewDate = new Date(y, m - 1, 15); // mid-month to avoid timezone issues
+    }
+    const startOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).toISOString();
+    const endOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    const sixMonthsAgo = new Date(viewDate.getFullYear(), viewDate.getMonth() - 6, 1).toISOString();
 
     // Parallel data fetching
     const [
@@ -44,13 +54,20 @@ export async function GET() {
     ]);
 
     const txns = transactions.data || [];
-    const thisMonthTxns = txns.filter(t => t.timestamp >= startOfMonth);
+    const thisMonthTxns = txns.filter(t => t.timestamp >= startOfMonth && t.timestamp <= endOfMonth);
 
-    // Income vs outgoings
+    // Income vs outgoings — detect transfers between own accounts
     const isXferTxn = (t: any) => {
       const desc = (t.description || '').toLowerCase();
-      return desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
-             desc.includes('internal') || desc.includes('between accounts') || (t.income_type === 'transfer');
+      const cat = (t.category || '').toUpperCase();
+      // Bank-level transfer category
+      if (cat === 'TRANSFER') return true;
+      // Description-based transfer detection
+      if (desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
+          desc.includes('internal') || desc.includes('between accounts') || desc.includes('via online - pymt')) return true;
+      // Income type tagged as transfer
+      if (t.income_type === 'transfer') return true;
+      return false;
     };
     const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
     const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
@@ -135,8 +152,12 @@ export async function GET() {
       const monthTxns = txns.filter(t => t.timestamp.startsWith(monthStr));
       const isXfer = (t: any) => {
         const desc = (t.description || '').toLowerCase();
-        return desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
-               desc.includes('internal') || desc.includes('between accounts') || (t.income_type === 'transfer');
+        const cat = (t.category || '').toUpperCase();
+        if (cat === 'TRANSFER') return true;
+        if (desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
+            desc.includes('internal') || desc.includes('between accounts') || desc.includes('via online - pymt')) return true;
+        if (t.income_type === 'transfer') return true;
+        return false;
       };
       const inc = monthTxns.filter(t => parseFloat(t.amount) > 0 && !isXfer(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
       const out = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
@@ -182,13 +203,17 @@ export async function GET() {
     score = Math.min(100, Math.max(0, score));
 
     // Days through month
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const dayOfMonth = now.getDate();
-    const monthProgress = Math.round((dayOfMonth / daysInMonth) * 100);
+    const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+    const isCurrentMonth = viewDate.getMonth() === now.getMonth() && viewDate.getFullYear() === now.getFullYear();
+    const dayOfMonth = isCurrentMonth ? now.getDate() : daysInMonth;
+    const monthProgress = isCurrentMonth ? Math.round((dayOfMonth / daysInMonth) * 100) : 100;
+
+    const viewMonthStr = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}`;
 
     return NextResponse.json({
       tier,
       score,
+      selectedMonth: viewMonthStr,
       overview: {
         monthlyIncome: parseFloat(monthlyIncome.toFixed(2)),
         monthlyOutgoings: parseFloat(monthlyOutgoings.toFixed(2)),

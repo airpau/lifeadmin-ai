@@ -231,6 +231,9 @@ export default function MoneyHubPage() {
   const [addMoneyGoalId, setAddMoneyGoalId] = useState<string | null>(null);
   const [addMoneyAmount, setAddMoneyAmount] = useState('');
 
+  // Month selector
+  const [selectedMonth, setSelectedMonth] = useState('');
+
   // Financial action centre / email scanning
   const [scanning, setScanning] = useState(false);
 
@@ -249,13 +252,15 @@ export default function MoneyHubPage() {
 
   // ─── Data fetching ────────────────────────────────────────────────────────
 
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (month?: string) => {
     try {
-      const res = await fetch('/api/money-hub');
+      const m = month ?? selectedMonth;
+      const url = m ? `/api/money-hub?month=${m}` : '/api/money-hub';
+      const res = await fetch(url);
       const d = await res.json();
       if (!d.error) setData(d);
     } catch { /* silent */ }
-  }, []);
+  }, [selectedMonth]);
 
   const syncMoneyHub = async () => {
     setSyncing(true);
@@ -726,6 +731,23 @@ export default function MoneyHubPage() {
           >
             <HelpCircle className="h-5 w-5" />
           </button>
+          <select
+            value={selectedMonth}
+            onChange={(e) => {
+              setSelectedMonth(e.target.value);
+              refreshData(e.target.value);
+            }}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+          >
+            <option value="">This month</option>
+            {Array.from({ length: 6 }, (_, i) => {
+              const d = new Date();
+              d.setMonth(d.getMonth() - (i + 1));
+              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+              const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+              return <option key={val} value={val}>{label}</option>;
+            })}
+          </select>
           <button
             onClick={syncMoneyHub}
             disabled={syncing}
