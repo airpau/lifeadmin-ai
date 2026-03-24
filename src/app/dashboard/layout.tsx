@@ -175,9 +175,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Mobile bottom nav - show 5 key items only */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 flex z-40">
-        {navItems.map((item) => {
+        {[
+          { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
+          { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
+          { name: 'Letters', href: '/dashboard/complaints', icon: FileText },
+          { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
+          { name: 'Profile', href: '/dashboard/profile', icon: User },
+        ].map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
           return (
