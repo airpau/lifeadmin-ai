@@ -184,18 +184,31 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Load previous meeting context for agent memory
+  // Load previous meeting context AND agent memories
   let previousMeetingContext = '';
   const { data: recentMeetings } = await supabase.from('meetings')
-    .select('summary, action_items')
+    .select('summary, action_items, ended_at')
     .eq('status', 'ended')
     .order('ended_at', { ascending: false })
     .limit(3);
 
   if (recentMeetings && recentMeetings.length > 0) {
-    previousMeetingContext = '\nPrevious meeting summaries:\n' +
-      recentMeetings.map((m: any) => `- ${m.summary || 'No summary'}`).join('\n');
+    previousMeetingContext = '\n\nPREVIOUS MEETINGS (you must remember these):\n' +
+      recentMeetings.map((m: any) => {
+        const items = Array.isArray(m.action_items) ? m.action_items.map((a: any) => a.task).join('; ') : '';
+        return `- ${m.summary || 'No summary'}${items ? ' Actions: ' + items : ''}`;
+      }).join('\n');
   }
+
+  // Load pending agent_tasks so agents know what's been assigned
+  const { data: pendingTasks } = await supabase.from('agent_tasks')
+    .select('title, created_by, assigned_to, status')
+    .in('status', ['pending', 'in_progress'])
+    .limit(10);
+
+  const taskContext = pendingTasks && pendingTasks.length > 0
+    ? '\n\nCURRENT AGENT TASKS:\n' + pendingTasks.map((t: any) => `- [${t.status}] ${t.title} (${t.created_by} > ${t.assigned_to})`).join('\n')
+    : '';
 
   // STEP 1: Chairperson decides who should speak (max 3-5 agents)
   const agentList = agents.map(a => `${a.role}: ${a.name}`).join(', ');
@@ -244,15 +257,17 @@ export async function POST(request: NextRequest) {
 
       const meetingPrompt = `You are in a live meeting with Paul (the founder of Paybacker) and other AI executives. Respond in character as ${agent.name}. Be concise: 2-4 sentences unless Paul asks for detail.
 
-${businessContext}${previousMeetingContext}${memoryContext}
+${businessContext}${previousMeetingContext}${taskContext}${memoryContext}
 
 ${historyContext ? `Meeting so far:\n${historyContext}\n\n` : ''}Paul says: "${message}"
 
-Respond as ${agent.name}. Be direct and actionable. Speak from your area of expertise. If the topic isn't relevant to your role, say so briefly and defer to the right person.`;
+Respond as ${agent.name}. Be direct and actionable. Speak from your area of expertise. If the topic isn't relevant to your role, say so briefly and defer to the right person.
+If Paul asks you to email something, coordinate something, or take an action, include in your response what you will do.`;
 
       try {
+        // Use Haiku for meeting responses (cost control: ~$0.003 per response vs $0.05 for Sonnet)
         const response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 300,
           system: agent.system_prompt,
           messages: [{ role: 'user', content: meetingPrompt }],
@@ -272,12 +287,48 @@ Respond as ${agent.name}. Be direct and actionable. Speak from your area of expe
           });
         }
 
+        // If Charlie or any agent mentions sending an email, actually send it
+        if (agent.role === 'exec_assistant' && (
+          message.toLowerCase().includes('email') ||
+          message.toLowerCase().includes('send me') ||
+          message.toLowerCase().includes('update me')
+        )) {
+          try {
+            const { resend: rs, FROM_EMAIL: fe } = await import('@/lib/resend');
+            await rs.emails.send({
+              from: fe,
+              to: 'hello@paybacker.co.uk',
+              subject: `Meeting Update from Charlie`,
+              html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:40px;border-radius:16px;">
+                <h1 style="color:#f59e0b;font-size:20px;margin:0 0 16px;">Meeting Update</h1>
+                <p style="color:#94a3b8;font-size:13px;margin-bottom:8px;">You asked: "${message}"</p>
+                <div style="background:#1e293b;border-radius:8px;padding:16px;margin:12px 0;">
+                  <p style="color:#e2e8f0;font-size:14px;line-height:1.6;white-space:pre-wrap;">${responseText}</p>
+                </div>
+                <p style="color:#475569;font-size:11px;margin-top:24px;">Charlie (Executive Assistant)</p>
+              </div>`,
+            });
+          } catch {}
+        }
+
         return { agent: agent.name, role: agent.role, response: responseText };
       } catch (err: any) {
         return { agent: agent.name, role: agent.role, response: `[Unable to respond]` };
       }
     })
   );
+
+  // Save key points from this round to agent_memory so they persist to next session
+  if (responses.length > 0 && currentMeetingId) {
+    const roundSummary = responses.map(r => `${r.agent}: ${r.response.substring(0, 100)}`).join('\n');
+    await supabase.from('agent_memory').insert({
+      agent_role: 'exec_assistant',
+      memory_type: 'context',
+      title: `Meeting discussion: ${message.substring(0, 60)}`,
+      content: `Paul asked: "${message.substring(0, 200)}"\nResponses: ${roundSummary}`,
+      importance: 6,
+    });
+  }
 
   return NextResponse.json({ responses, meetingId: currentMeetingId });
 }
