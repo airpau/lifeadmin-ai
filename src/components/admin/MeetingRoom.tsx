@@ -79,6 +79,8 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [proposalSent, setProposalSent] = useState<Set<number>>(new Set());
+  const [meetingId, setMeetingId] = useState<string | null>(null);
+  const [ending, setEnding] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const createProposal = async (msg: MeetingMessage, index: number) => {
@@ -129,10 +131,16 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
         body: JSON.stringify({
           message: text,
           history: updatedMessages,
+          meetingId,
         }),
       });
 
       const data = await res.json();
+
+      // Track meeting ID for persistence
+      if (data.meetingId && !meetingId) {
+        setMeetingId(data.meetingId);
+      }
 
       if (data.responses) {
         const agentMessages: MeetingMessage[] = data.responses.map((r: any) => ({
@@ -186,6 +194,26 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
                 );
               })}
             </div>
+            {meetingId && messages.length > 0 && (
+              <button
+                onClick={async () => {
+                  setEnding(true);
+                  try {
+                    await fetch('/api/admin/meeting', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CRON_SECRET}` },
+                      body: JSON.stringify({ action: 'end_meeting', meetingId }),
+                    });
+                  } catch {}
+                  setEnding(false);
+                  onClose();
+                }}
+                disabled={ending}
+                className="bg-red-500/20 text-red-400 hover:bg-red-500/30 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              >
+                {ending ? 'Saving...' : 'End Meeting'}
+              </button>
+            )}
             <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
               <X className="h-5 w-5" />
             </button>

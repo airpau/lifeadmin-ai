@@ -28,13 +28,87 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { message, agents: requestedAgents, history } = await request.json();
+  const { message, agents: requestedAgents, history, meetingId, action } = await request.json();
+
+  const supabase = getAdmin();
+
+  // Handle meeting end: generate summary and email
+  if (action === 'end_meeting' && meetingId) {
+    const { data: messages } = await supabase
+      .from('meeting_messages')
+      .select('role, agent_name, content')
+      .eq('meeting_id', meetingId)
+      .order('created_at', { ascending: true });
+
+    const transcript = (messages || []).map(m =>
+      m.role === 'user' ? `Paul: ${m.content}` : `${m.agent_name}: ${m.content}`
+    ).join('\n\n');
+
+    // Generate summary via Claude
+    let summary = '';
+    let actionItems: any[] = [];
+    try {
+      const summaryRes = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: 'You are a meeting secretary. Summarise this meeting concisely and extract action items. Return JSON: {"summary": "...", "action_items": [{"task": "...", "assigned_to": "agent role or human"}]}',
+        messages: [{ role: 'user', content: `Summarise this meeting:\n\n${transcript}` }],
+      });
+      const text = summaryRes.content[0];
+      if (text.type === 'text') {
+        let raw = text.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0].replace(/,\s*([}\]])/g, '$1'));
+          summary = parsed.summary || '';
+          actionItems = parsed.action_items || [];
+        }
+      }
+    } catch {}
+
+    await supabase.from('meetings').update({
+      status: 'ended',
+      ended_at: new Date().toISOString(),
+      summary,
+      action_items: actionItems,
+    }).eq('id', meetingId);
+
+    // Save key decisions to agent memory
+    if (actionItems.length > 0) {
+      for (const item of actionItems) {
+        await supabase.from('agent_memory').insert({
+          agent_role: item.assigned_to || 'exec_assistant',
+          memory_type: 'decision',
+          title: `Meeting action: ${item.task?.substring(0, 80)}`,
+          content: item.task || '',
+          importance: 7,
+        });
+      }
+    }
+
+    // Email summary to founder via Charlie
+    const { resend, FROM_EMAIL } = await import('@/lib/resend');
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: 'hello@paybacker.co.uk',
+      subject: `Meeting Summary: ${summary?.substring(0, 60) || 'Executive Meeting'}`,
+      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:40px;border-radius:16px;">
+        <h1 style="color:#f59e0b;font-size:20px;margin:0 0 16px;">Meeting Summary</h1>
+        <p style="color:#e2e8f0;font-size:14px;line-height:1.6;white-space:pre-wrap;">${summary}</p>
+        ${actionItems.length > 0 ? `<div style="background:#1e293b;border-radius:8px;padding:16px;margin:20px 0;">
+          <p style="color:#f59e0b;font-weight:bold;margin:0 0 8px;">Action Items</p>
+          <ul style="color:#94a3b8;padding-left:20px;margin:0;">${actionItems.map((a: any) => `<li>${a.task} (${a.assigned_to || 'unassigned'})</li>`).join('')}</ul>
+        </div>` : ''}
+        <p style="color:#475569;font-size:11px;margin-top:24px;">Paybacker AI Executive Meeting</p>
+      </div>`,
+    }).catch(() => {});
+
+    return NextResponse.json({ summary, actionItems, meetingId });
+  }
 
   if (!message) {
     return NextResponse.json({ error: 'message is required' }, { status: 400 });
   }
-
-  const supabase = getAdmin();
 
   // Fetch requested agents (or all executive agents)
   const agentRoles = requestedAgents || ['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'clo', 'cio', 'cxo', 'cfraudo', 'exec_assistant', 'support_lead', 'support_agent'];
@@ -77,43 +151,125 @@ export async function POST(request: NextRequest) {
     })
     .join('\n\n');
 
-  // Call each agent in parallel
-  const responses = await Promise.all(
-    agents.map(async (agent) => {
-      const meetingPrompt = `You are in a live meeting with Paul (the founder of Paybacker) and the other AI executives. Respond in character as ${agent.name}. Be concise — this is a real-time conversation, not a report. Keep your response to 2-4 sentences unless Paul asks for detail.
+  // Create or continue meeting
+  let currentMeetingId = meetingId;
+  if (!currentMeetingId) {
+    const { data: newMeeting } = await supabase.from('meetings')
+      .insert({ title: message.substring(0, 80), status: 'active' })
+      .select('id').single();
+    currentMeetingId = newMeeting?.id;
+  }
 
-${businessContext}
+  // Save the user's message
+  if (currentMeetingId) {
+    await supabase.from('meeting_messages').insert({
+      meeting_id: currentMeetingId,
+      role: 'user',
+      content: message,
+    });
+  }
 
-${historyContext ? `Meeting so far:\n${historyContext}\n\n` : ''}Paul says: "${message}"
+  // Load previous meeting context for agent memory
+  let previousMeetingContext = '';
+  const { data: recentMeetings } = await supabase.from('meetings')
+    .select('summary, action_items')
+    .eq('status', 'ended')
+    .order('ended_at', { ascending: false })
+    .limit(3);
 
-Respond as ${agent.name} would in this meeting. Be direct, actionable, and speak from your area of expertise. If the topic isn't relevant to your role, say so briefly and defer to the right person.`;
+  if (recentMeetings && recentMeetings.length > 0) {
+    previousMeetingContext = '\nPrevious meeting summaries:\n' +
+      recentMeetings.map((m: any) => `- ${m.summary || 'No summary'}`).join('\n');
+  }
 
-      try {
-        const response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 300,
-          system: agent.system_prompt,
-          messages: [{ role: 'user', content: meetingPrompt }],
-        });
+  // STEP 1: Chairperson decides who should speak (max 3-5 agents)
+  const agentList = agents.map(a => `${a.role}: ${a.name}`).join(', ');
+  let selectedRoles: string[] = [];
 
-        const text = response.content[0];
-        if (text.type !== 'text') return { agent: agent.name, role: agent.role, response: 'No response.' };
+  try {
+    const chairRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 200,
+      system: 'You are a meeting chairperson. Given a message from the founder and a list of available agents, select the 3-5 agents most relevant to respond. Return ONLY a JSON array of role strings, e.g. ["cfo","cto","cmo"]. If the message is general (like "what are our priorities"), include exec_assistant plus the 3-4 most relevant. If it targets a specific area, pick only the directly relevant agents.',
+      messages: [{ role: 'user', content: `Founder says: "${message}"\n\nAvailable agents: ${agentList}\n\nWhich 3-5 agents should respond?` }],
+    });
 
-        return {
-          agent: agent.name,
-          role: agent.role,
-          response: text.text,
-        };
-      } catch (err: any) {
-        console.error(`Meeting: ${agent.role} failed:`, err.message);
-        return {
-          agent: agent.name,
-          role: agent.role,
-          response: `[Unable to respond — ${err.message}]`,
-        };
+    const chairText = chairRes.content[0];
+    if (chairText.type === 'text') {
+      const match = chairText.text.match(/\[[\s\S]*\]/);
+      if (match) {
+        selectedRoles = JSON.parse(match[0]);
       }
-    })
-  );
+    }
+  } catch {
+    // Fallback: pick first 5
+    selectedRoles = agents.slice(0, 5).map(a => a.role);
+  }
 
-  return NextResponse.json({ responses });
+  // If chairperson returned nothing sensible, default to 5
+  if (selectedRoles.length === 0) {
+    selectedRoles = agents.slice(0, 5).map(a => a.role);
+  }
+
+  const selectedAgents = agents.filter(a => selectedRoles.includes(a.role));
+
+  // STEP 2: Selected agents respond in sequence (not parallel) for natural conversation
+  const responses: Array<{ agent: string; role: string; response: string }> = [];
+
+  for (const agent of selectedAgents) {
+    // Load agent-specific memory
+    const { data: memories } = await supabase.from('agent_memory')
+      .select('title, content')
+      .eq('agent_role', agent.role)
+      .order('importance', { ascending: false })
+      .limit(3);
+
+    const memoryContext = memories && memories.length > 0
+      ? `\nYour memory from previous sessions:\n${memories.map((m: any) => `- ${m.title}: ${m.content}`).join('\n')}`
+      : '';
+
+    // Include what previous agents said in this round
+    const priorResponses = responses.length > 0
+      ? '\n\nOther agents have already said:\n' + responses.map(r => `${r.agent}: ${r.response}`).join('\n')
+      : '';
+
+    const meetingPrompt = `You are in a live meeting with Paul (the founder of Paybacker) and other AI executives. Respond in character as ${agent.name}. Be concise: 2-4 sentences unless Paul asks for detail.
+
+${businessContext}${previousMeetingContext}${memoryContext}
+
+${historyContext ? `Meeting so far:\n${historyContext}\n\n` : ''}${priorResponses}
+
+Paul says: "${message}"
+
+Respond as ${agent.name}. Be direct and actionable. Speak from your area of expertise. Do not repeat what other agents have already said. Add new insight or a different perspective.`;
+
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        system: agent.system_prompt,
+        messages: [{ role: 'user', content: meetingPrompt }],
+      });
+
+      const text = response.content[0];
+      const responseText = text.type === 'text' ? text.text : 'No response.';
+
+      responses.push({ agent: agent.name, role: agent.role, response: responseText });
+
+      // Save to meeting_messages
+      if (currentMeetingId) {
+        await supabase.from('meeting_messages').insert({
+          meeting_id: currentMeetingId,
+          role: 'assistant',
+          agent_role: agent.role,
+          agent_name: agent.name,
+          content: responseText,
+        });
+      }
+    } catch (err: any) {
+      responses.push({ agent: agent.name, role: agent.role, response: `[Unable to respond]` });
+    }
+  }
+
+  return NextResponse.json({ responses, meetingId: currentMeetingId });
 }
