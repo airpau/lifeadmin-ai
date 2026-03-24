@@ -128,7 +128,7 @@ export default function Home() {
             </h1>
 
             <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Track every penny. Dispute unfair bills. Cancel forgotten subscriptions. AI-powered financial intelligence that finds you money and gets it back.
+              Track every penny. Switch to cheaper deals. Dispute unfair bills. Cancel forgotten subscriptions. AI-powered financial intelligence that saves you money automatically.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-10 text-sm text-slate-400">
@@ -165,6 +165,44 @@ export default function Home() {
                   <p className="text-amber-400 font-bold text-2xl">Self-learning</p>
                   <p className="text-slate-400 text-xs">AI gets smarter with every correction you make</p>
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {ctaButton}
+              </div>
+            </div>
+          </div>
+
+          {/* Deal Switching Section */}
+          <div className="max-w-5xl mx-auto mb-24">
+            <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/5 border border-green-500/20 rounded-2xl p-8 md:p-12">
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp className="h-5 w-5 text-green-400" />
+                <span className="text-green-400 text-sm font-semibold">Smart Deal Switching</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">We find you cheaper deals. Automatically.</h2>
+              <p className="text-slate-300 text-lg mb-6 max-w-2xl">Paybacker analyses your bank transactions and email receipts to identify every bill you are overpaying on. We alert you before contracts renew and show you better deals from 50+ UK providers.</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800 text-center">
+                  <p className="text-green-400 font-bold text-2xl">56</p>
+                  <p className="text-slate-400 text-xs">Deals from top UK providers</p>
+                </div>
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800 text-center">
+                  <p className="text-green-400 font-bold text-2xl">9</p>
+                  <p className="text-slate-400 text-xs">Categories: energy, broadband, mobile, insurance and more</p>
+                </div>
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800 text-center">
+                  <p className="text-green-400 font-bold text-2xl">30/14/7</p>
+                  <p className="text-slate-400 text-xs">Day alerts before your contracts renew</p>
+                </div>
+                <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800 text-center">
+                  <p className="text-green-400 font-bold text-2xl">AI</p>
+                  <p className="text-slate-400 text-xs">Personalised recommendations from your real data</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 text-sm text-slate-400 mb-6">
+                {['Energy', 'Broadband', 'Mobile', 'Insurance', 'Mortgages', 'Loans', 'Credit Cards', 'Car Finance', 'Travel'].map(cat => (
+                  <span key={cat} className="bg-slate-800/50 border border-slate-700 px-3 py-1 rounded-full">{cat}</span>
+                ))}
               </div>
               <div className="flex flex-wrap gap-3">
                 {ctaButton}
