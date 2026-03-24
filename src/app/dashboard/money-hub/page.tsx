@@ -90,6 +90,11 @@ const INCOME_LABELS: Record<string, { label: string; color: string; icon: string
   other: { label: 'Other', color: '#475569', icon: '📋' },
 };
 
+/** Format money consistently as £X,XXX.XX */
+function fmt(n: number): string {
+  return n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 const ASSET_TYPES = ['property', 'savings', 'investment', 'pension', 'vehicle', 'business', 'crypto', 'other'] as const;
 const LIABILITY_TYPES = ['mortgage', 'loan', 'credit_card', 'overdraft', 'car_finance', 'student_loan', 'business_loan', 'other'] as const;
 
@@ -150,7 +155,7 @@ function PieChartWidget({ data }: { data: Array<{ label: string; value: number; 
           <div key={i} className="flex items-center gap-2 text-xs">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
             <span className="text-slate-300">{d.label}</span>
-            <span className="text-white font-medium ml-auto">{((d.value / total) * 100).toFixed(0)}%</span>
+            <span className="text-white font-medium ml-auto">{((d.value / total) * 100).toFixed(1)}%</span>
           </div>
         ))}
       </div>
@@ -166,7 +171,7 @@ function BarChartWidget({ data }: { data: Array<{ label: string; value: number; 
         <div key={i}>
           <div className="flex justify-between text-xs mb-0.5">
             <span className="text-slate-300">{d.label}</span>
-            <span className="text-white font-medium">£{d.value.toLocaleString()}</span>
+            <span className="text-white font-medium">£{fmt(d.value)}</span>
           </div>
           <div className="w-full bg-slate-700 rounded-full h-2">
             <div className="h-2 rounded-full" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: d.color }} />
@@ -769,18 +774,18 @@ export default function MoneyHubPage() {
       <div id="tour-overview" className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <TrendingUp className="h-5 w-5 text-green-400 mb-2" />
-          <p className="text-2xl font-bold text-white">£{data.overview.monthlyIncome.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyIncome)}</p>
           <p className="text-slate-400 text-xs">Income this month</p>
         </div>
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <TrendingDown className="h-5 w-5 text-red-400 mb-2" />
-          <p className="text-2xl font-bold text-white">£{data.overview.monthlyOutgoings.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyOutgoings)}</p>
           <p className="text-slate-400 text-xs">Spent this month</p>
         </div>
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
           <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {data.overview.netPosition >= 0 ? '+' : ''}£{data.overview.netPosition.toLocaleString()}
+            {data.overview.netPosition >= 0 ? '+' : ''}£{fmt(data.overview.netPosition)}
           </p>
           <p className="text-slate-400 text-xs">Net position</p>
         </div>
@@ -818,7 +823,7 @@ export default function MoneyHubPage() {
                         <span className="text-white text-xs font-medium">{info.label}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-slate-400 text-[10px]">{pct.toFixed(1)}%</span>
-                          <span className="text-green-400 text-xs font-bold">£{amount.toLocaleString()}</span>
+                          <span className="text-green-400 text-xs font-bold">£{fmt(amount)}</span>
                         </div>
                       </div>
                       <div className="w-full bg-slate-700 rounded-full h-1.5">
@@ -830,7 +835,7 @@ export default function MoneyHubPage() {
               })}
             <div className="pt-2 border-t border-slate-800 flex justify-between">
               <span className="text-slate-400 text-sm">Total income</span>
-              <span className="text-green-400 font-bold text-sm">£{totalIncome.toLocaleString()}</span>
+              <span className="text-green-400 font-bold text-sm">£{fmt(totalIncome)}</span>
             </div>
           </div>
         ) : (
@@ -903,10 +908,11 @@ export default function MoneyHubPage() {
                           <div className="flex items-center gap-2">
                             {budget && (
                               <span className={`text-[10px] ${budgetPct > 100 ? 'text-red-400' : budgetPct > 80 ? 'text-amber-400' : 'text-green-400'}`}>
-                                {budgetPct.toFixed(0)}% of £{budget.monthly_limit}
+                                {budgetPct.toFixed(0)}% of £{fmt(budget.monthly_limit)}
                               </span>
                             )}
-                            <span className="text-white text-xs font-bold">£{cat.total.toFixed(0)}</span>
+                            <span className="text-slate-400 text-[10px]">{(data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0).toFixed(1)}%</span>
+                            <span className="text-white text-xs font-bold">£{fmt(cat.total)}</span>
                           </div>
                         </div>
                         <div className="w-full bg-slate-700 rounded-full h-1.5">
@@ -963,7 +969,7 @@ export default function MoneyHubPage() {
                 {data.spending.topMerchants.slice(0, 7).map((m, i) => (
                   <div key={i} className="flex items-center justify-between text-sm">
                     <span className="text-slate-300 truncate max-w-[200px]">{m.merchant}</span>
-                    <span className="text-white font-medium">£{m.total.toFixed(0)}</span>
+                    <span className="text-white font-medium">£{fmt(m.total)}</span>
                   </div>
                 ))}
               </div>
@@ -1011,16 +1017,16 @@ export default function MoneyHubPage() {
                         <div className="space-y-1 text-[11px]">
                           <div className="flex justify-between">
                             <span className="text-green-400">Income</span>
-                            <span className="text-white font-medium">£{m.income.toLocaleString()}</span>
+                            <span className="text-white font-medium">£{fmt(m.income)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-red-400">Outgoings</span>
-                            <span className="text-white font-medium">£{m.outgoings.toLocaleString()}</span>
+                            <span className="text-white font-medium">£{fmt(m.outgoings)}</span>
                           </div>
                           <div className="flex justify-between border-t border-slate-700 pt-1">
                             <span className={net >= 0 ? 'text-green-400' : 'text-red-400'}>Net</span>
                             <span className={`font-medium ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {net >= 0 ? '+' : ''}£{net.toLocaleString()}
+                              {net >= 0 ? '+' : ''}£{fmt(net)}
                             </span>
                           </div>
                           {prevMonth && (
@@ -1054,11 +1060,11 @@ export default function MoneyHubPage() {
           <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 gap-4">
             <div className="text-center">
               <p className="text-slate-500 text-xs">Avg monthly income</p>
-              <p className="text-green-400 font-bold text-sm">£{avgIncome.toFixed(0)}</p>
+              <p className="text-green-400 font-bold text-sm">£{fmt(avgIncome)}</p>
             </div>
             <div className="text-center">
               <p className="text-slate-500 text-xs">Avg monthly outgoings</p>
-              <p className="text-red-400 font-bold text-sm">£{avgOutgoings.toFixed(0)}</p>
+              <p className="text-red-400 font-bold text-sm">£{fmt(avgOutgoings)}</p>
             </div>
           </div>
         </div>
@@ -1104,11 +1110,11 @@ export default function MoneyHubPage() {
             <p className="text-slate-500 text-xs">Active</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-red-400">£{data.subscriptions.monthlyTotal.toFixed(0)}</p>
+            <p className="text-2xl font-bold text-red-400">£{fmt(data.subscriptions.monthlyTotal)}</p>
             <p className="text-slate-500 text-xs">/month</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-red-400">£{data.subscriptions.annualTotal.toFixed(0)}</p>
+            <p className="text-2xl font-bold text-red-400">£{fmt(data.subscriptions.annualTotal)}</p>
             <p className="text-slate-500 text-xs">/year</p>
           </div>
         </div>
@@ -1146,16 +1152,16 @@ export default function MoneyHubPage() {
           {/* Totals */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-400">£{data.netWorth.assets.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-green-400">£{fmt(data.netWorth.assets)}</p>
               <p className="text-slate-500 text-xs">Assets</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-red-400">£{data.netWorth.liabilities.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-red-400">£{fmt(data.netWorth.liabilities)}</p>
               <p className="text-slate-500 text-xs">Liabilities</p>
             </div>
             <div className="text-center">
               <p className={`text-2xl font-bold ${data.netWorth.total >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                £{data.netWorth.total.toLocaleString()}
+                £{fmt(data.netWorth.total)}
               </p>
               <p className="text-slate-500 text-xs">Net Worth</p>
             </div>
@@ -1181,7 +1187,7 @@ export default function MoneyHubPage() {
                       <span className="text-slate-500 text-xs ml-2 capitalize">{a.asset_type?.replace('_', ' ')}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-green-400 font-medium text-sm">£{(parseFloat(String(a.estimated_value)) || 0).toLocaleString()}</span>
+                      <span className="text-green-400 font-medium text-sm">£{fmt(parseFloat(String(a.estimated_value)) || 0)}</span>
                       <button onClick={() => deleteNetWorthItem(a.id, 'asset')} className="text-slate-600 hover:text-red-400">
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -1242,7 +1248,7 @@ export default function MoneyHubPage() {
                               className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                             />
                             <p className="text-emerald-400 text-[10px]">
-                              Equity: £{((parseFloat(assetForm.value) || 0) - (parseFloat(assetForm.mortgage_balance) || 0)).toLocaleString()}
+                              Equity: £{fmt((parseFloat(assetForm.value) || 0) - (parseFloat(assetForm.mortgage_balance) || 0))}
                             </p>
                           </>
                         )}
@@ -1285,14 +1291,14 @@ export default function MoneyHubPage() {
                         <span className="text-xs px-1.5 py-0.5 bg-slate-800 rounded text-slate-400 capitalize">{l.liability_type?.replace('_', ' ')}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-red-400 font-bold text-sm">£{(parseFloat(String(l.outstanding_balance)) || 0).toLocaleString()}</span>
+                        <span className="text-red-400 font-bold text-sm">£{fmt(parseFloat(String(l.outstanding_balance)) || 0)}</span>
                         <button onClick={() => deleteNetWorthItem(l.id, 'liability')} className="text-slate-600 hover:text-red-400">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
                     <div className="flex gap-4 text-xs text-slate-500">
-                      {l.monthly_payment && <span>£{parseFloat(String(l.monthly_payment)).toLocaleString()}/month</span>}
+                      {l.monthly_payment && <span>£{fmt(parseFloat(String(l.monthly_payment)))}/month</span>}
                       {l.interest_rate && <span>{l.interest_rate}% APR</span>}
                       {l.monthly_payment && l.outstanding_balance && (
                         <span className="text-slate-600">~{Math.ceil(parseFloat(String(l.outstanding_balance)) / parseFloat(String(l.monthly_payment)))} months remaining</span>
@@ -1440,7 +1446,7 @@ export default function MoneyHubPage() {
                       </span>
                       <div className="flex items-center gap-2">
                         <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-slate-400'}>
-                          £{spent.toFixed(0)} / £{b.monthly_limit}
+                          £{fmt(spent)} / £{fmt(b.monthly_limit)}
                         </span>
                         <button
                           onClick={() => { setEditBudgetId(b.id); setBudgetCategory(b.category); setBudgetAmount(b.monthly_limit.toString()); setShowBudgetForm(true); }}
@@ -1491,7 +1497,7 @@ export default function MoneyHubPage() {
             </button>
             {totalOpportunityValue > 0 && (
               <div className="text-right">
-                <p className="text-2xl font-bold text-amber-400">£{totalOpportunityValue.toFixed(0)}</p>
+                <p className="text-2xl font-bold text-amber-400">£{fmt(totalOpportunityValue)}</p>
                 <p className="text-slate-500 text-xs">potential savings</p>
               </div>
             )}
@@ -1647,7 +1653,7 @@ export default function MoneyHubPage() {
                       <span className="text-white font-medium text-sm">{g.emoji || '🎯'} {g.goal_name}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400 text-xs">
-                          £{(g.current_amount || 0).toFixed(0)} / £{(g.target_amount || 0).toFixed(0)}
+                          £{fmt(g.current_amount || 0)} / £{fmt(g.target_amount || 0)}
                         </span>
                         <button
                           onClick={() => { setAddMoneyGoalId(addMoneyGoalId === g.id ? null : g.id); setAddMoneyAmount(''); }}
@@ -1668,7 +1674,7 @@ export default function MoneyHubPage() {
                       <span>{pct.toFixed(0)}% complete</span>
                       <div className="flex items-center gap-3">
                         {monthlySavingNeeded !== null && monthlySavingNeeded > 0 && (
-                          <span className="text-pink-400">£{monthlySavingNeeded.toFixed(0)}/month needed</span>
+                          <span className="text-pink-400">£{fmt(monthlySavingNeeded)}/month needed</span>
                         )}
                         {daysLeft !== null && <span>{daysLeft > 0 ? `${daysLeft} days left` : 'Past due'}</span>}
                       </div>
