@@ -18,11 +18,13 @@ import {
   BarChart3,
   Gift,
   Building2,
+  Wallet,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const navItems = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
   { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
   { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
