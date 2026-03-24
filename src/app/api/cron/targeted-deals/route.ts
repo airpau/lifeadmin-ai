@@ -1,4 +1,3 @@
-// @ts-nocheck - Targeted deals disabled until partnerships are live
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { updateUserOpportunityScore } from '@/lib/opportunity-scoring';
@@ -14,13 +13,13 @@ function getAdmin() {
 }
 
 /**
- * Targeted deal emails — scores all users and sends personalised emails
+ * Targeted deal emails - scores all users and sends personalised emails
  * based on their opportunity level.
  *
- * Schedule: Wednesday + Friday 9am (mid-week follow-ups to Monday's general deal digest)
+ * Schedule: Wednesday + Friday 9am
  *
  * Targeting logic:
- * - Score 0-19 (low): skip — they get the Monday general digest
+ * - Score 0-19 (low): skip
  * - Score 20-49 (medium): send if not sent in last 7 days
  * - Score 50-99 (high): send if not sent in last 3 days
  * - Score 100+ (critical): send immediately, even if sent 2 days ago
@@ -30,9 +29,6 @@ export async function GET(request: NextRequest) {
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  // Deals not yet live - return early
-  return NextResponse.json({ skipped: true, reason: 'Deal alerts disabled until deal switching partnerships are live' });
 
   const supabase = getAdmin();
 
