@@ -15,35 +15,33 @@ const urgentQueue = new Set<string>();
 const lastRunTimes: Record<string, number> = {};
 
 // Minimum interval between runs (milliseconds) - prevents burning API credits
-// Minimum intervals prevent burning API credits when there's no new work.
-// Agents still run IMMEDIATELY when triggered by another agent's task.
-// All agents use Haiku except Charlie (Sonnet).
-// Estimated daily cost: ~$8-12/day (~$250-350/month)
+// Minimum intervals - agents ONLY run when this interval has passed AND they have work.
+// Target: ~$5-8/day (~$150-240/month)
 const MIN_INTERVALS: Record<string, number> = {
-  // SUPPORT - responsive
-  support_agent: 15 * 60 * 1000,     // Riley: every 15 mins (Haiku ~$0.10/run, ~$3/day with skips)
-  support_lead: 30 * 60 * 1000,      // Sam: every 30 mins (Haiku ~$0.10/run, ~$1.50/day)
+  // SUPPORT - responsive to tickets
+  support_agent: 30 * 60 * 1000,      // Riley: every 30 mins
+  support_lead: 60 * 60 * 1000,       // Sam: every hour
 
-  // COORDINATOR - frequent
-  exec_assistant: 4 * 60 * 60 * 1000,// Charlie: every 4 hours (Sonnet ~$0.40/run, ~$2.40/day)
+  // COORDINATOR
+  exec_assistant: 6 * 60 * 60 * 1000, // Charlie: every 6 hours (3-4x daily)
 
-  // CORE EXECUTIVES - 4x daily
-  cfo: 6 * 60 * 60 * 1000,           // Alex: every 6 hours (Haiku ~$0.15/run, ~$0.60/day)
-  cto: 6 * 60 * 60 * 1000,           // Morgan: every 6 hours (~$0.60/day)
-  cao: 6 * 60 * 60 * 1000,           // Jamie: every 6 hours (~$0.60/day)
-  cmo: 6 * 60 * 60 * 1000,           // Taylor: every 6 hours (~$0.60/day)
+  // CORE EXECUTIVES - 2x daily
+  cfo: 12 * 60 * 60 * 1000,           // Alex: every 12 hours
+  cto: 12 * 60 * 60 * 1000,           // Morgan: every 12 hours
+  cao: 12 * 60 * 60 * 1000,           // Jamie: every 12 hours
+  cmo: 12 * 60 * 60 * 1000,           // Taylor: every 12 hours
 
-  // SPECIALISTS - 2x daily
-  head_of_ads: 12 * 60 * 60 * 1000,  // Jordan: every 12 hours (~$0.30/day)
-  cco: 12 * 60 * 60 * 1000,          // Casey: every 12 hours (~$0.30/day)
-  cgo: 12 * 60 * 60 * 1000,          // Drew: every 12 hours (~$0.30/day)
-  cro: 6 * 60 * 60 * 1000,           // Pippa: every 6 hours (~$0.60/day)
-  cxo: 12 * 60 * 60 * 1000,          // Bella: every 12 hours (~$0.30/day)
-  cfraudo: 12 * 60 * 60 * 1000,      // Finn: every 12 hours (~$0.20/day)
+  // SPECIALISTS - 1x daily
+  head_of_ads: 24 * 60 * 60 * 1000,   // Jordan: daily
+  cco: 24 * 60 * 60 * 1000,           // Casey: daily
+  cgo: 24 * 60 * 60 * 1000,           // Drew: daily
+  cro: 12 * 60 * 60 * 1000,           // Pippa: every 12 hours
+  cxo: 24 * 60 * 60 * 1000,           // Bella: daily
+  cfraudo: 24 * 60 * 60 * 1000,       // Finn: daily
 
-  // RESEARCH - 1x daily
-  clo: 24 * 60 * 60 * 1000,          // Leo: daily (~$0.15/day)
-  cio: 48 * 60 * 60 * 1000,          // Nico: every 2 days (~$0.08/day)
+  // RESEARCH - infrequent
+  clo: 48 * 60 * 60 * 1000,           // Leo: every 2 days
+  cio: 7 * 24 * 60 * 60 * 1000,       // Nico: weekly
 };
 
 function getSupabase() {
@@ -127,6 +125,7 @@ export function triggerAgentNow(role: string) {
  * Main continuous loop - runs forever, cycling through agents
  */
 async function mainLoop() {
+  const startTime = Date.now();
   console.log('[Loop] Starting continuous agent loop...');
 
   while (true) {
@@ -157,27 +156,28 @@ async function mainLoop() {
       if (runningAgents.has(role)) continue;
 
       const lastRun = lastRunTimes[role] || 0;
-      const interval = MIN_INTERVALS[role] || 60 * 60 * 1000;
+      const interval = MIN_INTERVALS[role] || 24 * 60 * 60 * 1000;
       const timeSinceLastRun = Date.now() - lastRun;
 
-      if (timeSinceLastRun >= interval) {
-        // Check if there's actually something to do (avoid wasting API credits)
-        const hasWork = await hasPendingWork(role);
-        const isFirstRun = lastRun === 0;
-        const isOverdue = timeSinceLastRun >= interval * 1.5;
+      // Only run if interval has passed
+      if (timeSinceLastRun < interval) continue;
 
-        if (hasWork || isFirstRun || isOverdue) {
-          console.log(`[Loop] Running ${agentDef.name} (${hasWork ? 'pending work' : isFirstRun ? 'first run' : 'scheduled'})`);
-          // Run without awaiting so multiple agents can run in parallel
-          executeAgent(role);
-          // Small delay between launching agents to avoid API rate limits
-          await sleep(2000);
-        }
+      // For first run after server start, stagger agents over 30 minutes
+      const isFirstRun = lastRun === 0;
+      if (isFirstRun) {
+        const allRoles = Object.keys(agentRegistry);
+        const myIndex = allRoles.indexOf(role);
+        const staggerDelay = myIndex * 2 * 60 * 1000; // 2 mins apart
+        if (Date.now() - startTime < staggerDelay) continue;
       }
+
+      console.log(`[Loop] Running ${agentDef.name} (interval elapsed)`);
+      executeAgent(role);
+      await sleep(5000); // 5s between launches to avoid rate limits
     }
 
-    // 4. Short sleep before next cycle
-    await sleep(60000); // Check every minute
+    // 4. Sleep 5 minutes between cycles (not 1 minute)
+    await sleep(5 * 60 * 1000);
   }
 }
 
