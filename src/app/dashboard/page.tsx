@@ -62,7 +62,7 @@ export default function DashboardPage() {
     }
   }, [searchParams]);
 
-  // Sync subscription after Stripe checkout
+  // Sync subscription after Stripe checkout + Awin conversion tracking
   useEffect(() => {
     if (searchParams.get('success') === 'true' || searchParams.get('upgraded')) {
       fetch('/api/stripe/sync', { method: 'POST' })
@@ -71,6 +71,31 @@ export default function DashboardPage() {
           if (data.synced && data.tier && data.tier !== 'free') {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
+
+            // Awin conversion tracking (client-side via mastertag)
+            const commissions: Record<string, { amount: string; group: string }> = {
+              essential: { amount: '9.99', group: 'ESSENTIAL' },
+              pro: { amount: '19.99', group: 'PRO' },
+            };
+            const comm = commissions[data.tier];
+            if (comm) {
+              const w = window as any;
+              const orderRef = `conversion-${data.tier}-${Date.now()}`;
+              w.AWIN = w.AWIN || {};
+              w.AWIN.Tracking = w.AWIN.Tracking || {};
+              w.AWIN.Tracking.Sale = {
+                amount: comm.amount,
+                orderRef,
+                parts: `${comm.group}:${comm.amount}`,
+                voucher: '',
+                currency: 'GBP',
+                channel: 'aw',
+                customerAcquisition: 'NEW',
+              };
+              if (typeof w.AWIN?.Tracking?.saleSubmit === 'function') {
+                w.AWIN.Tracking.saleSubmit();
+              }
+            }
           }
         })
         .catch(() => {});
