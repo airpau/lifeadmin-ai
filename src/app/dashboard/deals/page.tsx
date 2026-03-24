@@ -86,6 +86,7 @@ const DEALS: Record<string, Deal[]> = {
   Travel: [
     { id: 'trip-com', provider: 'Trip.com', headline: 'Flights, hotels and holidays - compare and save', saving: 'Save on travel', awinMid: '22405', providerUrl: 'https://uk.trip.com', category: 'Travel' },
     { id: 'travelsupermarket', provider: 'TravelSupermarket', headline: 'Compare travel insurance, car hire and holidays', saving: '17% insurance savings', awinMid: '8734', providerUrl: 'https://www.travelsupermarket.com', category: 'Travel' },
+    { id: 'jet2', provider: 'Jet2.com', headline: 'Package holidays and flights from the UK', saving: 'Save on holidays', awinMid: '18729', providerUrl: 'https://www.jet2.com', category: 'Travel' },
   ],
   'Car Finance': [
     { id: 'carwow-finance', provider: 'Carwow', headline: 'Compare car finance deals - PCP, HP, and personal loans', saving: 'Save on car finance', awinMid: '18621', providerUrl: 'https://www.carwow.co.uk/car-finance', category: 'Car Finance' },

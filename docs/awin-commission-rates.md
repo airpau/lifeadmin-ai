@@ -114,6 +114,15 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Jet2.com (ID: 18729)
+- Rates: TBC (visible after approval)
+- Commission on flown transactions only
+- No sub-networks, no browser extensions without approval
+- Must use approved offer messaging (verbatim from Jet2)
+- Must write "Jet2holidays" (small h)
+- Good dedup policy: not deduped against organic search, direct URL, or price comparison
+- Missing transactions must be submitted within 90 days
+
 ### TravelSupermarket (ID: 8734)
 - Commission structure:
   - Travel Insurance: **17% CPA** of policy value (validated 90-180 days)
