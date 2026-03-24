@@ -301,6 +301,7 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   const page = PAGES[params.slug];
   if (!page) return { title: 'Paybacker' };
 
+  const url = `https://paybacker.co.uk/solutions/${params.slug}`;
   return {
     title: page.title,
     description: page.description,
@@ -308,9 +309,18 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
     openGraph: {
       title: page.title,
       description: page.description,
-      url: `https://paybacker.co.uk/solutions/${params.slug}`,
+      url,
       siteName: 'Paybacker',
       type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title: page.title,
+      description: page.description,
+      images: ['/logo.png'],
+    },
+    alternates: {
+      canonical: url,
     },
   };
 }
@@ -439,6 +449,25 @@ export default function SolutionPage({ params }: { params: { slug: string } }) {
             </div>
           </div>
         </footer>
+
+        {/* FAQ JSON-LD */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              mainEntity: page.faqs.map((faq) => ({
+                '@type': 'Question',
+                name: faq.q,
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: faq.a,
+                },
+              })),
+            }),
+          }}
+        />
       </div>
     </div>
   );

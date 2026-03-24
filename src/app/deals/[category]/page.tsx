@@ -214,6 +214,7 @@ export function generateMetadata({ params }: { params: { category: string } }): 
   const cat = CATEGORIES[params.category];
   if (!cat) return { title: 'Deals - Paybacker' };
 
+  const url = `https://paybacker.co.uk/deals/${params.category}`;
   return {
     title: cat.title,
     description: cat.description,
@@ -221,9 +222,18 @@ export function generateMetadata({ params }: { params: { category: string } }): 
     openGraph: {
       title: cat.title,
       description: cat.description,
-      url: `https://paybacker.co.uk/deals/${params.category}`,
+      url,
       siteName: 'Paybacker',
       type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title: cat.title,
+      description: cat.description,
+      images: ['/logo.png'],
+    },
+    alternates: {
+      canonical: url,
     },
   };
 }

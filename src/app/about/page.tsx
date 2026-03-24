@@ -3,9 +3,27 @@ import Image from "next/image";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "About — Paybacker",
+  title: "About Paybacker - AI-Powered Consumer Finance Platform",
   description:
-    "Learn how Paybacker uses AI to scan your bills and find savings on energy, broadband, mobile and subscriptions.",
+    "Paybacker helps UK consumers save money on bills, subscriptions, and contracts using AI and Open Banking. Founded in 2026.",
+  openGraph: {
+    title: "About Paybacker - AI-Powered Consumer Finance Platform",
+    description:
+      "Paybacker helps UK consumers save money on bills, subscriptions, and contracts using AI and Open Banking. Founded in 2026.",
+    url: "https://paybacker.co.uk/about",
+    siteName: "Paybacker",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "About Paybacker - AI-Powered Consumer Finance Platform",
+    description:
+      "Paybacker helps UK consumers save money on bills, subscriptions, and contracts using AI and Open Banking. Founded in 2026.",
+    images: ["/logo.png"],
+  },
+  alternates: {
+    canonical: "https://paybacker.co.uk/about",
+  },
 };
 
 export default function AboutPage() {

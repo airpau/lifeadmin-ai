@@ -4,9 +4,31 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title:
-    "Your Broadband Contract Has Ended — You're Probably Being Overcharged — Paybacker",
+    "Your Broadband Contract Has Ended - You're Probably Being Overcharged | Paybacker",
   description:
     "Millions of UK households are out of contract on broadband and overpaying. Find out if your contract has ended and how to save up to £300 a year.",
+  openGraph: {
+    title:
+      "Your Broadband Contract Has Ended - You're Probably Being Overcharged | Paybacker",
+    description:
+      "Millions of UK households are out of contract on broadband and overpaying. Find out if your contract has ended and how to save up to £300 a year.",
+    url: "https://paybacker.co.uk/blog/broadband-contract-ended",
+    siteName: "Paybacker",
+    type: "article",
+    publishedTime: "2026-03-23T00:00:00Z",
+    authors: ["Paybacker"],
+  },
+  twitter: {
+    card: "summary",
+    title:
+      "Your Broadband Contract Has Ended - You're Probably Being Overcharged | Paybacker",
+    description:
+      "Millions of UK households are out of contract on broadband and overpaying. Find out if your contract has ended and how to save up to £300 a year.",
+    images: ["/logo.png"],
+  },
+  alternates: {
+    canonical: "https://paybacker.co.uk/blog/broadband-contract-ended",
+  },
 };
 
 export default function BroadbandBlogPost() {

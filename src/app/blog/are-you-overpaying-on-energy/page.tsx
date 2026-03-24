@@ -4,9 +4,31 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title:
-    "Are You Overpaying on Energy in 2026? Here's How to Find Out — Paybacker",
+    "Are You Overpaying on Energy in 2026? Here's How to Find Out | Paybacker",
   description:
     "The energy price cap hits £1,641 from April 2026. Find out if you're on an expensive standard variable tariff and how switching could save you hundreds.",
+  openGraph: {
+    title:
+      "Are You Overpaying on Energy in 2026? Here's How to Find Out | Paybacker",
+    description:
+      "The energy price cap hits £1,641 from April 2026. Find out if you're on an expensive standard variable tariff and how switching could save you hundreds.",
+    url: "https://paybacker.co.uk/blog/are-you-overpaying-on-energy",
+    siteName: "Paybacker",
+    type: "article",
+    publishedTime: "2026-03-23T00:00:00Z",
+    authors: ["Paybacker"],
+  },
+  twitter: {
+    card: "summary",
+    title:
+      "Are You Overpaying on Energy in 2026? Here's How to Find Out | Paybacker",
+    description:
+      "The energy price cap hits £1,641 from April 2026. Find out if you're on an expensive standard variable tariff and how switching could save you hundreds.",
+    images: ["/logo.png"],
+  },
+  alternates: {
+    canonical: "https://paybacker.co.uk/blog/are-you-overpaying-on-energy",
+  },
 };
 
 export default function EnergyBlogPost() {

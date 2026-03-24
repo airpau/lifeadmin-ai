@@ -96,6 +96,26 @@ export default function RootLayout({
         `}} />
       </head>
       <body className="min-h-full flex flex-col">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'Organization',
+              name: 'Paybacker',
+              url: 'https://paybacker.co.uk',
+              logo: 'https://paybacker.co.uk/logo.png',
+              description: 'AI-powered savings platform for UK consumers. Dispute bills, track subscriptions, scan bank accounts and get your money back automatically.',
+              foundingDate: '2026-03',
+              contactPoint: {
+                '@type': 'ContactPoint',
+                email: 'hello@paybacker.co.uk',
+                contactType: 'customer service',
+                availableLanguage: 'English',
+              },
+            }),
+          }}
+        />
         <PostHogProvider>
           {children}
           <ChatWidget />

@@ -3,9 +3,34 @@ import Image from "next/image";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Blog — Paybacker",
+  title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
   description:
     "Money-saving tips, switching guides and UK consumer rights advice from Paybacker.",
+  keywords: [
+    "money saving tips UK",
+    "consumer rights advice",
+    "switching guide",
+    "energy saving",
+    "broadband deals",
+  ],
+  openGraph: {
+    title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
+    description:
+      "Money-saving tips, switching guides and UK consumer rights advice from Paybacker.",
+    url: "https://paybacker.co.uk/blog",
+    siteName: "Paybacker",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
+    description:
+      "Money-saving tips, switching guides and UK consumer rights advice from Paybacker.",
+    images: ["/logo.png"],
+  },
+  alternates: {
+    canonical: "https://paybacker.co.uk/blog",
+  },
 };
 
 const posts = [
