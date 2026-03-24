@@ -149,19 +149,27 @@ Google OAuth approved and verified. Available to all tiers (one-time for free, m
 
 ---
 
-## Deals System (Coming Soon)
+## Deals System (LIVE)
 
-Deals page shows all categories but buttons greyed out with "Coming Soon" until Awin publisher approved or comparison API partner signed.
+56 affiliate deals across 9 categories. Awin publisher ID: 2825812. Applied to 30+ programmes, awaiting approvals.
 
-### Revenue Strategy (Two-Pronged)
-1. **Earn:** Comparison API partner (Switchcraft in negotiation, also contacted Decision Tech, Free Price Compare, The Energy Shop)
-2. **Grow:** Awin Advertiser for influencer acquisition (£1 per signup, £2 Essential conversion, £4 Pro conversion)
+### Categories
+Energy (5), Broadband (10), Mobile (13), Insurance (6), Mortgages (5), Credit Cards (4), Loans (5), Car Finance (2), Travel (6)
 
-### Awin Integration (Advertiser)
-- Mastertag installed (loads via `NEXT_PUBLIC_AWIN_ADVERTISER_ID`)
-- S2S conversion tracking on signup and Stripe webhook
-- Commission: £1 free signup (LEAD), £2 Essential (ESSENTIAL), £4 Pro (PRO)
-- Tracking confirmed email sent to newintegration@awin.com
+### Revenue Strategy
+1. **Affiliate deals:** 56 deals via Awin publisher account. Commission rates documented in docs/awin-commission-rates.md
+2. **Awin Advertiser:** Influencer acquisition (£1 per signup, £2 Essential, £4 Pro)
+3. **Subscription revenue:** £9.99-£19.99/month per user
+
+### Deal Emails (LIVE)
+- Targeted deal emails: Wed + Fri 9am, personalised by opportunity score
+- Weekly deal alerts: identifies switchable subscriptions from bank data
+- Both use bank scan + email scan data for personalisation
+
+### Landing Pages (LIVE)
+- 9 deal category pages at /deals/[category]
+- 8 feature solution pages at /solutions/[slug]
+- Full sitemap at /sitemap.xml (28 pages)
 
 ---
 
@@ -352,33 +360,18 @@ Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these prioritie
 
 ## Outstanding Items
 
-### Priority 0: REBUILD AGENTS AS PERSISTENT SUB-AGENTS (Critical)
+### Priority 0: AGENT SYSTEM ON RAILWAY (DONE)
 
-**Current limitation:** Agents run as stateless serverless functions. Each meeting message is a fresh Claude API call with memory pasted into the prompt. This causes unreliable recall, no true conversation history, and no ability to work autonomously between runs.
-
-**Solution:** Rebuild using the **Claude Agent SDK** running as persistent processes on a dedicated server.
-
-**Architecture:**
-- Host: Railway, Fly.io, or EC2 (not Vercel serverless)
-- Each agent runs as a persistent process with its own conversation thread
-- Agents communicate via message passing (Supabase Realtime or Redis pub/sub)
-- True conversational memory within sessions, DB-backed long-term memory between sessions
-- Agents can proactively check for tasks and work on them continuously, not just on cron
-- Meeting room connects to live agent processes via WebSocket or SSE
-
-**Implementation steps:**
-1. Set up dedicated server (Railway recommended for simplicity)
-2. Install Claude Agent SDK
-3. Create persistent agent processes (one per agent or pooled)
-4. Migrate meeting room to connect to live agents instead of one-shot API calls
-5. Add inter-agent message bus for coordination
-6. Keep existing cron-based reporting as a fallback/supplement
-
-**What works today (interim):**
-- Cron-based agent runs with task processing (agents do work on assigned tasks during scheduled runs)
-- Meeting room with prompt-injected memory (unreliable but functional)
-- Agent workflow system (tasks assigned, processed, results saved)
-- Meeting history saved to DB
+15 autonomous agents running on Railway (agent-server/) with:
+- Anthropic API tool use (agentic loop) - agents autonomously query data and take actions
+- 9 custom tool servers (Supabase, email, memory, tasks, reports, support, content, research, Stripe)
+- Self-learning: goals, predictions, feedback loop, memory with decay
+- Continuous event-driven loop (not cron) - agents trigger each other via tasks
+- Safety: table permissions, rate limits, budget caps, full audit trail
+- Only Charlie can email founder. Riley only responds to support tickets.
+- Cost target: ~$3-5/day (~$100-150/month)
+- Meeting room proxies to Railway for live agent chat
+- All API keys configured including FAL, Perplexity, GitHub, ipapi
 
 ### Priority 1: Agent Autonomy and Persistent Memory (current interim system)
 1. **Meeting persistence** - DONE: conversations saved to DB, summary emailed on end
@@ -420,20 +413,24 @@ This makes the Pro plan genuinely valuable as an all-in-one financial control ce
 | Nico (CIO) | Web search API for competitor monitoring, App Store API for review tracking | Key needed |
 | Bella (CXO) | No external APIs needed (uses internal ticket and chatbot data) | Ready |
 
-### Priority 3: Other Outstanding Items
-1. **Google Search Console setup** (verification file, sitemap submission, request indexing)
-2. **Marketing plan implementation** (8 items: SEO pages, referrals, landing pages, structured data)
-3. Meta Ads setup (need Pixel ID)
-2. Google Ads API data in Jordan's reports
-3. Scanner learning from dismissals
-4. Onboarded_at trigger
-5. Audit log for approved proposals
-6. Meeting history persistence
-7. Spending accuracy improvements
-8. Self-learning from user edits
-9. Switchcraft partnership (awaiting response)
-10. Awin publisher approval (pending)
-11. Instagram posting (Meta app review pending)
-12. Resend inbound MX for email to ticket
-13. Page load speed optimisation
-14. Blueprint document in docs/ (this file)
+### AWAITING EXTERNAL
+1. **Google OAuth verification** - submitted 24 March 2026 for gmail.readonly scope. 3-5 business day review. Until approved, users see "unverified app" warning (100 user cap).
+2. **Awin programme approvals** - 30+ programmes applied for. Most auto-approve within 24-48 hours.
+
+### NEXT PRIORITIES
+1. **Google Ads tools for Jordan** - refresh token obtained, credentials on Railway, but need to build Google Ads API tool in agent-server so Jordan can create/manage campaigns autonomously
+2. **Google Search Console** - verify domain, submit sitemap, request indexing for 28 pages
+3. **Charlie Telegram bot** - so founder can interact with agents via Telegram
+4. **Structured data (JSON-LD)** - FAQPage, SoftwareApplication schemas on landing pages
+5. **Referral system** - free month of Essential per referred paying subscriber
+6. **Homepage stats counter** - live from Supabase
+7. **OG image** - default 1200x630 branded image
+
+### LOWER PRIORITY
+8. Resend inbound MX for email-to-ticket
+9. Meta Ads (need Pixel ID)
+10. Scanner learning from dismissals
+11. Onboarded_at trigger
+12. Spending accuracy improvements
+13. Instagram posting (Meta app review)
+14. Page load speed optimisation
