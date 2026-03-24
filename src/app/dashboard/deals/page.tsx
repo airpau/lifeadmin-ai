@@ -54,7 +54,7 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'ee-mobile', provider: 'EE', headline: "UK's largest 5G network", saving: 'Save up to £200/yr', awinMid: '31423', providerUrl: 'https://shop.ee.co.uk/sim-only', category: 'Mobile' },
     { id: 'tesco-mobile', provider: 'Tesco Mobile', headline: 'Clubcard prices on SIM plans', saving: 'Save up to £180/yr', awinMid: '101917', providerUrl: 'https://www.tescomobile.com', category: 'Mobile' },
     { id: 'voxi', provider: 'VOXI', headline: 'Endless social media data included', saving: 'Save up to £160/yr', awinMid: '10951', providerUrl: 'https://www.voxi.co.uk', category: 'Mobile' },
-    { id: 'giffgaff', provider: 'giffgaff', headline: 'Flexible plans - no contract required', saving: 'Save up to £200/yr', awinMid: '5719', providerUrl: 'https://www.giffgaff.com', category: 'Mobile' },
+    { id: 'giffgaff', provider: 'giffgaff', headline: 'Flexible SIM plans - no contract required', saving: 'Save up to £200/yr', awinMid: '3599', providerUrl: 'https://www.giffgaff.com', category: 'Mobile' },
     { id: 'talkmobile', provider: 'Talkmobile', headline: 'Low-cost SIM plans on the Vodafone network', saving: 'Save up to £180/yr', awinMid: '2351', providerUrl: 'https://www.talkmobile.co.uk', category: 'Mobile' },
     { id: 'asda-mobile', provider: 'Asda Mobile', headline: 'Budget-friendly SIM bundles', saving: 'Save up to £160/yr', awinMid: '6250', providerUrl: 'https://mobile.asda.com/bundles', category: 'Mobile' },
     { id: 'honest-mobile', provider: 'Honest Mobile', headline: 'Ethical mobile - plants trees with every plan', saving: 'Save up to £140/yr', awinMid: '20890', providerUrl: 'https://www.honestmobile.co.uk', category: 'Mobile' },

@@ -155,6 +155,13 @@ Advertiser ID: 125502
 - No subnetworks or ad networks
 - No brand PPC bidding
 
+### giffgaff SIM (ID: 3599)
+- Rates: TBC (visible after approval)
+- SIM sales and new activations
+- Declined if ordered to existing giffgaff address
+- No branding guidelines
+- Email marketing requires prior written approval
+
 ### giffgaff Handsets (ID: 5719)
 - Rates: TBC (visible after approval)
 - Covers: handset sales, SIM sales, cashback
