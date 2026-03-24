@@ -143,6 +143,59 @@ export default function Home() {
             </div>
           </div>
 
+          {/* AI Letter Generator Banner */}
+          <div className="max-w-5xl mx-auto mb-12">
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Complaint Letters */}
+              <div className="bg-gradient-to-br from-red-500/10 to-orange-500/5 border border-red-500/20 rounded-2xl p-8 hover:border-red-500/40 transition-all">
+                <div className="flex items-center gap-2 mb-3">
+                  <Scale className="h-6 w-6 text-red-400" />
+                  <span className="text-red-400 text-sm font-semibold">AI Complaint Letters</span>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-3">Dispute any bill in 30 seconds</h2>
+                <p className="text-slate-400 text-sm mb-4">Our AI generates formal complaint letters citing exact UK consumer law. Energy bills, broadband, debt disputes, parking appeals, insurance claims, and more.</p>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {['Energy', 'Broadband', 'Debt', 'Parking', 'Insurance', 'Refunds'].map(cat => (
+                    <span key={cat} className="text-xs bg-red-500/10 text-red-300 px-2 py-1 rounded-full border border-red-500/20">{cat}</span>
+                  ))}
+                </div>
+                {WAITLIST_MODE ? (
+                  <a href="#waitlist" className="inline-block bg-red-500 hover:bg-red-600 text-white font-semibold px-6 py-3 rounded-xl transition-all text-sm">
+                    Generate Your Letter Free
+                  </a>
+                ) : (
+                  <Link href="/auth/signup" className="inline-block bg-red-500 hover:bg-red-600 text-white font-semibold px-6 py-3 rounded-xl transition-all text-sm">
+                    Generate Your Letter Free
+                  </Link>
+                )}
+              </div>
+
+              {/* Government Forms */}
+              <div className="bg-gradient-to-br from-blue-500/10 to-indigo-500/5 border border-blue-500/20 rounded-2xl p-8 hover:border-blue-500/40 transition-all">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="h-6 w-6 text-blue-400" />
+                  <span className="text-blue-400 text-sm font-semibold">AI Form Letters</span>
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-3">HMRC, council tax, DVLA and more</h2>
+                <p className="text-slate-400 text-sm mb-4">AI-generated letters for government departments and official processes. Tax rebates, council tax band challenges, NHS complaints, flight delay claims up to £520.</p>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {['HMRC', 'Council Tax', 'Flight Delay', 'DVLA', 'NHS', 'PPI'].map(cat => (
+                    <span key={cat} className="text-xs bg-blue-500/10 text-blue-300 px-2 py-1 rounded-full border border-blue-500/20">{cat}</span>
+                  ))}
+                </div>
+                {WAITLIST_MODE ? (
+                  <a href="#waitlist" className="inline-block bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-xl transition-all text-sm">
+                    Generate Your Form Letter Free
+                  </a>
+                ) : (
+                  <Link href="/auth/signup" className="inline-block bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-xl transition-all text-sm">
+                    Generate Your Form Letter Free
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Money Hub Hero Section */}
           <div className="max-w-5xl mx-auto mb-24">
             <div className="bg-gradient-to-r from-amber-500/10 to-purple-500/5 border border-amber-500/20 rounded-2xl p-8 md:p-12 mb-12">
