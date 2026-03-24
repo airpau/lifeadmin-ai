@@ -50,7 +50,14 @@ const createTaskForAgent: ToolDef = {
     if (error) {
       return `Failed to create task: ${error.message}`;
     }
-    return `Task created for ${args.assigned_to} (id: ${data.id}): "${args.title}"`;
+
+    // Trigger the assigned agent to run immediately
+    try {
+      const { triggerAgentNow } = await import('../scheduler');
+      triggerAgentNow(args.assigned_to);
+    } catch {}
+
+    return `Task created for ${args.assigned_to} (id: ${data.id}): "${args.title}" - they will pick it up immediately.`;
   },
 };
 
