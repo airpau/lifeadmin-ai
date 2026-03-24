@@ -88,6 +88,7 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'travelsupermarket', provider: 'TravelSupermarket', headline: 'Compare travel insurance, car hire and holidays', saving: '17% insurance savings', awinMid: '8734', providerUrl: 'https://www.travelsupermarket.com', category: 'Travel' },
     { id: 'jet2', provider: 'Jet2.com', headline: 'Cheap flights from UK regional airports', saving: 'Save on flights', awinMid: '18729', providerUrl: 'https://www.jet2.com', category: 'Travel' },
     { id: 'jet2holidays', provider: 'Jet2holidays', headline: 'ATOL-protected package holidays', saving: 'Save on holidays', awinMid: '18730', providerUrl: 'https://www.jet2holidays.com', category: 'Travel' },
+    { id: 'gotogate', provider: 'Gotogate', headline: 'Compare flights from 700+ airlines worldwide', saving: 'Find cheapest flights', awinMid: '112834', providerUrl: 'https://www.gotogate.co.uk', category: 'Travel' },
   ],
   'Car Finance': [
     { id: 'carwow-finance', provider: 'Carwow', headline: 'Compare car finance deals - PCP, HP, and personal loans', saving: 'Save on car finance', awinMid: '18621', providerUrl: 'https://www.carwow.co.uk/car-finance', category: 'Car Finance' },

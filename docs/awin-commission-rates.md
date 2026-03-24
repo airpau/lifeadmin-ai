@@ -114,6 +114,15 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Gotogate (ID: 112834)
+- Rates: TBC (visible after approval)
+- Etraveli Group (also operates Flightnetwork, MyTrip)
+- No voucher codes, no cashback promotion, no subnetworks
+- No email retargeting
+- Prohibited airline keywords: American Airlines, Delta, United, KLM, Air France, Ryanair, etc.
+- Max 5 banner impressions per user per day
+- Contact: murtaza.bakhsh@etraveligroup.com
+
 ### Jet2holidays (ID: 18730)
 - Rates: TBC (visible after approval)
 - Same terms as Jet2.com flights programme
