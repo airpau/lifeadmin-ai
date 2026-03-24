@@ -319,16 +319,27 @@ If Paul asks you to email something, coordinate something, or take an action, in
     })
   );
 
-  // Save key points from this round to agent_memory so they persist to next session
+  // Save meeting context to ALL agents' memory so everyone remembers
   if (responses.length > 0 && currentMeetingId) {
     const roundSummary = responses.map(r => `${r.agent}: ${r.response.substring(0, 100)}`).join('\n');
-    await supabase.from('agent_memory').insert({
-      agent_role: 'exec_assistant',
-      memory_type: 'context',
-      title: `Meeting discussion: ${message.substring(0, 60)}`,
-      content: `Paul asked: "${message.substring(0, 200)}"\nResponses: ${roundSummary}`,
-      importance: 6,
-    });
+    const memoryContent = `Paul asked: "${message.substring(0, 200)}"\nResponses: ${roundSummary}`;
+    const memoryTitle = `Meeting discussion: ${message.substring(0, 60)}`;
+
+    // Save to every agent that participated, plus Charlie
+    const agentRolesToRemember = new Set([
+      ...responses.map(r => r.role),
+      'exec_assistant',
+    ]);
+
+    await supabase.from('agent_memory').insert(
+      Array.from(agentRolesToRemember).map(role => ({
+        agent_role: role,
+        memory_type: 'context' as const,
+        title: memoryTitle,
+        content: memoryContent,
+        importance: 6,
+      }))
+    );
   }
 
   return NextResponse.json({ responses, meetingId: currentMeetingId });
