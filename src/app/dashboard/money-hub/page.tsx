@@ -670,7 +670,30 @@ export default function MoneyHubPage() {
                               <span className="text-white text-sm">{m.merchant}</span>
                               <span className="text-slate-500 text-xs ml-2">{m.count} transactions</span>
                             </div>
-                            <span className="text-white font-medium text-sm">£{m.total.toFixed(2)}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-medium text-sm">£{m.total.toFixed(2)}</span>
+                              <select
+                                defaultValue={drillCategory || ''}
+                                onChange={async (e) => {
+                                  const newCat = e.target.value;
+                                  await fetch('/api/money-hub/recategorise', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ merchantPattern: m.merchant, newCategory: newCat, applyToAll: true }),
+                                  });
+                                  // Refresh
+                                  loadDrillDown(drillCategory!);
+                                  const res = await fetch('/api/money-hub');
+                                  const d = await res.json();
+                                  if (!d.error) setData(d);
+                                }}
+                                className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
+                              >
+                                {Object.keys(CATEGORY_LABELS).map(c => (
+                                  <option key={c} value={c}>{CATEGORY_LABELS[c].label}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         ))}
                       </div>

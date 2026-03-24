@@ -128,74 +128,132 @@ export async function POST() {
   let categorised = 0;
   let incomeDetected = 0;
 
+  // Phase 1: Apply user overrides and keyword rules
+  const needsAI: Array<{ id: string; description: string; amount: number; category: string }> = [];
+
   for (const txn of transactions) {
     const desc = txn.description || '';
     const merchant = (txn.merchant_name || desc.substring(0, 30)).toLowerCase().trim();
     const amount = parseFloat(txn.amount);
 
-    // Determine category: user override > merchant override > auto-categorise
-    let finalCategory = txn.user_category; // keep existing user override
-    if (!finalCategory) {
-      // Check merchant overrides
-      for (const [pattern, cat] of overrideMap) {
-        if (merchant.includes(pattern)) { finalCategory = cat; break; }
-      }
+    // Priority 1: Keep existing user override
+    if (txn.user_category) continue;
+
+    // Priority 2: Check merchant overrides (learned from user corrections)
+    let finalCategory: string | null = null;
+    for (const [pattern, cat] of overrideMap) {
+      if (merchant.includes(pattern)) { finalCategory = cat; break; }
     }
-    if (!finalCategory) {
-      // Check transaction-specific override
-      if (txnOverrides.has(txn.transaction_id)) {
-        finalCategory = txnOverrides.get(txn.transaction_id)!;
-      }
+
+    // Priority 3: Check transaction-specific override
+    if (!finalCategory && txnOverrides.has(txn.transaction_id)) {
+      finalCategory = txnOverrides.get(txn.transaction_id)!;
     }
+
+    // Priority 4: Keyword rules
     if (!finalCategory) {
-      // Auto-categorise
       const isXfer = isTransfer(desc, txn.category || '');
-      finalCategory = isXfer ? 'transfers' : categoriseTransaction(desc, txn.category || '');
+      if (isXfer) {
+        finalCategory = 'transfers';
+      } else {
+        const auto = categoriseTransaction(desc, txn.category || '');
+        // Only use keyword result if it's not 'other' or 'shopping' (too generic)
+        if (auto !== 'other' && auto !== 'shopping') {
+          finalCategory = auto;
+        }
+      }
     }
 
-    // Detect income type for credits with smarter logic
-    let incomeType = txn.income_type;
-    if (!incomeType && amount > 0) {
+    // Priority 5: Income type detection
+    let incomeType: string | null = null;
+    if (amount > 0) {
       incomeType = detectIncomeType(desc);
-
-      // Smarter fallback classification
       if (!incomeType) {
         const d = desc.toLowerCase();
-        // Company payments with "FP" (Faster Payment) from named entities are likely business income
-        if (d.includes(' fp ') && amount >= 500 && !d.includes('from a/c') && !d.includes('via mobile')) {
-          incomeType = 'salary';
-        }
-        // Transfers from own accounts
-        else if (d.includes('from a/c') || d.includes('via mobile xfer') || d.includes('personal transfer')) {
-          incomeType = 'transfer';
-        }
-        // Named person payments with "RENT" in description
-        else if (d.includes('rent')) {
-          incomeType = 'rental';
-        }
-        // Named person payments (likely personal/family transfers)
-        else if (amount >= 1000 && d.match(/^[a-z]+ [a-z]+\s/)) {
-          incomeType = 'transfer';
-        }
-        // Small credits are likely refunds
-        else if (amount < 50) {
-          incomeType = 'refund';
-        }
-        // Everything else
-        else {
-          incomeType = 'other';
-        }
+        if (d.includes('from a/c') || d.includes('via mobile xfer')) incomeType = 'transfer';
+        else if (d.includes('rent')) incomeType = 'rental';
+        else if (d.includes('director') || d.includes('payroll')) incomeType = 'salary';
       }
-      if (incomeType) incomeDetected++;
     }
 
-    // Update if changed
-    if (finalCategory !== txn.user_category || (incomeType && incomeType !== txn.income_type)) {
+    if (finalCategory) {
       await admin.from('bank_transactions').update({
         user_category: finalCategory,
         income_type: incomeType || txn.income_type,
       }).eq('id', txn.id);
       categorised++;
+      if (incomeType) incomeDetected++;
+    } else {
+      // Queue for AI classification
+      needsAI.push({ id: txn.id, description: desc, amount, category: txn.category || '' });
+    }
+  }
+
+  // Phase 2: Use Claude to classify remaining unmatched transactions (batched)
+  if (needsAI.length > 0) {
+    // Batch into groups of 30 to control cost
+    const batches = [];
+    for (let i = 0; i < needsAI.length; i += 30) {
+      batches.push(needsAI.slice(i, i + 30));
+    }
+
+    for (const batch of batches.slice(0, 3)) { // max 3 batches = 90 transactions per sync
+      const txnList = batch.map((t, i) =>
+        `${i + 1}. "${t.description}" | £${Math.abs(t.amount).toFixed(2)} | ${t.amount > 0 ? 'CREDIT' : 'DEBIT'}`
+      ).join('\n');
+
+      try {
+        const res = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          system: `Categorise these UK bank transactions. For each, return a JSON array of objects with: {"index": number, "category": string, "income_type": string or null}.
+
+Categories for debits: mortgage, loans, council_tax, tax, energy, water, broadband, mobile, streaming, fitness, groceries, eating_out, fuel, shopping, insurance, transport, childcare, software, professional, bills, other.
+
+Income types for credits: salary, rental, benefits, investment, refund, loan_repayment, gift, transfer, freelance, other.
+
+If a credit is from a company name with "DIRECTOR" or regular large amounts, it is likely salary.
+If from a named person with "RENT", it is rental income.
+If from "BOOKING.COM" or similar, check context: could be a refund OR rental income from service accommodation.
+If from own account ("From A/C", "Via Mobile Xfer"), it is a transfer.
+
+Return ONLY the JSON array.`,
+          messages: [{ role: 'user', content: `Categorise:\n${txnList}` }],
+        });
+
+        const text = res.content[0];
+        if (text.type === 'text') {
+          let raw = text.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+          const match = raw.match(/\[[\s\S]*\]/);
+          if (match) {
+            const cleaned = match[0].replace(/,\s*([}\]])/g, '$1');
+            const results = JSON.parse(cleaned);
+            for (const r of results) {
+              const txn = batch[r.index - 1];
+              if (txn && r.category) {
+                await admin.from('bank_transactions').update({
+                  user_category: r.category,
+                  income_type: r.income_type || null,
+                }).eq('id', txn.id);
+                categorised++;
+                if (r.income_type) incomeDetected++;
+
+                // Auto-learn: save merchant pattern for future use
+                const merchantName = txn.description.replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 30).toLowerCase();
+                if (merchantName.length > 3 && r.category !== 'other') {
+                  await admin.from('money_hub_category_overrides').upsert({
+                    user_id: user.id,
+                    merchant_pattern: merchantName,
+                    user_category: r.category,
+                  }, { onConflict: 'user_id,merchant_pattern' }).select();
+                }
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error('[money-hub-sync] AI categorisation failed:', err.message);
+      }
     }
   }
 
