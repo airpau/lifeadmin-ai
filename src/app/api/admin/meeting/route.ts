@@ -287,11 +287,12 @@ If Paul asks you to email something, coordinate something, or take an action, in
           });
         }
 
-        // If Charlie or any agent mentions sending an email, actually send it
+        // Charlie sends email only when explicitly asked to email
         if (agent.role === 'exec_assistant' && (
-          message.toLowerCase().includes('email') ||
-          message.toLowerCase().includes('send me') ||
-          message.toLowerCase().includes('update me')
+          message.toLowerCase().includes('email me') ||
+          message.toLowerCase().includes('send me an email') ||
+          message.toLowerCase().includes('send me a summary') ||
+          message.toLowerCase().includes('email a summary')
         )) {
           try {
             const { resend: rs, FROM_EMAIL: fe } = await import('@/lib/resend');
