@@ -329,10 +329,55 @@ Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these prioritie
 
 ---
 
+## AI Agent Team (14 Agents)
+
+| # | Name | Role | Schedule | Model |
+|---|------|------|----------|-------|
+| 1 | Alex | CFO | 3x daily (7am, 1pm, 6pm) | Haiku |
+| 2 | Morgan | CTO | 3x daily (8:30am, 2:30pm, 7:30pm) | Haiku |
+| 3 | Jamie | CAO | 3x daily (8am, 12pm, 5pm) | Haiku |
+| 4 | Taylor | CMO | 3x daily (7:30am, 1:30pm, 5:30pm) | Haiku |
+| 5 | Jordan | Head of Ads | 3x daily (8am, 2pm, 8pm) | Sonnet |
+| 6 | Casey | CCO (Content) | Daily 7am | Sonnet |
+| 7 | Drew | CGO (Growth) | Daily 8am | Sonnet |
+| 8 | Pippa | CRO (Retention) | Every 6 hours | Sonnet |
+| 9 | Leo | CLO (Compliance) | Daily 6am | Sonnet |
+| 10 | Nico | CIO (Intelligence) | Weekly Monday 7am | Sonnet |
+| 11 | Bella | CXO (Experience) | Daily 9am | Sonnet |
+| 12 | Charlie | Exec Assistant | 7x daily | Sonnet |
+| 13 | Sam | Support Lead | Every 30 mins | Haiku |
+| 14 | Riley | Support Agent | Every 15 mins | Haiku |
+
+---
+
 ## Outstanding Items
 
-1. **Google Search Console setup** (download verification file, submit sitemap, request indexing)
-2. **Marketing plan implementation** (8 items above)
+### Priority 1: Agent Autonomy and Persistent Memory
+1. **Meeting persistence** - Save conversations to DB, meeting history tab, Charlie email summary after each meeting
+2. **Agent persistent memory** - Each agent needs memory of previous reports and decisions so they improve over time. New `agent_memory` table storing key learnings, decisions, and context per agent.
+3. **Cross-agent autonomous actions** - Agents need to trigger actions on each other without human intervention:
+   - Drew (CGO) detects inactive user > triggers Resend email automatically
+   - Pippa (CRO) identifies churn risk > notifies Alex (CFO) and Drew (CGO)
+   - Leo (CLO) finds compliance issue > notifies Morgan (CTO) to fix
+   - Bella (CXO) ranks UX fix > creates improvement proposal for Morgan (CTO)
+   - Casey (CCO) generates content > sends to Taylor (CMO) for review
+   - Nico (CIO) spots competitor threat > alerts Taylor (CMO) and Jordan (Head of Ads)
+
+### Priority 2: API Integrations Needed Per Agent
+
+| Agent | APIs Needed | Status |
+|-------|------------|--------|
+| Casey (CCO) | fal.ai (Flux Pro images), Runway ML (Gen-3 video), Twitter API v2, LinkedIn Marketing API, TikTok Content API | Keys needed |
+| Jordan (Head of Ads) | Google Ads API (connected), Meta Marketing API (needs Pixel ID) | Partially done |
+| Drew (CGO) | Resend (already integrated for email sequences) | Ready |
+| Pippa (CRO) | Resend (for personalised re-engagement emails), Stripe (for loyalty rewards) | Ready |
+| Leo (CLO) | Web search API for regulatory monitoring (consider SerpAPI or Brave Search API) | Key needed |
+| Nico (CIO) | Web search API for competitor monitoring, App Store API for review tracking | Key needed |
+| Bella (CXO) | No external APIs needed (uses internal ticket and chatbot data) | Ready |
+
+### Priority 3: Other Outstanding Items
+1. **Google Search Console setup** (verification file, sitemap submission, request indexing)
+2. **Marketing plan implementation** (8 items: SEO pages, referrals, landing pages, structured data)
 3. Meta Ads setup (need Pixel ID)
 2. Google Ads API data in Jordan's reports
 3. Scanner learning from dismissals
