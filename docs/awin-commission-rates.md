@@ -114,6 +114,20 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### TravelSupermarket (ID: 8734)
+- Commission structure:
+  - Travel Insurance: **17% CPA** of policy value (validated 90-180 days)
+  - Car Hire: **5% CPA** of booking value (validated after pickup)
+  - Airport Parking: **2% CPA**
+  - Airport Lounges: **2% CPA**
+  - Airport Hotels: **2% CPA**
+  - Holidays: **£0.18 CPC** per click-out (invite-only)
+- Cookie window: 30 days
+- Hotels: validated 30-365 days post-booking
+- Must write as "TravelSupermarket" (one word, two capitals)
+- Part of MoneySuperMarket Group
+- HIGH VALUE: 17% on travel insurance is excellent
+
 ### Trip.com (ID: 22405)
 - Rates: TBC (visible after approval)
 - Validated upon travel or stay completion
