@@ -190,7 +190,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     <p style="${p}">Free accounts include 3 complaint letters per month. If you've used them — or you can see more opportunities to chase — the Essential plan unlocks everything.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">Essential — £9.99/month</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">Essential — £4.99/month</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
         <li><strong style="color:#e2e8f0;">Unlimited</strong> AI complaint letters</li>
         <li><strong style="color:#e2e8f0;">Unlimited</strong> inbox scanning</li>
@@ -230,7 +230,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
         <li>Subscription tracker + manual add</li>
         <li>Dashboard overview</li>
       </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">ESSENTIAL (£9.99/mo)</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">ESSENTIAL (£4.99/mo)</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0 0 16px;line-height:2;font-size:14px;">
         <li>Unlimited complaint and form letters</li>
         <li>1 bank account with daily auto-sync</li>
@@ -239,7 +239,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
         <li>Cancellation emails with legal context</li>
         <li>Renewal reminders (30, 14, 7 days before)</li>
       </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">PRO (£19.99/mo)</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">PRO (£9.99/mo)</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2;font-size:14px;">
         <li>Everything in Essential</li>
         <li>Unlimited bank accounts</li>

@@ -11,6 +11,14 @@ const PRICE_ID_TO_TIER: Record<string, string> = {
   'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
   'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
   'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
+  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential',
+  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential',
+  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',
+  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',
+  'price_1TEdJN8FbRNalJNUQxTQpM8Y': 'essential',
+  'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
+  'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
+  'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
 };
 
 function formatDate(timestamp: number | null | undefined): string | null {

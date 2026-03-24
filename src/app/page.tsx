@@ -412,11 +412,11 @@ export default function Home() {
                       <div className="text-slate-500 text-xs mt-1">See what Paybacker can do — one bank scan included.</div>
                     </th>
                     <th className="py-4 px-4 text-center bg-amber-500/5 rounded-t-xl">
-                      <div className="text-amber-400 font-bold">Essential — £9.99/mo</div>
+                      <div className="text-amber-400 font-bold">Essential — £4.99/mo</div>
                       <div className="text-slate-400 text-xs mt-1">Keep your finances on track with daily bank sync and full insights.</div>
                     </th>
                     <th className="py-4 px-4 text-center">
-                      <div className="text-purple-400 font-bold">Pro — £19.99/mo</div>
+                      <div className="text-purple-400 font-bold">Pro — £9.99/mo</div>
                       <div className="text-slate-400 text-xs mt-1">Complete financial control — unlimited banks and premium features.</div>
                     </th>
                   </tr>

@@ -17,10 +17,10 @@ export const stripe = process.env.STRIPE_SECRET_KEY
   : null as any;
 
 export const PRICE_IDS = {
-  essential_monthly: process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID || 'price_1TDVvS7qw7mEWYpyN80zzAXM',
-  essential_yearly:  process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID  || 'price_1TDVvS7qw7mEWYpynfpI5x9M',
-  pro_monthly:       process.env.STRIPE_PRO_MONTHLY_PRICE_ID       || 'price_1TDVvT7qw7mEWYpySmjZJTpG',
-  pro_yearly:        process.env.STRIPE_PRO_YEARLY_PRICE_ID        || 'price_1TDVvT7qw7mEWYpyrLHr6L45',
+  essential_monthly: process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID || 'price_1TEdJN8FbRNalJNUQxTQpM8Y',
+  essential_yearly:  process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID  || 'price_1TEdJN8FbRNalJNUymPQdKvT',
+  pro_monthly:       process.env.STRIPE_PRO_MONTHLY_PRICE_ID       || 'price_1TEdJN8FbRNalJNU0o6F4WZZ',
+  pro_yearly:        process.env.STRIPE_PRO_YEARLY_PRICE_ID        || 'price_1TEdJO8FbRNalJNUEb0U09ln',
 };
 
 export const PLANS = {
@@ -41,8 +41,8 @@ export const PLANS = {
   },
   essential: {
     name: 'Essential',
-    priceMonthly: 9.99,
-    priceYearly: 99,
+    priceMonthly: 4.99,
+    priceYearly: 44.99,
     features: [
       'Unlimited bill scanning',
       'Unlimited AI complaint letters',
@@ -59,8 +59,8 @@ export const PLANS = {
   },
   pro: {
     name: 'Pro',
-    priceMonthly: 19.99,
-    priceYearly: 199,
+    priceMonthly: 9.99,
+    priceYearly: 94.99,
     features: [
       'Everything in Essential',
       'Automatic complaint tracking',

@@ -41,7 +41,7 @@ Paybacker is an AI-powered savings platform for UK consumers. It helps people di
 - Basic spending overview (top 5 categories)
 - AI chatbot
 
-**Essential — £9.99/month or £99/year:**
+**Essential — £4.99/month or £44.99/year (Founding Member Pricing):**
 - Unlimited AI letters
 - 1 bank account with daily auto-sync
 - Monthly email and opportunity re-scans
@@ -50,7 +50,7 @@ Paybacker is an AI-powered savings platform for UK consumers. It helps people di
 - Renewal reminders (30/14/7 days)
 - Contract end date tracking
 
-**Pro — £19.99/month or £199/year:**
+**Pro — £9.99/month or £94.99/year (Founding Member Pricing):**
 - Everything in Essential
 - Unlimited bank accounts
 - Unlimited email and opportunity scans
@@ -325,7 +325,7 @@ All agents follow the same architectural pattern. Every agent must:
 
 ## REVENUE STREAMS
 
-1. Subscription revenue (primary): £9.99-19.99/month per user
+1. Subscription revenue (primary): £4.99-9.99/month per user
 2. Affiliate commissions (coming soon): earn per switch via comparison API partners
 3. Awin Advertiser: paying influencers £1-4 per conversion
 
@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS nps_responses (
 
 ## Monetization Strategy
 1. **Waitlist Phase**: Collect emails, validate demand
-2. **MVP Launch**: £9.99/month subscription + 20% success fee on money recovered
+2. **MVP Launch**: £4.99/month subscription + 20% success fee on money recovered
 3. **Scale**: Add more agent types (insurance, parking tickets, refunds)
 
 ## Key Metrics
@@ -485,7 +485,7 @@ To disable: set `NEXT_PUBLIC_WAITLIST_MODE=false` in Vercel env and redeploy.
 - [x] Subscriptions page — real Supabase data, add/delete, AI cancellation emails
 - [x] Dashboard overview (stats from DB)
 - [x] Profile page
-- [x] Pricing page (3 tiers: Free / Essential £9.99/mo / Pro £19.99/mo)
+- [x] Pricing page (3 tiers: Free / Essential £4.99/mo / Pro £9.99/mo)
 - [x] Stripe checkout + webhook API routes (need real price IDs)
 - [x] Tasks history API (/api/tasks)
 - [x] Subscriptions CRUD API (/api/subscriptions, /api/subscriptions/[id])

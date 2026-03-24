@@ -55,7 +55,7 @@ export default function UpgradeModal({ open, onClose, used, limit, tier }: Upgra
             onClick={() => router.push('/pricing')}
             className="w-full py-3 px-6 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold rounded-xl transition-all"
           >
-            Upgrade Now — from £9.99/mo
+            Upgrade Now — from £4.99/mo
           </button>
           <button
             onClick={onClose}

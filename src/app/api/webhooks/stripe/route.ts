@@ -16,10 +16,21 @@ function getStripe() {
 }
 
 const PRICE_ID_TO_TIER: Record<string, string> = {
+  // Old test prices
   'price_1TDVvS7qw7mEWYpyN80zzAXM': 'essential',
   'price_1TDVvS7qw7mEWYpynfpI5x9M': 'essential',
   'price_1TDVvT7qw7mEWYpySmjZJTpG': 'pro',
   'price_1TDVvT7qw7mEWYpyrLHr6L45': 'pro',
+  // Old live prices (archived)
+  'price_1TDPoH8FbRNalJNU4KeEPNs7': 'essential',
+  'price_1TDPoI8FbRNalJNUSVBFOpyA': 'essential',
+  'price_1TDPoI8FbRNalJNUDAepvxYt': 'pro',
+  'price_1TDPoI8FbRNalJNUEVzsBMvB': 'pro',
+  // Founding member prices (current)
+  'price_1TEdJN8FbRNalJNUQxTQpM8Y': 'essential',
+  'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
+  'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
+  'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
 };
 
 function getPlanTier(priceId: string): string {

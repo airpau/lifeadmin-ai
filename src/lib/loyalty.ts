@@ -54,8 +54,8 @@ export const LOYALTY_TIERS = {
 export const REDEMPTION_OPTIONS = [
   { id: 'discount_5', points: 500, label: '£5 off next invoice', description: 'Applied as a Stripe discount to your next invoice', value: 5, type: 'stripe_amount' as const },
   { id: 'discount_10', points: 900, label: '£10 off next invoice', description: 'Applied as a Stripe discount to your next invoice', value: 10, type: 'stripe_amount' as const },
-  { id: 'free_month_essential', points: 1500, label: 'Free month of Essential', description: '100% off your next Essential invoice', value: 9.99, type: 'stripe_percent' as const },
-  { id: 'free_month_pro', points: 3000, label: 'Free month of Pro', description: '100% off your next Pro invoice', value: 19.99, type: 'stripe_percent' as const },
+  { id: 'free_month_essential', points: 1500, label: 'Free month of Essential', description: '100% off your next Essential invoice', value: 4.99, type: 'stripe_percent' as const },
+  { id: 'free_month_pro', points: 3000, label: 'Free month of Pro', description: '100% off your next Pro invoice', value: 9.99, type: 'stripe_percent' as const },
   { id: 'charity_donation', points: 500, label: 'Donate £5 to Shelter', description: 'Paybacker donates £5 to Shelter on your behalf', value: 5, type: 'charity' as const },
 ];
 

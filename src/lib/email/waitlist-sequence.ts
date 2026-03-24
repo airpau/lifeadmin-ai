@@ -285,7 +285,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       </ul>
     </div>
 
-    <p style="${p}">Essential is £9.99/month — less than most forgotten subscriptions we find in the first scan.</p>
+    <p style="${p}">Essential is £4.99/month — less than most forgotten subscriptions we find in the first scan.</p>
 
     <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Claim your free month →</a>
 

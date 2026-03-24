@@ -333,7 +333,7 @@ export default function ProfilePage() {
               <div>
                 <h3 className="text-white font-semibold capitalize">{effectiveTier} Plan</h3>
                 <p className="text-sm text-slate-400">
-                  {effectiveTier === 'essential' ? '£9.99/month' : '£19.99/month'}
+                  {effectiveTier === 'essential' ? '£4.99/month' : '£9.99/month'}
                 </p>
                 {renewalDate && !pendingChange && (
                   <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>

@@ -6,8 +6,8 @@
  *
  * Commission structure:
  * - Free signup: £1 (commission group 1)
- * - Essential conversion (£9.99/mo): £2, 20% of first month (commission group 2)
- * - Pro conversion (£19.99/mo): £4, 20% of first month (commission group 3)
+ * - Essential conversion (£4.99/mo): £2, 20% of first month (commission group 2)
+ * - Pro conversion (£9.99/mo): £4, 20% of first month (commission group 3)
  */
 
 // Commission group IDs (set these in Awin dashboard to match)

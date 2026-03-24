@@ -58,8 +58,8 @@ Users can add subscriptions manually from the Subscriptions page, or connect the
 
 ## Plans
 - Free: 3 complaint/form letters per month, unlimited subscription tracking (manual add), one-time bank scan, one-time email inbox scan, one-time opportunity scan, basic spending overview (top 5 categories), AI chatbot
-- Essential (£9.99/month): Unlimited complaint and form letters, 1 bank account with daily auto-sync, monthly email and opportunity re-scans, full spending dashboard, cancellation emails with legal context, renewal reminders, contract end date tracking
-- Pro (£19.99/month): Everything in Essential plus unlimited bank accounts, unlimited email and opportunity scans, full transaction-level analysis, priority support, automated cancellations (coming soon)
+- Essential (£4.99/month): Unlimited complaint and form letters, 1 bank account with daily auto-sync, monthly email and opportunity re-scans, full spending dashboard, cancellation emails with legal context, renewal reminders, contract end date tracking
+- Pro (£9.99/month): Everything in Essential plus unlimited bank accounts, unlimited email and opportunity scans, full transaction-level analysis, priority support, automated cancellations (coming soon)
 
 ## UK Consumer Rights You Can Share
 - Consumer Rights Act 2015: goods must be satisfactory quality, fit for purpose, match description. 30-day right to reject faulty goods.
@@ -156,15 +156,15 @@ ${userTier === 'free' ? `
 - This user is on the FREE plan
 - They can: 3 complaint/form letters per month, unlimited subscription tracking (manual add), one-time bank scan, one-time email inbox scan, one-time opportunity scan, basic spending overview (top 5 categories), AI chatbot
 - They CANNOT: ongoing bank sync, full spending dashboard, cancellation emails, renewal reminders, monthly re-scans, contract tracking
-- If they ask about daily sync or ongoing features: "Upgrade to Essential for daily bank sync, monthly re-scans, cancellation emails, and renewal reminders. Just £9.99/month."
+- If they ask about daily sync or ongoing features: "Upgrade to Essential for daily bank sync, monthly re-scans, cancellation emails, and renewal reminders. Just £4.99/month."
 - If they've used their one-time scan: "You've used your free scan. Upgrade to Essential for monthly re-scans."` : ''}
 ${userTier === 'essential' ? `
-- This user is on the ESSENTIAL plan (£9.99/month)
+- This user is on the ESSENTIAL plan (£4.99/month)
 - They have: unlimited complaints and forms, 1 bank with daily sync, monthly email and opportunity re-scans, full spending dashboard, cancellation emails, renewal reminders, contract tracking
 - They do NOT have: multiple bank accounts, unlimited scans, transaction-level analysis, priority support
-- If they ask about multiple banks or unlimited scans: "Upgrade to Pro (£19.99/month) for unlimited bank accounts, unlimited scans, and full transaction analysis."` : ''}
+- If they ask about multiple banks or unlimited scans: "Upgrade to Pro (£9.99/month) for unlimited bank accounts, unlimited scans, and full transaction analysis."` : ''}
 ${userTier === 'pro' ? `
-- This user is on the PRO plan (£19.99/month). They have ALL current features.
+- This user is on the PRO plan (£9.99/month). They have ALL current features.
 - Unlimited: complaints, forms, bank accounts, email scans, opportunity scans
 - Full transaction-level analysis, priority support
 - Coming soon: automated cancellations, deal comparison` : ''}`;

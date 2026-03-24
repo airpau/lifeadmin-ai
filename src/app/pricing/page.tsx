@@ -32,7 +32,7 @@ const plans = [
   },
   {
     name: 'Essential',
-    price: { monthly: 9.99, yearly: 99 },
+    price: { monthly: 4.99, yearly: 44.99 },
     description: 'Keep your finances on track automatically',
     features: [
       'Unlimited AI complaint and form letters',
@@ -56,7 +56,7 @@ const plans = [
   },
   {
     name: 'Pro',
-    price: { monthly: 19.99, yearly: 199 },
+    price: { monthly: 9.99, yearly: 94.99 },
     description: 'Complete financial control',
     features: [
       'Everything in Essential',
@@ -127,7 +127,7 @@ export default function PricingPage() {
       if (data.url) {
         // Store transaction data before Stripe redirect (for Awin tracking on return)
         const tier = planName.toLowerCase();
-        const amount = tier === 'pro' ? '19.99' : '9.99';
+        const amount = tier === 'pro' ? '9.99' : '4.99';
         const commGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
         sessionStorage.setItem('awin_checkout', JSON.stringify({
           tier, amount, commGroup,
@@ -218,6 +218,12 @@ export default function PricingPage() {
           <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
             Simple, transparent pricing
           </h1>
+
+          {/* Founding Member Banner */}
+          <div className="bg-gradient-to-r from-amber-500/15 to-amber-600/10 border border-amber-500/30 rounded-xl px-6 py-4 max-w-2xl mx-auto mb-8">
+            <p className="text-amber-400 font-semibold text-lg">Lock in founding member rates forever</p>
+            <p className="text-slate-400 text-sm mt-1">Price increases after our first 1,000 members</p>
+          </div>
           <p className="text-xl text-slate-400 mb-12 max-w-2xl mx-auto">
             Choose the plan that fits your needs. All plans include our AI agents working 24/7 to get your money back.
           </p>
@@ -264,6 +270,14 @@ export default function PricingPage() {
                     </div>
                   )}
 
+                  {plan.planKey !== 'free' && (
+                    <div className="mb-4">
+                      <span className="inline-block bg-green-500/15 text-green-400 text-xs font-semibold px-3 py-1 rounded-full border border-green-500/30">
+                        Founding Member Pricing
+                      </span>
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
@@ -287,6 +301,7 @@ export default function PricingPage() {
                     {billingCycle === 'yearly' && price > 0 && (
                       <p className="text-sm text-slate-500">
                         £{(price / 12).toFixed(2)}/month billed annually
+                        <span className="ml-2 inline-block bg-green-500/15 text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full border border-green-500/30">Best Value</span>
                       </p>
                     )}
                   </div>

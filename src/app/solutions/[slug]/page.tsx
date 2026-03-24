@@ -54,7 +54,7 @@ const PAGES: Record<string, SolutionPage> = {
       { q: 'Do I need to know UK energy law?', a: 'No. Just describe what happened in plain English. Our AI identifies which laws apply and cites them correctly in your letter.' },
       { q: 'Which energy suppliers does this work with?', a: 'Every UK energy supplier including British Gas, EDF, E.ON Next, Octopus Energy, OVO, Scottish Power, Shell Energy, and SSE.' },
       { q: 'What if my supplier ignores the letter?', a: 'If your supplier does not resolve your complaint within 8 weeks, you can escalate to the Energy Ombudsman. We include this in the letter.' },
-      { q: 'Is this really free?', a: 'Yes. You get 3 free complaint letters per month. Unlimited letters are available on the Essential plan (£9.99/month).' },
+      { q: 'Is this really free?', a: 'Yes. You get 3 free complaint letters per month. Unlimited letters are available on the Essential plan (£4.99/month).' },
     ],
     socialProof: 'Thousands of UK consumers have used AI complaint letters to get refunds from energy suppliers',
     featureHighlight: 'Connect your bank account and we will also identify if you are overpaying compared to available tariffs',
@@ -220,7 +220,7 @@ const PAGES: Record<string, SolutionPage> = {
     faqs: [
       { q: 'Which banks are supported?', a: 'Most UK banks including Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, Revolut, and more via Open Banking.' },
       { q: 'How is this different from my banking app?', a: 'Your banking app shows transactions. Paybacker categorises them, tracks trends over time, sets budgets, detects subscriptions, finds overpayments, and recommends cheaper deals.' },
-      { q: 'Is the free plan useful?', a: 'Yes. Free includes a one-time bank scan with top 5 spending categories. Essential (£9.99/month) adds daily sync and full dashboard. Pro adds AI assistant.' },
+      { q: 'Is the free plan useful?', a: 'Yes. Free includes a one-time bank scan with top 5 spending categories. Essential (£4.99/month) adds daily sync and full dashboard. Pro adds AI assistant.' },
     ],
     socialProof: 'The average UK household overpays £1,000+ per year on bills and subscriptions',
     featureHighlight: 'Pro users can chat with an AI assistant about their finances using their real data',
