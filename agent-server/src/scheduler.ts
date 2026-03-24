@@ -16,32 +16,32 @@ const lastRunTimes: Record<string, number> = {};
 
 // Minimum interval between runs (milliseconds) - prevents burning API credits
 // Minimum intervals - agents ONLY run when this interval has passed AND they have work.
-// Target: ~$5-8/day (~$150-240/month)
+// Target: ~$3-5/day (~$90-150/month)
 const MIN_INTERVALS: Record<string, number> = {
   // SUPPORT - responsive to tickets
-  support_agent: 30 * 60 * 1000,      // Riley: every 30 mins
-  support_lead: 60 * 60 * 1000,       // Sam: every hour
+  support_agent: 60 * 60 * 1000,       // Riley: every hour
+  support_lead: 2 * 60 * 60 * 1000,   // Sam: every 2 hours
 
   // COORDINATOR
-  exec_assistant: 6 * 60 * 60 * 1000, // Charlie: every 6 hours (3-4x daily)
+  exec_assistant: 8 * 60 * 60 * 1000, // Charlie: every 8 hours (3x daily)
 
-  // CORE EXECUTIVES - 2x daily
-  cfo: 12 * 60 * 60 * 1000,           // Alex: every 12 hours
-  cto: 12 * 60 * 60 * 1000,           // Morgan: every 12 hours
-  cao: 12 * 60 * 60 * 1000,           // Jamie: every 12 hours
-  cmo: 12 * 60 * 60 * 1000,           // Taylor: every 12 hours
+  // CORE EXECUTIVES - 1x daily
+  cfo: 24 * 60 * 60 * 1000,           // Alex: daily
+  cto: 24 * 60 * 60 * 1000,           // Morgan: daily
+  cao: 24 * 60 * 60 * 1000,           // Jamie: daily
+  cmo: 24 * 60 * 60 * 1000,           // Taylor: daily
 
   // SPECIALISTS - 1x daily
   head_of_ads: 24 * 60 * 60 * 1000,   // Jordan: daily
   cco: 24 * 60 * 60 * 1000,           // Casey: daily
   cgo: 24 * 60 * 60 * 1000,           // Drew: daily
-  cro: 12 * 60 * 60 * 1000,           // Pippa: every 12 hours
-  cxo: 24 * 60 * 60 * 1000,           // Bella: daily
-  cfraudo: 24 * 60 * 60 * 1000,       // Finn: daily
+  cro: 24 * 60 * 60 * 1000,           // Pippa: daily
+  cxo: 48 * 60 * 60 * 1000,           // Bella: every 2 days
+  cfraudo: 48 * 60 * 60 * 1000,       // Finn: every 2 days
 
   // RESEARCH - infrequent
-  clo: 48 * 60 * 60 * 1000,           // Leo: every 2 days
-  cio: 7 * 24 * 60 * 60 * 1000,       // Nico: weekly
+  clo: 7 * 24 * 60 * 60 * 1000,       // Leo: weekly
+  cio: 14 * 24 * 60 * 60 * 1000,      // Nico: fortnightly
 };
 
 function getSupabase() {
