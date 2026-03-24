@@ -114,6 +114,18 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Three Mobile (ID: 10210)
+- Rates: TBC (visible after approval, check H3G Affiliate Interface)
+- Commission trigger: 45 days after customer purchase and contract activation
+- Payments issued 25th of each month for previous month's validated sales
+- First Bill Not Paid rate must stay under 5.5%
+- No commission on upgrades or existing customer purchases
+- Also covers Three Home Broadband (fixed wireless)
+- FCA regulated for Device Plan Loan Agreements
+- Must have landing page before directing to Three site
+- Suspicious activity: H3G can delay commission by up to 6 months
+- Same parent company as SMARTY
+
 ### Vodafone (ID: 1257)
 - Rates: TBC (visible after approval)
 - Commission paid at least 2 full calendar months after signup
