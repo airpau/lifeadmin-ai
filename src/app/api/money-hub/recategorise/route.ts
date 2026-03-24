@@ -21,24 +21,38 @@ export async function POST(request: NextRequest) {
   const admin = getAdmin();
 
   if (applyToAll && merchantPattern) {
-    // Save merchant override so all future transactions from this merchant use the new category
+    const pattern = merchantPattern.toLowerCase().trim();
+
+    // Save merchant override for future transactions
     await admin.from('money_hub_category_overrides').upsert({
       user_id: user.id,
-      merchant_pattern: merchantPattern.toLowerCase().trim(),
+      merchant_pattern: pattern,
       user_category: newCategory,
     }, { onConflict: 'user_id,merchant_pattern' }).select();
 
     // Update all existing transactions from this merchant
+    // Match by merchant_name OR description containing the pattern
     const { data: matching } = await admin.from('bank_transactions')
       .select('id, description, merchant_name')
       .eq('user_id', user.id);
 
-    const pattern = merchantPattern.toLowerCase().trim();
     let updated = 0;
     for (const txn of matching || []) {
-      const merchant = (txn.merchant_name || txn.description || '').toLowerCase();
-      if (merchant.includes(pattern)) {
-        await admin.from('bank_transactions').update({ user_category: newCategory }).eq('id', txn.id);
+      const merchantName = (txn.merchant_name || '').toLowerCase();
+      const desc = (txn.description || '').toLowerCase();
+      // Match if the merchant name or description matches the pattern
+      // Also match if the truncated form (first 30 chars) matches - this is how the UI groups merchants
+      const descTruncated = desc.substring(0, 30).trim();
+
+      if (
+        merchantName === pattern ||
+        merchantName.includes(pattern) ||
+        desc.includes(pattern) ||
+        descTruncated === pattern
+      ) {
+        await admin.from('bank_transactions')
+          .update({ user_category: newCategory })
+          .eq('id', txn.id);
         updated++;
       }
     }
@@ -48,8 +62,14 @@ export async function POST(request: NextRequest) {
 
   if (transactionId) {
     // Update single transaction
-    await admin.from('bank_transactions').update({ user_category: newCategory })
-      .eq('id', transactionId).eq('user_id', user.id);
+    const { error } = await admin.from('bank_transactions')
+      .update({ user_category: newCategory })
+      .eq('id', transactionId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      return NextResponse.json({ error: `Update failed: ${error.message}` }, { status: 500 });
+    }
 
     // Also save as override for this specific transaction
     await admin.from('money_hub_category_overrides').insert({

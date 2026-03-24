@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   since.setMonth(since.getMonth() - months);
 
   const { data: txns } = await admin.from('bank_transactions')
-    .select('id, amount, description, category, timestamp, merchant_name')
+    .select('id, amount, description, category, timestamp, merchant_name, user_category')
     .eq('user_id', user.id)
     .gte('timestamp', since.toISOString())
     .order('timestamp', { ascending: false })
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
   let filtered = (txns || []).map(t => ({
     ...t,
-    spending_category: categorise(t.description || '', t.category || ''),
+    spending_category: t.user_category || categorise(t.description || '', t.category || ''),
     amount: parseFloat(t.amount),
   }));
 
