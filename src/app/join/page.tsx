@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Gift, CheckCircle, ArrowRight } from 'lucide-react';
+import { Gift, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 
-export default function JoinPage() {
+function JoinContent() {
   const searchParams = useSearchParams();
   const ref = searchParams.get('ref');
 
@@ -60,5 +60,13 @@ export default function JoinPage() {
         <p className="text-slate-600 text-xs mt-4">Free forever. No credit card required.</p>
       </div>
     </div>
+  );
+}
+
+export default function JoinPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="h-8 w-8 text-amber-500 animate-spin" /></div>}>
+      <JoinContent />
+    </Suspense>
   );
 }
