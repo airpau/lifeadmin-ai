@@ -20,7 +20,8 @@ export type ToolGroup =
   | 'memory'
   | 'tasks'
   | 'reports'
-  | 'google_ads';
+  | 'google_ads'
+  | 'posthog';
 
 export interface AgentRunContext {
   memories: MemoryRecord[];

@@ -87,7 +87,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
     maxTurns: 6,
-    toolGroups: ['supabase', 'google_ads', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'google_ads', 'posthog', 'memory', 'tasks', 'reports'],
   },
   cco: {
     role: 'cco',
@@ -105,7 +105,7 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
     maxTurns: 6,
-    toolGroups: ['supabase', 'email', 'memory', 'tasks', 'reports'],
+    toolGroups: ['supabase', 'email', 'posthog', 'memory', 'tasks', 'reports'],
     canEmailUsers: true,  // Drew sends engagement/activation emails to users
     supabaseWriteTables: ['profiles'],
   },

@@ -8,6 +8,7 @@ import { contentTools } from './content-tools';
 import { researchTools } from './research-tools';
 import { stripeTools } from './stripe-tools';
 import { googleAdsTools } from './google-ads-tools';
+import { posthogTools } from './posthog-tools';
 import { ToolGroup } from '../types';
 
 interface ToolDef {
@@ -29,6 +30,7 @@ const toolGroupMap: Record<ToolGroup, ToolDef[]> = {
   tasks: taskTools,
   reports: reportTools,
   google_ads: googleAdsTools,
+  posthog: posthogTools,
 };
 
 // Agents with write access get full supabase tools
@@ -85,3 +87,4 @@ export { contentTools } from './content-tools';
 export { researchTools } from './research-tools';
 export { stripeTools } from './stripe-tools';
 export { googleAdsTools } from './google-ads-tools';
+export { posthogTools } from './posthog-tools';
