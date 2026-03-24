@@ -392,6 +392,22 @@ Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these prioritie
    - Casey (CCO) generates content > sends to Taylor (CMO) for review
    - Nico (CIO) spots competitor threat > alerts Taylor (CMO) and Jordan (Head of Ads)
 
+### Priority 1.5: Pro Financial Analysis Dashboard (Emma-style)
+
+Build a comprehensive financial analysis tool for Pro users, inspired by Emma app:
+- Income vs expenditure analysis (monthly, weekly, custom date ranges)
+- Smart categorisation with user override (custom categories)
+- Monthly/weekly/annual spending reports downloadable as PDF
+- Email reports on demand or scheduled
+- Budget setting per category with alerts
+- Spending trends over 3/6/12 months with charts
+- Merchant-level breakdown
+- Recurring payment detection
+- Income tracking and net worth snapshot
+- Bill calendar showing upcoming payments
+
+This makes the Pro plan genuinely valuable as an all-in-one financial control centre. Could be an enhanced /dashboard/spending or a new /dashboard/finance tab.
+
 ### Priority 2: API Integrations Needed Per Agent
 
 | Agent | APIs Needed | Status |
