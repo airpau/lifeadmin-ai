@@ -114,6 +114,13 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Asda Mobile (ID: 6250)
+- Rates: TBC (visible after approval)
+- Validated on user connecting within 1 month of free SIM request
+- UK applications only
+- Max 4 SIM requests per IP address
+- Must promote current bundles from mobile.asda.com/bundles
+
 ### Talkmobile (ID: 2351)
 - Rates: TBC (visible after approval)
 - 3-month validation period before commission processed
