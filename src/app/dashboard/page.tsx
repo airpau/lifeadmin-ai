@@ -50,7 +50,7 @@ export default function DashboardPage() {
           w.AWIN.Tracking.saleSubmit();
         } else {
           const pixel = new window.Image(0, 0);
-          pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=1.00&cr=GBP&ref=${encodeURIComponent(ref)}&parts=LEAD:1.00&vc=&ch=aw&customeracquisition=NEW${awc ? `&cks=${encodeURIComponent(awc)}` : ''}`;
+          pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=1&cr=GBP&ref=${encodeURIComponent(ref)}&parts=LEAD:1&vc=&ch=aw&customeracquisition=NEW${awc ? `&cks=${encodeURIComponent(awc)}` : ''}`;
         }
       };
       const poll = () => {
