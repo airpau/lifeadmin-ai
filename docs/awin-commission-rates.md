@@ -114,6 +114,13 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Jet2holidays (ID: 18730)
+- Rates: TBC (visible after approval)
+- Same terms as Jet2.com flights programme
+- Commission on flown transactions only
+- Must write "Jet2holidays" (small h)
+- No sub-networks, no browser extensions without approval
+
 ### Jet2.com (ID: 18729)
 - Rates: TBC (visible after approval)
 - Commission on flown transactions only
