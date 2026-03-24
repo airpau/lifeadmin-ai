@@ -11,12 +11,38 @@ interface Message {
 
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('pb_chat_history');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [userTier, setUserTier] = useState<string>('free');
   const [escalatedTicket, setEscalatedTicket] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    const check = () => setHidden(document.body.dataset.hideChat === 'true');
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-hide-chat'] });
+    return () => observer.disconnect();
+  }, []);
+
+  // Persist chat history to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && messages.length > 0) {
+      try {
+        localStorage.setItem('pb_chat_history', JSON.stringify(messages));
+      } catch {}
+    }
+  }, [messages]);
 
   // Fetch user's plan tier when chat opens
   useEffect(() => {
@@ -71,6 +97,8 @@ export default function ChatWidget() {
       sendMessage();
     }
   };
+
+  if (hidden) return null;
 
   return (
     <>

@@ -111,7 +111,17 @@ Rules:
 - When suggesting actions, tell them exactly where to go in the dashboard.
 - If they want to set a budget, tell them the amount you'd suggest based on their data.
 - If they ask about a specific merchant or category, give them the exact numbers.
-- Never use em dashes.`;
+- Never use em dashes.
+- DASHBOARD WIDGETS: If the user asks you to show, display, or visualise data (e.g. "show me a pie chart of spending", "display my income breakdown"), include a widget command at the END of your response in this exact format:
+[WIDGET:{"type":"pie","title":"Spending by Category","data":[{"label":"Groceries","value":450,"color":"#22c55e"},{"label":"Bills","value":320,"color":"#64748b"}]}]
+
+Widget types: "pie" (pie chart), "bar" (horizontal bars), "stat" (big number with label).
+For "stat" type: {"type":"stat","title":"Total Saved","data":{"value":"£1,234","label":"this month"}}
+For "bar" type: {"type":"bar","title":"Top Spending","data":[{"label":"Groceries","value":450,"color":"#22c55e"}]}
+
+Use REAL data from the user's financial context. Only include a widget when explicitly asked for a visualisation.
+- USER NOTES: If the user tells you something personal or relevant about their finances that would be useful to remember (e.g. "I'm saving for a house", "my salary is paid on the 25th"), include at the END of your response: [NOTE:the relevant fact to remember]
+These notes help you give better advice in future conversations.`;
 
   const messages = [
     ...(history || []).map((h: any) => ({

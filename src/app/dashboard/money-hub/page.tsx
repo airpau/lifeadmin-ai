@@ -1,24 +1,38 @@
 'use client';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'edge';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Wallet, TrendingUp, TrendingDown, CreditCard, BarChart3,
   AlertTriangle, Clock, Target, PiggyBank, FileText, Building2,
   ArrowRight, Loader2, Lock, RefreshCw, Plus, ChevronDown, ChevronUp,
   Shield, Zap, Mail, Calendar, DollarSign, X, Send, MessageCircle,
-  ArrowLeft,
+  ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye,
 } from 'lucide-react';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MoneyHubData {
   tier: string;
   score: number;
-  overview: { monthlyIncome: number; monthlyOutgoings: number; netPosition: number; monthProgress: number; dayOfMonth: number; daysInMonth: number };
+  overview: {
+    monthlyIncome: number;
+    monthlyOutgoings: number;
+    netPosition: number;
+    monthProgress: number;
+    dayOfMonth: number;
+    daysInMonth: number;
+    incomeBreakdown: Record<string, number>;
+  };
   accounts: Array<{ id: string; bank_name: string; status: string; last_synced_at: string }>;
-  spending: { categories: Array<{ category: string; total: number }>; topMerchants: Array<{ merchant: string; total: number }>; monthlyTrends: Array<{ month: string; income: number; outgoings: number }>; totalSpent: number };
+  spending: {
+    categories: Array<{ category: string; total: number }>;
+    topMerchants: Array<{ merchant: string; total: number }>;
+    monthlyTrends: Array<{ month: string; income: number; outgoings: number }>;
+    totalSpent: number;
+  };
   subscriptions: { list: any[]; monthlyTotal: number; annualTotal: number; count: number };
   contracts: { expiring: Array<{ provider: string; endDate: string; daysLeft: number; monthlyCost: number }>; totalCommitted: number };
   netWorth: { total: number; assets: number; liabilities: number; assetsList: any[]; liabilitiesList: any[] };
@@ -27,6 +41,21 @@ interface MoneyHubData {
   alerts: any[];
   opportunities: any[];
 }
+
+interface CustomWidget {
+  id: string;
+  type: 'pie' | 'bar' | 'stat';
+  title: string;
+  data: any;
+}
+
+interface TourStep {
+  target: string;
+  title: string;
+  description: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: string }> = {
   mortgage: { label: 'Mortgage', color: '#8b5cf6', icon: '🏠' },
@@ -50,6 +79,37 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: stri
   other: { label: 'Other', color: '#475569', icon: '📋' },
 };
 
+const INCOME_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  salary: { label: 'Salary', color: '#22c55e', icon: '💼' },
+  freelance: { label: 'Freelance', color: '#3b82f6', icon: '💻' },
+  benefits: { label: 'Benefits', color: '#8b5cf6', icon: '🏛️' },
+  rental: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
+  investment: { label: 'Investments', color: '#06b6d4', icon: '📈' },
+  refund: { label: 'Refunds', color: '#10b981', icon: '💸' },
+  transfer: { label: 'Transfers', color: '#64748b', icon: '🔄' },
+  other: { label: 'Other', color: '#475569', icon: '📋' },
+};
+
+const ASSET_TYPES = ['property', 'savings', 'investment', 'pension', 'vehicle', 'business', 'crypto', 'other'] as const;
+const LIABILITY_TYPES = ['mortgage', 'loan', 'credit_card', 'overdraft', 'car_finance', 'student_loan', 'business_loan', 'other'] as const;
+
+const GOAL_EMOJIS = ['🎯', '🏠', '✈️', '🚗', '💍', '🎓', '🏖️', '💻', '🎸', '🐕', '👶', '🏋️', '📱', '🎄', '💎', '🌍'];
+
+const TOUR_STEPS: TourStep[] = [
+  { target: 'tour-header', title: 'Welcome to Money Hub', description: 'Your complete financial intelligence centre. Everything you need to understand and improve your finances is right here.' },
+  { target: 'tour-overview', title: 'Financial Overview', description: 'Your income and spending at a glance. See your net position and how far through the month you are.' },
+  { target: 'tour-income', title: 'Income Breakdown', description: 'See exactly where your money comes from — salary, freelance, benefits, investments and more.' },
+  { target: 'tour-spending', title: 'Spending Intelligence', description: 'Understand where your money goes. Click any category to drill down into individual transactions and merchants.' },
+  { target: 'tour-trends', title: 'Monthly Trends', description: 'Hover over months to compare income and outgoings. Spot patterns in your spending over time.' },
+  { target: 'tour-networth', title: 'Net Worth', description: 'Track your total wealth by adding assets and liabilities. Watch your net worth grow over time.' },
+  { target: 'tour-budgets', title: 'Budget Planner', description: 'Set spending limits for each category and stay on track. Get warnings when you are close to your budget.' },
+  { target: 'tour-goals', title: 'Savings Goals', description: 'Save towards specific targets. We will calculate how much you need to save each month to hit your goal.' },
+  { target: 'tour-actions', title: 'Financial Action Centre', description: 'Discover money-saving opportunities. Scan your inbox for overcharges, renewals, and compensation claims.' },
+  { target: 'tour-chat', title: 'AI Financial Assistant (Pro)', description: 'Ask questions about your finances in natural language. Only available on the Pro plan.' },
+];
+
+// ─── Components ───────────────────────────────────────────────────────────────
+
 function LockedSection({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
@@ -63,38 +123,142 @@ function LockedSection({ title, children }: { title: string; children?: React.Re
   );
 }
 
+function PieChartWidget({ data }: { data: Array<{ label: string; value: number; color: string }> }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (total === 0) return <p className="text-slate-500 text-sm text-center py-4">No data</p>;
+  let angle = 0;
+  const segments = data.map(d => {
+    const start = angle;
+    const size = (d.value / total) * 360;
+    angle += size;
+    return { ...d, start, end: angle };
+  });
+  const gradient = segments.map(s => `${s.color} ${s.start}deg ${s.end}deg`).join(', ');
+  return (
+    <div className="flex items-center gap-4">
+      <div style={{ background: `conic-gradient(${gradient})` }} className="w-32 h-32 rounded-full shrink-0" />
+      <div className="space-y-1">
+        {data.slice(0, 8).map((d, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+            <span className="text-slate-300">{d.label}</span>
+            <span className="text-white font-medium ml-auto">{((d.value / total) * 100).toFixed(0)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BarChartWidget({ data }: { data: Array<{ label: string; value: number; color: string }> }) {
+  const maxVal = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div className="space-y-2">
+      {data.slice(0, 10).map((d, i) => (
+        <div key={i}>
+          <div className="flex justify-between text-xs mb-0.5">
+            <span className="text-slate-300">{d.label}</span>
+            <span className="text-white font-medium">£{d.value.toLocaleString()}</span>
+          </div>
+          <div className="w-full bg-slate-700 rounded-full h-2">
+            <div className="h-2 rounded-full" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: d.color }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatWidget({ data }: { data: { value: string; label: string; color?: string } }) {
+  return (
+    <div className="text-center py-4">
+      <p className="text-4xl font-bold" style={{ color: data.color || '#f59e0b' }}>{data.value}</p>
+      <p className="text-slate-400 text-sm mt-1">{data.label}</p>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function MoneyHubPage() {
+  // Core state
   const [data, setData] = useState<MoneyHubData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-
-  const syncMoneyHub = async () => {
-    setSyncing(true);
-    try {
-      await fetch('/api/money-hub/sync', { method: 'POST' });
-      const res = await fetch('/api/money-hub');
-      const d = await res.json();
-      if (!d.error) setData(d);
-    } catch {}
-    setSyncing(false);
-  };
 
   // Category drill-down
   const [drillCategory, setDrillCategory] = useState<string | null>(null);
   const [drillData, setDrillData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
 
-  // Budget form
-  const [showBudgetForm, setShowBudgetForm] = useState<string | null>(null); // category name
+  // Inline recategorisation
+  const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
+
+  // Monthly trends hover
+  const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
+  const trendsRef = useRef<HTMLDivElement>(null);
+
+  // Net worth forms
+  const [showAssetForm, setShowAssetForm] = useState(false);
+  const [showLiabilityForm, setShowLiabilityForm] = useState(false);
+  const [assetForm, setAssetForm] = useState({ type: 'savings', name: '', value: '' });
+  const [liabilityForm, setLiabilityForm] = useState({ type: 'loan', name: '', balance: '', monthly_payment: '', interest_rate: '' });
+  const [nwSaving, setNwSaving] = useState(false);
+  const [expandAssets, setExpandAssets] = useState(false);
+  const [expandLiabilities, setExpandLiabilities] = useState(false);
+
+  // Budget planner
+  const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [editBudgetId, setEditBudgetId] = useState<string | null>(null);
+  const [budgetCategory, setBudgetCategory] = useState('groceries');
   const [budgetAmount, setBudgetAmount] = useState('');
   const [savingBudget, setSavingBudget] = useState(false);
+
+  // Savings goals
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [editGoalId, setEditGoalId] = useState<string | null>(null);
+  const [goalForm, setGoalForm] = useState({ name: '', emoji: '🎯', target_amount: '', target_date: '', current_amount: '0' });
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [addMoneyGoalId, setAddMoneyGoalId] = useState<string | null>(null);
+  const [addMoneyAmount, setAddMoneyAmount] = useState('');
+
+  // Financial action centre / email scanning
+  const [scanning, setScanning] = useState(false);
+
+  // Tour
+  const [tourStep, setTourStep] = useState<number | null>(null);
 
   // AI Chat (Pro)
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Custom widgets (Pro AI)
+  const [customWidgets, setCustomWidgets] = useState<CustomWidget[]>([]);
+
+  // ─── Data fetching ────────────────────────────────────────────────────────
+
+  const refreshData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/money-hub');
+      const d = await res.json();
+      if (!d.error) setData(d);
+    } catch { /* silent */ }
+  }, []);
+
+  const syncMoneyHub = async () => {
+    setSyncing(true);
+    try {
+      await fetch('/api/money-hub/sync', { method: 'POST' });
+      await refreshData();
+    } catch { /* silent */ }
+    setSyncing(false);
+  };
+
+  // ─── Category drill-down ──────────────────────────────────────────────────
 
   const loadDrillDown = async (category: string) => {
     setDrillCategory(category);
@@ -103,28 +267,180 @@ export default function MoneyHubPage() {
       const res = await fetch(`/api/money-hub/transactions?category=${category}&months=1`);
       const d = await res.json();
       setDrillData(d);
-    } catch {}
+    } catch { /* silent */ }
     setDrillLoading(false);
   };
 
-  const saveBudget = async (category: string) => {
-    if (!budgetAmount) return;
-    setSavingBudget(true);
+  // ─── Recategorise ─────────────────────────────────────────────────────────
+
+  const recategorise = async (merchantPattern: string, newCategory: string) => {
     try {
-      await fetch('/api/money-hub/budgets', {
+      await fetch('/api/money-hub/recategorise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, monthly_limit: parseFloat(budgetAmount) }),
+        body: JSON.stringify({ merchantPattern, newCategory, applyToAll: true }),
       });
-      // Refresh data
-      const res = await fetch('/api/money-hub');
-      const d = await res.json();
-      if (!d.error) setData(d);
-      setShowBudgetForm(null);
+      await refreshData();
+      if (drillCategory) loadDrillDown(drillCategory);
+    } catch { /* silent */ }
+    setRecatDropdown(null);
+  };
+
+  // ─── Budgets ──────────────────────────────────────────────────────────────
+
+  const saveBudget = async () => {
+    if (!budgetAmount || !budgetCategory) return;
+    setSavingBudget(true);
+    try {
+      if (editBudgetId) {
+        await fetch('/api/money-hub/budgets', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editBudgetId, monthly_limit: parseFloat(budgetAmount) }),
+        });
+      } else {
+        await fetch('/api/money-hub/budgets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: budgetCategory, monthly_limit: parseFloat(budgetAmount) }),
+        });
+      }
+      await refreshData();
+      setShowBudgetForm(false);
+      setEditBudgetId(null);
       setBudgetAmount('');
-    } catch {}
+      setBudgetCategory('groceries');
+    } catch { /* silent */ }
     setSavingBudget(false);
   };
+
+  const deleteBudget = async (id: string) => {
+    try {
+      await fetch(`/api/money-hub/budgets?id=${id}`, { method: 'DELETE' });
+      await refreshData();
+    } catch { /* silent */ }
+  };
+
+  // ─── Net Worth ────────────────────────────────────────────────────────────
+
+  const addAsset = async () => {
+    if (!assetForm.name || !assetForm.value) return;
+    setNwSaving(true);
+    try {
+      await fetch('/api/money-hub/net-worth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'asset', asset_type: assetForm.type, name: assetForm.name, value: parseFloat(assetForm.value) }),
+      });
+      await refreshData();
+      setAssetForm({ type: 'savings', name: '', value: '' });
+      setShowAssetForm(false);
+    } catch { /* silent */ }
+    setNwSaving(false);
+  };
+
+  const addLiability = async () => {
+    if (!liabilityForm.name || !liabilityForm.balance) return;
+    setNwSaving(true);
+    try {
+      await fetch('/api/money-hub/net-worth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'liability',
+          liability_type: liabilityForm.type,
+          name: liabilityForm.name,
+          outstanding_balance: parseFloat(liabilityForm.balance),
+          monthly_payment: liabilityForm.monthly_payment ? parseFloat(liabilityForm.monthly_payment) : undefined,
+          interest_rate: liabilityForm.interest_rate ? parseFloat(liabilityForm.interest_rate) : undefined,
+        }),
+      });
+      await refreshData();
+      setLiabilityForm({ type: 'loan', name: '', balance: '', monthly_payment: '', interest_rate: '' });
+      setShowLiabilityForm(false);
+    } catch { /* silent */ }
+    setNwSaving(false);
+  };
+
+  const deleteNetWorthItem = async (id: string, type: 'asset' | 'liability') => {
+    try {
+      await fetch(`/api/money-hub/net-worth?id=${id}&type=${type}`, { method: 'DELETE' });
+      await refreshData();
+    } catch { /* silent */ }
+  };
+
+  // ─── Savings Goals ────────────────────────────────────────────────────────
+
+  const saveGoal = async () => {
+    if (!goalForm.name || !goalForm.target_amount) return;
+    setSavingGoal(true);
+    try {
+      const payload = {
+        goal_name: goalForm.name,
+        emoji: goalForm.emoji,
+        target_amount: parseFloat(goalForm.target_amount),
+        target_date: goalForm.target_date || undefined,
+        current_amount: parseFloat(goalForm.current_amount || '0'),
+      };
+      if (editGoalId) {
+        await fetch('/api/money-hub/goals', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editGoalId, ...payload }),
+        });
+      } else {
+        await fetch('/api/money-hub/goals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      await refreshData();
+      setShowGoalForm(false);
+      setEditGoalId(null);
+      setGoalForm({ name: '', emoji: '🎯', target_amount: '', target_date: '', current_amount: '0' });
+    } catch { /* silent */ }
+    setSavingGoal(false);
+  };
+
+  const deleteGoal = async (id: string) => {
+    try {
+      await fetch(`/api/money-hub/goals?id=${id}`, { method: 'DELETE' });
+      await refreshData();
+    } catch { /* silent */ }
+  };
+
+  const addMoneyToGoal = async (id: string) => {
+    if (!addMoneyAmount) return;
+    setSavingGoal(true);
+    try {
+      const goal = data?.goals.find((g: any) => g.id === id);
+      if (goal) {
+        await fetch('/api/money-hub/goals', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, current_amount: (goal.current_amount || 0) + parseFloat(addMoneyAmount) }),
+        });
+        await refreshData();
+      }
+      setAddMoneyGoalId(null);
+      setAddMoneyAmount('');
+    } catch { /* silent */ }
+    setSavingGoal(false);
+  };
+
+  // ─── Email Scan ───────────────────────────────────────────────────────────
+
+  const scanInbox = async () => {
+    setScanning(true);
+    try {
+      await fetch('/api/gmail/scan', { method: 'POST' });
+      await refreshData();
+    } catch { /* silent */ }
+    setScanning(false);
+  };
+
+  // ─── AI Chat ──────────────────────────────────────────────────────────────
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || chatLoading) return;
@@ -141,15 +457,83 @@ export default function MoneyHubPage() {
       });
       const d = await res.json();
       if (d.reply) {
-        setChatMessages([...updated, { role: 'assistant', content: d.reply }]);
+        const reply = d.reply;
+        const newMessages = [...updated, { role: 'assistant', content: reply }];
+        setChatMessages(newMessages);
+
+        // Check for widget commands
+        const widgetMatch = reply.match(/\[WIDGET:([\s\S]*?)\]/);
+        if (widgetMatch) {
+          try {
+            const widgetData = JSON.parse(widgetMatch[1]);
+            const widget: CustomWidget = {
+              id: Date.now().toString(),
+              type: widgetData.type || 'stat',
+              title: widgetData.title || 'Custom View',
+              data: widgetData.data,
+            };
+            setCustomWidgets(prev => {
+              const updated = [...prev, widget];
+              try { localStorage.setItem('pb_mh_widgets', JSON.stringify(updated)); } catch { /* silent */ }
+              return updated;
+            });
+          } catch { /* invalid widget JSON, ignore */ }
+        }
+
+        // Save chat history
+        try { localStorage.setItem('pb_moneyhub_chat_history', JSON.stringify(newMessages)); } catch { /* silent */ }
       } else if (d.error) {
-        setChatMessages([...updated, { role: 'assistant', content: d.error }]);
+        const errMessages = [...updated, { role: 'assistant', content: d.error }];
+        setChatMessages(errMessages);
+        try { localStorage.setItem('pb_moneyhub_chat_history', JSON.stringify(errMessages)); } catch { /* silent */ }
       }
     } catch {
-      setChatMessages([...updated, { role: 'assistant', content: 'Sorry, something went wrong.' }]);
+      const errMessages = [...updated, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }];
+      setChatMessages(errMessages);
     }
     setChatLoading(false);
   };
+
+  // ─── Tour ─────────────────────────────────────────────────────────────────
+
+  const startTour = () => setTourStep(0);
+
+  const nextTourStep = () => {
+    if (tourStep === null) return;
+    if (tourStep >= TOUR_STEPS.length - 1) {
+      setTourStep(null);
+      try { localStorage.setItem('mh_tour_completed', 'true'); } catch { /* silent */ }
+      return;
+    }
+    const next = tourStep + 1;
+    setTourStep(next);
+    const el = document.getElementById(TOUR_STEPS[next].target);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const prevTourStep = () => {
+    if (tourStep === null || tourStep <= 0) return;
+    const prev = tourStep - 1;
+    setTourStep(prev);
+    const el = document.getElementById(TOUR_STEPS[prev].target);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const skipTour = () => {
+    setTourStep(null);
+    try { localStorage.setItem('mh_tour_completed', 'true'); } catch { /* silent */ }
+  };
+
+  // Remove custom widget
+  const removeWidget = (id: string) => {
+    setCustomWidgets(prev => {
+      const updated = prev.filter(w => w.id !== id);
+      try { localStorage.setItem('pb_mh_widgets', JSON.stringify(updated)); } catch { /* silent */ }
+      return updated;
+    });
+  };
+
+  // ─── Effects ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     fetch('/api/money-hub')
@@ -157,7 +541,45 @@ export default function MoneyHubPage() {
       .then(d => { if (!d.error) setData(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    // Restore chat history
+    try {
+      const saved = localStorage.getItem('pb_moneyhub_chat_history');
+      if (saved) setChatMessages(JSON.parse(saved));
+    } catch { /* silent */ }
+
+    // Restore widgets
+    try {
+      const saved = localStorage.getItem('pb_mh_widgets');
+      if (saved) setCustomWidgets(JSON.parse(saved));
+    } catch { /* silent */ }
+
+    // Check tour
+    try {
+      if (!localStorage.getItem('mh_tour_completed')) {
+        setTimeout(() => setTourStep(0), 1000);
+      }
+    } catch { /* silent */ }
+
+    // Hide global ChatWidget for Pro users
+    (window as any).__pbHideChat = true;
+    return () => { (window as any).__pbHideChat = false; };
   }, []);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, chatLoading]);
+
+  // Scroll to tour step on mount
+  useEffect(() => {
+    if (tourStep !== null && tourStep === 0) {
+      const el = document.getElementById(TOUR_STEPS[0].target);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [tourStep]);
+
+  // ─── Loading state ────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -180,15 +602,67 @@ export default function MoneyHubPage() {
     );
   }
 
+  // ─── Derived values ───────────────────────────────────────────────────────
+
   const isPaid = data.tier === 'essential' || data.tier === 'pro';
   const isPro = data.tier === 'pro';
-  const totalOpportunityValue = data.alerts.reduce((s, a) => s + (a.value_gbp || 0), 0) +
-    data.opportunities.reduce((s, o) => s + (o.amount || 0), 0);
+  const totalOpportunityValue = data.alerts.reduce((s, a: any) => s + (a.value_gbp || 0), 0) +
+    data.opportunities.reduce((s, o: any) => s + (o.amount || 0), 0);
+
+  const incomeBreakdown = data.overview.incomeBreakdown || {};
+  const totalIncome = Object.values(incomeBreakdown).reduce((s, v) => s + v, 0);
+
+  // Monthly trends averages
+  const trends = data.spending.monthlyTrends || [];
+  const avgIncome = trends.length > 0 ? trends.reduce((s, t) => s + t.income, 0) / trends.length : 0;
+  const avgOutgoings = trends.length > 0 ? trends.reduce((s, t) => s + t.outgoings, 0) / trends.length : 0;
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-7xl space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+
+      {/* Tour overlay */}
+      {tourStep !== null && (
+        <div className="fixed inset-0 z-[60] pointer-events-none">
+          <div className="fixed inset-0 bg-black/50 pointer-events-auto" onClick={skipTour} />
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] bg-slate-900 border border-amber-500/40 rounded-2xl p-6 w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl pointer-events-auto">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-amber-400 text-xs font-semibold">Step {tourStep + 1} of {TOUR_STEPS.length}</span>
+              <button onClick={skipTour} className="text-slate-500 hover:text-white text-xs">Skip tour</button>
+            </div>
+            <h3 className="text-white font-bold text-lg mb-2">{TOUR_STEPS[tourStep].title}</h3>
+            <p className="text-slate-400 text-sm mb-5">{TOUR_STEPS[tourStep].description}</p>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={prevTourStep}
+                disabled={tourStep === 0}
+                className="text-slate-400 hover:text-white text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={nextTourStep}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg text-sm"
+              >
+                {tourStep >= TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}
+              </button>
+            </div>
+          </div>
+          {/* Highlight ring on current step target */}
+          <style>{`
+            #${TOUR_STEPS[tourStep].target} {
+              position: relative;
+              z-index: 61;
+              box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.2);
+              border-radius: 1rem;
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* ═══ HEADER ═══ */}
+      <div id="tour-header" className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-white flex items-center gap-3">
             <Wallet className="h-9 w-9 text-amber-500" />
@@ -196,7 +670,14 @@ export default function MoneyHubPage() {
           </h1>
           <p className="text-slate-400 mt-1">Your complete financial intelligence centre</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={startTour}
+            className="text-slate-500 hover:text-amber-400 transition-colors"
+            title="Restart tour"
+          >
+            <HelpCircle className="h-5 w-5" />
+          </button>
           <button
             onClick={syncMoneyHub}
             disabled={syncing}
@@ -214,8 +695,8 @@ export default function MoneyHubPage() {
         </div>
       </div>
 
-      {/* SECTION 1: Financial Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* ═══ SECTION 1: Financial Overview ═══ */}
+      <div id="tour-overview" className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <TrendingUp className="h-5 w-5 text-green-400 mb-2" />
           <p className="text-2xl font-bold text-white">£{data.overview.monthlyIncome.toLocaleString()}</p>
@@ -242,7 +723,47 @@ export default function MoneyHubPage() {
         </div>
       </div>
 
-      {/* SECTION 2: Accounts */}
+      {/* ═══ SECTION 1b: Income Breakdown ═══ */}
+      <div id="tour-income" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+          <TrendingUp className="h-5 w-5 text-green-400" /> Income Breakdown
+        </h2>
+        {totalIncome > 0 ? (
+          <div className="space-y-3">
+            {Object.entries(incomeBreakdown)
+              .sort(([, a], [, b]) => b - a)
+              .map(([type, amount]) => {
+                const info = INCOME_LABELS[type] || INCOME_LABELS.other;
+                const pct = (amount / totalIncome) * 100;
+                return (
+                  <div key={type} className="flex items-center gap-3">
+                    <span className="text-lg w-7">{info.icon}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-white text-xs font-medium">{info.label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 text-[10px]">{pct.toFixed(1)}%</span>
+                          <span className="text-green-400 text-xs font-bold">£{amount.toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-700 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: info.color }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            <div className="pt-2 border-t border-slate-800 flex justify-between">
+              <span className="text-slate-400 text-sm">Total income</span>
+              <span className="text-green-400 font-bold text-sm">£{totalIncome.toLocaleString()}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-slate-500 text-sm text-center py-4">No income data available this month. Connect your bank account to see your income breakdown.</p>
+        )}
+      </div>
+
+      {/* ═══ SECTION 2: Bank Accounts ═══ */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -281,8 +802,8 @@ export default function MoneyHubPage() {
         )}
       </div>
 
-      {/* SECTION 3: Spending Intelligence */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+      {/* ═══ SECTION 3: Spending Intelligence ═══ */}
+      <div id="tour-spending" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-sky-400" /> Spending Breakdown
         </h2>
@@ -294,59 +815,61 @@ export default function MoneyHubPage() {
               const budget = data.budgets.find((b: any) => b.category === cat.category);
               const budgetPct = budget ? (cat.total / budget.monthly_limit) * 100 : 0;
               return (
-                <div key={cat.category}>
-                  <button
-                    onClick={() => isPaid ? loadDrillDown(cat.category) : undefined}
-                    className={`flex items-center gap-3 w-full text-left ${isPaid ? 'hover:bg-slate-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
-                  >
-                    <span className="text-lg w-7">{info.icon}</span>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-white text-xs font-medium">{info.label}</span>
-                        <div className="flex items-center gap-2">
-                          {budget && (
-                            <span className={`text-[10px] ${budgetPct > 100 ? 'text-red-400' : budgetPct > 80 ? 'text-amber-400' : 'text-green-400'}`}>
-                              {budgetPct.toFixed(0)}% of £{budget.monthly_limit} budget
-                            </span>
-                          )}
-                          <span className="text-white text-xs font-bold">£{cat.total.toFixed(0)}</span>
+                <div key={cat.category} className="relative">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => isPaid ? loadDrillDown(cat.category) : undefined}
+                      className={`flex items-center gap-3 flex-1 text-left ${isPaid ? 'hover:bg-slate-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
+                    >
+                      <span className="text-lg w-7">{info.icon}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-white text-xs font-medium">{info.label}</span>
+                          <div className="flex items-center gap-2">
+                            {budget && (
+                              <span className={`text-[10px] ${budgetPct > 100 ? 'text-red-400' : budgetPct > 80 ? 'text-amber-400' : 'text-green-400'}`}>
+                                {budgetPct.toFixed(0)}% of £{budget.monthly_limit}
+                              </span>
+                            )}
+                            <span className="text-white text-xs font-bold">£{cat.total.toFixed(0)}</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-slate-700 rounded-full h-1.5">
+                          <div className="h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: info.color }} />
                         </div>
                       </div>
-                      <div className="w-full bg-slate-700 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: info.color }} />
+                    </button>
+                    {/* Inline recategorise dropdown trigger */}
+                    {isPaid && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setRecatDropdown(recatDropdown === cat.category ? null : cat.category)}
+                          className="text-slate-600 hover:text-slate-400 p-1"
+                          title="Recategorise"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                        {recatDropdown === cat.category && (
+                          <div className="absolute right-0 top-6 z-30 bg-slate-800 border border-slate-700 rounded-lg shadow-xl py-1 w-40 max-h-56 overflow-y-auto">
+                            {Object.entries(CATEGORY_LABELS).map(([key, val]) => (
+                              <button
+                                key={key}
+                                onClick={() => {
+                                  // Recategorise all transactions for the top merchant in this category
+                                  const topMerchant = data.spending.topMerchants.find(m => true);
+                                  recategorise(cat.category, key);
+                                }}
+                                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 flex items-center gap-2 ${key === cat.category ? 'text-amber-400' : 'text-slate-300'}`}
+                              >
+                                <span>{val.icon}</span>
+                                <span>{val.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </button>
-                  {isPaid && (
-                    <div className="flex justify-end mt-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowBudgetForm(cat.category); setBudgetAmount(budget?.monthly_limit?.toString() || ''); }}
-                        className="text-[10px] text-slate-500 hover:text-amber-400"
-                      >
-                        {budget ? 'Edit budget' : 'Set budget'}
-                      </button>
-                    </div>
-                  )}
-                  {showBudgetForm === cat.category && (
-                    <div className="flex items-center gap-2 mt-1 ml-10">
-                      <span className="text-slate-400 text-xs">£</span>
-                      <input
-                        type="number"
-                        value={budgetAmount}
-                        onChange={(e) => setBudgetAmount(e.target.value)}
-                        placeholder="Monthly limit"
-                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-24 focus:outline-none focus:border-amber-500"
-                      />
-                      <button
-                        onClick={() => saveBudget(cat.category)}
-                        disabled={savingBudget}
-                        className="bg-amber-500 text-slate-950 text-xs px-2 py-1 rounded font-medium disabled:opacity-50"
-                      >
-                        {savingBudget ? '...' : 'Save'}
-                      </button>
-                      <button onClick={() => setShowBudgetForm(null)} className="text-slate-500 text-xs">Cancel</button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -374,43 +897,108 @@ export default function MoneyHubPage() {
         </div>
       </div>
 
-      {/* SECTION 4: Monthly Trends (paid only) */}
-      {isPaid && data.spending.monthlyTrends.length > 0 ? (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+      {/* ═══ SECTION 4: Monthly Trends ═══ */}
+      {isPaid && trends.length > 0 ? (
+        <div id="tour-trends" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
             <TrendingUp className="h-5 w-5 text-green-400" /> Monthly Trends
           </h2>
-          <div className="grid grid-cols-6 gap-2">
-            {data.spending.monthlyTrends.map(m => {
-              const maxVal = Math.max(...data.spending.monthlyTrends.map(t => Math.max(t.income, t.outgoings)), 1);
-              return (
-                <div key={m.month} className="text-center">
-                  <div className="h-24 flex items-end justify-center gap-1 mb-1">
-                    <div className="w-3 bg-green-500/60 rounded-t" style={{ height: `${(m.income / maxVal) * 100}%` }} />
-                    <div className="w-3 bg-red-500/60 rounded-t" style={{ height: `${(m.outgoings / maxVal) * 100}%` }} />
+          <div ref={trendsRef} className="relative">
+            <div className="grid grid-cols-6 gap-2">
+              {trends.map((m, idx) => {
+                const maxVal = Math.max(...trends.map(t => Math.max(t.income, t.outgoings)), 1);
+                const net = m.income - m.outgoings;
+                const prevMonth = idx > 0 ? trends[idx - 1] : null;
+                const vsIncome = prevMonth && prevMonth.income > 0 ? ((m.income - prevMonth.income) / prevMonth.income * 100) : null;
+                const vsOutgoings = prevMonth && prevMonth.outgoings > 0 ? ((m.outgoings - prevMonth.outgoings) / prevMonth.outgoings * 100) : null;
+
+                // Format month name
+                const monthDate = new Date(m.month + '-01');
+                const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+                return (
+                  <div
+                    key={m.month}
+                    className="text-center relative"
+                    onMouseEnter={() => setHoveredMonth(idx)}
+                    onMouseLeave={() => setHoveredMonth(null)}
+                  >
+                    <div className="h-24 flex items-end justify-center gap-1 mb-1">
+                      <div className="w-3 bg-green-500/60 rounded-t transition-all hover:bg-green-500/80" style={{ height: `${(m.income / maxVal) * 100}%` }} />
+                      <div className="w-3 bg-red-500/60 rounded-t transition-all hover:bg-red-500/80" style={{ height: `${(m.outgoings / maxVal) * 100}%` }} />
+                    </div>
+                    <p className="text-slate-500 text-[10px]">{m.month.substring(5)}</p>
+
+                    {/* Hover tooltip */}
+                    {hoveredMonth === idx && (
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 -translate-y-full z-20 bg-slate-800 border border-slate-600 rounded-xl p-3 shadow-xl w-52 text-left pointer-events-none">
+                        <p className="text-white font-semibold text-xs mb-2">{monthName}</p>
+                        <div className="space-y-1 text-[11px]">
+                          <div className="flex justify-between">
+                            <span className="text-green-400">Income</span>
+                            <span className="text-white font-medium">£{m.income.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-red-400">Outgoings</span>
+                            <span className="text-white font-medium">£{m.outgoings.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between border-t border-slate-700 pt-1">
+                            <span className={net >= 0 ? 'text-green-400' : 'text-red-400'}>Net</span>
+                            <span className={`font-medium ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {net >= 0 ? '+' : ''}£{net.toLocaleString()}
+                            </span>
+                          </div>
+                          {prevMonth && (
+                            <div className="border-t border-slate-700 pt-1 text-slate-400">
+                              <p>vs previous month:</p>
+                              {vsIncome !== null && (
+                                <p className={vsIncome >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  Income: {vsIncome >= 0 ? '+' : ''}{vsIncome.toFixed(1)}%
+                                </p>
+                              )}
+                              {vsOutgoings !== null && (
+                                <p className={vsOutgoings <= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  Outgoings: {vsOutgoings >= 0 ? '+' : ''}{vsOutgoings.toFixed(1)}%
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-slate-500 text-[10px]">{m.month.substring(5)}</p>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
           <div className="flex gap-4 justify-center mt-3 text-xs text-slate-500">
             <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full" /> Income</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500 rounded-full" /> Outgoings</span>
           </div>
+          {/* Averages summary */}
+          <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 gap-4">
+            <div className="text-center">
+              <p className="text-slate-500 text-xs">Avg monthly income</p>
+              <p className="text-green-400 font-bold text-sm">£{avgIncome.toFixed(0)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-slate-500 text-xs">Avg monthly outgoings</p>
+              <p className="text-red-400 font-bold text-sm">£{avgOutgoings.toFixed(0)}</p>
+            </div>
+          </div>
         </div>
       ) : !isPaid ? (
-        <LockedSection title="Monthly Trends" />
+        <div id="tour-trends"><LockedSection title="Monthly Trends" /></div>
       ) : null}
 
-      {/* SECTION 5: Smart Alerts */}
+      {/* ═══ SECTION 5: Smart Alerts ═══ */}
       {data.alerts.length > 0 && (
         <div className="bg-slate-900/50 border border-amber-500/20 rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
             <AlertTriangle className="h-5 w-5 text-amber-400" /> Smart Alerts
           </h2>
           <div className="space-y-2">
-            {data.alerts.map(alert => (
+            {data.alerts.map((alert: any) => (
               <div key={alert.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
                 <div className="flex-1">
                   <p className="text-white text-sm font-medium">{alert.title}</p>
@@ -425,7 +1013,7 @@ export default function MoneyHubPage() {
         </div>
       )}
 
-      {/* SECTION 6: Subscriptions Summary */}
+      {/* ═══ SECTION 6: Subscriptions Summary ═══ */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -451,7 +1039,7 @@ export default function MoneyHubPage() {
         </div>
       </div>
 
-      {/* SECTION 7: Contracts Expiring */}
+      {/* ═══ SECTION 7: Contracts Expiring ═══ */}
       {data.contracts.expiring.length > 0 && (
         <div className="bg-slate-900/50 border border-red-500/20 rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
@@ -473,13 +1061,15 @@ export default function MoneyHubPage() {
         </div>
       )}
 
-      {/* SECTION 8: Net Worth */}
+      {/* ═══ SECTION 8: Net Worth Tracker ═══ */}
       {isPaid ? (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div id="tour-networth" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
             <Shield className="h-5 w-5 text-emerald-400" /> Net Worth
           </h2>
-          <div className="grid grid-cols-3 gap-4">
+
+          {/* Totals */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="text-center">
               <p className="text-2xl font-bold text-green-400">£{data.netWorth.assets.toLocaleString()}</p>
               <p className="text-slate-500 text-xs">Assets</p>
@@ -495,26 +1085,225 @@ export default function MoneyHubPage() {
               <p className="text-slate-500 text-xs">Net Worth</p>
             </div>
           </div>
-          {isPro && (
-            <div className="mt-4 flex gap-2">
-              <Link href="/dashboard/money-hub" className="text-amber-400 text-xs">Add assets and liabilities to track your full net worth</Link>
-            </div>
-          )}
+
+          {/* Assets section */}
+          <div className="mb-4">
+            <button
+              onClick={() => setExpandAssets(!expandAssets)}
+              className="flex items-center justify-between w-full text-left mb-2"
+            >
+              <span className="text-white font-medium text-sm flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-400" /> Assets ({data.netWorth.assetsList?.length || 0})
+              </span>
+              {expandAssets ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </button>
+            {expandAssets && (
+              <div className="space-y-2 ml-6">
+                {(data.netWorth.assetsList || []).map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
+                    <div>
+                      <span className="text-white text-sm">{a.name}</span>
+                      <span className="text-slate-500 text-xs ml-2 capitalize">{a.asset_type?.replace('_', ' ')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400 font-medium text-sm">£{(a.value || 0).toLocaleString()}</span>
+                      <button onClick={() => deleteNetWorthItem(a.id, 'asset')} className="text-slate-600 hover:text-red-400">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {showAssetForm ? (
+                  <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 space-y-2">
+                    <select
+                      value={assetForm.type}
+                      onChange={e => setAssetForm({ ...assetForm, type: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      {ASSET_TYPES.map(t => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Asset name"
+                      value={assetForm.name}
+                      onChange={e => setAssetForm({ ...assetForm, name: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Value (£)"
+                      value={assetForm.value}
+                      onChange={e => setAssetForm({ ...assetForm, value: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={addAsset} disabled={nwSaving} className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded font-medium disabled:opacity-50">
+                        {nwSaving ? 'Saving...' : 'Add Asset'}
+                      </button>
+                      <button onClick={() => setShowAssetForm(false)} className="text-slate-400 text-xs hover:text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowAssetForm(true)} className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300">
+                    <Plus className="h-3 w-3" /> Add Asset
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Liabilities section */}
+          <div>
+            <button
+              onClick={() => setExpandLiabilities(!expandLiabilities)}
+              className="flex items-center justify-between w-full text-left mb-2"
+            >
+              <span className="text-white font-medium text-sm flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-red-400" /> Liabilities ({data.netWorth.liabilitiesList?.length || 0})
+              </span>
+              {expandLiabilities ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </button>
+            {expandLiabilities && (
+              <div className="space-y-2 ml-6">
+                {(data.netWorth.liabilitiesList || []).map((l: any) => (
+                  <div key={l.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
+                    <div>
+                      <span className="text-white text-sm">{l.name}</span>
+                      <span className="text-slate-500 text-xs ml-2 capitalize">{l.liability_type?.replace('_', ' ')}</span>
+                      {l.monthly_payment && <span className="text-slate-500 text-xs ml-2">£{l.monthly_payment}/mo</span>}
+                      {l.interest_rate && <span className="text-slate-500 text-xs ml-1">({l.interest_rate}% APR)</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-red-400 font-medium text-sm">£{(l.outstanding_balance || 0).toLocaleString()}</span>
+                      <button onClick={() => deleteNetWorthItem(l.id, 'liability')} className="text-slate-600 hover:text-red-400">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {showLiabilityForm ? (
+                  <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 space-y-2">
+                    <select
+                      value={liabilityForm.type}
+                      onChange={e => setLiabilityForm({ ...liabilityForm, type: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      {LIABILITY_TYPES.map(t => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Liability name"
+                      value={liabilityForm.name}
+                      onChange={e => setLiabilityForm({ ...liabilityForm, name: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Outstanding balance (£)"
+                      value={liabilityForm.balance}
+                      onChange={e => setLiabilityForm({ ...liabilityForm, balance: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Monthly payment (£, optional)"
+                      value={liabilityForm.monthly_payment}
+                      onChange={e => setLiabilityForm({ ...liabilityForm, monthly_payment: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Interest rate (%, optional)"
+                      value={liabilityForm.interest_rate}
+                      onChange={e => setLiabilityForm({ ...liabilityForm, interest_rate: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={addLiability} disabled={nwSaving} className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded font-medium disabled:opacity-50">
+                        {nwSaving ? 'Saving...' : 'Add Liability'}
+                      </button>
+                      <button onClick={() => setShowLiabilityForm(false)} className="text-slate-400 text-xs hover:text-white">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowLiabilityForm(true)} className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300">
+                    <Plus className="h-3 w-3" /> Add Liability
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
-        <LockedSection title="Net Worth Tracker" />
+        <div id="tour-networth"><LockedSection title="Net Worth Tracker" /></div>
       )}
 
-      {/* SECTION 9: Budget Planner */}
+      {/* ═══ SECTION 9: Budget Planner ═══ */}
       {isPaid ? (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-            <Target className="h-5 w-5 text-purple-400" /> Budget Planner
-          </h2>
-          {data.budgets.length === 0 ? (
+        <div id="tour-budgets" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Target className="h-5 w-5 text-purple-400" /> Budget Planner
+            </h2>
+            <button
+              onClick={() => { setShowBudgetForm(true); setEditBudgetId(null); setBudgetAmount(''); setBudgetCategory('groceries'); }}
+              className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300"
+            >
+              <Plus className="h-3 w-3" /> Add Budget
+            </button>
+          </div>
+
+          {/* Instructions banner */}
+          <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 mb-4">
+            <p className="text-purple-300 text-xs">
+              Set monthly spending limits for each category. We will track your spending and alert you when you are close to or over budget.
+            </p>
+          </div>
+
+          {/* Add/edit budget form */}
+          {showBudgetForm && (
+            <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 mb-4 space-y-2">
+              <div className="flex gap-2">
+                <select
+                  value={budgetCategory}
+                  onChange={e => setBudgetCategory(e.target.value)}
+                  disabled={!!editBudgetId}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                >
+                  {Object.entries(CATEGORY_LABELS).map(([key, val]) => (
+                    <option key={key} value={key}>{val.icon} {val.label}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400 text-xs">£</span>
+                  <input
+                    type="number"
+                    placeholder="Monthly limit"
+                    value={budgetAmount}
+                    onChange={e => setBudgetAmount(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-28 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveBudget} disabled={savingBudget} className="bg-purple-500 hover:bg-purple-600 text-white text-xs px-3 py-1.5 rounded font-medium disabled:opacity-50">
+                  {savingBudget ? 'Saving...' : editBudgetId ? 'Update Budget' : 'Add Budget'}
+                </button>
+                <button onClick={() => { setShowBudgetForm(false); setEditBudgetId(null); }} className="text-slate-400 text-xs hover:text-white">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {data.budgets.length === 0 && !showBudgetForm ? (
             <div className="text-center py-6">
               <p className="text-slate-400 text-sm mb-2">No budgets set yet</p>
-              <p className="text-slate-500 text-xs">Set spending limits per category to stay on track</p>
+              <p className="text-slate-500 text-xs">Click &ldquo;Add Budget&rdquo; above to set spending limits per category</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -523,16 +1312,41 @@ export default function MoneyHubPage() {
                 const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
                 const info = CATEGORY_LABELS[b.category] || CATEGORY_LABELS.other;
                 return (
-                  <div key={b.id}>
+                  <div key={b.id} className="relative">
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-white">{info.icon} {info.label}</span>
-                      <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-slate-400'}>
-                        £{spent.toFixed(0)} / £{b.monthly_limit}
+                      <span className="text-white flex items-center gap-1">
+                        {info.icon} {info.label}
+                        {pct > 100 && (
+                          <span className="bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ml-1">
+                            Over budget!
+                          </span>
+                        )}
                       </span>
+                      <div className="flex items-center gap-2">
+                        <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-slate-400'}>
+                          £{spent.toFixed(0)} / £{b.monthly_limit}
+                        </span>
+                        <button
+                          onClick={() => { setEditBudgetId(b.id); setBudgetCategory(b.category); setBudgetAmount(b.monthly_limit.toString()); setShowBudgetForm(true); }}
+                          className="text-slate-600 hover:text-amber-400"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                        </button>
+                        <button onClick={() => deleteBudget(b.id)} className="text-slate-600 hover:text-red-400">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-2">
-                      <div className={`h-2 rounded-full ${pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-green-500'}`}
-                        style={{ width: `${Math.min(pct, 100)}%` }} />
+                      <div
+                        className={`h-2 rounded-full transition-all ${pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : pct > 60 ? 'bg-amber-400' : 'bg-green-500'}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-end mt-0.5">
+                      <span className={`text-[10px] ${pct > 100 ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-slate-500'}`}>
+                        {pct.toFixed(0)}%
+                      </span>
                     </div>
                   </div>
                 );
@@ -541,31 +1355,56 @@ export default function MoneyHubPage() {
           )}
         </div>
       ) : (
-        <LockedSection title="Budget Planner" />
+        <div id="tour-budgets"><LockedSection title="Budget Planner" /></div>
       )}
 
-      {/* SECTION 10: Financial Action Centre */}
-      <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-5">
+      {/* ═══ SECTION 10: Financial Action Centre ═══ */}
+      <div id="tour-actions" className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-amber-400 flex items-center gap-2">
             <Zap className="h-5 w-5" /> Financial Action Centre
           </h2>
-          {totalOpportunityValue > 0 && (
-            <div className="text-right">
-              <p className="text-2xl font-bold text-amber-400">£{totalOpportunityValue.toFixed(0)}</p>
-              <p className="text-slate-500 text-xs">potential savings</p>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={scanInbox}
+              disabled={scanning}
+              className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
+            >
+              {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              {scanning ? 'Scanning inbox...' : 'Scan Inbox'}
+            </button>
+            {totalOpportunityValue > 0 && (
+              <div className="text-right">
+                <p className="text-2xl font-bold text-amber-400">£{totalOpportunityValue.toFixed(0)}</p>
+                <p className="text-slate-500 text-xs">potential savings</p>
+              </div>
+            )}
+          </div>
         </div>
+
         {data.opportunities.length > 0 ? (
           <div className="space-y-2">
             {data.opportunities.slice(0, isPaid ? 20 : 3).map((opp: any) => (
               <div key={opp.id} className="flex items-center justify-between bg-slate-900/50 rounded-lg px-4 py-3 border border-slate-800">
                 <div className="flex-1">
-                  <p className="text-white text-sm font-medium">{opp.title}</p>
-                  <p className="text-slate-500 text-xs">{opp.provider_name || 'Opportunity detected'}</p>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="text-white text-sm font-medium">{opp.title}</p>
+                    {opp.type && (
+                      <span className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full capitalize">
+                        {opp.type.replace('_', ' ')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    {opp.provider_name && <span>{opp.provider_name}</span>}
+                    {opp.amount > 0 && <span className="text-amber-400 font-medium">£{opp.amount}</span>}
+                    {opp.confidence && <span>({opp.confidence}% confidence)</span>}
+                  </div>
+                  {opp.suggested_action && (
+                    <p className="text-slate-400 text-xs mt-0.5">{opp.suggested_action}</p>
+                  )}
                 </div>
-                <Link href="/dashboard/scanner" className="text-amber-400 text-xs flex items-center gap-1">
+                <Link href="/dashboard/scanner" className="text-amber-400 text-xs flex items-center gap-1 ml-3 shrink-0">
                   Take Action <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
@@ -574,7 +1413,6 @@ export default function MoneyHubPage() {
         ) : (
           <div className="text-center py-4">
             <p className="text-slate-400 text-sm">No pending actions. Scan your inbox to find opportunities.</p>
-            <Link href="/dashboard/scanner" className="text-amber-400 text-sm mt-2 inline-block">Run Opportunity Scan</Link>
           </div>
         )}
         {!isPaid && data.opportunities.length >= 3 && (
@@ -584,37 +1422,156 @@ export default function MoneyHubPage() {
         )}
       </div>
 
-      {/* SECTION 11: Savings Goals */}
+      {/* ═══ SECTION 11: Savings Goals ═══ */}
       {isPaid ? (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-            <PiggyBank className="h-5 w-5 text-pink-400" /> Savings Goals
-          </h2>
-          {data.goals.length === 0 ? (
+        <div id="tour-goals" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <PiggyBank className="h-5 w-5 text-pink-400" /> Savings Goals
+            </h2>
+            <button
+              onClick={() => { setShowGoalForm(true); setEditGoalId(null); setGoalForm({ name: '', emoji: '🎯', target_amount: '', target_date: '', current_amount: '0' }); }}
+              className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300"
+            >
+              <Plus className="h-3 w-3" /> Add Goal
+            </button>
+          </div>
+
+          {/* Instructions banner */}
+          <div className="bg-pink-500/10 border border-pink-500/20 rounded-lg p-3 mb-4">
+            <p className="text-pink-300 text-xs mb-1">
+              Set savings targets and track your progress. Research shows that people who write down their goals are 42% more likely to achieve them.
+            </p>
+            <p className="text-pink-400/60 text-[10px]">
+              Track multiple goals &bull; Calculate monthly savings needed &bull; Visualise your progress
+            </p>
+          </div>
+
+          {/* Add/edit goal form */}
+          {showGoalForm && (
+            <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800 mb-4 space-y-3">
+              <div>
+                <label className="text-slate-400 text-xs mb-1 block">Emoji</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {GOAL_EMOJIS.map(e => (
+                    <button
+                      key={e}
+                      onClick={() => setGoalForm({ ...goalForm, emoji: e })}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all ${goalForm.emoji === e ? 'bg-pink-500/30 ring-1 ring-pink-400' : 'bg-slate-800 hover:bg-slate-700'}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                type="text"
+                placeholder="Goal name (e.g. Holiday fund)"
+                value={goalForm.name}
+                onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  placeholder="Target amount (£)"
+                  value={goalForm.target_amount}
+                  onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
+                  className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                />
+                <input
+                  type="date"
+                  placeholder="Target date"
+                  value={goalForm.target_date}
+                  onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
+                  className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                />
+              </div>
+              <input
+                type="number"
+                placeholder="Initial amount (£, optional)"
+                value={goalForm.current_amount}
+                onChange={e => setGoalForm({ ...goalForm, current_amount: e.target.value })}
+                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+              />
+              <div className="flex gap-2">
+                <button onClick={saveGoal} disabled={savingGoal} className="bg-pink-500 hover:bg-pink-600 text-white text-xs px-4 py-2 rounded-lg font-medium disabled:opacity-50">
+                  {savingGoal ? 'Saving...' : editGoalId ? 'Update Goal' : 'Create Goal'}
+                </button>
+                <button onClick={() => { setShowGoalForm(false); setEditGoalId(null); }} className="text-slate-400 text-xs hover:text-white">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {data.goals.length === 0 && !showGoalForm ? (
             <div className="text-center py-6">
+              <PiggyBank className="h-10 w-10 text-pink-400/30 mx-auto mb-2" />
               <p className="text-slate-400 text-sm mb-2">No savings goals yet</p>
-              <p className="text-slate-500 text-xs">Set a target and track your progress</p>
+              <p className="text-slate-500 text-xs">Click &ldquo;Add Goal&rdquo; above to start tracking your savings</p>
             </div>
           ) : (
             <div className="space-y-3">
               {data.goals.map((g: any) => {
                 const pct = g.target_amount > 0 ? (g.current_amount / g.target_amount) * 100 : 0;
                 const daysLeft = g.target_date ? Math.ceil((new Date(g.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                const remaining = Math.max((g.target_amount || 0) - (g.current_amount || 0), 0);
+                const monthsLeft = daysLeft !== null && daysLeft > 0 ? daysLeft / 30 : null;
+                const monthlySavingNeeded = monthsLeft && monthsLeft > 0 ? remaining / monthsLeft : null;
+
                 return (
                   <div key={g.id} className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
                     <div className="flex justify-between mb-2">
                       <span className="text-white font-medium text-sm">{g.emoji || '🎯'} {g.goal_name}</span>
-                      <span className="text-slate-400 text-xs">
-                        £{g.current_amount?.toFixed(0)} / £{g.target_amount?.toFixed(0)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 text-xs">
+                          £{(g.current_amount || 0).toFixed(0)} / £{(g.target_amount || 0).toFixed(0)}
+                        </span>
+                        <button
+                          onClick={() => { setAddMoneyGoalId(addMoneyGoalId === g.id ? null : g.id); setAddMoneyAmount(''); }}
+                          className="text-green-400 hover:text-green-300"
+                          title="Add money"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => deleteGoal(g.id)} className="text-slate-600 hover:text-red-400">
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-2 mb-1">
-                      <div className="bg-pink-500 h-2 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                      <div className="bg-pink-500 h-2 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
                     </div>
                     <div className="flex justify-between text-xs text-slate-500">
                       <span>{pct.toFixed(0)}% complete</span>
-                      {daysLeft !== null && <span>{daysLeft > 0 ? `${daysLeft} days left` : 'Past due'}</span>}
+                      <div className="flex items-center gap-3">
+                        {monthlySavingNeeded !== null && monthlySavingNeeded > 0 && (
+                          <span className="text-pink-400">£{monthlySavingNeeded.toFixed(0)}/month needed</span>
+                        )}
+                        {daysLeft !== null && <span>{daysLeft > 0 ? `${daysLeft} days left` : 'Past due'}</span>}
+                      </div>
                     </div>
+
+                    {/* Add money inline form */}
+                    {addMoneyGoalId === g.id && (
+                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+                        <span className="text-slate-400 text-xs">£</span>
+                        <input
+                          type="number"
+                          value={addMoneyAmount}
+                          onChange={e => setAddMoneyAmount(e.target.value)}
+                          placeholder="Amount to add"
+                          className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-28 focus:outline-none focus:border-pink-500"
+                        />
+                        <button
+                          onClick={() => addMoneyToGoal(g.id)}
+                          disabled={savingGoal || !addMoneyAmount}
+                          className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1 rounded font-medium disabled:opacity-50"
+                        >
+                          {savingGoal ? '...' : 'Add'}
+                        </button>
+                        <button onClick={() => setAddMoneyGoalId(null)} className="text-slate-500 text-xs">Cancel</button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -622,10 +1579,10 @@ export default function MoneyHubPage() {
           )}
         </div>
       ) : (
-        <LockedSection title="Savings Goals" />
+        <div id="tour-goals"><LockedSection title="Savings Goals" /></div>
       )}
 
-      {/* Email Intelligence teaser */}
+      {/* ═══ Email Intelligence teaser (free) ═══ */}
       {!isPaid && (
         <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/5 border border-blue-500/20 rounded-2xl p-6 text-center">
           <Mail className="h-10 w-10 text-blue-400 mx-auto mb-3" />
@@ -639,7 +1596,31 @@ export default function MoneyHubPage() {
         </div>
       )}
 
-      {/* Category Drill-Down Modal */}
+      {/* ═══ Custom Widgets (Pro AI) ═══ */}
+      {customWidgets.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Eye className="h-5 w-5 text-purple-400" /> Custom Views
+          </h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {customWidgets.map(widget => (
+              <div key={widget.id} className="bg-slate-900/50 border border-purple-500/20 rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-white text-sm font-semibold">{widget.title}</h3>
+                  <button onClick={() => removeWidget(widget.id)} className="text-slate-600 hover:text-red-400">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {widget.type === 'pie' && <PieChartWidget data={widget.data} />}
+                {widget.type === 'bar' && <BarChartWidget data={widget.data} />}
+                {widget.type === 'stat' && <StatWidget data={widget.data} />}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Category Drill-Down Modal ═══ */}
       {drillCategory && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
@@ -659,12 +1640,11 @@ export default function MoneyHubPage() {
                 <div className="text-center py-8"><Loader2 className="h-6 w-6 text-amber-500 animate-spin mx-auto" /></div>
               ) : drillData ? (
                 <div className="space-y-6">
-                  {/* Merchant breakdown */}
                   {drillData.merchants.length > 0 && (
                     <div>
                       <h3 className="text-white text-sm font-semibold mb-3">Merchants</h3>
                       <div className="space-y-2">
-                        {drillData.merchants.map((m, i) => (
+                        {drillData.merchants.map((m: any, i: number) => (
                           <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
                             <div>
                               <span className="text-white text-sm">{m.merchant}</span>
@@ -675,17 +1655,7 @@ export default function MoneyHubPage() {
                               <select
                                 defaultValue={drillCategory || ''}
                                 onChange={async (e) => {
-                                  const newCat = e.target.value;
-                                  await fetch('/api/money-hub/recategorise', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ merchantPattern: m.merchant, newCategory: newCat, applyToAll: true }),
-                                  });
-                                  // Refresh
-                                  loadDrillDown(drillCategory!);
-                                  const res = await fetch('/api/money-hub');
-                                  const d = await res.json();
-                                  if (!d.error) setData(d);
+                                  await recategorise(m.merchant, e.target.value);
                                 }}
                                 className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
                               >
@@ -699,11 +1669,10 @@ export default function MoneyHubPage() {
                       </div>
                     </div>
                   )}
-                  {/* Transaction list */}
                   <div>
                     <h3 className="text-white text-sm font-semibold mb-3">Transactions ({drillData.transactions.length})</h3>
                     <div className="space-y-1 max-h-64 overflow-y-auto">
-                      {drillData.transactions.map((t, i) => (
+                      {drillData.transactions.map((t: any, i: number) => (
                         <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-slate-800/50">
                           <div className="flex-1 min-w-0">
                             <span className="text-slate-300 truncate block">{t.description?.substring(0, 40)}</span>
@@ -723,71 +1692,88 @@ export default function MoneyHubPage() {
         </div>
       )}
 
-      {/* AI Chat Panel (Pro only) */}
-      {isPro && (
-        <>
-          {!chatOpen && (
-            <button
-              onClick={() => setChatOpen(true)}
-              className="fixed bottom-20 left-6 z-40 bg-purple-500 hover:bg-purple-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 lg:bottom-6"
-            >
-              <MessageCircle className="h-5 w-5" />
-            </button>
-          )}
-          {chatOpen && (
-            <div className="fixed bottom-20 left-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] bg-slate-900 border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden lg:bottom-6 lg:left-6">
-              <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
-                <div className="flex items-center gap-2">
-                  <MessageCircle className="h-4 w-4 text-purple-400" />
-                  <div>
-                    <p className="text-white text-sm font-semibold">Money Hub AI</p>
-                    <p className="text-purple-400 text-xs">Pro feature</p>
-                  </div>
-                </div>
-                <button onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {chatMessages.length === 0 && (
-                  <div className="text-center py-6">
-                    <MessageCircle className="h-8 w-8 text-purple-400/30 mx-auto mb-2" />
-                    <p className="text-slate-400 text-sm mb-3">Ask me about your finances</p>
-                    <div className="space-y-1">
-                      {['How much did I spend on eating out?', 'What subscriptions could I cancel?', 'Set a budget for groceries'].map(q => (
-                        <button key={q} onClick={() => { setChatInput(q); }} className="block w-full text-left text-xs text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded px-3 py-1.5">{q}</button>
-                      ))}
+      {/* ═══ AI Chat Panel (Pro) ═══ */}
+      <div id="tour-chat">
+        {isPro && (
+          <>
+            {!chatOpen && (
+              <button
+                onClick={() => setChatOpen(true)}
+                className="fixed bottom-20 left-6 z-40 bg-purple-500 hover:bg-purple-600 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 lg:bottom-6"
+                title="AI Financial Assistant"
+              >
+                <MessageCircle className="h-5 w-5" />
+              </button>
+            )}
+            {chatOpen && (
+              <div className="fixed bottom-20 left-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] bg-slate-900 border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden lg:bottom-6 lg:left-6">
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-purple-400" />
+                    <div>
+                      <p className="text-white text-sm font-semibold">Money Hub AI</p>
+                      <p className="text-purple-400 text-[10px]">Your AI financial assistant (replaces standard chat)</p>
                     </div>
                   </div>
-                )}
-                {chatMessages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-200'}`}>
-                      {msg.content}
+                  <button onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {chatMessages.length === 0 && (
+                    <div className="text-center py-6">
+                      <MessageCircle className="h-8 w-8 text-purple-400/30 mx-auto mb-2" />
+                      <p className="text-slate-400 text-sm mb-3">Ask me about your finances</p>
+                      <div className="space-y-1">
+                        {[
+                          'How much did I spend on eating out?',
+                          'Show me a pie chart of spending',
+                          'What subscriptions could I cancel?',
+                          'Set a budget for groceries',
+                        ].map(q => (
+                          <button key={q} onClick={() => setChatInput(q)} className="block w-full text-left text-xs text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded px-3 py-1.5">
+                            {q}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  )}
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-200'}`}>
+                        {/* Strip widget commands from display */}
+                        {msg.content.replace(/\[WIDGET:[\s\S]*?\]/g, '').trim() || 'Done! Check your custom views above.'}
+                      </div>
+                    </div>
+                  ))}
+                  {chatLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-slate-800 rounded-2xl px-3 py-2">
+                        <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="p-3 border-t border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
+                      placeholder="Ask about your finances..."
+                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      disabled={chatLoading}
+                    />
+                    <button onClick={sendChatMessage} disabled={!chatInput.trim() || chatLoading} className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white w-9 h-9 rounded-xl flex items-center justify-center">
+                      <Send className="h-4 w-4" />
+                    </button>
                   </div>
-                ))}
-                {chatLoading && (
-                  <div className="flex justify-start"><div className="bg-slate-800 rounded-2xl px-3 py-2"><Loader2 className="h-4 w-4 text-purple-400 animate-spin" /></div></div>
-                )}
-              </div>
-              <div className="p-3 border-t border-slate-700">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text" value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
-                    placeholder="Ask about your finances..."
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
-                    disabled={chatLoading}
-                  />
-                  <button onClick={sendChatMessage} disabled={!chatInput.trim() || chatLoading} className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white w-9 h-9 rounded-xl flex items-center justify-center">
-                    <Send className="h-4 w-4" />
-                  </button>
                 </div>
               </div>
-            </div>
-          )}
-        </>
-      )}
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

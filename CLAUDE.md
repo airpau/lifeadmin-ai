@@ -244,6 +244,17 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 ### 10. Loyalty Rewards
 - Points for every action. Tiers: Bronze, Silver, Gold, Platinum. Redeem for subscription discounts.
 
+### 11. Money Hub Financial Intelligence Centre
+- Complete financial dashboard with income tracking, spending intelligence, and net worth
+- AI-powered transaction categorisation with user recategorisation
+- Interactive monthly trends with hover tooltips
+- Full budget planner with category-linked limits and email/push alerts
+- Savings goals tracker with progress visualisation
+- Financial Action Centre with email scan integration
+- Guided walkthrough tour for new users
+- Pro AI chatbot with dashboard customisation (pie charts, bar charts via conversation)
+- Dynamic widget generation through AI conversation
+
 ---
 
 ## AI AGENT TEAM
@@ -302,6 +313,10 @@ All agents follow the same architectural pattern. Every agent must:
 - Automated cancellations
 - Instagram posting (pending Meta app review)
 - Self-learning from user feedback
+- WhatsApp integration for budget alerts and financial notifications
+- SMS notifications for urgent financial alerts (budget exceeded, contract expiring)
+- Native mobile app (iOS and Android) with push notifications
+- In-app push notifications for real-time budget tracking alerts
 
 ---
 

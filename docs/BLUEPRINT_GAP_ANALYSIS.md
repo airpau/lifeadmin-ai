@@ -26,6 +26,17 @@
 | Referral System | ✅ | Unique codes, share links, point tracking, end-to-end |
 | Opportunity Scoring | ✅ | Scores users by switching likelihood, feeds targeted emails |
 | Self-Learning Merchant Rules | ✅ | 80+ seeded, learns from user edits |
+| Money Hub Financial Intelligence | ✅ | Income tracking, spending breakdown, net worth, budgets, goals |
+| Money Hub Income Breakdown | ✅ | Categorised by type: salary, freelance, benefits, rental, investment, refund, transfer |
+| Money Hub Inline Recategorisation | ✅ | Users can recategorise spending from main view + drill-down modal |
+| Money Hub Monthly Trends Tooltips | ✅ | Hover over months for income/outgoings/net/% change |
+| Money Hub Net Worth Tracker | ✅ | Add assets (property, vehicles, businesses, pensions, crypto) and liabilities (mortgages, loans, credit cards) |
+| Money Hub Budget Planner | ✅ | Category-linked budgets with progress bars, over-budget warnings, instructions |
+| Money Hub Savings Goals | ✅ | Create/edit/delete goals, progress tracking, monthly saving calculator |
+| Money Hub Financial Action Centre | ✅ | Email scan trigger, opportunity details with type/provider/amount/confidence |
+| Money Hub Walkthrough Tour | ✅ | 10-step guided tour for first-time users, localStorage persistence |
+| Money Hub Pro AI Chatbot | ✅ | Replaces standard bot for Pro users, financial context, chat history persistence |
+| Money Hub AI Dashboard Widgets | ✅ | Pro users generate pie/bar/stat charts via conversation, rendered dynamically |
 
 ## Email System
 
@@ -69,6 +80,10 @@
 | Pro: biggest transactions | ✅ |
 | Chatbot: sales mode for anonymous | ✅ |
 | Chatbot: tier-aware for logged in | ✅ |
+| Money Hub: Free gets top 5 categories | ✅ |
+| Money Hub: Essential gets all categories + trends + budgets + goals | ✅ |
+| Money Hub: Pro gets merchants + net worth detail + AI chat + widgets | ✅ |
+| Money Hub: Pro AI replaces standard chatbot | ✅ |
 
 ## Admin & Operations
 
@@ -96,6 +111,10 @@
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
+| WhatsApp integration | High | Budget alerts, financial notifications, account updates |
+| SMS notifications | High | Urgent alerts: budget exceeded, contract expiring, overcharge detected |
+| Native mobile app (iOS + Android) | High | Push notifications, full Money Hub on mobile |
+| In-app push notifications | High | Real-time budget tracking alerts, goal milestones |
 | Spending cross-user comparisons | Medium | Needs 20+ users with bank data |
 | Separate scanning modes | Low | UX improvement, not critical |
 | AI email aliases (support@, billing@) | Medium | Designed, not built |
