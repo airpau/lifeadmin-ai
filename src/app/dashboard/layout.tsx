@@ -29,7 +29,7 @@ const navItems = [
   { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Forms', href: '/dashboard/forms', icon: Building2 },
-  { name: 'Deals', href: '/dashboard/deals', icon: Tag, comingSoon: true },
+  { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Spending', href: '/dashboard/spending', icon: BarChart3 },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
