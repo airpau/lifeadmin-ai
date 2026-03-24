@@ -114,6 +114,12 @@ Advertiser ID: 125502
 - No branding guidelines
 - HIGH VALUE: average UK mortgage ~£250k = £30 per completion
 
+### Honest Mobile (ID: 20890)
+- Rates: TBC (visible after approval)
+- Custom promotional material needs approval (5 working day review)
+- No branding guidelines
+- Cannot use checkout codes from other Honest Mobile referral programmes
+
 ### Asda Mobile (ID: 6250)
 - Rates: TBC (visible after approval)
 - Validated on user connecting within 1 month of free SIM request
