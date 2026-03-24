@@ -244,18 +244,20 @@ export async function POST(request: NextRequest) {
   // STEP 2: Selected agents respond in parallel for speed, with memory context
   const responses = await Promise.all(
     selectedAgents.map(async (agent) => {
-      // Load agent-specific memory
+      // Load agent-specific memory (most recent first, more items)
       const { data: memories } = await supabase.from('agent_memory')
         .select('title, content')
         .eq('agent_role', agent.role)
-        .order('importance', { ascending: false })
-        .limit(3);
+        .order('created_at', { ascending: false })
+        .limit(5);
 
       const memoryContext = memories && memories.length > 0
-        ? `\nYour memory from previous sessions:\n${memories.map((m: any) => `- ${m.title}: ${m.content}`).join('\n')}`
+        ? `\n\nYOUR PERSISTENT MEMORY (you MUST use this information when relevant):\n${memories.map((m: any) => `- ${m.content.substring(0, 300)}`).join('\n')}`
         : '';
 
       const meetingPrompt = `You are in a live meeting with Paul (the founder of Paybacker) and other AI executives. Respond in character as ${agent.name}. Be concise: 2-4 sentences unless Paul asks for detail.
+
+CRITICAL: You have persistent memory. If Paul refers to something from a previous meeting, check your memory section below and recall it accurately. Never say you don't remember something that is in your memory.
 
 ${businessContext}${previousMeetingContext}${taskContext}${memoryContext}
 
