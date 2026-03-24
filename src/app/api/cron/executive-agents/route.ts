@@ -9,6 +9,11 @@ import { runCMOAgent } from '@/lib/agents/cmo-agent';
 import { runExecAssistantAgent } from '@/lib/agents/exec-assistant-agent';
 import { runHeadOfAdsAgent } from '@/lib/agents/head-of-ads-agent';
 import { runCCOAgent } from '@/lib/agents/cco-agent';
+import { runCGOAgent } from '@/lib/agents/cgo-agent';
+import { runCROAgent } from '@/lib/agents/cro-agent';
+import { runCLOAgent } from '@/lib/agents/clo-agent';
+import { runCIOAgent } from '@/lib/agents/cio-agent';
+import { runCXOAgent } from '@/lib/agents/cxo-agent';
 import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
@@ -32,6 +37,11 @@ const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
   exec_assistant: runExecAssistantAgent,
   head_of_ads: runHeadOfAdsAgent,
   cco: runCCOAgent,
+  cgo: runCGOAgent,
+  cro: runCROAgent,
+  clo: runCLOAgent,
+  cio: runCIOAgent,
+  cxo: runCXOAgent,
   support_lead: runSupportLeadAgent,
   support_agent: runSupportAgent,
 };
@@ -233,7 +243,7 @@ export async function GET(request: NextRequest) {
         .eq('id', agent.id);
 
       // Email report to admin (for executive agents — not support agents)
-      if (['cfo', 'cto', 'cao', 'cmo', 'cco', 'exec_assistant', 'head_of_ads'].includes(agent.role)) {
+      if (['cfo', 'cto', 'cao', 'cmo', 'cco', 'cgo', 'cro', 'clo', 'cio', 'cxo', 'exec_assistant', 'head_of_ads'].includes(agent.role)) {
         try {
           // All agent emails go to hello@paybacker.co.uk
           const emailTo = 'hello@paybacker.co.uk';

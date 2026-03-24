@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Brain, TrendingUp, Users, Headphones, Bot, Megaphone, ClipboardList, Target, Palette,
+  Rocket, Heart, Shield, Eye, Sparkles,
   Play, Pause, Loader2, Clock, ChevronDown, ChevronUp,
   RefreshCw,
 } from 'lucide-react';
@@ -34,6 +35,11 @@ const roleIcons: Record<string, any> = {
   exec_assistant: ClipboardList,
   head_of_ads: Target,
   cco: Palette,
+  cgo: Rocket,
+  cro: Heart,
+  clo: Shield,
+  cio: Eye,
+  cxo: Sparkles,
   support_lead: Headphones,
   support_agent: Bot,
 };
@@ -46,6 +52,11 @@ const roleColors: Record<string, string> = {
   exec_assistant: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
   head_of_ads: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
   cco: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
+  cgo: 'text-lime-400 bg-lime-500/10 border-lime-500/30',
+  cro: 'text-red-400 bg-red-500/10 border-red-500/30',
+  clo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
+  cio: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+  cxo: 'text-teal-400 bg-teal-500/10 border-teal-500/30',
   support_lead: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
   support_agent: 'text-slate-400 bg-slate-500/10 border-slate-500/30',
 };

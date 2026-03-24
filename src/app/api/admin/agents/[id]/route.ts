@@ -8,6 +8,11 @@ import { runCMOAgent } from '@/lib/agents/cmo-agent';
 import { runExecAssistantAgent } from '@/lib/agents/exec-assistant-agent';
 import { runHeadOfAdsAgent } from '@/lib/agents/head-of-ads-agent';
 import { runCCOAgent } from '@/lib/agents/cco-agent';
+import { runCGOAgent } from '@/lib/agents/cgo-agent';
+import { runCROAgent } from '@/lib/agents/cro-agent';
+import { runCLOAgent } from '@/lib/agents/clo-agent';
+import { runCIOAgent } from '@/lib/agents/cio-agent';
+import { runCXOAgent } from '@/lib/agents/cxo-agent';
 import { runSupportLeadAgent } from '@/lib/agents/support-lead-agent';
 import { runSupportAgent } from '@/lib/agents/support-agent';
 
@@ -29,6 +34,11 @@ const agentRunners: Record<string, (config: AgentConfig) => Promise<any>> = {
   exec_assistant: runExecAssistantAgent,
   head_of_ads: runHeadOfAdsAgent,
   cco: runCCOAgent,
+  cgo: runCGOAgent,
+  cro: runCROAgent,
+  clo: runCLOAgent,
+  cio: runCIOAgent,
+  cxo: runCXOAgent,
   support_lead: runSupportLeadAgent,
   support_agent: runSupportAgent,
 };

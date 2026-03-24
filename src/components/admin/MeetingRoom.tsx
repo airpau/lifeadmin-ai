@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Users, Send, Loader2, X, TrendingUp, Brain,
   Megaphone, ClipboardList, Headphones, Bot, Lightbulb, Check, Target, Palette,
+  Rocket, Heart, Shield, Eye, Sparkles,
 } from 'lucide-react';
 
 interface MeetingMessage {
@@ -20,6 +21,11 @@ const roleIcons: Record<string, any> = {
   cmo: Megaphone,
   head_of_ads: Target,
   cco: Palette,
+  cgo: Rocket,
+  cro: Heart,
+  clo: Shield,
+  cio: Eye,
+  cxo: Sparkles,
   exec_assistant: ClipboardList,
   support_lead: Headphones,
   support_agent: Bot,
@@ -32,6 +38,11 @@ const roleColors: Record<string, string> = {
   cmo: 'text-pink-400',
   head_of_ads: 'text-orange-400',
   cco: 'text-rose-400',
+  cgo: 'text-lime-400',
+  cro: 'text-red-400',
+  clo: 'text-indigo-400',
+  cio: 'text-yellow-400',
+  cxo: 'text-teal-400',
   exec_assistant: 'text-cyan-400',
   support_lead: 'text-amber-400',
   support_agent: 'text-slate-400',
@@ -44,6 +55,11 @@ const roleBgColors: Record<string, string> = {
   cmo: 'bg-pink-500/10 border-pink-500/30',
   head_of_ads: 'bg-orange-500/10 border-orange-500/30',
   cco: 'bg-rose-500/10 border-rose-500/30',
+  cgo: 'bg-lime-500/10 border-lime-500/30',
+  cro: 'bg-red-500/10 border-red-500/30',
+  clo: 'bg-indigo-500/10 border-indigo-500/30',
+  cio: 'bg-yellow-500/10 border-yellow-500/30',
+  cxo: 'bg-teal-500/10 border-teal-500/30',
   exec_assistant: 'bg-cyan-500/10 border-cyan-500/30',
   support_lead: 'bg-amber-500/10 border-amber-500/30',
   support_agent: 'bg-slate-500/10 border-slate-500/30',
@@ -152,13 +168,13 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
             </div>
             <div>
               <h2 className="text-white font-semibold">Executive Meeting Room</h2>
-              <p className="text-slate-400 text-xs">9 agents online — speak to your AI team directly</p>
+              <p className="text-slate-400 text-xs">14 agents online — speak to your AI team directly</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Online indicators */}
             <div className="flex -space-x-1">
-              {['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'exec_assistant', 'support_lead', 'support_agent'].map((role) => {
+              {['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'clo', 'cio', 'cxo', 'exec_assistant', 'support_lead', 'support_agent'].map((role) => {
                 const Icon = roleIcons[role] || Bot;
                 return (
                   <div key={role} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-slate-800 ${roleBgColors[role]}`}>
