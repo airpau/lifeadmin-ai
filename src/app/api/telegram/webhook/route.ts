@@ -476,6 +476,19 @@ ${liveData}`,
         await sendTelegram(chatId, `Running ${agentNames.join(', ')}. I'll send their updates shortly.`);
         await saveMessage(supabase, chatId, 'user', text);
 
+        // Create tasks for agents so they know what the founder wants
+        await Promise.all(agentsToRun.map(role =>
+          supabase.from('agent_tasks').insert({
+            created_by: 'founder',
+            assigned_to: role,
+            title: 'Founder request via Telegram',
+            description: text,
+            priority: 'high',
+            category: 'telegram_request',
+            status: 'pending',
+          }).catch(() => null)
+        ));
+
         // Run agents in parallel (await so we can follow up)
         await Promise.all(agentsToRun.map(role =>
           fetch(`${railwayUrl}/api/trigger/${role}`, {
