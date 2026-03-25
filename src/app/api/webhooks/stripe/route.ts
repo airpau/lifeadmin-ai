@@ -125,8 +125,12 @@ export async function POST(request: NextRequest) {
           if (awcRaw) {
             awinUrl += `&cks=${encodeURIComponent(awcRaw)}`;
           }
-          fetch(awinUrl).catch(err => console.error('[awin] S2S tracking failed:', err.message));
-          console.log(`[awin] Conversion: tier=${tier} commission=£${commission} awc=${awcRaw ? 'present' : 'none'}`);
+          try {
+            const awinRes = await fetch(awinUrl);
+            console.log(`[awin] Conversion S2S: tier=${tier} commission=£${commission} awc=${awcRaw || 'none'} ref=${orderRef} status=${awinRes.status}`);
+          } catch (err: any) {
+            console.error('[awin] S2S tracking failed:', err.message);
+          }
         }
 
         // Process referral subscription reward
