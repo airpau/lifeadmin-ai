@@ -100,6 +100,12 @@ export default function SignupPage() {
           localStorage.removeItem('pb_ref');
         }
 
+        // Claim founding member spot (first 25 get Pro free for 30 days)
+        fetch('/api/founding-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => {});
+
         // Fire Awin S2S lead tracking — must be awaited before navigation
         const awinRes = await fetch('/api/awin/signup', {
           method: 'POST',

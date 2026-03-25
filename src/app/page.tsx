@@ -14,6 +14,7 @@ export default function Home() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
+  const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
 
   useEffect(() => {
     // Capture referral code from URL and persist
@@ -22,6 +23,12 @@ export default function Home() {
     if (ref) {
       localStorage.setItem('pb_ref', ref);
     }
+
+    // Fetch founding member spots remaining
+    fetch('/api/founding-member')
+      .then(r => r.json())
+      .then(d => { if (d.active) setFoundingSpots(d.remaining); })
+      .catch(() => {});
 
     if (WAITLIST_MODE) {
       fetch('/api/waitlist')
@@ -72,9 +79,20 @@ export default function Home() {
     </a>
   ) : (
     <Link href="/auth/signup" className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg">
-      Create Free Account
+      {foundingSpots !== null ? `Claim Your Free Pro Account` : 'Create Free Account'}
     </Link>
   );
+
+  const foundingBanner = foundingSpots !== null && foundingSpots > 0 ? (
+    <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-2xl px-6 py-4 mb-6 text-center">
+      <p className="text-green-400 font-bold text-lg mb-1">
+        Founding Member Offer: Get Pro FREE for 30 days
+      </p>
+      <p className="text-slate-400 text-sm">
+        Only <span className="text-white font-bold">{foundingSpots}</span> of 25 spots remaining. Unlimited letters, bank scanning, spending intelligence, and more. No card required.
+      </p>
+    </div>
+  ) : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -110,12 +128,19 @@ export default function Home() {
         </header>
 
         <main className="container mx-auto px-6">
+          {/* Founding member banner */}
+          {foundingBanner && (
+            <div className="max-w-4xl mx-auto pt-4">
+              {foundingBanner}
+            </div>
+          )}
+
           {/* Hero - Conversion focused */}
           <div className="max-w-4xl mx-auto py-12 md:py-20">
             <div className="flex justify-center mb-6">
               <div className="inline-flex items-center gap-2 rounded-full bg-green-500/10 px-4 py-2 text-sm text-green-400 border border-green-500/20">
                 <CheckCircle className="h-4 w-4" />
-                <span>100% free to try - no credit card needed</span>
+                <span>{foundingSpots !== null ? 'Pro plan FREE for first 25 members - no card needed' : '100% free to try - no credit card needed'}</span>
               </div>
             </div>
 

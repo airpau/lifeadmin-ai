@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS } from '@/lib/stripe';
 import Image from 'next/image';
-import { Check, Sparkles, TrendingUp, Zap, Users } from 'lucide-react';
+import { Check, Sparkles, TrendingUp, Zap, Users, Gift } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 
@@ -86,8 +86,16 @@ export default function PricingPage() {
   const [waitlistPlan, setWaitlistPlan] = useState<string | null>(null);
   const [waitlistSuccess, setWaitlistSuccess] = useState(false);
   const [waitlistError, setWaitlistError] = useState('');
+  const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    fetch('/api/founding-member')
+      .then(r => r.json())
+      .then(d => { if (d.active) setFoundingSpots(d.remaining); })
+      .catch(() => {});
+  }, []);
 
   const handleSubscribe = async (priceId: string | undefined, planName: string) => {
     if (!priceId) {
@@ -216,10 +224,20 @@ export default function PricingPage() {
           </h1>
 
           {/* Founding Member Banner */}
-          <div className="bg-gradient-to-r from-amber-500/15 to-amber-600/10 border border-amber-500/30 rounded-xl px-6 py-4 max-w-2xl mx-auto mb-8">
-            <p className="text-amber-400 font-semibold text-lg">Lock in founding member rates forever</p>
-            <p className="text-slate-400 text-sm mt-1">Price increases after our first 1,000 members</p>
-          </div>
+          {foundingSpots !== null && foundingSpots > 0 ? (
+            <div className="bg-gradient-to-r from-green-500/15 to-emerald-500/10 border border-green-500/30 rounded-xl px-6 py-4 max-w-2xl mx-auto mb-8">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Gift className="h-5 w-5 text-green-400" />
+                <p className="text-green-400 font-bold text-lg">Get Pro FREE for 30 days</p>
+              </div>
+              <p className="text-slate-400 text-sm">Only <span className="text-white font-bold">{foundingSpots}</span> of 25 founding member spots left. No card required. Full Pro access for 30 days.</p>
+            </div>
+          ) : (
+            <div className="bg-gradient-to-r from-amber-500/15 to-amber-600/10 border border-amber-500/30 rounded-xl px-6 py-4 max-w-2xl mx-auto mb-8">
+              <p className="text-amber-400 font-semibold text-lg">Founding member pricing</p>
+              <p className="text-slate-400 text-sm mt-1">Price increases after our first 1,000 members</p>
+            </div>
+          )}
           <p className="text-xl text-slate-400 mb-12 max-w-2xl mx-auto">
             Choose the plan that fits your needs. All plans include our AI agents working 24/7 to get your money back.
           </p>
