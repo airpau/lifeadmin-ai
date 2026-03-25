@@ -93,10 +93,10 @@ export default function Home() {
   const foundingBanner = foundingSpots !== null && foundingSpots > 0 ? (
     <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-2xl px-6 py-4 mb-6 text-center">
       <p className="text-green-400 font-bold text-lg mb-1">
-        Founding Member Offer: Get Pro FREE for 30 days
+        Limited Offer: Get Pro FREE for 30 days
       </p>
       <p className="text-slate-400 text-sm">
-        Only <span className="text-white font-bold">{foundingSpots}</span> of 25 spots remaining. Unlimited letters, bank scanning, spending intelligence, and more. No card required.
+        Only 25 free spaces available. Unlimited letters, bank scanning, spending intelligence, and more. No card required.
       </p>
     </div>
   ) : null;
@@ -147,7 +147,7 @@ export default function Home() {
             <div className="flex justify-center mb-6">
               <div className="inline-flex items-center gap-2 rounded-full bg-green-500/10 px-4 py-2 text-sm text-green-400 border border-green-500/20">
                 <CheckCircle className="h-4 w-4" />
-                <span>{foundingSpots !== null ? 'Pro plan FREE for first 25 members - no card needed' : '100% free to try - no credit card needed'}</span>
+                <span>{foundingSpots !== null ? 'Limited spaces: Pro plan FREE for 30 days - no card needed' : '100% free to try - no credit card needed'}</span>
               </div>
             </div>
 
@@ -170,8 +170,8 @@ export default function Home() {
                 <p className="text-slate-500 text-xs">subscriptions tracked</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-amber-400">{stats ? stats.usersJoined : '--'}</p>
-                <p className="text-slate-500 text-xs">users joined</p>
+                <p className="text-2xl font-bold text-amber-400">30 sec</p>
+                <p className="text-slate-500 text-xs">to generate letter</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-amber-400">56</p>

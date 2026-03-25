@@ -230,7 +230,7 @@ export default function PricingPage() {
                 <Gift className="h-5 w-5 text-green-400" />
                 <p className="text-green-400 font-bold text-lg">Get Pro FREE for 30 days</p>
               </div>
-              <p className="text-slate-400 text-sm">Only <span className="text-white font-bold">{foundingSpots}</span> of 25 founding member spots left. No card required. Full Pro access for 30 days.</p>
+              <p className="text-slate-400 text-sm">Only 25 free spaces available. No card required. Full Pro access for 30 days.</p>
             </div>
           ) : (
             <div className="bg-gradient-to-r from-amber-500/15 to-amber-600/10 border border-amber-500/30 rounded-xl px-6 py-4 max-w-2xl mx-auto mb-8">
