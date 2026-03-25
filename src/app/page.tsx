@@ -15,6 +15,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
   const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
+  const [stats, setStats] = useState<{ lettersGenerated: number; subscriptionsTracked: number; usersJoined: number; dealClicks: number } | null>(null);
 
   useEffect(() => {
     // Capture referral code from URL and persist
@@ -28,6 +29,12 @@ export default function Home() {
     fetch('/api/founding-member')
       .then(r => r.json())
       .then(d => { if (d.active) setFoundingSpots(d.remaining); })
+      .catch(() => {});
+
+    // Fetch live stats
+    fetch('/api/stats')
+      .then(r => r.json())
+      .then(d => setStats(d))
       .catch(() => {});
 
     if (WAITLIST_MODE) {
@@ -152,23 +159,23 @@ export default function Home() {
               Our AI writes formal complaint letters citing exact UK law. Energy bills, broadband, flight delays, parking fines, debt disputes. Free.
             </p>
 
-            {/* Outcome stats - social proof */}
+            {/* Live stats - social proof */}
             <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 mb-8">
               <div className="text-center">
-                <p className="text-2xl font-bold text-amber-400">£520</p>
-                <p className="text-slate-500 text-xs">max flight claim</p>
+                <p className="text-2xl font-bold text-amber-400">{stats ? stats.lettersGenerated : '--'}</p>
+                <p className="text-slate-500 text-xs">letters generated</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-amber-400">30 sec</p>
-                <p className="text-slate-500 text-xs">to generate letter</p>
+                <p className="text-2xl font-bold text-amber-400">{stats ? stats.subscriptionsTracked : '--'}</p>
+                <p className="text-slate-500 text-xs">subscriptions tracked</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-amber-400">{stats ? stats.usersJoined : '--'}</p>
+                <p className="text-slate-500 text-xs">users joined</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-amber-400">56</p>
                 <p className="text-slate-500 text-xs">cheaper deals</p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-amber-400">3 free</p>
-                <p className="text-slate-500 text-xs">letters per month</p>
               </div>
             </div>
 
