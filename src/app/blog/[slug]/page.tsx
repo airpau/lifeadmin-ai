@@ -4,6 +4,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
 
+// Force dynamic rendering so new blog posts are available immediately
+export const dynamic = 'force-dynamic';
+
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
