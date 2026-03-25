@@ -19,6 +19,7 @@ import {
   Gift,
   Building2,
   Wallet,
+  BookOpen,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -32,6 +33,7 @@ const navItems = [
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Spending', href: '/dashboard/spending', icon: BarChart3 },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
+  { name: 'Blog', href: '/blog', icon: BookOpen },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
