@@ -430,56 +430,25 @@ ${liveData}`,
     if (wantsTeamUpdate || mentionedAgent) {
       const railwayUrl = process.env.RAILWAY_URL;
       const agentsToRun = wantsTeamUpdate
-        ? ['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'support_lead'] // Key agents
+        ? ['cfo', 'cmo', 'head_of_ads', 'support_lead']
         : mentionedAgent
           ? [mentionedAgent[0] === 'jordan' ? 'head_of_ads' : mentionedAgent[0] === 'sam' ? 'support_lead' : mentionedAgent[0] === 'riley' ? 'support_agent' : mentionedAgent[0]]
           : [];
 
+      // Trigger agents in background (fire and forget) - don't wait
       if (railwayUrl && agentsToRun.length > 0) {
-        const names = agentsToRun.map(r => {
-          const entry = Object.entries(AGENT_NAMES).find(([_, role]) => {
-            const dbRole = _ === 'jordan' ? 'head_of_ads' : _ === 'sam' ? 'support_lead' : _ === 'riley' ? 'support_agent' : _;
-            return dbRole === r;
-          });
-          return entry ? entry[0] : r;
-        });
-        await sendTelegram(chatId, `_Running ${names.join(', ')}..._`);
-
-        // Trigger all agents in parallel
-        await Promise.all(agentsToRun.map(role =>
+        for (const role of agentsToRun) {
           fetch(`${railwayUrl}/api/trigger/${role}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
-          }).catch(() => null)
-        ));
-
-        // Wait for reports to save
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        // Pull their latest reports
-        const { data: freshReports } = await supabase
-          .from('executive_reports')
-          .select('title, content, recommendations, created_at')
-          .order('created_at', { ascending: false })
-          .limit(agentsToRun.length * 2);
-
-        if (freshReports?.length) {
-          agentContext = '\n\nFRESH AGENT REPORTS (just ran):\n' + freshReports.map(r =>
-            `${r.title} (${new Date(r.created_at).toLocaleString('en-GB')}):\n${r.content?.substring(0, 2000) || ''}\nRecommendations: ${Array.isArray(r.recommendations) ? r.recommendations.slice(0, 5).join('; ') : ''}`
-          ).join('\n\n---\n\n');
+          }).catch(() => null);
         }
-      } else if (agentsToRun.length > 0) {
-        // No Railway - use live data queries instead
-        for (const role of agentsToRun) {
-          const name = Object.entries(AGENT_NAMES).find(([n]) => {
-            const dbRole = n === 'jordan' ? 'head_of_ads' : n === 'sam' ? 'support_lead' : n === 'riley' ? 'support_agent' : n;
-            return dbRole === role;
-          });
-          if (name) {
-            const data = await getLiveAgentData(supabase, name[0]);
-            agentContext += `\n\n${data}`;
-          }
-        }
+      }
+
+      // Use live data queries for immediate response (don't wait for Railway)
+      if (mentionedAgent) {
+        const data = await getLiveAgentData(supabase, mentionedAgent[0]);
+        agentContext = `\n\n${data}`;
       }
     }
 
