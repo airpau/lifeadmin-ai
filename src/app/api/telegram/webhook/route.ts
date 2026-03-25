@@ -22,11 +22,20 @@ async function sendTelegram(chatId: number, text: string) {
     chunks.push(text.slice(i, i + 4000));
   }
   for (const chunk of chunks) {
-    await fetch(`${TELEGRAM_API}/sendMessage`, {
+    // Try Markdown first, fall back to plain text if it fails
+    const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'Markdown' }),
     });
+    if (!res.ok) {
+      // Markdown failed - send as plain text
+      await fetch(`${TELEGRAM_API}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: chunk }),
+      });
+    }
   }
 }
 
