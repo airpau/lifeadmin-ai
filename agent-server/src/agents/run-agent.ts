@@ -47,7 +47,7 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
   const sb = getSupabase();
   const now = new Date().toISOString();
 
-  const [memoriesRes, tasksRes, feedbackRes, goalsRes, predictionsRes, accuracyRes] = await Promise.all([
+  const [memoriesRes, tasksRes, feedbackRes, goalsRes, predictionsRes, accuracyRes, businessLogRes] = await Promise.all([
     sb.from('agent_memory')
       .select('id, agent_role, memory_type, title, content, importance, access_count, created_at')
       .eq('agent_role', role)
@@ -83,6 +83,10 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
       .eq('agent_role', role)
       .not('was_correct', 'is', null)
       .gte('evaluated_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+    sb.from('business_log')
+      .select('category, title, content, created_by, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20),
   ]);
 
   const evaluated = accuracyRes.data || [];
@@ -97,6 +101,7 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
     activeGoals: goalsRes.data || [],
     pendingPredictions: predictionsRes.data || [],
     predictionAccuracy,
+    businessLog: businessLogRes.data || [],
   };
 }
 
@@ -158,6 +163,14 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
       parts.push(`- [${t.priority}] from ${t.created_by}: "${t.title}" - ${t.description}`);
     }
     parts.push('Process these tasks using your tools, then use complete_task when done.');
+    parts.push('');
+  }
+
+  if (context.businessLog && context.businessLog.length > 0) {
+    parts.push('## Business Log (LATEST UPDATES - prioritise this over old memories)');
+    for (const l of context.businessLog) {
+      parts.push(`- [${l.category}] ${l.title}: ${l.content}`);
+    }
     parts.push('');
   }
 

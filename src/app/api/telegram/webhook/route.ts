@@ -64,6 +64,8 @@ async function getFullBusinessContext(supabase: ReturnType<typeof getAdmin>): Pr
       .order('created_at', { ascending: false }).limit(10),
   ]);
 
+  const businessLog = await supabase.from('business_log').select('category, title, content, created_by, created_at').order('created_at', { ascending: false }).limit(30);
+
   // User stats
   const allUsers = subs.data || [];
   const tiers: Record<string, number> = {};
@@ -120,7 +122,10 @@ AGENT MEMORIES (what agents have learned):
 ${memories}
 
 RECENT TASKS:
-${taskList}`;
+${taskList}
+
+BUSINESS LOG (latest updates from development sessions - THIS IS THE MOST UP TO DATE INFO):
+${(businessLog.data || []).map((l: any) => `  [${l.category.toUpperCase()}] ${l.title}: ${l.content}`).join('\n') || '  None'}`;
 }
 
 async function getLiveAgentData(supabase: ReturnType<typeof getAdmin>, agentName: string): Promise<string> {
@@ -134,6 +139,8 @@ async function getLiveAgentData(supabase: ReturnType<typeof getAdmin>, agentName
     supabase.from('deal_clicks').select('provider, category, clicked_at').order('clicked_at', { ascending: false }).limit(20),
     supabase.from('tasks').select('title, type, status, provider_name, created_at').order('created_at', { ascending: false }).limit(15),
   ]);
+
+  const businessLog = await supabase.from('business_log').select('category, title, content, created_by, created_at').order('created_at', { ascending: false }).limit(30);
 
   const allUsers = profiles.data || [];
   const tiers: Record<string, number> = {};
@@ -352,22 +359,7 @@ CRITICAL RULES:
 
 The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head of Ads), Casey (CCO), Drew (CGO), Pippa (CRO), Leo (CLO), Nico (CIO), Bella (CXO), Finn (CFraudO), Sam (Support Lead), Riley (Support Agent).
 
-IMPORTANT CONTEXT (overrides any stale agent reports):
-- All test+oscar accounts (oscar1-7) are Awin integration tests, not real users. Oscar is from Awin testing our tracking.
-- aireyjohn9@gmail.com and paulair13@gmail.com are Paul's test accounts, not real users.
-- aireypaul@googlemail.com and air_sam@hotmail.co.uk are Paul's accounts.
-- The ONLY real external user is lewis.baker1995@gmail.com (Lewis Fields).
-- Awin integration is WORKING: mastertag, S2S (awaited), client-side, fallback pixel all confirmed. Oscar testing sign-off pending.
-- Stripe is on LIVE mode with correct webhook secret. Founding member prices created (Essential £4.99, Pro £9.99).
-- Google Ads ARE running (campaign 23678309004), driving ~15 clicks/day but 0 conversions so far.
-- Google Search Console verified and sitemap submitted.
-- Founding member programme (25 free Pro spots) is built but PAUSED for Awin testing.
-- All 15 agents run on Railway with Haiku, $0.10 budget cap. Riley and Drew had email permissions REMOVED (were spamming users).
-- FAL_KEY and Perplexity API key ARE configured on Railway. If agents say they need keys, they are wrong.
-- UTM tracking is live, capturing gclid from Google Ads on signup.
-- Blog auto-publishes Mon/Wed/Fri with Perplexity research.
-- 59 deals across 9 categories including 3 Lebara deals.
-- Google OAuth verification and Google Ads developer token still pending external approval.
+The BUSINESS LOG section below has the most current information. Always prioritise it over stale agent reports.
 
 ${context}${agentContext}`,
       messages: [

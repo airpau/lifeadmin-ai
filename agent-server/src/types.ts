@@ -23,6 +23,14 @@ export type ToolGroup =
   | 'google_ads'
   | 'posthog';
 
+export interface BusinessLogEntry {
+  category: string;
+  title: string;
+  content: string;
+  created_by: string;
+  created_at: string;
+}
+
 export interface AgentRunContext {
   memories: MemoryRecord[];
   pendingTasks: TaskRecord[];
@@ -30,6 +38,7 @@ export interface AgentRunContext {
   activeGoals: GoalRecord[];
   pendingPredictions: PredictionRecord[];
   predictionAccuracy: number | null;
+  businessLog: BusinessLogEntry[];
 }
 
 export interface MemoryRecord {
