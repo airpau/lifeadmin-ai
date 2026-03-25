@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   creator: 'Paybacker LTD',
   publisher: 'Paybacker LTD',
   verification: {
-    google: 'google85b90b5c9aad9843',
+    google: 'uB2k37Gimef4Mgg5Owl5DbQgrilihlCLBLHafttoAv4',
   },
   robots: {
     index: true,
