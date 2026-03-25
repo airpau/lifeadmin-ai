@@ -236,6 +236,18 @@ const AGENT_NAMES: Record<string, string> = {
   sam: 'Support Lead', riley: 'Support Agent', charlie: 'Executive Assistant',
 };
 
+// Map friendly agent names to Railway role IDs
+const NAME_TO_ROLE: Record<string, string> = {
+  alex: 'cfo', morgan: 'cto', jamie: 'cao', taylor: 'cmo',
+  jordan: 'head_of_ads', casey: 'cco', drew: 'cgo', pippa: 'cro',
+  leo: 'clo', nico: 'cio', bella: 'cxo', finn: 'cfraud',
+  sam: 'support_lead', riley: 'support_agent', charlie: 'exec_assistant',
+};
+
+function toRole(name: string): string {
+  return NAME_TO_ROLE[name] || name;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -320,7 +332,7 @@ export async function POST(request: NextRequest) {
       // First, create a task for the agent so they know the founder's question
       await supabase.from('agent_tasks').insert({
         created_by: 'founder',
-        assigned_to: agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName,
+        assigned_to: toRole(agentName),
         title: `Founder question via Telegram`,
         description: question,
         priority: 'high',
@@ -332,7 +344,7 @@ export async function POST(request: NextRequest) {
 
       // Try to trigger the agent on Railway
       const railwayUrl = process.env.RAILWAY_URL;
-      const agentDbRole = agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName;
+      const agentDbRole = toRole(agentName);
 
       let railwayResult: any = null;
       if (railwayUrl) {
@@ -418,7 +430,7 @@ ${liveData}`,
       }
 
       const railwayUrl = process.env.RAILWAY_URL;
-      const agentDbRole = agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName;
+      const agentDbRole = toRole(agentName);
 
       if (!railwayUrl) {
         await sendTelegram(chatId, 'Railway not configured.');
@@ -460,15 +472,12 @@ ${liveData}`,
       const agentsToRun = wantsTeamUpdate
         ? ['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'support_lead']
         : mentionedAgent
-          ? [mentionedAgent[0] === 'jordan' ? 'head_of_ads' : mentionedAgent[0] === 'sam' ? 'support_lead' : mentionedAgent[0] === 'riley' ? 'support_agent' : mentionedAgent[0]]
+          ? [toRole(mentionedAgent[0])]
           : [];
 
       if (railwayUrl && agentsToRun.length > 0) {
         const agentNames = agentsToRun.map(r => {
-          const e = Object.entries(AGENT_NAMES).find(([n]) => {
-            const dr = n === 'jordan' ? 'head_of_ads' : n === 'sam' ? 'support_lead' : n === 'riley' ? 'support_agent' : n;
-            return dr === r;
-          });
+          const e = Object.entries(NAME_TO_ROLE).find(([_, role]) => role === r);
           return e ? e[0] : r;
         });
 
