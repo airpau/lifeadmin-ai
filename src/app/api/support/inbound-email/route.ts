@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { notifyAgents } from '@/lib/agent-notify';
 
 export const runtime = 'nodejs';
 
@@ -126,6 +127,9 @@ async function processEmail(
     sender_name: senderEmail,
     message: text,
   });
+
+  // Notify support agents about new ticket
+  notifyAgents('new_ticket', `New ticket: ${subject}`, `${ticket.ticket_number}: ${subject} from ${senderEmail}. ${text.substring(0, 200)}`, 'email').catch(() => {});
 
   return { action: 'ticket_created', ticket_id: ticket.id, ticket_number: ticket.ticket_number };
 }

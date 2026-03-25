@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { notifyAgents } from '@/lib/agent-notify';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -210,6 +211,8 @@ export async function GET(request: NextRequest) {
   // Send feedback to Railway agent server for self-learning
   await sendAgentFeedback(proposal.proposed_by, 'proposal_approved', proposal.id, `Approved: "${proposal.title}"`);
 
+  // Notify all relevant agents about the approval
+  await notifyAgents('proposal_approved', `Approved: ${proposal.title}`, `Proposal by ${proposal.proposed_by} was approved. Category: ${proposal.category}. ${implementationResult}`, 'founder', [proposal.proposed_by]);
 
   const message = AUTO_EXECUTABLE.includes(proposal.category)
     ? `"${proposal.title}" has been approved and implemented.\n\n${implementationResult}`

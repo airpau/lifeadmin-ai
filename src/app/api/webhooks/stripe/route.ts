@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
+import { notifyAgents } from '@/lib/agent-notify';
 
 export const runtime = 'nodejs';
 
@@ -131,6 +132,11 @@ export async function POST(request: NextRequest) {
           } catch (err: any) {
             console.error('[awin] S2S tracking failed:', err.message);
           }
+        }
+
+        // Notify agents about subscription change
+        if (!updateError) {
+          notifyAgents('subscription_change', `New ${tier} subscription`, `User ${userId} subscribed to ${tier} plan. Stripe sub: ${session.subscription}`, 'stripe').catch(() => {});
         }
 
         // Process referral subscription reward

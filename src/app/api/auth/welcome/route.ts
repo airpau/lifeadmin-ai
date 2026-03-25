@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendOnboardingEmail } from '@/lib/email/onboarding-sequence';
 import { resend, FROM_EMAIL } from '@/lib/resend';
+import { notifyAgents } from '@/lib/agent-notify';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,9 @@ export async function POST(request: NextRequest) {
         </div>
       `,
     }).catch(err => console.error('Admin signup notification failed:', err));
+
+    // Notify AI agents about new signup
+    notifyAgents('new_signup', `New signup: ${name || email}`, `New user signed up: ${email} (${name || 'no name'}). User ID: ${userId || 'unknown'}. Time: ${new Date().toISOString()}`, 'system').catch(() => {});
 
     return NextResponse.json({ sent });
   } catch (err: any) {

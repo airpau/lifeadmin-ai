@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { notifyAgents } from '@/lib/agent-notify';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -245,6 +246,9 @@ IMPORTANT: Keep changes SMALL and FOCUSED.
 
     // Notify via Telegram
     await sendTelegram(`*Developer Agent - PR Created*\n\n${plan.prTitle || task}\n\nFiles: ${plan.files.length}\n${plan.files.map((f: any) => `  ${f.action}: \`${f.path}\``).join('\n')}\n\n[Review PR](${prUrl})`);
+
+    // Notify all relevant agents
+    await notifyAgents('pr_created', `PR: ${plan.prTitle || task}`, `Developer agent created PR: ${prUrl}. Branch: ${branchName}. Files: ${plan.files.map((f: any) => f.path).join(', ')}. Task: ${task}`, 'developer_agent');
 
     return NextResponse.json({
       ok: true,
