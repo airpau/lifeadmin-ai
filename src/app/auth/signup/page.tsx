@@ -59,11 +59,34 @@ export default function SignupPage() {
 
       // If session is present, email confirmation is disabled — update profile then go to dashboard
       if (data.session) {
+        // Read UTM from URL params first, then fall back to cookies set by middleware
+        const getCookie = (name: string) => {
+          const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+          return match ? decodeURIComponent(match[1]) : null;
+        };
+        const utmData: Record<string, string | null> = {
+          utm_source: searchParams.get('utm_source') || getCookie('pb_utm_source'),
+          utm_medium: searchParams.get('utm_medium') || getCookie('pb_utm_medium'),
+          utm_campaign: searchParams.get('utm_campaign') || getCookie('pb_utm_campaign'),
+          utm_content: searchParams.get('utm_content') || getCookie('pb_utm_content'),
+          utm_term: searchParams.get('utm_term') || getCookie('pb_utm_term'),
+          gclid: searchParams.get('gclid') || getCookie('pb_gclid'),
+        };
+        // Determine signup source
+        const signupSource = utmData.gclid ? 'google_ads'
+          : utmData.utm_source || 'organic';
+        // Filter out nulls
+        const utmUpdate: Record<string, string> = { signup_source: signupSource };
+        for (const [key, val] of Object.entries(utmData)) {
+          if (val) utmUpdate[key] = val;
+        }
+
         await supabase.from('profiles').update({
           full_name: fullName,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           mobile_number: mobile.trim() || null,
+          ...utmUpdate,
         }).eq('id', data.user!.id);
 
         // Process referral if ref code present
@@ -92,7 +115,7 @@ export default function SignupPage() {
           body: JSON.stringify({ email, name: firstName.trim(), userId: data.user!.id }),
         }).catch(() => {});
 
-        capture('user_signed_up', { email, referral: refCode || undefined });
+        capture('user_signed_up', { email, referral: refCode || undefined, ...utmUpdate });
 
         // Store awc for fallback pixel — fired on dashboard (confirmation page)
         if (awinAwc) sessionStorage.setItem('awin_awc', awinAwc);

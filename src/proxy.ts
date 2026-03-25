@@ -18,6 +18,22 @@ export async function proxy(request: NextRequest) {
     });
   }
 
+  // UTM + gclid tracking — capture on first landing, persist as cookies for signup attribution
+  // Not httpOnly so client-side signup form can read them
+  const utmParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'gclid', 'gad_campaignid'];
+  for (const param of utmParams) {
+    const value = request.nextUrl.searchParams.get(param);
+    if (value) {
+      supabaseResponse.cookies.set(`pb_${param}`, value, {
+        httpOnly: false,
+        secure: true,
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+        path: '/',
+      });
+    }
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
