@@ -210,11 +210,12 @@ export function generateStaticParams() {
   return Object.keys(CATEGORIES).map((category) => ({ category }));
 }
 
-export function generateMetadata({ params }: { params: { category: string } }): Metadata {
-  const cat = CATEGORIES[params.category];
+export async function generateMetadata({ params }: { params: Promise<{ category: string }> }): Promise<Metadata> {
+  const { category } = await params;
+  const cat = CATEGORIES[category];
   if (!cat) return { title: 'Deals - Paybacker' };
 
-  const url = `https://paybacker.co.uk/deals/${params.category}`;
+  const url = `https://paybacker.co.uk/deals/${category}`;
   return {
     title: cat.title,
     description: cat.description,
@@ -238,8 +239,9 @@ export function generateMetadata({ params }: { params: { category: string } }): 
   };
 }
 
-export default function CategoryDealsPage({ params }: { params: { category: string } }) {
-  const cat = CATEGORIES[params.category];
+export default async function CategoryDealsPage({ params }: { params: Promise<{ category: string }> }) {
+  const { category } = await params;
+  const cat = CATEGORIES[category];
   if (!cat) notFound();
 
   return (
@@ -269,7 +271,7 @@ export default function CategoryDealsPage({ params }: { params: { category: stri
               <span>/</span>
               <Link href="/dashboard/deals" className="hover:text-white transition-all">Deals</Link>
               <span>/</span>
-              <span className="text-slate-300 capitalize">{params.category.replace('-', ' ')}</span>
+              <span className="text-slate-300 capitalize">{category.replace('-', ' ')}</span>
             </div>
           </div>
 
@@ -299,7 +301,7 @@ export default function CategoryDealsPage({ params }: { params: { category: stri
 
           {/* Deals */}
           <div className="max-w-4xl mx-auto mb-12">
-            <h2 className="text-2xl font-bold text-white mb-6">Top {params.category.replace('-', ' ')} deals</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">Top {category.replace('-', ' ')} deals</h2>
             <div className="space-y-4">
               {cat.deals.map((deal) => (
                 <div key={deal.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 hover:border-amber-500/30 transition-all flex items-center justify-between gap-6">
@@ -344,7 +346,7 @@ export default function CategoryDealsPage({ params }: { params: { category: stri
           <div className="max-w-4xl mx-auto mb-12">
             <div className="bg-gradient-to-r from-amber-500/10 to-purple-500/5 border border-amber-500/20 rounded-2xl p-8 text-center">
               <BarChart3 className="h-10 w-10 text-amber-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-white mb-3">Get personalised {params.category.replace('-', ' ')} recommendations</h2>
+              <h2 className="text-2xl font-bold text-white mb-3">Get personalised {category.replace('-', ' ')} recommendations</h2>
               <p className="text-slate-300 mb-6 max-w-xl mx-auto">Connect your bank account and Paybacker will analyse your actual bills, alert you before contracts renew, and show you the best deals based on what you really pay.</p>
               <div className="flex flex-wrap justify-center gap-4 mb-6">
                 <span className="flex items-center gap-1.5 text-sm text-slate-400"><CheckCircle className="h-4 w-4 text-green-400" /> Free to start</span>

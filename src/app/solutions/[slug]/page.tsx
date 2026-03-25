@@ -297,11 +297,12 @@ export function generateStaticParams() {
   return Object.keys(PAGES).map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
-  const page = PAGES[params.slug];
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const page = PAGES[slug];
   if (!page) return { title: 'Paybacker' };
 
-  const url = `https://paybacker.co.uk/solutions/${params.slug}`;
+  const url = `https://paybacker.co.uk/solutions/${slug}`;
   return {
     title: page.title,
     description: page.description,
@@ -325,8 +326,9 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
   };
 }
 
-export default function SolutionPage({ params }: { params: { slug: string } }) {
-  const page = PAGES[params.slug];
+export default async function SolutionPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const page = PAGES[slug];
   if (!page) notFound();
 
   const Icon = page.icon;
