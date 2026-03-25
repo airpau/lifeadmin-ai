@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Tag, Loader2, Clock, AlertTriangle, TrendingDown, Zap } from 'lucide-react';
+import { Tag, Loader2, Clock, AlertTriangle, Zap } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 
 // Awin affiliate ID — update this once Awin approval comes through
-// Current: placeholder. Replace with actual Awin publisher ID from awin.com dashboard
-const AWIN_AFF_ID = process.env.NEXT_PUBLIC_AWIN_AFF_ID || '!!!REPLACE_WITH_AWIN_ID!!!';
+const AWIN_AFF_ID = process.env.NEXT_PUBLIC_AWIN_AFF_ID || '2825812';
 
 interface Deal {
   id: string;
@@ -242,9 +241,12 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   );
 }
 
+const CATEGORY_TABS = ['Energy', 'Broadband', 'Mobile', 'Insurance', 'Mortgages', 'Loans', 'Credit Cards', 'Car Finance', 'Travel'];
+
 export default function DealsPage() {
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/subscriptions')
@@ -256,46 +258,43 @@ export default function DealsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Build personalised recommendations using contract data
-  const urgentSwitches: Array<{ sub: UserSubscription; days: number; dealCategories: string[] }> = [];
-  const activeSwitches: Array<{ sub: UserSubscription; dealCategories: string[] }> = [];
+  // Build a map of deal category -> matching user subscriptions
+  const categoryToUserSubs: Record<string, UserSubscription[]> = {};
+  const urgentSubsByCategory: Record<string, Array<{ sub: UserSubscription; days: number }>> = {};
 
   for (const sub of subscriptions) {
-    // Get deal categories from provider_type first, then fall back to category
     const dealCats = sub.provider_type
       ? (PROVIDER_TYPE_TO_DEALS[sub.provider_type] || [])
       : (CATEGORY_TO_DEALS[sub.category || ''] || []);
 
     if (dealCats.length === 0) continue;
 
-    if (sub.contract_end_date) {
-      const days = daysUntil(sub.contract_end_date);
-      if (days <= 90) {
-        urgentSwitches.push({ sub, days, dealCategories: dealCats });
-      } else {
-        activeSwitches.push({ sub, dealCategories: dealCats });
+    for (const cat of dealCats) {
+      if (!categoryToUserSubs[cat]) categoryToUserSubs[cat] = [];
+      categoryToUserSubs[cat].push(sub);
+
+      if (sub.contract_end_date) {
+        const days = daysUntil(sub.contract_end_date);
+        if (days <= 90) {
+          if (!urgentSubsByCategory[cat]) urgentSubsByCategory[cat] = [];
+          urgentSubsByCategory[cat].push({ sub, days });
+        }
       }
-    } else {
-      activeSwitches.push({ sub, dealCategories: dealCats });
     }
   }
 
-  // Sort urgent by soonest first
-  urgentSwitches.sort((a, b) => a.days - b.days);
+  // Sort urgent subs by soonest first within each category
+  for (const cat of Object.keys(urgentSubsByCategory)) {
+    urgentSubsByCategory[cat].sort((a, b) => a.days - b.days);
+  }
 
-  // Calculate total switchable spend
-  const switchableMonthly = [...urgentSwitches, ...activeSwitches].reduce((sum, item) => {
-    return sum + (parseFloat(String(item.sub.amount)) || 0);
-  }, 0);
+  // Collect all urgent categories (deduplicated) for the urgent section
+  const urgentCategories = Object.keys(urgentSubsByCategory);
 
-  // All deal categories the user has
-  const userDealCategories = new Set<string>();
-  [...urgentSwitches, ...activeSwitches].forEach(item => {
-    item.dealCategories.forEach(c => userDealCategories.add(c));
-  });
-
-  // Other deals the user doesn't have — for discovery
-  const otherCategories = Object.keys(DEALS).filter(cat => !userDealCategories.has(cat));
+  // Categories to display based on filter
+  const visibleCategories = activeCategory
+    ? CATEGORY_TABS.filter(c => c === activeCategory)
+    : CATEGORY_TABS;
 
   if (loading) {
     return (
@@ -313,24 +312,35 @@ export default function DealsPage() {
         <p className="text-slate-400">Personalised savings based on your contracts and bills.</p>
       </div>
 
-      {/* Coming soon banner */}
-      {!DEALS_LIVE && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-5 py-4 mb-8">
-          <p className="text-amber-400 font-semibold text-sm mb-1">Deal switching is coming soon</p>
-          <p className="text-slate-400 text-sm">We're setting up partnerships with energy, broadband, insurance, and mortgage providers. Once live, you'll be able to compare and switch directly from this page based on your current contracts. Check back soon.</p>
-        </div>
-      )}
-
-      {/* Affiliate disclosure */}
-      <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-3 mb-8">
-        <Tag className="h-4 w-4 text-slate-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-slate-400">
-          <span className="font-semibold text-slate-300">Affiliate disclosure:</span> We may earn a commission when you switch via our links. This never affects the price you pay.
-        </p>
+      {/* Category filter tabs */}
+      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+        <button
+          onClick={() => setActiveCategory(null)}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
+            activeCategory === null
+              ? 'bg-amber-500 text-slate-950'
+              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+          }`}
+        >
+          All
+        </button>
+        {CATEGORY_TABS.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
+              activeCategory === cat
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
       </div>
 
-      {/* Contracts Ending Soon — URGENT section */}
-      {urgentSwitches.length > 0 && (
+      {/* Contracts Ending Soon -- URGENT section */}
+      {urgentCategories.length > 0 && (activeCategory === null || urgentSubsByCategory[activeCategory]) && (
         <section className="mb-10">
           <div className="bg-gradient-to-r from-red-500/10 to-amber-500/5 border border-red-500/20 rounded-2xl p-6 mb-6">
             <div className="flex items-center gap-2 mb-2">
@@ -338,40 +348,44 @@ export default function DealsPage() {
               <h2 className="text-xl font-bold text-red-400">Contracts Ending Soon</h2>
             </div>
             <p className="text-slate-400 text-sm">
-              These contracts are ending — switch now to avoid being moved to a more expensive default tariff.
+              These contracts are ending - switch now to avoid being moved to a more expensive default tariff.
             </p>
           </div>
 
           <div className="space-y-6">
-            {urgentSwitches.map(({ sub, days, dealCategories }) => {
-              const urgency = urgencyLabel(days);
-              const matchingDeals = dealCategories.flatMap(dc => DEALS[dc] || []);
-              if (matchingDeals.length === 0) return null;
+            {(activeCategory ? [activeCategory] : urgentCategories).map((cat) => {
+              const urgentSubs = urgentSubsByCategory[cat];
+              if (!urgentSubs || urgentSubs.length === 0) return null;
+              const deals = DEALS[cat] || [];
+              if (deals.length === 0) return null;
 
               return (
-                <div key={sub.id}>
-                  <div className="flex items-center gap-3 mb-3 flex-wrap">
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                      <span className="text-white text-sm font-semibold">{sub.provider_name}</span>
-                      <span className="text-slate-500 text-sm">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
-                    </div>
-                    <div className={`border rounded-lg px-3 py-1.5 flex items-center gap-1.5 ${urgency.bg}`}>
-                      <Clock className={`h-3.5 w-3.5 ${urgency.color}`} />
-                      <span className={`text-sm font-semibold ${urgency.color}`}>{urgency.text}</span>
-                    </div>
-                    {sub.current_tariff && (
-                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">Tariff: {sub.current_tariff}</span>
-                    )}
-                    {sub.auto_renews && (
-                      <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded">Auto-renews</span>
-                    )}
-                    {sub.early_exit_fee && days > 0 && (
-                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">Exit fee: £{parseFloat(String(sub.early_exit_fee)).toFixed(0)}</span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {matchingDeals.map((deal) => (
-                      <DealCard key={`urgent-${sub.id}-${deal.id}`} deal={deal} highlight />
+                <div key={`urgent-${cat}`}>
+                  <h3 className="text-lg font-semibold text-white mb-2">{cat} Deals</h3>
+                  {urgentSubs.map(({ sub, days }) => {
+                    const urgency = urgencyLabel(days);
+                    return (
+                      <div key={`urgent-note-${sub.id}`} className="flex items-center gap-3 mb-2 flex-wrap">
+                        <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                          <span className="text-white text-sm font-semibold">{sub.provider_name}</span>
+                          <span className="text-slate-500 text-sm">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
+                        </div>
+                        <div className={`border rounded-lg px-3 py-1.5 flex items-center gap-1.5 ${urgency.bg}`}>
+                          <Clock className={`h-3.5 w-3.5 ${urgency.color}`} />
+                          <span className={`text-sm font-semibold ${urgency.color}`}>{urgency.text}</span>
+                        </div>
+                        {sub.auto_renews && (
+                          <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded">Auto-renews</span>
+                        )}
+                        {sub.early_exit_fee && days > 0 && (
+                          <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">Exit fee: £{parseFloat(String(sub.early_exit_fee)).toFixed(0)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-3">
+                    {deals.map((deal) => (
+                      <DealCard key={`urgent-${deal.id}`} deal={deal} highlight />
                     ))}
                   </div>
                 </div>
@@ -381,111 +395,52 @@ export default function DealsPage() {
         </section>
       )}
 
-      {/* Personalised Recommendations — active subscriptions */}
-      {activeSwitches.length > 0 && (
-        <section className="mb-10">
-          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <TrendingDown className="h-5 w-5 text-amber-400" />
-                  <h2 className="text-xl font-bold text-amber-400">Recommended for You</h2>
-                </div>
-                <p className="text-slate-400 text-sm">
-                  Based on your current bills and contracts — here are deals that could save you money.
-                </p>
+      {/* Deal categories */}
+      <div className="space-y-10">
+        {visibleCategories.map((category) => {
+          const deals = DEALS[category] || [];
+          if (deals.length === 0) return null;
+
+          // Find user subscriptions matching this category
+          const matchingSubs = categoryToUserSubs[category] || [];
+
+          return (
+            <section key={category}>
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="h-5 w-5 text-amber-400" />
+                <h2 className="text-xl font-bold text-white">{category} Deals</h2>
               </div>
-              {switchableMonthly > 0 && (
-                <div className="text-right shrink-0 ml-4">
-                  <div className="text-2xl font-bold text-amber-500">£{switchableMonthly.toFixed(0)}</div>
-                  <div className="text-slate-500 text-xs">/month on switchable bills</div>
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div className="space-y-6">
-            {activeSwitches.map(({ sub, dealCategories }) => {
-              const matchingDeals = dealCategories.flatMap(dc => DEALS[dc] || []);
-              if (matchingDeals.length === 0) return null;
-
-              return (
-                <div key={sub.id}>
-                  <div className="flex items-center gap-3 mb-3 flex-wrap">
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                      <span className="text-white text-sm font-semibold">{sub.provider_name}</span>
-                      <span className="text-slate-500 text-sm">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
+              {matchingSubs.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {matchingSubs.map((sub) => (
+                    <div key={`ctx-${sub.id}-${category}`} className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm">
+                      <span className="text-slate-400">Currently paying</span>
+                      <span className="text-white font-semibold">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
+                      <span className="text-slate-400">to</span>
+                      <span className="text-white font-semibold">{sub.provider_name}</span>
                     </div>
-                    {sub.contract_end_date && (
-                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">
-                        Ends {new Date(sub.contract_end_date).toLocaleDateString('en-GB')}
-                      </span>
-                    )}
-                    {sub.interest_rate && (
-                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">
-                        {parseFloat(String(sub.interest_rate)).toFixed(1)}% APR
-                      </span>
-                    )}
-                    {sub.speed_mbps && (
-                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">
-                        {sub.speed_mbps}Mbps
-                      </span>
-                    )}
-                    {sub.data_allowance && (
-                      <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">
-                        {sub.data_allowance}
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {matchingDeals.map((deal) => (
-                      <DealCard key={`rec-${sub.id}-${deal.id}`} deal={deal} />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Other Deals You Might Like */}
-      {otherCategories.length > 0 && (
-        <section className="mb-10">
-          <div className="flex items-center gap-2 mb-6">
-            <Zap className="h-5 w-5 text-slate-400" />
-            <h2 className="text-xl font-bold text-white">More Ways to Save</h2>
-          </div>
-          <div className="space-y-10">
-            {otherCategories.map((category) => (
-              <div key={category}>
-                <h3 className="text-lg font-semibold text-white mb-4">{category}</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {(DEALS[category] || []).map((deal) => (
-                    <DealCard key={deal.id} deal={deal} />
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              )}
 
-      {/* All Deals — for users with no subscriptions */}
-      {subscriptions.length === 0 && (
-        <div className="space-y-10">
-          {Object.entries(DEALS).map(([category, deals]) => (
-            <section key={category}>
-              <h2 className="text-xl font-bold text-white mb-4">{category}</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {deals.map((deal) => (
                   <DealCard key={deal.id} deal={deal} />
                 ))}
               </div>
             </section>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
+
+      {/* Affiliate disclosure */}
+      <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-3 mt-10">
+        <Tag className="h-4 w-4 text-slate-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-slate-400">
+          <span className="font-semibold text-slate-300">Affiliate disclosure:</span> We may earn a commission when you switch via our links. This never affects the price you pay.
+        </p>
+      </div>
     </div>
   );
 }

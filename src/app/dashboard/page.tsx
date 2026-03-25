@@ -276,10 +276,12 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {pendingTasks.map((task) => {
               // Determine the best action based on task type and content
-              const isOvercharge = task.type === 'opportunity' && ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(task.description?.split(' ')[0]?.toLowerCase() || '');
+              const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
+              const oppType = parsedDesc?.type || task.description?.split(' ')[0]?.toLowerCase() || '';
+              const isOvercharge = task.type === 'opportunity' && ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType);
               const isComplaint = task.type === 'complaint_letter' || isOvercharge;
-              const isDeal = task.type === 'opportunity' && ['renewal', 'forgotten_subscription', 'insurance'].includes(task.description?.split(' ')[0]?.toLowerCase() || '');
-              const isFlightDelay = task.description?.toLowerCase().includes('flight') || task.type === 'flight_delay';
+              const isDeal = task.type === 'opportunity' && ['renewal', 'forgotten_subscription', 'insurance'].includes(oppType);
+              const isFlightDelay = (parsedDesc?.description || task.description || '').toLowerCase().includes('flight') || task.type === 'flight_delay';
 
               // Build complaint URL with pre-filled data
               const complaintParams = new URLSearchParams();
@@ -308,7 +310,14 @@ export default function DashboardPage() {
                         {task.disputed_amount && <span className="text-green-400 text-xs font-medium">£{parseFloat(task.disputed_amount).toFixed(0)}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
-                      {task.description && <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.description}</p>}
+                      {task.description && (() => {
+                        let desc = task.description;
+                        try {
+                          const parsed = JSON.parse(desc);
+                          if (parsed.description) desc = parsed.description;
+                        } catch {}
+                        return <p className="text-slate-400 text-xs mt-1 line-clamp-2">{desc}</p>;
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800">
@@ -416,22 +425,16 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* What's Coming */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Clock className="h-5 w-5 text-slate-400" />
-          Coming Soon
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
-            <p className="text-white font-medium text-sm mb-1">Deal Comparison</p>
-            <p className="text-slate-500 text-xs">Compare energy, broadband, insurance, and more. Switch and save directly from your dashboard.</p>
-          </div>
-          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
-            <p className="text-white font-medium text-sm mb-1">Automated Cancellations</p>
-            <p className="text-slate-500 text-xs">Let our AI handle the cancellation process for you, contacting the provider and confirming once it's done.</p>
-          </div>
-        </div>
+      {/* Quick links */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Link href="/dashboard/deals" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+          <h3 className="text-white font-semibold mb-1">Browse 59 Deals</h3>
+          <p className="text-slate-500 text-xs">Compare energy, broadband, mobile, insurance, and more. Find cheaper alternatives to your current providers.</p>
+        </Link>
+        <Link href="/dashboard/subscriptions" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+          <h3 className="text-white font-semibold mb-1">Track Contracts</h3>
+          <p className="text-slate-500 text-xs">Add your subscriptions and contracts with end dates. Get alerts before renewals and find better deals.</p>
+        </Link>
       </div>
     </div>
   );

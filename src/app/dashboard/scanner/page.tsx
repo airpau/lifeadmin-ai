@@ -77,13 +77,17 @@ export default function ScannerPage() {
     id: string; bank_name: string | null; status: string; last_synced_at: string | null;
     account_display_names: string[] | null; account_ids: string[] | null;
   }>>([]);
+  const [expiredBanks, setExpiredBanks] = useState<Array<{ id: string; bank_name: string | null }>>([]);
   const [bankLoading, setBankLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     fetch('/api/bank/connection')
       .then(r => r.json())
-      .then(d => setBankConnections(d.connections || []))
+      .then(d => {
+        setBankConnections(d.connections || []);
+        setExpiredBanks(d.expired || []);
+      })
       .catch(() => {})
       .finally(() => setBankLoading(false));
   }, []);
@@ -148,8 +152,37 @@ export default function ScannerPage() {
         </p>
       </div>
 
+      {/* Expired bank connections */}
+      {!bankLoading && expiredBanks.length > 0 && bankConnections.length === 0 && (
+        <div className="mb-6 space-y-3">
+          {expiredBanks.map((conn) => (
+            <div key={conn.id} className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="bg-amber-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                  <Shield className="h-5 w-5 text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-amber-400 font-semibold text-sm">{conn.bank_name || 'Bank'}</span>
+                    <span className="text-xs bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded">Expired</span>
+                  </div>
+                  <p className="text-slate-500 text-xs">Connection expired. Your data is safe. Reconnect to resume syncing.</p>
+                </div>
+                <a
+                  href="/api/auth/truelayer"
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Reconnect
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Connect bank if not connected */}
-      {!bankLoading && bankConnections.length === 0 && (
+      {!bankLoading && bankConnections.length === 0 && expiredBanks.length === 0 && (
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">

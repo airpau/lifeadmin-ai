@@ -116,12 +116,14 @@ export default function SubscriptionsPage() {
     }
   }, []);
 
+  const [expiredBanks, setExpiredBanks] = useState<BankConnection[]>([]);
   const fetchBankConnection = useCallback(async () => {
     try {
       const res = await fetch('/api/bank/connection');
       if (res.ok) {
         const data = await res.json();
         setBankConnections(data.connections || []);
+        setExpiredBanks(data.expired || []);
       }
     } catch (error) {
       console.error('Error fetching bank connection:', error);
@@ -495,6 +497,35 @@ export default function SubscriptionsPage() {
             </div>
           ))}
 
+          {/* Expired bank connections */}
+          {expiredBanks.length > 0 && bankConnections.length === 0 && (
+            expiredBanks.map((conn) => (
+              <div key={conn.id} className="bg-slate-900/50 backdrop-blur-sm border border-amber-500/30 rounded-2xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="bg-amber-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                    <WifiOff className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-amber-400 font-semibold text-sm">{conn.bank_name || 'Bank'}</span>
+                      <span className="text-xs bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded">Expired</span>
+                    </div>
+                    <p className="text-slate-500 text-xs">
+                      Connection expired. Your existing data is safe. Reconnect to resume auto-sync.
+                    </p>
+                  </div>
+                  <a
+                    href="/api/auth/truelayer"
+                    className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Reconnect
+                  </a>
+                </div>
+              </div>
+            ))
+          )}
+
           {/* Add another bank button */}
           <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -503,14 +534,14 @@ export default function SubscriptionsPage() {
               </div>
               <div className="flex-1">
                 <h3 className="text-white font-semibold mb-1">
-                  {bankConnections.length === 0
+                  {bankConnections.length === 0 && expiredBanks.length === 0
                     ? 'Connect your bank for automatic detection'
                     : 'Connect another bank account'}
                 </h3>
                 <p className="text-slate-400 text-sm mb-1">
                   We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
                 </p>
-                {bankConnections.length === 0 && (
+                {bankConnections.length === 0 && expiredBanks.length === 0 && (
                   <p className="text-slate-500 text-xs">
                     Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
                   </p>

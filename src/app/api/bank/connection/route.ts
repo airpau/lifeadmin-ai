@@ -9,18 +9,28 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { data: connections } = await supabase
+  const { data: activeConnections } = await supabase
     .from('bank_connections')
     .select('id, provider_id, status, last_synced_at, connected_at, account_ids, bank_name, account_display_names')
     .eq('user_id', user.id)
     .eq('status', 'active')
     .order('connected_at', { ascending: false });
 
-  // Return both formats for backward compatibility
-  const connection = connections && connections.length > 0 ? connections[0] : null;
+  const { data: expiredConnections } = await supabase
+    .from('bank_connections')
+    .select('id, provider_id, status, last_synced_at, connected_at, account_ids, bank_name, account_display_names')
+    .eq('user_id', user.id)
+    .eq('status', 'expired')
+    .order('connected_at', { ascending: false });
+
+  const connections = activeConnections || [];
+  const expired = expiredConnections || [];
+  const connection = connections.length > 0 ? connections[0] : null;
 
   return NextResponse.json({
     connection,
-    connections: connections || [],
+    connections,
+    expired,
+    hasExpired: expired.length > 0,
   });
 }
