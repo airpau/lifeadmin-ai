@@ -36,19 +36,65 @@ export async function GET(request: NextRequest) {
 
   const supabase = getAdmin();
 
-  // Check which topics have already been published (by checking blog directory)
-  // Pick a random unwritten topic
-  const existingPosts = TOPIC_POOL.map(t => t.slug);
+  // Check which topics have already been published in the database
+  const { data: published } = await supabase
+    .from('blog_posts')
+    .select('slug')
+    .eq('status', 'published');
+  const publishedSlugs = new Set((published || []).map(p => p.slug));
 
-  // Simple rotation: pick based on day of year
+  // Pick first unwritten topic, or cycle through if all written
+  const unwritten = TOPIC_POOL.filter(t => !publishedSlugs.has(t.slug));
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
-  const topicIndex = dayOfYear % TOPIC_POOL.length;
-  const topic = TOPIC_POOL[topicIndex];
 
-  // Generate the blog post using Claude
+  let topic;
+  if (unwritten.length > 0) {
+    // Pick from unwritten topics based on day rotation
+    topic = unwritten[dayOfYear % unwritten.length];
+  } else {
+    // All topics written - update oldest one with fresh content
+    topic = TOPIC_POOL[dayOfYear % TOPIC_POOL.length];
+  }
+
+  // Step 1: Research the topic using Perplexity for up-to-date info
+  const perplexityKey = process.env.PERPLEXITY_API_KEY;
+  let researchContext = '';
+
+  if (perplexityKey) {
+    try {
+      const researchRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${perplexityKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [{
+            role: 'user',
+            content: `What is the latest UK consumer advice for "${topic.keyword}" as of 2026? Include any recent law changes, current rates, figures, deadlines, or regulatory updates. Focus on practical, accurate information a UK consumer would need right now.`,
+          }],
+        }),
+      });
+
+      if (researchRes.ok) {
+        const researchData = await researchRes.json();
+        researchContext = researchData.choices?.[0]?.message?.content || '';
+        console.log(`[blog] Perplexity research: ${researchContext.length} chars for "${topic.keyword}"`);
+      }
+    } catch (err: any) {
+      console.error('[blog] Perplexity research failed:', err.message);
+    }
+  }
+
+  // Step 2: Generate the blog post using Claude with research context
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  const researchBlock = researchContext
+    ? `\n\nHere is current research on this topic (use this to ensure accuracy and include up-to-date figures):\n${researchContext}`
+    : '';
 
   const response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -58,6 +104,7 @@ export async function GET(request: NextRequest) {
 Write engaging, practical blog posts that:
 - Are genuinely helpful and informative (not just promotional)
 - Cite specific UK laws and regulations accurately
+- Include current figures, rates, and thresholds (use the research provided)
 - Include a light, slightly humorous tone where appropriate
 - Are written for a UK audience using British English and £ symbols
 - Reference current events or seasonal topics where relevant
@@ -76,7 +123,7 @@ Return a JSON object with these fields:
 }`,
     messages: [{
       role: 'user',
-      content: `Write a blog post targeting the keyword "${topic.keyword}". Today's date is ${today}. Make it practical, engaging, and slightly humorous where appropriate. Include specific UK law references. ${topic.dealCategory ? `Mention that Paybacker has deals from providers in the ${topic.dealCategory} category that users can compare.` : ''} The post should help someone who is searching for "${topic.keyword}" on Google.`,
+      content: `Write a blog post targeting the keyword "${topic.keyword}". Today's date is ${today}. Make it practical, engaging, and slightly humorous where appropriate. Include specific UK law references. ${topic.dealCategory ? `Mention that Paybacker has deals from providers in the ${topic.dealCategory} category that users can compare.` : ''} The post should help someone who is searching for "${topic.keyword}" on Google.${researchBlock}`,
     }],
   });
 
