@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 
 export const metadata: Metadata = {
   title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
@@ -58,7 +59,28 @@ const posts = [
   },
 ];
 
-export default function BlogIndexPage() {
+export const revalidate = 3600; // Revalidate every hour
+
+export default async function BlogIndexPage() {
+  // Fetch dynamic blog posts from database
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const { data: dynamicPosts } = await supabase
+    .from('blog_posts')
+    .select('slug, title, excerpt, published_at')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
+    .limit(20);
+
+  // Merge static posts with dynamic ones (dynamic first, then static)
+  const allPosts = [
+    ...(dynamicPosts || []).map(p => ({
+      title: p.title,
+      excerpt: p.excerpt || '',
+      href: `/blog/${p.slug}`,
+      date: new Date(p.published_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+    })),
+    ...posts,
+  ];
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <header className="container mx-auto px-6 py-6 border-b border-slate-800">
@@ -109,7 +131,7 @@ export default function BlogIndexPage() {
         </div>
 
         <div className="grid gap-6">
-          {posts.map((post) => (
+          {allPosts.map((post) => (
             <Link key={post.href} href={post.href} className="block group">
               <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-slate-600 transition-all">
                 <p className="text-slate-500 text-sm mb-2">{post.date}</p>
