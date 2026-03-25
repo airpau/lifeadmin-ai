@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { to, subject, markdownContent, rawHtml } = await request.json();
+  const { to, subject, markdownContent, rawHtml, from, replyTo } = await request.json();
 
   // Use raw HTML if provided, otherwise wrap markdown
   const html = rawHtml || `
@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const { error } = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: from || 'Paul Airey <hello@paybacker.co.uk>',
+      replyTo: replyTo || 'hello@paybacker.co.uk',
       to,
       subject,
       html,
