@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
 
     // Handle /start
     if (text === '/start') {
-      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
+      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/dev [task] - Developer agent creates a PR\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
       console.log(`[telegram] SETUP: chat_id ${chatId}`);
       return NextResponse.json({ ok: true });
     }
@@ -375,6 +375,26 @@ ${liveData}`,
         await saveMessage(supabase, chatId, 'assistant', `[${agentName.toUpperCase()}] ${reply.text}`);
         await sendTelegram(chatId, `*${agentName.charAt(0).toUpperCase() + agentName.slice(1)} (${agentRole}):*\n${railwayResult?.success ? '(live run)' : '(from data)'}\n\n${reply.text}`);
       }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Handle /dev [task] - trigger developer agent to create a PR
+    const devMatch = text.match(/^\/dev\s+(.+)$/i);
+    if (devMatch) {
+      const devTask = devMatch[1];
+      await sendTelegram(chatId, `_Developer agent working on: ${devTask.substring(0, 60)}..._\n\nI'll send you the PR link when it's ready.`);
+
+      fetch(`https://paybacker.co.uk/api/developer/run`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ task: devTask }),
+      }).catch(() => {});
+
+      await saveMessage(supabase, chatId, 'user', text);
+      await saveMessage(supabase, chatId, 'assistant', `Developer agent started on: ${devTask}`);
       return NextResponse.json({ ok: true });
     }
 

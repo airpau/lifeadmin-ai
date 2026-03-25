@@ -166,11 +166,37 @@ export async function GET(request: NextRequest) {
       implementationResult = `Execution failed: ${err.message}`;
     }
   } else {
-    // Create GitHub issue for code changes
-    githubUrl = await createGitHubIssue(proposal);
-    implementationResult = githubUrl
-      ? `GitHub issue created: ${githubUrl}`
-      : 'Queued for next Claude Code session (GitHub token not configured)';
+    // Trigger developer agent to create a PR for code changes
+    try {
+      const devRes = await fetch(`https://paybacker.co.uk/api/developer/run`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          task: `${proposal.title}: ${proposal.description}`,
+          context: proposal.implementation,
+          proposalId: proposal.id,
+        }),
+      });
+      const devResult = await devRes.json();
+      if (devResult.ok && devResult.pr) {
+        githubUrl = devResult.pr;
+        implementationResult = `PR created by developer agent: ${devResult.pr}`;
+      } else {
+        // Fall back to GitHub issue
+        githubUrl = await createGitHubIssue(proposal);
+        implementationResult = githubUrl
+          ? `GitHub issue created: ${githubUrl}`
+          : 'Queued for next Claude Code session';
+      }
+    } catch {
+      githubUrl = await createGitHubIssue(proposal);
+      implementationResult = githubUrl
+        ? `GitHub issue created: ${githubUrl}`
+        : 'Queued for next Claude Code session';
+    }
   }
 
   await supabase.from('improvement_proposals').update({
