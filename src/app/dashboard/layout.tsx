@@ -182,7 +182,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
           { name: 'Letters', href: '/dashboard/complaints', icon: FileText },
           { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
-          { name: 'Profile', href: '/dashboard/profile', icon: User },
+          { name: 'Subs', href: '/dashboard/subscriptions', icon: CreditCard },
         ].map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
