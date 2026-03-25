@@ -436,41 +436,6 @@ ${liveData}`,
       return NextResponse.json({ ok: true });
     }
 
-    // Free-form conversation with Charlie (with memory)
-    // First, use Claude to determine if this is a dev task
-    const anthropic0 = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const classifyRes = await anthropic0.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      system: 'You classify user messages. If the user is asking to BUILD, FIX, ADD, CREATE, OPTIMISE, UPDATE, or CHANGE something in the product/website/code, respond with JSON: {"isDev": true, "task": "clear description of what to build/fix"}. Otherwise respond with {"isDev": false}. Only return JSON, nothing else.',
-      messages: [{ role: 'user', content: text }],
-    });
-    const classifyText = classifyRes.content.find(b => b.type === 'text');
-    let devDetected = false;
-    if (classifyText?.type === 'text') {
-      try {
-        const parsed = JSON.parse(classifyText.text);
-        if (parsed.isDev && parsed.task) {
-          devDetected = true;
-          await sendTelegram(chatId, `On it. I'm sending this to the developer agent:\n\n_${parsed.task}_\n\nI'll send you the PR link when it's ready.`);
-          await saveMessage(supabase, chatId, 'user', text);
-          await saveMessage(supabase, chatId, 'assistant', `Triggered developer agent: ${parsed.task}`);
-
-          // Trigger developer agent via callback (separate function, no timeout risk)
-          fetch('https://paybacker.co.uk/api/telegram/dev-callback', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ chatId, task: parsed.task }),
-          }).catch(() => {});
-
-          return NextResponse.json({ ok: true });
-        }
-      } catch {}
-    }
-
     const history = await getConversationHistory(supabase, chatId);
     const context = await getFullBusinessContext(supabase);
 
@@ -553,6 +518,7 @@ CRITICAL RULES:
 - If Paul asks "what does Alex think" or "ask the agents", just analyse the financial/marketing/support data below and give the answer AS IF you are that agent. You have their data.
 - Be concise and direct. Use Markdown for formatting. Never use em dashes.
 - When asked for a team update, go through each relevant agent's domain and summarise based on the live data, not by pretending to message them.
+- If Paul asks you to build, fix, add, or change something in the code/website, tell him to use /dev [description] which triggers the developer agent to create a PR. Example: "/dev Add lazy loading to dashboard images"
 
 The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head of Ads), Casey (CCO), Drew (CGO), Pippa (CRO), Leo (CLO), Nico (CIO), Bella (CXO), Finn (CFraudO), Sam (Support Lead), Riley (Support Agent).
 
