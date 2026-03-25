@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       admin.from('money_hub_liabilities').select('*').eq('user_id', user.id),
       admin.from('money_hub_savings_goals').select('*').eq('user_id', user.id),
       admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').order('created_at', { ascending: false }).limit(20),
-      admin.from('tasks').select('id, title, type, status, provider_name, created_at')
+      admin.from('tasks').select('id, title, type, status, provider_name, provider_type, disputed_amount, description, created_at')
         .eq('user_id', user.id).eq('type', 'opportunity').eq('status', 'pending_review').limit(10),
     ]);
 
@@ -254,7 +254,20 @@ export async function GET(request: Request) {
       budgets: isPaid ? (budgets.data || []) : [],
       goals: isPaid ? (goals.data || []).slice(0, isPro ? 100 : 3) : [],
       alerts: (alerts.data || []).slice(0, isPaid ? 20 : 3),
-      opportunities: (tasks.data || []).slice(0, isPaid ? 20 : 3),
+      opportunities: (tasks.data || []).slice(0, isPaid ? 20 : 3).map((t: any) => {
+        // Parse description JSON if present (from email scanner)
+        let parsed: any = {};
+        try { parsed = typeof t.description === 'string' && t.description.startsWith('{') ? JSON.parse(t.description) : {}; } catch {}
+        return {
+          ...t,
+          amount: parsed.amount || t.disputed_amount || 0,
+          confidence: parsed.confidence || null,
+          suggested_action: parsed.suggestedAction || parsed.suggested_action || null,
+          opp_type: parsed.type || null,
+          opp_category: parsed.category || null,
+          description_text: parsed.description || t.description || '',
+        };
+      }),
     });
   } catch (err: any) {
     console.error('Money Hub error:', err.message);
