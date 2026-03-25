@@ -213,7 +213,18 @@ IMPORTANT: Keep changes SMALL and FOCUSED.
       base: 'master',
     });
 
-    const prUrl = pr.html_url;
+    const prUrl = pr.html_url || pr.url;
+    console.log(`[developer] PR response:`, JSON.stringify(pr).substring(0, 500));
+
+    if (!prUrl && pr.errors) {
+      // PR might fail if branch has no diff or already exists
+      return NextResponse.json({
+        ok: false,
+        error: `PR creation failed: ${pr.errors.map((e: any) => e.message).join(', ')}`,
+        branch: branchName,
+        files: plan.files.length,
+      });
+    }
 
     // Update proposal if linked
     if (proposalId) {
