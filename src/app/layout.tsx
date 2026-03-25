@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   authors: [{ name: 'Paybacker LTD' }],
   creator: 'Paybacker LTD',
   publisher: 'Paybacker LTD',
+  verification: {
+    google: 'google85b90b5c9aad9843',
+  },
   robots: {
     index: true,
     follow: true,
