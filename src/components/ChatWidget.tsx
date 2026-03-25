@@ -188,7 +188,7 @@ export default function ChatWidget() {
                 <p className="text-white font-medium mb-1">Hi there!</p>
                 <p className="text-slate-400 text-sm mb-4">Ask me anything about Paybacker, UK consumer rights, or how to save money.</p>
                 <div className="space-y-2">
-                  {['How can Paybacker help me?', 'What are my consumer rights?', 'How do I cancel a subscription?'].map((q) => (
+                  {['How can Paybacker help me?', 'What are my consumer rights?', 'How do I cancel a subscription?', 'I have a feature suggestion'].map((q) => (
                     <button
                       key={q}
                       onClick={() => { setInput(q); }}
