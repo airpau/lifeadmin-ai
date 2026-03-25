@@ -11,6 +11,8 @@ interface Deal {
   saving: string;
   awinMid: string;
   providerUrl: string;
+  promoCode?: string;
+  awinUrl?: string;
 }
 
 const AWIN_AFF_ID = process.env.NEXT_PUBLIC_AWIN_AFF_ID || '';
@@ -89,7 +91,9 @@ const CATEGORIES: Record<string, {
       { id: 'three-mobile', provider: 'Three', headline: '5G on all plans', saving: 'Save up to £200/yr', awinMid: '10210', providerUrl: 'https://www.three.co.uk' },
       { id: 'o2-mobile', provider: 'O2', headline: 'Priority rewards', saving: 'Save up to £200/yr', awinMid: '3235', providerUrl: 'https://www.o2.co.uk' },
       { id: 'tesco-mobile', provider: 'Tesco Mobile', headline: 'Clubcard prices', saving: 'Save up to £180/yr', awinMid: '101917', providerUrl: 'https://www.tescomobile.com' },
-      { id: 'lebara', provider: 'Lebara', headline: 'International calls included', saving: 'Save up to £180/yr', awinMid: '30681', providerUrl: 'https://mobile.lebara.com/gb/en' },
+      { id: 'lebara5', provider: 'Lebara', headline: 'Use code LEBARA5 for £5 off', saving: 'Save £5 off your first month', awinMid: '30681', providerUrl: 'https://lebara.com/en/all-sim-only-plans', promoCode: 'LEBARA5', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Flebara.com%2Fen%2Fall-sim-only-plans' },
+      { id: 'lebara10', provider: 'Lebara', headline: 'Use code LEBARA10 for £10 off', saving: 'Save £10 off your first month', awinMid: '30681', providerUrl: 'https://lebara.com/en/all-sim-only-plans', promoCode: 'LEBARA10', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Flebara.com%2Fen%2Fall-sim-only-plans' },
+      { id: 'lebara-save50', provider: 'Lebara', headline: 'Use code SAVE50 for 50% off', saving: 'Save 50% off your first month', awinMid: '30681', providerUrl: 'https://lebara.com/en/all-sim-only-plans', promoCode: 'SAVE50', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Flebara.com%2Fen%2Fall-sim-only-plans' },
     ],
   },
   insurance: {
@@ -308,11 +312,14 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
                   <div className="flex-1">
                     <h3 className="text-white font-semibold text-lg">{deal.provider}</h3>
                     <p className="text-slate-400 text-sm mt-1">{deal.headline}</p>
+                    {deal.promoCode && (
+                      <p className="text-xs text-green-400 mt-2">Promo code: <span className="font-mono font-bold bg-green-500/10 px-2 py-0.5 rounded">{deal.promoCode}</span> — apply at checkout</p>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-amber-400 font-bold text-sm mb-2">{deal.saving}</p>
                     <a
-                      href={buildAwinUrl(deal.awinMid, deal.providerUrl)}
+                      href={deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all"

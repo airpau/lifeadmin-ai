@@ -16,6 +16,8 @@ interface Deal {
   awinMid: string;
   providerUrl: string;
   category: string;
+  promoCode?: string;
+  awinUrl?: string; // Override generated Awin URL
 }
 
 const DEALS: Record<string, Deal[]> = {
@@ -50,7 +52,9 @@ const DEALS: Record<string, Deal[]> = {
   Mobile: [
     { id: 'id-mobile', provider: 'iD Mobile', headline: 'SIM-only from £6/mo', saving: 'Save up to £240/yr', awinMid: '6366', providerUrl: 'https://www.idmobile.co.uk', category: 'Mobile' },
     { id: 'smarty', provider: 'SMARTY', headline: 'Fair data - unused data rolled over', saving: 'Save up to £200/yr', awinMid: '10933', providerUrl: 'https://smarty.co.uk', category: 'Mobile' },
-    { id: 'lebara', provider: 'Lebara', headline: 'International calls included', saving: 'Save up to £180/yr', awinMid: '30681', providerUrl: 'https://mobile.lebara.com/gb/en', category: 'Mobile' },
+    { id: 'lebara5', provider: 'Lebara', headline: 'Use code LEBARA5 for £5 off', saving: 'Save £5 off your first month', awinMid: '30681', providerUrl: 'https://lebara.com/en/all-sim-only-plans', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Flebara.com%2Fen%2Fall-sim-only-plans', promoCode: 'LEBARA5', category: 'Mobile' },
+    { id: 'lebara10', provider: 'Lebara', headline: 'Use code LEBARA10 for £10 off', saving: 'Save £10 off your first month', awinMid: '30681', providerUrl: 'https://lebara.com/en/all-sim-only-plans', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Flebara.com%2Fen%2Fall-sim-only-plans', promoCode: 'LEBARA10', category: 'Mobile' },
+    { id: 'lebara-save50', provider: 'Lebara', headline: 'Use code SAVE50 for 50% off', saving: 'Save 50% off your first month', awinMid: '30681', providerUrl: 'https://lebara.com/en/all-sim-only-plans', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Flebara.com%2Fen%2Fall-sim-only-plans', promoCode: 'SAVE50', category: 'Mobile' },
     { id: 'ee-mobile', provider: 'EE', headline: "UK's largest 5G network", saving: 'Save up to £200/yr', awinMid: '31423', providerUrl: 'https://shop.ee.co.uk/sim-only', category: 'Mobile' },
     { id: 'tesco-mobile', provider: 'Tesco Mobile', headline: 'Clubcard prices on SIM plans', saving: 'Save up to £180/yr', awinMid: '101917', providerUrl: 'https://www.tescomobile.com', category: 'Mobile' },
     { id: 'voxi', provider: 'VOXI', headline: 'Endless social media data included', saving: 'Save up to £160/yr', awinMid: '10951', providerUrl: 'https://www.voxi.co.uk', category: 'Mobile' },
@@ -200,7 +204,7 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
       // Non-fatal
     } finally {
       setTracking(false);
-      window.open(buildAwinUrl(deal.awinMid, deal.providerUrl), '_blank', 'noopener,noreferrer');
+      window.open(deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl), '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -211,6 +215,9 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
       <div className="flex-1">
         <h3 className="text-lg font-semibold text-white mb-1">{deal.provider}</h3>
         <p className="text-slate-400 text-sm">{deal.headline}</p>
+        {deal.promoCode && (
+          <p className="text-xs text-green-400 mt-1">Promo code: <span className="font-mono font-bold bg-green-500/10 px-2 py-0.5 rounded">{deal.promoCode}</span> — apply at checkout</p>
+        )}
       </div>
       <div className="flex items-center justify-between gap-4">
         <span className="text-sm font-semibold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full">
@@ -218,7 +225,7 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
         </span>
         {DEALS_LIVE ? (
           <a
-            href={buildAwinUrl(deal.awinMid, deal.providerUrl)}
+            href={deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl)}
             onClick={handleClick}
             className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
           >
