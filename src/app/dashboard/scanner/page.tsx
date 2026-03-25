@@ -73,24 +73,114 @@ const OutlookIcon = () => (
 );
 
 export default function ScannerPage() {
-  // Email scanning is temporarily disabled while Google OAuth verification is pending
+  const [bankConnections, setBankConnections] = useState<Array<{
+    id: string; bank_name: string | null; status: string; last_synced_at: string | null;
+    account_display_names: string[] | null; account_ids: string[] | null;
+  }>>([]);
+  const [bankLoading, setBankLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/bank/connection')
+      .then(r => r.json())
+      .then(d => setBankConnections(d.connections || []))
+      .catch(() => {})
+      .finally(() => setBankLoading(false));
+  }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetch('/api/bank/sync', { method: 'POST' });
+      const res = await fetch('/api/bank/connection');
+      const d = await res.json();
+      setBankConnections(d.connections || []);
+    } catch {}
+    setSyncing(false);
+  };
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Email Scanner</h1>
-        <p className="text-slate-400">Scan your email inbox for hidden savings opportunities</p>
+        <h1 className="text-4xl font-bold text-white mb-2">Scanner</h1>
+        <p className="text-slate-400">Detect subscriptions, overcharges, and savings opportunities</p>
       </div>
-      <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 text-center">
+
+      {/* Bank connections */}
+      {!bankLoading && bankConnections.length > 0 && (
+        <div className="mb-6 space-y-3">
+          {bankConnections.map((conn) => (
+            <div key={conn.id} className="bg-slate-900/50 border border-green-500/30 rounded-2xl p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                  <Shield className="h-5 w-5 text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-green-400 font-semibold text-sm">{conn.bank_name || 'Bank connected'}</span>
+                    <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                  </div>
+                  <p className="text-slate-500 text-xs">
+                    {conn.account_display_names?.join(', ')}
+                    {conn.last_synced_at && ` · Last synced: ${new Date(conn.last_synced_at).toLocaleString('en-GB')}`}
+                  </p>
+                </div>
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+                >
+                  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Syncing...' : 'Sync Now'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Email scanning coming soon */}
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 text-center mb-6">
         <Mail className="h-12 w-12 text-amber-400 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">Coming Soon</h2>
+        <h2 className="text-xl font-bold text-white mb-2">Email Scanning Coming Soon</h2>
         <p className="text-slate-400 max-w-md mx-auto mb-4">
           Our email scanning feature is currently being verified by Google to ensure the highest security standards for your data. This will be available shortly.
         </p>
-        <p className="text-slate-500 text-sm">
-          In the meantime, connect your bank account to detect subscriptions and spending patterns automatically.
-        </p>
-        <a href="/dashboard/subscriptions" className="inline-block mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-xl transition-all">
-          Connect Bank Account Instead
+      </div>
+
+      {/* Connect bank if not connected */}
+      {!bankLoading && bankConnections.length === 0 && (
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+              <Shield className="h-6 w-6 text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-semibold mb-1">Connect your bank to detect subscriptions</h3>
+              <p className="text-slate-400 text-sm">We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.</p>
+            </div>
+            <a
+              href="/api/auth/truelayer"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+            >
+              <Plus className="h-4 w-4" />
+              Connect Bank Account
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Quick links */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+        <a href="/dashboard/subscriptions" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+          <CreditCard className="h-8 w-8 text-amber-500 mb-3" />
+          <h3 className="text-white font-semibold mb-1">Track Subscriptions</h3>
+          <p className="text-slate-400 text-sm">View and manage all your subscriptions, contracts, and recurring payments</p>
+        </a>
+        <a href="/dashboard/money-hub" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+          <TrendingUp className="h-8 w-8 text-green-500 mb-3" />
+          <h3 className="text-white font-semibold mb-1">Spending Intelligence</h3>
+          <p className="text-slate-400 text-sm">See your full spending breakdown, budgets, and savings opportunities</p>
         </a>
       </div>
     </div>
