@@ -329,14 +329,19 @@ ${liveData}`,
     const history = await getConversationHistory(supabase, chatId);
     const context = await getFullBusinessContext(supabase);
 
-    // Detect if user is asking about a specific agent and pull LIVE data
-    const mentionedAgents = Object.entries(AGENT_NAMES).filter(([name]) =>
-      text.toLowerCase().includes(name)
-    );
+    // Detect if asking about agents or wanting a team update
+    const lowerText = text.toLowerCase();
+    const wantsTeamUpdate = lowerText.includes('all agents') || lowerText.includes('team update') || lowerText.includes('the agents') || lowerText.includes('everyone') || lowerText.includes('full update');
+    const mentionedAgents = wantsTeamUpdate
+      ? [['alex'], ['morgan'], ['jamie'], ['taylor'], ['jordan'], ['sam']] // Key agents for team update
+      : Object.entries(AGENT_NAMES).filter(([name]) => lowerText.includes(name));
+
     let agentContext = '';
-    for (const [agentName] of mentionedAgents) {
-      const liveData = await getLiveAgentData(supabase, agentName);
-      agentContext += `\n\n${liveData}`;
+    if (mentionedAgents.length > 0) {
+      // Load data for mentioned agents (or key agents for team update)
+      const agentDataPromises = mentionedAgents.map(([name]) => getLiveAgentData(supabase, name));
+      const agentDataResults = await Promise.all(agentDataPromises);
+      agentContext = agentDataResults.map(d => `\n\n${d}`).join('');
     }
 
     // Save user message
@@ -349,10 +354,13 @@ ${liveData}`,
       system: `You are Charlie, Executive Assistant at Paybacker LTD. You're chatting with Paul (the founder) via Telegram. You have persistent memory of the conversation and full access to business data.
 
 CRITICAL RULES:
-- You already have ALL the data from every agent's reports and memories loaded below. NEVER say "I'll check with them" or "let me ask them" or "I'm waiting for a response". Just answer directly using the data you have.
-- If Paul asks what an agent thinks or what they're working on, answer immediately using their reports and memories below.
+- You have LIVE data from the database loaded below. This is real-time, not cached.
+- NEVER say "I'll check with them", "let me ask them", "waiting for responses", or "pulling updates now". You already HAVE the data. Just answer.
+- NEVER write /ask commands in your responses. You cannot execute commands. Just use the data below.
+- NEVER pretend to be contacting other agents. You ARE the central hub with all the data already loaded.
+- If Paul asks "what does Alex think" or "ask the agents", just analyse the financial/marketing/support data below and give the answer AS IF you are that agent. You have their data.
 - Be concise and direct. Use Markdown for formatting. Never use em dashes.
-- You ARE the central hub. You know everything the agents know because their data is in your context.
+- When asked for a team update, go through each relevant agent's domain and summarise based on the live data, not by pretending to message them.
 
 The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head of Ads), Casey (CCO), Drew (CGO), Pippa (CRO), Leo (CLO), Nico (CIO), Bella (CXO), Finn (CFraudO), Sam (Support Lead), Riley (Support Agent).
 
