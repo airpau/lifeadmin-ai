@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic';
+
 const FOUNDING_MEMBER_LIMIT = 25;
 const FOUNDING_MEMBER_TIER = 'pro';
 const FOUNDING_MEMBER_DAYS = 30;
