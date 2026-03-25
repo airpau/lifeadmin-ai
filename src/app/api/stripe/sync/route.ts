@@ -19,6 +19,11 @@ const PRICE_ID_TO_TIER: Record<string, string> = {
   'price_1TEdJN8FbRNalJNUymPQdKvT': 'essential',
   'price_1TEdJN8FbRNalJNU0o6F4WZZ': 'pro',
   'price_1TEdJO8FbRNalJNUEb0U09ln': 'pro',
+  // Live founding member prices
+  'price_1TEsJe7qw7mEWYpyVIt4i2Iy': 'essential',
+  'price_1TEsJf7qw7mEWYpysxw2lnL3': 'essential',
+  'price_1TEsJf7qw7mEWYpy4alOarY6': 'pro',
+  'price_1TEsJf7qw7mEWYpyJmrhcy8b': 'pro',
 };
 
 function formatDate(timestamp: number | null | undefined): string | null {

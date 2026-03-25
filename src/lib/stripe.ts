@@ -17,10 +17,10 @@ export const stripe = process.env.STRIPE_SECRET_KEY
   : null as any;
 
 export const PRICE_IDS = {
-  essential_monthly: process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID || 'price_1TEdJN8FbRNalJNUQxTQpM8Y',
-  essential_yearly:  process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID  || 'price_1TEdJN8FbRNalJNUymPQdKvT',
-  pro_monthly:       process.env.STRIPE_PRO_MONTHLY_PRICE_ID       || 'price_1TEdJN8FbRNalJNU0o6F4WZZ',
-  pro_yearly:        process.env.STRIPE_PRO_YEARLY_PRICE_ID        || 'price_1TEdJO8FbRNalJNUEb0U09ln',
+  essential_monthly: process.env.STRIPE_ESSENTIAL_MONTHLY_PRICE_ID || 'price_1TEsJe7qw7mEWYpyVIt4i2Iy',
+  essential_yearly:  process.env.STRIPE_ESSENTIAL_YEARLY_PRICE_ID  || 'price_1TEsJf7qw7mEWYpysxw2lnL3',
+  pro_monthly:       process.env.STRIPE_PRO_MONTHLY_PRICE_ID       || 'price_1TEsJf7qw7mEWYpy4alOarY6',
+  pro_yearly:        process.env.STRIPE_PRO_YEARLY_PRICE_ID        || 'price_1TEsJf7qw7mEWYpyJmrhcy8b',
 };
 
 export const PLANS = {
