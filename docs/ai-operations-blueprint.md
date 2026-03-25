@@ -1,10 +1,10 @@
 # Paybacker AI Operations Blueprint
 
-> Last updated: 23 March 2026 (end of day)
+> Last updated: 25 March 2026
 
 ## Overview
 
-Paybacker is an AI-powered savings platform for UK consumers. The system runs with 8 autonomous AI agents managing day-to-day operations, a full support ticketing system, email inbox scanning, an executive meeting room, a self-improving proposal system with one-click email approval, comprehensive contract tracking, and Google Ads integration. The platform is live at paybacker.co.uk with Google Ads driving traffic.
+Paybacker is an AI-powered savings platform for UK consumers. The system runs with 15 autonomous AI agents on Railway managing day-to-day operations, a full support ticketing system, email inbox scanning, an executive meeting room, a self-improving proposal system with one-click email approval, comprehensive contract tracking, Awin affiliate integration, and Google Ads integration. The platform is live at paybacker.co.uk with Google Ads driving traffic.
 
 ---
 
@@ -20,7 +20,7 @@ Paybacker is an AI-powered savings platform for UK consumers. The system runs wi
 - AI support chatbot
 - Loyalty rewards
 
-### Essential (£9.99/month)
+### Essential (£4.99/month or £44.99/year -- Founding Member Pricing)
 - Unlimited complaint and form letters
 - 1 bank account with daily auto-sync
 - Monthly email inbox re-scans
@@ -30,7 +30,7 @@ Paybacker is an AI-powered savings platform for UK consumers. The system runs wi
 - Renewal reminders (30, 14, 7 days before)
 - Contract end date tracking
 
-### Pro (£19.99/month)
+### Pro (£9.99/month or £94.99/year -- Founding Member Pricing)
 - Everything in Essential
 - Unlimited bank accounts
 - Unlimited email and opportunity scans
@@ -38,26 +38,39 @@ Paybacker is an AI-powered savings platform for UK consumers. The system runs wi
 - Priority support
 - Automated cancellations (coming soon)
 
+### Founding Member Programme
+- First 25 signups get Pro free for 30 days, no card required
+- Currently paused for Awin testing, will be re-enabled after Oscar sign-off
+- Expiry cron runs daily at 8am, sends reminders at 7/3/1 days before expiry, downgrades to free after 30 days
+- All user data preserved on downgrade
+
 ### Upgrade Psychology
 - Free to Essential: one-time scans go stale, user wants daily sync and monthly re-scans. Hit 3-letter limit, want unlimited.
 - Essential to Pro: want multiple bank accounts (families), unlimited scans, transaction detail.
 
 ---
 
-## AI Executive Team (8 Agents)
+## AI Executive Team (15 Agents on Railway)
 
-| Role | Name | Schedule | Model | Emails To |
-|------|------|----------|-------|-----------|
-| CFO | Alex | 3x daily (7am, 1pm, 6pm) | Haiku | hello@paybacker.co.uk |
-| CTO | Morgan | 3x daily (8:30am, 2:30pm, 7:30pm) | Haiku | hello@paybacker.co.uk |
-| CAO | Jamie | 3x daily (8am, 12pm, 5pm) | Haiku | hello@paybacker.co.uk |
-| CMO | Taylor | 3x daily (7:30am, 1:30pm, 5:30pm) | Haiku | hello@paybacker.co.uk |
-| Head of Ads | Jordan | 3x daily (8am, 2pm, 8pm) | Sonnet | hello@paybacker.co.uk |
-| Exec Assistant | Charlie | 7x daily (7,9,11,1,3,5,7) | Sonnet | hello@paybacker.co.uk |
-| Support Lead | Sam | Every 30 mins | Haiku | DB only |
-| Support Agent | Riley | Every 15 mins | Haiku | DB only |
+All agents run on Railway (agent-server/), not Vercel cron. All use Haiku for cost efficiency ($0.10 budget cap per run). Only Charlie can email the founder. Riley and Drew have had email permissions removed (were sending unsolicited emails).
 
-**Cron:** Vercel Pro, `/api/cron/executive-agents` runs every 15 minutes. Each agent's DB schedule determines execution. 14-minute tolerance window prevents missed runs.
+| Role | Name | Schedule | Emails To |
+|------|------|----------|-----------|
+| CFO | Alex | 3x daily (7am, 1pm, 6pm) | DB only |
+| CTO | Morgan | 3x daily (8:30am, 2:30pm, 7:30pm) | DB only |
+| CAO | Jamie | 3x daily (8am, 12pm, 5pm) | DB only |
+| CMO | Taylor | 3x daily (7:30am, 1:30pm, 5:30pm) | DB only |
+| Head of Ads | Jordan | 3x daily (8am, 2pm, 8pm) | DB only |
+| CCO (Content) | Casey | Daily 7am | DB only |
+| CGO (Growth) | Drew | Daily 8am | DB only (email removed) |
+| CRO (Retention) | Pippa | Every 6 hours | DB only |
+| CLO (Compliance) | Leo | Daily 6am | DB only |
+| CIO (Intelligence) | Nico | Weekly Monday 7am | DB only |
+| CXO (Experience) | Bella | Daily 9am | DB only |
+| Exec Assistant | Charlie | 7x daily (7,9,11,1,3,5,7) | hello@paybacker.co.uk |
+| Support Lead | Sam | Every 30 mins | DB only |
+| Support Agent | Riley | Every 15 mins | DB only (email removed) |
+| CFraudO | Finn | Daily + on signup | DB only |
 
 **Separate API key:** `ANTHROPIC_AGENTS_API_KEY` for all agent calls, tracks AI staff costs separately from user-facing costs.
 
@@ -77,7 +90,21 @@ Paybacker is an AI-powered savings platform for UK consumers. The system runs wi
 
 **Sam (Support Lead):** Triages tickets every 30 minutes, flags urgent/overdue, adjusts priorities, escalates to human.
 
-**Riley (Support Agent):** Auto-responds to simple tickets every 15 minutes, escalates complex ones. Sends branded email to user with response.
+**Riley (Support Agent):** Auto-responds to simple tickets every 15 minutes, escalates complex ones. Email permissions removed (was sending unsolicited emails).
+
+**Casey (CCO):** Content calendar, fal.ai image/video generation, Late API posting, founder approval required before posting.
+
+**Drew (CGO):** Funnel conversion analysis, PostHog events, behavioural email triggers. Email permissions removed (was sending unsolicited emails).
+
+**Pippa (CRO):** Activity scores, churn detection, loyalty tier management, monthly user summaries.
+
+**Leo (CLO):** Perplexity regulatory research, letter quality audits, GDPR checks, urgent compliance alerts.
+
+**Nico (CIO):** Perplexity competitor research, competitive_intelligence table, weekly report.
+
+**Bella (CXO):** Support ticket UX analysis, feature requests, weekly UX report to CTO, 90-day NPS surveys.
+
+**Finn (CFraudO):** IP fraud checks via ipapi.co, abuse detection, over-limit flags.
 
 ### Agent Coordination
 Agents flag action items via `agent_action_items` table. Charlie reads all action items and includes them in task briefs. Agents can suggest improvements via `improvement_proposals` table with one-click email approve/reject.
@@ -103,16 +130,16 @@ First agent reply sets `first_response_at`. Status auto-progresses.
 1. **Overview:** MRR, users, tier breakdown, platform stats
 2. **Members:** All users with drill-down
 3. **Tickets:** Filter, view conversation, reply with email notify
-4. **AI Team:** All 8 agents, status, reports, pause/resume, Run Now
+4. **AI Team:** All 15 agents, status, reports, pause/resume, Run Now
 
 ### "Call a Meeting" Button
 Full-screen boardroom: type a message, all 6 executive agents respond in character using Sonnet. "Make this a proposal" button on every agent message.
 
 ---
 
-## Email Scanning (LIVE)
+## Email Scanning (PENDING GOOGLE OAUTH)
 
-Google OAuth approved and verified. Available to all tiers (one-time for free, monthly for Essential, unlimited for Pro).
+Google OAuth verification submitted 24 March 2026. Until approved, email scanning shows "unverified app" warning (100 user cap). Available to all tiers (one-time for free, monthly for Essential, unlimited for Pro).
 
 ### Opportunity Scanner
 - Groups emails by sender for efficient analysis
@@ -130,7 +157,9 @@ Google OAuth approved and verified. Available to all tiers (one-time for free, m
 
 ---
 
-## Contract Tracking
+## Contract Tracking (UI LIVE)
+
+16 categories of subscriptions (was 7). Subscriptions page now has full contract fields: type, end date, provider type, tariff, auto-renew. Collapsible "Contract Details" section in add/edit forms. "Renewing within 90 days" summary card with countdown badges. "Find Better Deal" button links to relevant /deals/ page.
 
 15 fields on the `subscriptions` table for comprehensive contract data:
 
@@ -151,15 +180,23 @@ Google OAuth approved and verified. Available to all tiers (one-time for free, m
 
 ## Deals System (LIVE)
 
-56 affiliate deals across 9 categories. Awin publisher ID: 2825812. Applied to 30+ programmes, awaiting approvals.
+59 affiliate deals across 9 categories. Awin publisher ID: 2825812.
+
+### Awin Integration (Fully Working)
+- Mastertag, S2S (awaited in webhook), client-side tracking, fallback pixel all live
+- Both client-side and S2S fire with same transaction ref (sub-{subscription_id})
+- Amounts sent as actual sale value (£4.99/£9.99), commission group rate handles percentage
+- AWC cookie captured in middleware, passed through Stripe checkout metadata
+- Oscar from Awin testing and signing off
+- Lebara Mobile approved: 3 deals with promo codes (LEBARA5, LEBARA10, SAVE50)
 
 ### Categories
-Energy (5), Broadband (10), Mobile (13), Insurance (6), Mortgages (5), Credit Cards (4), Loans (5), Car Finance (2), Travel (6)
+Energy (5), Broadband (10), Mobile (16), Insurance (6), Mortgages (5), Credit Cards (4), Loans (5), Car Finance (2), Travel (6)
 
 ### Revenue Strategy
-1. **Affiliate deals:** 56 deals via Awin publisher account. Commission rates documented in docs/awin-commission-rates.md
+1. **Affiliate deals:** 59 deals via Awin publisher account. Commission rates documented in docs/awin-commission-rates.md
 2. **Awin Advertiser:** Influencer acquisition (£1 per signup, £2 Essential, £4 Pro)
-3. **Subscription revenue:** £9.99-£19.99/month per user
+3. **Subscription revenue:** £4.99-£9.99/month per user (founding member pricing)
 
 ### Deal Emails (LIVE)
 - Targeted deal emails: Wed + Fri 9am, personalised by opportunity score
@@ -167,9 +204,10 @@ Energy (5), Broadband (10), Mobile (13), Insurance (6), Mortgages (5), Credit Ca
 - Both use bank scan + email scan data for personalisation
 
 ### Landing Pages (LIVE)
-- 9 deal category pages at /deals/[category]
-- 8 feature solution pages at /solutions/[slug]
-- Full sitemap at /sitemap.xml (28 pages)
+- 9 deal category pages at /deals/[category] (fixed await params for Next.js 16)
+- 8 feature solution pages at /solutions/[slug] (fixed await params for Next.js 16)
+- All 17 pages live and working (were 404, now fixed)
+- Full sitemap at /sitemap.xml (dynamic, auto-includes blog posts from database)
 
 ---
 
@@ -183,8 +221,12 @@ Energy (5), Broadband (10), Mobile (13), Insurance (6), Mortgages (5), Credit Ca
 - API fully connected: developer token, OAuth2, refresh token, customer ID
 - Jordan (Head of Ads) monitors performance 3x daily
 
+### Meta Pixel (LIVE)
+- Pixel ID: 722806287584909
+- Tracks Lead (signup) and Purchase (subscription) events
+
 ### Meta Ads
-- Not yet launched (needs Meta Pixel ID)
+- Not yet launched
 - Ad copy drafted: 3 variations (complaint angle, subscription angle, money recovery angle)
 
 ---
@@ -192,11 +234,16 @@ Energy (5), Broadband (10), Mobile (13), Insurance (6), Mortgages (5), Credit Ca
 ## Content Pages
 
 - `/about` - What Paybacker is, how it works, trust and transparency
-- `/blog` - Index with article cards
+- `/blog` - Index with article cards, dynamic from Supabase blog_posts table
 - `/blog/are-you-overpaying-on-energy` - Energy price cap guide (800 words)
 - `/blog/broadband-contract-ended` - Broadband switching guide (800 words)
 - `/privacy-policy` - Full UK GDPR privacy policy
 - Header and footer links updated across all pages
+
+### Blog System
+- Automated publishing Mon/Wed/Fri at 7am via cron
+- Dynamic blog posts from Supabase blog_posts table
+- Sitemap auto-includes new posts
 
 ---
 
@@ -231,7 +278,35 @@ Agents suggest improvements in their reports. Proposals auto-emailed to hello@pa
 | META_ACCESS_TOKEN | Facebook page posting |
 | META_PAGE_ID | Facebook page ID |
 | NEXT_PUBLIC_AWIN_ADVERTISER_ID | Awin mastertag |
-| NEXT_PUBLIC_AWIN_AFF_ID | Awin publisher affiliate links (not yet set) |
+| NEXT_PUBLIC_AWIN_AFF_ID | Awin publisher affiliate links |
+| NEXT_PUBLIC_META_PIXEL_ID | Meta Pixel (722806287584909) |
+| IPAPI_KEY | IP fraud detection for Finn agent |
+| PERPLEXITY_API_KEY | Web research for Leo + Nico agents |
+| FAL_KEY | Image/video generation for Casey |
+| LATE_API_KEY | Social media posting via Late API |
+| POSTHOG_API_KEY | Product analytics for Drew |
+
+---
+
+## Stripe (LIVE MODE)
+
+Both keys now live mode (pk_live_ and sk_live_). Webhook secret: whsec_uvlMiRed4Ky5LsWOHA5HLCzCwgsNm1zS
+
+### Live Founding Member Price IDs
+| Tier | Price ID | Amount |
+|------|----------|--------|
+| Essential Monthly | price_1TEsJe7qw7mEWYpyVIt4i2Iy | £4.99 |
+| Essential Annual | price_1TEsJf7qw7mEWYpysxw2lnL3 | £44.99 |
+| Pro Monthly | price_1TEsJf7qw7mEWYpy4alOarY6 | £9.99 |
+| Pro Annual | price_1TEsJf7qw7mEWYpyJmrhcy8b | £94.99 |
+
+---
+
+## UTM Tracking (LIVE)
+
+- UTM params + gclid captured as cookies in middleware on first landing
+- Stored on profiles table on signup (utm_source, utm_medium, utm_campaign, utm_content, utm_term, gclid, signup_source)
+- signup_source auto-set to 'google_ads' if gclid present
 
 ---
 
@@ -245,7 +320,7 @@ Agents suggest improvements in their reports. Proposals auto-emailed to hello@pa
 | agent_runs | AI usage audit trail |
 | support_tickets | Support tickets (TKT-XXXX) |
 | ticket_messages | Conversation threads |
-| ai_executives | 8 agent definitions and config |
+| ai_executives | 15 agent definitions and config |
 | executive_reports | Reports from agents |
 | agent_action_items | Cross-agent coordination |
 | improvement_proposals | Self-improving system |
@@ -258,6 +333,13 @@ Agents suggest improvements in their reports. Proposals auto-emailed to hello@pa
 | point_events | Loyalty points events |
 | user_points | Points balances |
 | waitlist_signups | Pre-launch waitlist |
+| blog_posts | Dynamic blog content |
+| content_drafts | Casey social media drafts |
+| compliance_log | Leo compliance findings |
+| competitive_intelligence | Nico competitor research |
+| nps_responses | Bella NPS survey data |
+| agent_memory | Agent persistent memory |
+| agent_tasks | Cross-agent task coordination |
 
 ---
 
@@ -305,20 +387,23 @@ src/app/
 
 **Fixed 23 March 2026:**
 - robots.txt created at /public/robots.txt (allows all crawlers, references sitemap)
-- sitemap.xml generated at /src/app/sitemap.ts (11 public pages)
+- sitemap.xml generated at /src/app/sitemap.ts (dynamic, auto-includes blog posts)
 - Open Graph tags added (title, description, image, locale en_GB)
 - Twitter card tags added
 - Canonical URLs set via metadataBase
 - Keywords meta tag added
 - robots meta set to index: true, follow: true
 - Root cause of invisibility: /robots.txt was 404, which served a page containing noindex meta tag
+- Structured data (JSON-LD): FAQPage, SoftwareApplication, BreadcrumbList schemas on landing pages
 
-**Still needed:**
-- Google Search Console verification (need to download HTML file and add to /public/)
-- Submit sitemap to Google Search Console
-- Request indexing for all key pages
-- Bing Webmaster Tools (optional)
-- Monitor indexing status weekly
+**Google Search Console (VERIFIED):**
+- Verified via meta tag (verification code: uB2k37Gimef4Mgg5Owl5DbQgrilihlCLBLHafttoAv4)
+- Sitemap submitted (dynamic, auto-includes blog posts from database)
+
+**OG Image (LIVE):**
+- Auto-generated 1200x630 via Next.js ImageResponse
+- fal.ai/Imagen generated dark navy background with amber glow
+- Shows on all social shares (WhatsApp, Facebook, Twitter, LinkedIn, etc.)
 
 ---
 
@@ -337,7 +422,7 @@ Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these prioritie
 
 ---
 
-## AI Agent Team (14 Agents)
+## AI Agent Team (15 Agents on Railway)
 
 | # | Name | Role | Schedule | Model |
 |---|------|------|----------|-------|
@@ -345,92 +430,74 @@ Taylor (CMO) and Jordan (Head of Ads) agent prompts updated with these prioritie
 | 2 | Morgan | CTO | 3x daily (8:30am, 2:30pm, 7:30pm) | Haiku |
 | 3 | Jamie | CAO | 3x daily (8am, 12pm, 5pm) | Haiku |
 | 4 | Taylor | CMO | 3x daily (7:30am, 1:30pm, 5:30pm) | Haiku |
-| 5 | Jordan | Head of Ads | 3x daily (8am, 2pm, 8pm) | Sonnet |
-| 6 | Casey | CCO (Content) | Daily 7am | Sonnet |
-| 7 | Drew | CGO (Growth) | Daily 8am | Sonnet |
-| 8 | Pippa | CRO (Retention) | Every 6 hours | Sonnet |
-| 9 | Leo | CLO (Compliance) | Daily 6am | Sonnet |
-| 10 | Nico | CIO (Intelligence) | Weekly Monday 7am | Sonnet |
-| 11 | Bella | CXO (Experience) | Daily 9am | Sonnet |
-| 12 | Charlie | Exec Assistant | 7x daily | Sonnet |
+| 5 | Jordan | Head of Ads | 3x daily (8am, 2pm, 8pm) | Haiku |
+| 6 | Casey | CCO (Content) | Daily 7am | Haiku |
+| 7 | Drew | CGO (Growth) | Daily 8am | Haiku |
+| 8 | Pippa | CRO (Retention) | Every 6 hours | Haiku |
+| 9 | Leo | CLO (Compliance) | Daily 6am | Haiku |
+| 10 | Nico | CIO (Intelligence) | Weekly Monday 7am | Haiku |
+| 11 | Bella | CXO (Experience) | Daily 9am | Haiku |
+| 12 | Charlie | Exec Assistant | 7x daily | Haiku |
 | 13 | Sam | Support Lead | Every 30 mins | Haiku |
 | 14 | Riley | Support Agent | Every 15 mins | Haiku |
+| 15 | Finn | CFraudO | Daily + on signup | Haiku |
+
+---
+
+## Completed Items (as of 25 March 2026)
+
+- Agent system on Railway (15 agents, all running)
+- Landing pages fixed (/solutions/ and /deals/ await params for Next.js 16)
+- Meta Pixel installed (722806287584909)
+- Google Search Console verified and sitemap submitted
+- Structured data (JSON-LD) on landing pages
+- Founding member programme built (currently paused for Awin testing)
+- Contract tracking UI with 16 categories
+- OG image (auto-generated 1200x630)
+- Homepage stats counter (live from Supabase)
+- UTM tracking (middleware cookies, stored on profiles)
+- Onboarded_at fix
+- Blog auto-publishing (Mon/Wed/Fri 7am)
+- Awin integration fully working (mastertag, S2S, client-side, fallback pixel)
+
+---
+
+## Scanner Page
+
+- Now shows bank connections with sync button (was just "Coming Soon")
+- Email scanning still pending Google OAuth verification
+
+---
+
+## Mobile Navigation
+
+Bottom nav: Home, Money Hub, Letters, Scanner, Subs (was Profile)
+
+---
+
+## Homepage
+
+- Live stats counter (letters generated, subscriptions tracked from Supabase)
+- Founding member banner (when active)
+- Chatbot auto-engage teaser after 5 seconds
 
 ---
 
 ## Outstanding Items
 
-### Priority 0: AGENT SYSTEM ON RAILWAY (DONE)
-
-15 autonomous agents running on Railway (agent-server/) with:
-- Anthropic API tool use (agentic loop) - agents autonomously query data and take actions
-- 9 custom tool servers (Supabase, email, memory, tasks, reports, support, content, research, Stripe)
-- Self-learning: goals, predictions, feedback loop, memory with decay
-- Continuous event-driven loop (not cron) - agents trigger each other via tasks
-- Safety: table permissions, rate limits, budget caps, full audit trail
-- Only Charlie can email founder. Riley only responds to support tickets.
-- Cost target: ~$3-5/day (~$100-150/month)
-- Meeting room proxies to Railway for live agent chat
-- All API keys configured including FAL, Perplexity, GitHub, ipapi
-
-### Priority 1: Agent Autonomy and Persistent Memory (current interim system)
-1. **Meeting persistence** - DONE: conversations saved to DB, summary emailed on end
-2. **Agent memory** - DONE but limited: agent_memory table stores learnings, loaded into prompts
-3. **Cross-agent tasks** - DONE: agent_tasks table, processed during cron runs
-4. **Cross-agent autonomous actions** - Agents trigger actions on each other during cron runs:
-   - Drew (CGO) detects inactive user > triggers Resend email automatically
-   - Pippa (CRO) identifies churn risk > notifies Alex (CFO) and Drew (CGO)
-   - Leo (CLO) finds compliance issue > notifies Morgan (CTO) to fix
-   - Bella (CXO) ranks UX fix > creates improvement proposal for Morgan (CTO)
-   - Casey (CCO) generates content > sends to Taylor (CMO) for review
-   - Nico (CIO) spots competitor threat > alerts Taylor (CMO) and Jordan (Head of Ads)
-
-### Priority 1.5: Pro Financial Analysis Dashboard (Emma-style)
-
-Build a comprehensive financial analysis tool for Pro users, inspired by Emma app:
-- Income vs expenditure analysis (monthly, weekly, custom date ranges)
-- Smart categorisation with user override (custom categories)
-- Monthly/weekly/annual spending reports downloadable as PDF
-- Email reports on demand or scheduled
-- Budget setting per category with alerts
-- Spending trends over 3/6/12 months with charts
-- Merchant-level breakdown
-- Recurring payment detection
-- Income tracking and net worth snapshot
-- Bill calendar showing upcoming payments
-
-This makes the Pro plan genuinely valuable as an all-in-one financial control centre. Could be an enhanced /dashboard/spending or a new /dashboard/finance tab.
-
-### Priority 2: API Integrations Needed Per Agent
-
-| Agent | APIs Needed | Status |
-|-------|------------|--------|
-| Casey (CCO) | fal.ai (Flux Pro images), Runway ML (Gen-3 video), Twitter API v2, LinkedIn Marketing API, TikTok Content API | Keys needed |
-| Jordan (Head of Ads) | Google Ads API (connected), Meta Marketing API (needs Pixel ID) | Partially done |
-| Drew (CGO) | Resend (already integrated for email sequences) | Ready |
-| Pippa (CRO) | Resend (for personalised re-engagement emails), Stripe (for loyalty rewards) | Ready |
-| Leo (CLO) | Web search API for regulatory monitoring (consider SerpAPI or Brave Search API) | Key needed |
-| Nico (CIO) | Web search API for competitor monitoring, App Store API for review tracking | Key needed |
-| Bella (CXO) | No external APIs needed (uses internal ticket and chatbot data) | Ready |
+### STILL OUTSTANDING
+1. Re-enable founding member programme (after Oscar Awin sign-off)
+2. Referral system frontend (backend built, no share UI)
+3. Resend inbound MX for email-to-ticket
+4. Charlie Telegram bot
+5. Blog agent upgrade (Casey + Perplexity research)
+6. Legal compliance monitoring (Leo CLO)
+7. Page load speed optimisation
+8. Instagram posting (pending Meta app review)
+9. CJ Affiliate setup (British Gas)
 
 ### AWAITING EXTERNAL
-1. **Google OAuth verification** - submitted 24 March 2026 for gmail.readonly scope. 3-5 business day review. Until approved, users see "unverified app" warning (100 user cap).
-2. **Awin programme approvals** - 30+ programmes applied for. Most auto-approve within 24-48 hours.
-
-### NEXT PRIORITIES
-1. **Google Ads tools for Jordan** - refresh token obtained, credentials on Railway, but need to build Google Ads API tool in agent-server so Jordan can create/manage campaigns autonomously
-2. **Google Search Console** - verify domain, submit sitemap, request indexing for 28 pages
-3. **Charlie Telegram bot** - so founder can interact with agents via Telegram
-4. **Structured data (JSON-LD)** - FAQPage, SoftwareApplication schemas on landing pages
-5. **Referral system** - free month of Essential per referred paying subscriber
-6. **Homepage stats counter** - live from Supabase
-7. **OG image** - default 1200x630 branded image
-
-### LOWER PRIORITY
-8. Resend inbound MX for email-to-ticket
-9. Meta Ads (need Pixel ID)
-10. Scanner learning from dismissals
-11. Onboarded_at trigger
-12. Spending accuracy improvements
-13. Instagram posting (Meta app review)
-14. Page load speed optimisation
+1. **Oscar Awin sign-off** - testing and verifying tracking
+2. **Google OAuth verification** - submitted 24 March 2026 for gmail.readonly scope. 3-5 business day review. Until approved, users see "unverified app" warning (100 user cap).
+3. **Google Ads developer token basic access** - needed for full API capabilities
+4. **Lebara campaign parameters from Michael** - for Lebara Mobile deals
