@@ -1,8 +1,74 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
 const STRIPE_BASE = 'https://api.stripe.com/v1';
+
+// Create founding member prices on the live Stripe account
+export async function POST(request: NextRequest) {
+  const auth = request.headers.get('authorization');
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const key = process.env.STRIPE_SECRET_KEY!;
+
+  // First get existing products
+  const productsRes = await fetch(`${STRIPE_BASE}/products?limit=20&active=true`, {
+    headers: { 'Authorization': `Bearer ${key}` },
+  });
+  const productsData = await productsRes.json();
+  const products = productsData.data || [];
+
+  // Find or create Essential and Pro products
+  let essentialProduct = products.find((p: any) => p.name?.toLowerCase().includes('essential'));
+  let proProduct = products.find((p: any) => p.name?.toLowerCase().includes('pro'));
+
+  if (!essentialProduct) {
+    const res = await fetch(`${STRIPE_BASE}/products`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ name: 'Paybacker Essential' }).toString(),
+    });
+    essentialProduct = await res.json();
+  }
+
+  if (!proProduct) {
+    const res = await fetch(`${STRIPE_BASE}/products`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ name: 'Paybacker Pro' }).toString(),
+    });
+    proProduct = await res.json();
+  }
+
+  // Create the 4 founding member prices
+  const pricesToCreate = [
+    { product: essentialProduct.id, unit_amount: '499', currency: 'gbp', interval: 'month', nickname: 'Essential Monthly Founding' },
+    { product: essentialProduct.id, unit_amount: '4499', currency: 'gbp', interval: 'year', nickname: 'Essential Annual Founding' },
+    { product: proProduct.id, unit_amount: '999', currency: 'gbp', interval: 'month', nickname: 'Pro Monthly Founding' },
+    { product: proProduct.id, unit_amount: '9499', currency: 'gbp', interval: 'year', nickname: 'Pro Annual Founding' },
+  ];
+
+  const created: any[] = [];
+  for (const price of pricesToCreate) {
+    const res = await fetch(`${STRIPE_BASE}/prices`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        product: price.product,
+        unit_amount: price.unit_amount,
+        currency: price.currency,
+        'recurring[interval]': price.interval,
+        nickname: price.nickname,
+      }).toString(),
+    });
+    const data = await res.json();
+    created.push({ id: data.id, nickname: price.nickname, amount: price.unit_amount, interval: price.interval, error: data.error });
+  }
+
+  return NextResponse.json({ products: { essential: essentialProduct.id, pro: proProduct.id }, prices: created });
+}
 
 export async function GET() {
   const results: Record<string, unknown> = {
