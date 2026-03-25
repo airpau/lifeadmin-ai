@@ -35,6 +35,13 @@ export const metadata: Metadata = {
 
 const posts = [
   {
+    title: "How to Claim Flight Delay Compensation UK - Up to £520",
+    excerpt:
+      "Complete guide to claiming flight delay compensation under UK261 regulations. Claim up to £520 per person for delayed or cancelled flights. You can claim for flights in the last 6 years.",
+    href: "/blog/how-to-claim-flight-delay-compensation-uk",
+    date: "25 March 2026",
+  },
+  {
     title: "Are You Overpaying on Energy in 2026? Here's How to Find Out",
     excerpt:
       "The energy price cap hits £1,641 from April 2026. Find out if you're on an expensive standard variable tariff and how switching could save you hundreds.",
@@ -43,7 +50,7 @@ const posts = [
   },
   {
     title:
-      "Your Broadband Contract Has Ended — You're Probably Being Overcharged",
+      "Your Broadband Contract Has Ended - You're Probably Being Overcharged",
     excerpt:
       "Millions of UK households are out of contract on broadband and overpaying. Find out if your contract has ended and how to save up to £300 a year.",
     href: "/blog/broadband-contract-ended",

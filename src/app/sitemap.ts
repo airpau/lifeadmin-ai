@@ -43,6 +43,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     // Blog
     { url: `${baseUrl}/blog`, lastModified: now, changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${baseUrl}/blog/how-to-claim-flight-delay-compensation-uk`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${baseUrl}/blog/are-you-overpaying-on-energy`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
     { url: `${baseUrl}/blog/broadband-contract-ended`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
 
