@@ -477,8 +477,8 @@ ${liveData}`,
         await saveMessage(supabase, chatId, 'user', text);
 
         // Create tasks for agents so they know what the founder wants
-        await Promise.all(agentsToRun.map(role =>
-          supabase.from('agent_tasks').insert({
+        for (const role of agentsToRun) {
+          await supabase.from('agent_tasks').insert({
             created_by: 'founder',
             assigned_to: role,
             title: 'Founder request via Telegram',
@@ -486,8 +486,8 @@ ${liveData}`,
             priority: 'high',
             category: 'telegram_request',
             status: 'pending',
-          }).catch(() => null)
-        ));
+          });
+        }
 
         // Run agents in parallel (await so we can follow up)
         await Promise.all(agentsToRun.map(role =>
