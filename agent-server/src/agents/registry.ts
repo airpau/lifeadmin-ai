@@ -16,8 +16,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
     maxTurns: 6,
-    toolGroups: ['supabase', 'support', 'email', 'memory', 'tasks', 'reports'],
-    canEmailUsers: true,  // Riley emails users when responding to tickets
+    toolGroups: ['supabase', 'support', 'memory', 'tasks', 'reports'],  // No direct email - Riley uses respond_to_ticket only
+    canEmailUsers: false,
   },
   support_lead: {
     role: 'support_lead',
@@ -105,8 +105,8 @@ export const agentRegistry: Record<string, AgentDefinition> = {
     model: 'claude-haiku-4-5-20251001',
     maxBudgetUsd: 0.10,
     maxTurns: 6,
-    toolGroups: ['supabase', 'email', 'posthog', 'memory', 'tasks', 'reports'],
-    canEmailUsers: true,  // Drew sends engagement/activation emails to users
+    toolGroups: ['supabase', 'posthog', 'memory', 'tasks', 'reports'],  // No email - Drew must NOT send direct emails
+    canEmailUsers: false,
     supabaseWriteTables: ['profiles'],
   },
   cro: {
