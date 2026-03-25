@@ -138,7 +138,7 @@ const respondToTicket: ToolDef = {
           await resend.emails.send({
             from: 'support@paybacker.co.uk',
             to: profile.email,
-            replyTo: 'support@paybacker.co.uk',
+            replyTo: 'support@mail.paybacker.co.uk',
             subject: `Re: Your support request`,
             html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background-color:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">

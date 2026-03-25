@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { resend, FROM_EMAIL } from '@/lib/resend';
+
+// Reply-to uses inbound subdomain so replies go through Resend webhook and auto-update tickets
+const TICKET_REPLY_TO = 'support@mail.paybacker.co.uk';
 
 export const runtime = 'nodejs';
 
@@ -106,7 +109,7 @@ export async function POST(
         const ticketRef = ticket.ticket_number || ticketId.slice(0, 8).toUpperCase();
         await resend.emails.send({
           from: FROM_EMAIL,
-          replyTo: REPLY_TO,
+          replyTo: TICKET_REPLY_TO,
           to: profile.email,
           subject: `Re: ${ticket.subject} (${ticketRef})`,
           html: `
