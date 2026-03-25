@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
@@ -472,34 +472,46 @@ ${liveData}`,
           return e ? e[0] : r;
         });
 
-        // Send immediate acknowledgment
-        await sendTelegram(chatId, `Running ${agentNames.join(', ')}. I'll send their updates in about 30 seconds.`);
+        // Send acknowledgment then run agents and follow up - all in one function
+        await sendTelegram(chatId, `Running ${agentNames.join(', ')}. I'll send their updates shortly.`);
         await saveMessage(supabase, chatId, 'user', text);
-        await saveMessage(supabase, chatId, 'assistant', `Running ${agentNames.join(', ')}...`);
 
-        // Trigger all agents on Railway (fire and forget)
-        for (const role of agentsToRun) {
+        // Run agents in parallel (await so we can follow up)
+        await Promise.all(agentsToRun.map(role =>
           fetch(`${railwayUrl}/api/trigger/${role}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
-          }).catch(() => null);
+            signal: AbortSignal.timeout(45000),
+          }).catch(() => null)
+        ));
+
+        // Pull fresh data after agents ran
+        const [freshReports, newDrafts] = await Promise.all([
+          supabase.from('executive_reports').select('title, recommendations, created_at')
+            .order('created_at', { ascending: false }).limit(agentsToRun.length),
+          supabase.from('content_drafts').select('platform, caption, status, created_at')
+            .eq('status', 'pending').order('created_at', { ascending: false }).limit(5),
+        ]);
+
+        let followUp = '*Agent Results:*\n\n';
+        if (freshReports.data?.length) {
+          for (const r of freshReports.data) {
+            const recs = Array.isArray(r.recommendations) ? r.recommendations.slice(0, 2) : [];
+            followUp += `${r.title}\n${recs.map((rc: string) => `- ${rc}`).join('\n')}\n\n`;
+          }
+        }
+        if (newDrafts.data?.length) {
+          followUp += `*${newDrafts.data.length} Content Drafts Pending:*\n`;
+          for (const d of newDrafts.data) {
+            followUp += `- ${d.platform}: ${(d.caption || '').substring(0, 60)}...\n`;
+          }
+        }
+        if (!freshReports.data?.length && !newDrafts.data?.length) {
+          followUp = 'Agents ran but no new reports or drafts were generated.';
         }
 
-        // Trigger the callback as a separate Vercel function
-        // We return 200 to Telegram immediately via the sendTelegram above
-        // The callback runs independently and sends a second message
-        const controller = new AbortController();
-        fetch(`https://paybacker.co.uk/api/telegram/agent-callback`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ chatId, question: text, agentRoles: agentsToRun }),
-          signal: controller.signal,
-        }).catch(() => {});
-
-        // Return 200 to Telegram - the callback continues in its own function
+        await saveMessage(supabase, chatId, 'assistant', followUp);
+        await sendTelegram(chatId, followUp);
         return NextResponse.json({ ok: true });
       }
 
