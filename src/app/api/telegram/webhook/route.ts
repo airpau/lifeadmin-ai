@@ -430,7 +430,7 @@ ${liveData}`,
     if (wantsTeamUpdate || mentionedAgent) {
       const railwayUrl = process.env.RAILWAY_URL;
       const agentsToRun = wantsTeamUpdate
-        ? ['cfo', 'cmo', 'head_of_ads', 'support_lead']
+        ? ['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'support_lead']
         : mentionedAgent
           ? [mentionedAgent[0] === 'jordan' ? 'head_of_ads' : mentionedAgent[0] === 'sam' ? 'support_lead' : mentionedAgent[0] === 'riley' ? 'support_agent' : mentionedAgent[0]]
           : [];
