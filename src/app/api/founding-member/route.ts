@@ -14,7 +14,9 @@ function getAdmin() {
 }
 
 // GET: Check how many spots remain
+// TEMPORARILY returns inactive for Awin testing
 export async function GET() {
+  return NextResponse.json({ limit: 25, claimed: 0, remaining: 0, active: false, tier: 'pro', days: 30 });
   const admin = getAdmin();
   const { count } = await admin
     .from('profiles')
@@ -35,7 +37,10 @@ export async function GET() {
 }
 
 // POST: Claim a founding member spot (called from signup flow)
+// TEMPORARILY DISABLED for Awin testing - re-enable after Oscar signs off
 export async function POST(request: NextRequest) {
+  return NextResponse.json({ claimed: false, reason: 'Founding member programme paused for testing' });
+
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
