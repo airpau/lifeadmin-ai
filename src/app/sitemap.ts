@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
+import { createClient } from '@supabase/supabase-js';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://paybacker.co.uk';
   const now = new Date().toISOString();
 
@@ -16,6 +17,34 @@ export default function sitemap(): MetadataRoute.Sitemap {
     'energy', 'broadband', 'mobile', 'insurance', 'mortgages',
     'loans', 'credit-cards', 'car-finance', 'travel',
   ];
+
+  // Fetch all published blog posts from database
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+  const { data: blogPosts } = await supabase
+    .from('blog_posts')
+    .select('slug, published_at')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false });
+
+  // Static blog posts (hardcoded routes)
+  const staticBlogSlugs = [
+    'how-to-claim-flight-delay-compensation-uk',
+    'are-you-overpaying-on-energy',
+    'broadband-contract-ended',
+  ];
+
+  // Dynamic blog posts from database
+  const dynamicBlogEntries = (blogPosts || [])
+    .filter(p => !staticBlogSlugs.includes(p.slug))
+    .map(p => ({
+      url: `${baseUrl}/blog/${p.slug}`,
+      lastModified: p.published_at || now,
+      changeFrequency: 'monthly' as const,
+      priority: 0.6,
+    }));
 
   return [
     // Core pages
@@ -46,6 +75,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/blog/how-to-claim-flight-delay-compensation-uk`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${baseUrl}/blog/are-you-overpaying-on-energy`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
     { url: `${baseUrl}/blog/broadband-contract-ended`, lastModified: now, changeFrequency: 'monthly', priority: 0.6 },
+    ...dynamicBlogEntries,
 
     // Legal
     { url: `${baseUrl}/legal/privacy`, lastModified: now, changeFrequency: 'monthly', priority: 0.2 },
