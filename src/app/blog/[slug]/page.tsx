@@ -15,15 +15,17 @@ function getClient() {
   );
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
   const supabase = getClient();
-  const { data: post } = await supabase
+  const { data: post, error } = await supabase
     .from('blog_posts')
     .select('title, meta_description, slug')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('status', 'published')
     .single();
 
+  if (error) console.error('[blog] Metadata query error:', error.message, 'slug:', slug);
   if (!post) return { title: 'Blog - Paybacker' };
 
   return {
@@ -32,7 +34,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     openGraph: {
       title: post.title,
       description: post.meta_description || '',
-      url: `https://paybacker.co.uk/blog/${post.slug}`,
+      url: `https://paybacker.co.uk/blog/${slug}`,
       type: 'article',
       siteName: 'Paybacker',
     },
@@ -42,20 +44,22 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       description: post.meta_description || '',
     },
     alternates: {
-      canonical: `https://paybacker.co.uk/blog/${post.slug}`,
+      canonical: `https://paybacker.co.uk/blog/${slug}`,
     },
   };
 }
 
-export default async function DynamicBlogPost({ params }: { params: { slug: string } }) {
+export default async function DynamicBlogPost({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   const supabase = getClient();
-  const { data: post } = await supabase
+  const { data: post, error } = await supabase
     .from('blog_posts')
     .select('*')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('status', 'published')
     .single();
 
+  if (error) console.error('[blog] Post query error:', error.message, 'slug:', slug);
   if (!post) notFound();
 
   const publishedDate = new Date(post.published_at).toLocaleDateString('en-GB', {
