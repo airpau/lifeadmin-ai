@@ -123,6 +123,96 @@ RECENT TASKS:
 ${taskList}`;
 }
 
+async function getLiveAgentData(supabase: ReturnType<typeof getAdmin>, agentName: string): Promise<string> {
+  const now = new Date().toISOString();
+
+  // Common data every agent needs
+  const [profiles, tickets, reports, dealClicks, tasks] = await Promise.all([
+    supabase.from('profiles').select('id, email, subscription_tier, created_at, founding_member, signup_source, onboarded_at, updated_at').order('created_at', { ascending: false }).limit(30),
+    supabase.from('support_tickets').select('ticket_number, subject, status, priority, source, created_at, first_response_at').order('created_at', { ascending: false }).limit(20),
+    supabase.from('executive_reports').select('title, content, recommendations, created_at').order('created_at', { ascending: false }).limit(5),
+    supabase.from('deal_clicks').select('provider, category, clicked_at').order('clicked_at', { ascending: false }).limit(20),
+    supabase.from('tasks').select('title, type, status, provider_name, created_at').order('created_at', { ascending: false }).limit(15),
+  ]);
+
+  const allUsers = profiles.data || [];
+  const tiers: Record<string, number> = {};
+  allUsers.forEach(u => { tiers[u.subscription_tier || 'free'] = (tiers[u.subscription_tier || 'free'] || 0) + 1; });
+  let mrr = 0;
+  allUsers.forEach(u => {
+    if (u.subscription_tier === 'essential') mrr += 4.99;
+    if (u.subscription_tier === 'pro') mrr += 9.99;
+  });
+
+  let base = `LIVE DATA (queried ${now}):
+Users: ${allUsers.length} total | ${Object.entries(tiers).map(([t, c]) => `${t}: ${c}`).join(', ')}
+MRR: £${mrr.toFixed(2)} | ARR: £${(mrr * 12).toFixed(2)}
+Open tickets: ${(tickets.data || []).filter(t => ['open', 'in_progress'].includes(t.status)).length}
+Deal clicks (recent): ${(dealClicks.data || []).length}
+Recent tasks: ${(tasks.data || []).length}\n\n`;
+
+  // Agent-specific live data
+  switch (agentName) {
+    case 'alex': // CFO
+      const foundingMembers = allUsers.filter(u => u.founding_member).length;
+      const paidUsers = allUsers.filter(u => u.subscription_tier !== 'free');
+      base += `FINANCIAL DATA:
+Paid users: ${paidUsers.length}
+Founding members (free Pro): ${foundingMembers}
+Revenue per tier: Essential (${tiers['essential'] || 0} x £4.99 = £${((tiers['essential'] || 0) * 4.99).toFixed(2)}/mo), Pro (${tiers['pro'] || 0} x £9.99 = £${((tiers['pro'] || 0) * 9.99).toFixed(2)}/mo)
+Recent signups:\n${allUsers.slice(0, 10).map(u => `  ${u.email} - ${u.subscription_tier} - ${new Date(u.created_at).toLocaleDateString('en-GB')} - source: ${u.signup_source || 'unknown'}`).join('\n')}`;
+      break;
+
+    case 'morgan': // CTO
+      const { data: agentRuns } = await supabase.from('agent_run_audit').select('agent_role, tool_name, created_at').order('created_at', { ascending: false }).limit(30);
+      base += `TECH DATA:
+Recent agent runs: ${(agentRuns || []).length}
+Agent activity: ${[...new Set((agentRuns || []).map(r => r.agent_role))].join(', ') || 'none'}
+Recent reports:\n${(reports.data || []).map(r => `  ${r.title}`).join('\n')}`;
+      break;
+
+    case 'jamie': // CAO
+      base += `OPERATIONS DATA:
+Onboarding rate: ${allUsers.filter(u => u.onboarded_at).length}/${allUsers.length} users onboarded
+Signup sources: ${[...new Set(allUsers.map(u => u.signup_source).filter(Boolean))].join(', ') || 'unknown'}
+Recent users:\n${allUsers.slice(0, 10).map(u => `  ${u.email} - ${u.subscription_tier} - source: ${u.signup_source || 'organic'} - ${new Date(u.created_at).toLocaleDateString('en-GB')}`).join('\n')}`;
+      break;
+
+    case 'taylor': // CMO
+      base += `MARKETING DATA:
+Signup sources: ${allUsers.reduce((acc: Record<string, number>, u) => { acc[u.signup_source || 'organic'] = (acc[u.signup_source || 'organic'] || 0) + 1; return acc; }, {} as Record<string, number>)}
+Deal clicks by category: ${(dealClicks.data || []).reduce((acc: Record<string, number>, d) => { acc[d.category || 'unknown'] = (acc[d.category || 'unknown'] || 0) + 1; return acc; }, {} as Record<string, number>)}
+Blog posts published: check blog_posts table`;
+      // Fix the objects to strings
+      const sources = allUsers.reduce((acc: Record<string, number>, u) => { acc[u.signup_source || 'organic'] = (acc[u.signup_source || 'organic'] || 0) + 1; return acc; }, {});
+      const clickCats = (dealClicks.data || []).reduce((acc: Record<string, number>, d) => { acc[d.category || 'unknown'] = (acc[d.category || 'unknown'] || 0) + 1; return acc; }, {});
+      base = base.replace(/Signup sources: \[object Object\]/, `Signup sources: ${Object.entries(sources).map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+      base = base.replace(/Deal clicks by category: \[object Object\]/, `Deal clicks by category: ${Object.entries(clickCats).map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+      break;
+
+    case 'jordan': // Head of Ads
+      base += `ADVERTISING DATA:
+Google Ads campaign: 23678309004 (running)
+Deal clicks:\n${(dealClicks.data || []).map(d => `  ${d.provider} (${d.category}) - ${new Date(d.clicked_at).toLocaleDateString('en-GB')}`).join('\n') || '  None'}
+Signups from ads: ${allUsers.filter(u => u.signup_source === 'google_ads').length}
+Signups from awin: ${allUsers.filter(u => u.signup_source === 'awin').length}`;
+      break;
+
+    case 'sam': // Support Lead
+    case 'riley': // Support Agent
+      base += `SUPPORT DATA:
+All tickets:\n${(tickets.data || []).map(t => `  ${t.ticket_number}: ${t.subject} [${t.status}] (${t.source}) - ${new Date(t.created_at).toLocaleDateString('en-GB')}${t.first_response_at ? ' - responded' : ' - NO RESPONSE'}`).join('\n') || '  None'}`;
+      break;
+
+    default:
+      base += `GENERAL DATA:
+Recent reports:\n${(reports.data || []).map(r => `  ${r.title} (${new Date(r.created_at).toLocaleString('en-GB')})\n  Recs: ${Array.isArray(r.recommendations) ? r.recommendations.slice(0, 3).join('; ') : 'none'}`).join('\n')}
+Recent tasks:\n${(tasks.data || []).map(t => `  ${t.type}: ${t.title} [${t.status}]`).join('\n')}`;
+  }
+
+  return base;
+}
+
 const AGENT_NAMES: Record<string, string> = {
   alex: 'CFO', morgan: 'CTO', jamie: 'CAO', taylor: 'CMO',
   jordan: 'Head of Ads', casey: 'CCO', drew: 'CGO', pippa: 'CRO',
@@ -199,7 +289,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Handle /ask [agent] [question]
+    // Handle /ask [agent] [question] - runs a LIVE agent query
     const askMatch = text.match(/^\/ask\s+(\w+)\s+(.+)$/i);
     if (askMatch) {
       const agentName = askMatch[1].toLowerCase();
@@ -211,28 +301,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Get that agent's latest report and memories
-      const [agentReports, agentMems] = await Promise.all([
-        supabase.from('executive_reports').select('title, content, recommendations, created_at')
-          .order('created_at', { ascending: false }).limit(3),
-        supabase.from('agent_memory').select('key, value')
-          .eq('agent_role', agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName)
-          .order('created_at', { ascending: false }).limit(10),
-      ]);
+      await sendTelegram(chatId, `_Asking ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}..._`);
 
-      const reportContext = (agentReports.data || []).map(r =>
-        `Report: ${r.title}\n${r.content?.substring(0, 2000) || ''}\nRecommendations: ${Array.isArray(r.recommendations) ? r.recommendations.join('; ') : ''}`
-      ).join('\n\n');
-
-      const memContext = (agentMems.data || []).map(m =>
-        `${m.key}: ${typeof m.value === 'string' ? m.value.substring(0, 300) : JSON.stringify(m.value).substring(0, 300)}`
-      ).join('\n');
-
+      const liveData = await getLiveAgentData(supabase, agentName);
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: `You are ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}, the ${agentRole} at Paybacker LTD. The founder Paul is asking you a question via Telegram. Answer based on your knowledge and reports. Be concise, direct, and actionable. Never use em dashes.\n\nYour latest reports:\n${reportContext || 'No reports yet.'}\n\nYour memories:\n${memContext || 'No memories yet.'}`,
+        max_tokens: 1500,
+        system: `You are ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}, the ${agentRole} at Paybacker LTD. The founder Paul is asking you a direct question via Telegram.
+
+IMPORTANT: You have LIVE data from the database below. Analyse it and give a fresh, specific answer. Do not say you need to check anything. You have everything you need right now. Be concise, use numbers, and be actionable. Never use em dashes.
+
+${liveData}`,
         messages: [{ role: 'user', content: question }],
       });
 
@@ -249,27 +329,14 @@ export async function POST(request: NextRequest) {
     const history = await getConversationHistory(supabase, chatId);
     const context = await getFullBusinessContext(supabase);
 
-    // Detect if user is asking about a specific agent and pull their data
-    const mentionedAgent = Object.entries(AGENT_NAMES).find(([name]) =>
+    // Detect if user is asking about a specific agent and pull LIVE data
+    const mentionedAgents = Object.entries(AGENT_NAMES).filter(([name]) =>
       text.toLowerCase().includes(name)
     );
     let agentContext = '';
-    if (mentionedAgent) {
-      const [agentName, agentRole] = mentionedAgent;
-      const dbRole = agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName;
-      const [agentReports, agentMems] = await Promise.all([
-        supabase.from('executive_reports').select('title, content, recommendations, created_at')
-          .order('created_at', { ascending: false }).limit(2),
-        supabase.from('agent_memory').select('key, value')
-          .eq('agent_role', dbRole).order('created_at', { ascending: false }).limit(10),
-      ]);
-      const reportSnippets = (agentReports.data || []).map(r =>
-        `${r.title}: ${r.content?.substring(0, 1500) || ''}\nRecs: ${Array.isArray(r.recommendations) ? r.recommendations.slice(0, 3).join('; ') : ''}`
-      ).join('\n\n');
-      const memSnippets = (agentMems.data || []).map(m =>
-        `${m.key}: ${typeof m.value === 'string' ? m.value.substring(0, 200) : JSON.stringify(m.value).substring(0, 200)}`
-      ).join('\n');
-      agentContext = `\n\nDETAILED DATA FOR ${agentName.toUpperCase()} (${agentRole}):\nReports:\n${reportSnippets || 'No reports'}\nMemories:\n${memSnippets || 'No memories'}`;
+    for (const [agentName] of mentionedAgents) {
+      const liveData = await getLiveAgentData(supabase, agentName);
+      agentContext += `\n\n${liveData}`;
     }
 
     // Save user message
