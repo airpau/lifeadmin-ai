@@ -250,7 +250,7 @@ export async function POST(request: NextRequest) {
 
     // Handle /start
     if (text === '/start') {
-      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to the business data and can talk to the other agents. Try:\n\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Ask a specific agent\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
+      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
       console.log(`[telegram] SETUP: chat_id ${chatId}`);
       return NextResponse.json({ ok: true });
     }
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Handle /ask [agent] [question] - runs a LIVE agent query
+    // Handle /ask [agent] [question] - triggers a LIVE agent run on Railway
     const askMatch = text.match(/^\/ask\s+(\w+)\s+(.+)$/i);
     if (askMatch) {
       const agentName = askMatch[1].toLowerCase();
@@ -308,16 +308,62 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      await sendTelegram(chatId, `_Asking ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}..._`);
+      // First, create a task for the agent so they know the founder's question
+      await supabase.from('agent_tasks').insert({
+        created_by: 'founder',
+        assigned_to: agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName,
+        title: `Founder question via Telegram`,
+        description: question,
+        priority: 'high',
+        category: 'telegram_request',
+        status: 'pending',
+      });
 
+      await sendTelegram(chatId, `_Running ${agentName.charAt(0).toUpperCase() + agentName.slice(1)} now..._`);
+
+      // Try to trigger the agent on Railway
+      const railwayUrl = process.env.RAILWAY_URL;
+      const agentDbRole = agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName;
+
+      let railwayResult: any = null;
+      if (railwayUrl) {
+        try {
+          const triggerRes = await fetch(`${railwayUrl}/api/trigger/${agentDbRole}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (triggerRes.ok) {
+            railwayResult = await triggerRes.json();
+          }
+        } catch (err: any) {
+          console.error(`[telegram] Railway trigger failed for ${agentDbRole}:`, err.message);
+        }
+      }
+
+      // Get the agent's latest report (should be fresh if Railway trigger worked)
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for report to save
+      const { data: latestReport } = await supabase
+        .from('executive_reports')
+        .select('title, content, recommendations, created_at')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      // Also get live data as backup
       const liveData = await getLiveAgentData(supabase, agentName);
+
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1500,
-        system: `You are ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}, the ${agentRole} at Paybacker LTD. The founder Paul is asking you a direct question via Telegram.
+        system: `You are ${agentName.charAt(0).toUpperCase() + agentName.slice(1)}, the ${agentRole} at Paybacker LTD. The founder Paul asked you a direct question. You just ran a fresh analysis.
 
-IMPORTANT: You have LIVE data from the database below. Analyse it and give a fresh, specific answer. Do not say you need to check anything. You have everything you need right now. Be concise, use numbers, and be actionable. Never use em dashes.
+Answer the founder's question directly using the data below. Be concise, use specific numbers, and give actionable recommendations. Never use em dashes.
+
+${latestReport ? `YOUR LATEST REPORT:\n${latestReport.title}\n${latestReport.content?.substring(0, 3000) || ''}\nRecommendations: ${Array.isArray(latestReport.recommendations) ? latestReport.recommendations.join('; ') : ''}` : ''}
 
 ${liveData}`,
         messages: [{ role: 'user', content: question }],
@@ -327,8 +373,46 @@ ${liveData}`,
       if (reply?.type === 'text') {
         await saveMessage(supabase, chatId, 'user', `/ask ${agentName} ${question}`);
         await saveMessage(supabase, chatId, 'assistant', `[${agentName.toUpperCase()}] ${reply.text}`);
-        await sendTelegram(chatId, `*${agentName.charAt(0).toUpperCase() + agentName.slice(1)} (${agentRole}):*\n\n${reply.text}`);
+        await sendTelegram(chatId, `*${agentName.charAt(0).toUpperCase() + agentName.slice(1)} (${agentRole}):*\n${railwayResult?.success ? '(live run)' : '(from data)'}\n\n${reply.text}`);
       }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Handle /run [agent] - trigger a full agent run without a question
+    const runMatch = text.match(/^\/run\s+(\w+)$/i);
+    if (runMatch) {
+      const agentName = runMatch[1].toLowerCase();
+      const agentRole = AGENT_NAMES[agentName];
+      if (!agentRole) {
+        await sendTelegram(chatId, `Unknown agent "${agentName}". Use /agents to see the list.`);
+        return NextResponse.json({ ok: true });
+      }
+
+      const railwayUrl = process.env.RAILWAY_URL;
+      const agentDbRole = agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName;
+
+      if (!railwayUrl) {
+        await sendTelegram(chatId, 'Railway not configured.');
+        return NextResponse.json({ ok: true });
+      }
+
+      await sendTelegram(chatId, `_Triggering ${agentName.charAt(0).toUpperCase() + agentName.slice(1)} full run..._`);
+
+      try {
+        const res = await fetch(`${railwayUrl}/api/trigger/${agentDbRole}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
+        });
+        const result = await res.json();
+        if (result.success) {
+          await sendTelegram(chatId, `*${agentName.charAt(0).toUpperCase() + agentName.slice(1)}* ran successfully. Cost: $${result.cost?.toFixed(4) || '?'}\n\nCheck /reports for their latest output.`);
+        } else {
+          await sendTelegram(chatId, `${agentName} run failed: ${result.error || 'unknown error'}`);
+        }
+      } catch (err: any) {
+        await sendTelegram(chatId, `Failed to reach Railway: ${err.message}`);
+      }
+
       return NextResponse.json({ ok: true });
     }
 
