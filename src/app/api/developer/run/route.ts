@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
+    max_tokens: 16384,
     system: `You are Morgan, the CTO and Developer Agent at Paybacker LTD. You write production code for the Next.js/TypeScript/Supabase platform.
 
 SAFETY RULES (NEVER VIOLATE):
@@ -134,9 +134,12 @@ Return a JSON object with:
   ]
 }
 
-For "modify" actions, provide the FULL new file content in "content" instead of a patch (patches are error-prone). Set action to "create" and provide full content for safety.
-
-Keep changes minimal and focused. One PR per task.`,
+IMPORTANT: Keep changes SMALL and FOCUSED.
+- Prefer creating NEW small utility files or components over rewriting large existing files.
+- If modifying an existing file, only include the NEW or CHANGED code as a new helper/component file that the existing file can import.
+- Never try to rewrite an entire page component. Instead, create a wrapper or utility.
+- Each file in your response should be under 200 lines.
+- One PR per task. Maximum 3 files per PR.`,
     messages: [{
       role: 'user',
       content: `${context ? `Context: ${context}\n\n` : ''}Task: ${task}`,
@@ -150,11 +153,15 @@ Keep changes minimal and focused. One PR per task.`,
 
   let plan: any;
   try {
-    const match = textBlock.text.match(/\{[\s\S]*\}/);
-    if (match) plan = JSON.parse(match[0]);
+    // Strip markdown code fences if present
+    let jsonText = textBlock.text;
+    const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) jsonText = fenceMatch[1];
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) plan = JSON.parse(jsonMatch[0]);
     else throw new Error('No JSON found');
-  } catch {
-    return NextResponse.json({ error: 'Failed to parse plan', raw: textBlock.text.substring(0, 500) }, { status: 500 });
+  } catch (parseErr: any) {
+    return NextResponse.json({ error: 'Failed to parse plan', detail: parseErr.message, raw: textBlock.text.substring(0, 500) }, { status: 500 });
   }
 
   if (!plan.files || plan.files.length === 0) {

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
@@ -456,15 +456,26 @@ ${liveData}`,
           await saveMessage(supabase, chatId, 'user', text);
           await saveMessage(supabase, chatId, 'assistant', `Triggered developer agent: ${parsed.task}`);
 
-          // Trigger developer agent
-          fetch('https://paybacker.co.uk/api/developer/run', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.CRON_SECRET}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ task: parsed.task }),
-          }).catch(() => {});
+          // Trigger developer agent (await to ensure it starts)
+          try {
+            const devRes = await fetch('https://paybacker.co.uk/api/developer/run', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ task: parsed.task }),
+              signal: AbortSignal.timeout(110000),
+            });
+            const devResult = await devRes.json();
+            if (devResult.ok && devResult.pr) {
+              await sendTelegram(chatId, `*PR Created*\n\n${devResult.pr}\n\nReview and merge when ready.`);
+            } else {
+              await sendTelegram(chatId, `Developer agent finished but couldn't create PR: ${devResult.error || 'unknown error'}`);
+            }
+          } catch (err: any) {
+            await sendTelegram(chatId, `Developer agent timed out or failed: ${err.message}. Check GitHub for any partial work.`);
+          }
 
           return NextResponse.json({ ok: true });
         }
