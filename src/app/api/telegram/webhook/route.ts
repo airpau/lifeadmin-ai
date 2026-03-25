@@ -545,19 +545,17 @@ ${context}${agentContext}`,
       await saveMessage(supabase, chatId, 'assistant', reply.text);
       await sendTelegram(chatId, reply.text);
 
-      // Check if Charlie's response indicates a dev task should be triggered
-      const replyLower = reply.text.toLowerCase();
-      const devKeywords = ['build', 'fix', 'add', 'create', 'optimise', 'optimize', 'update', 'implement', 'change', 'modify', 'improve'];
-      const userAskedForDev = devKeywords.some(k => lowerText.includes(k)) && (
-        lowerText.includes('page') || lowerText.includes('dashboard') || lowerText.includes('component') ||
-        lowerText.includes('button') || lowerText.includes('loading') || lowerText.includes('image') ||
-        lowerText.includes('speed') || lowerText.includes('lazy') || lowerText.includes('code') ||
-        lowerText.includes('feature') || lowerText.includes('ui') || lowerText.includes('design')
-      );
+      // Only trigger dev agent if user explicitly says "build this", "code this", "create a component"
+      // Must be a direct instruction, not a question or conversation
+      const devPhrases = [
+        'build a ', 'build the ', 'create a component', 'create a page', 'add a component',
+        'write code', 'write a ', 'implement a ', 'code a ', 'develop a ',
+        '/dev ',
+      ];
+      const userAskedForDev = devPhrases.some(p => lowerText.includes(p));
 
       if (userAskedForDev) {
         await sendTelegram(chatId, `_Sending this to the developer agent now..._`);
-        // Trigger dev callback as separate function
         fetch('https://paybacker.co.uk/api/telegram/dev-callback', {
           method: 'POST',
           headers: {
