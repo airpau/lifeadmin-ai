@@ -535,6 +535,29 @@ ${context}${agentContext}`,
     if (reply?.type === 'text') {
       await saveMessage(supabase, chatId, 'assistant', reply.text);
       await sendTelegram(chatId, reply.text);
+
+      // Check if Charlie's response indicates a dev task should be triggered
+      const replyLower = reply.text.toLowerCase();
+      const devKeywords = ['build', 'fix', 'add', 'create', 'optimise', 'optimize', 'update', 'implement', 'change', 'modify', 'improve'];
+      const userAskedForDev = devKeywords.some(k => lowerText.includes(k)) && (
+        lowerText.includes('page') || lowerText.includes('dashboard') || lowerText.includes('component') ||
+        lowerText.includes('button') || lowerText.includes('loading') || lowerText.includes('image') ||
+        lowerText.includes('speed') || lowerText.includes('lazy') || lowerText.includes('code') ||
+        lowerText.includes('feature') || lowerText.includes('ui') || lowerText.includes('design')
+      );
+
+      if (userAskedForDev) {
+        await sendTelegram(chatId, `_Sending this to the developer agent now..._`);
+        // Trigger dev callback as separate function
+        fetch('https://paybacker.co.uk/api/telegram/dev-callback', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ chatId, task: text }),
+        }).catch(() => {});
+      }
     }
 
     return NextResponse.json({ ok: true });
