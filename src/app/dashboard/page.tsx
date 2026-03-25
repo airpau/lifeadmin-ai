@@ -88,11 +88,11 @@ export default function DashboardPage() {
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
 
-            // Use saved checkout data or fall back to sync response
-            const tier = savedCheckout?.tier || data.tier;
-            const amount = savedCheckout?.amount || (tier === 'pro' ? '19.99' : '9.99');
-            const commGroup = savedCheckout?.commGroup || (tier === 'pro' ? 'PRO' : 'ESSENTIAL');
-            const orderRef = savedCheckout?.orderRef || `conversion-${tier}-${Date.now()}`;
+            // Use subscription ID from sync to match S2S tracking ref exactly
+            const tier = data.tier;
+            const amount = tier === 'pro' ? '9.99' : '4.99';
+            const commGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
+            const orderRef = data.subscriptionId ? `sub-${data.subscriptionId}` : (savedCheckout?.orderRef || `conversion-${tier}-${Date.now()}`);
 
             // Meta Pixel Purchase event
             if (typeof (window as any).fbq === 'function') {

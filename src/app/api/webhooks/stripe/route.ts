@@ -112,22 +112,22 @@ export async function POST(request: NextRequest) {
           .single();
 
         // Awin server-to-server conversion tracking
-        // Commission: 20% of first month (Essential £2, Pro £4)
+        // Send actual sale amount (not commission) — commission group rate handles the percentage
         if (!updateError) {
           const awinAdvId = process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID || '125502';
-          const commission = tier === 'pro' ? '4.00' : '2.00';
+          const saleAmount = tier === 'pro' ? '9.99' : '4.99';
           const commissionGroup = tier === 'pro' ? 'PRO' : 'ESSENTIAL';
           const orderRef = encodeURIComponent(`sub-${session.subscription || session.id}`);
           const awcRaw = session.metadata?.awc;
           let awinUrl = `https://www.awin1.com/sread.php?tt=ss&tv=2&merchant=${awinAdvId}` +
-            `&amount=${commission}&ch=aw&parts=${commissionGroup}:${commission}` +
+            `&amount=${saleAmount}&ch=aw&parts=${commissionGroup}:${saleAmount}` +
             `&vc=&cr=GBP&ref=${orderRef}&customeracquisition=NEW`;
           if (awcRaw) {
             awinUrl += `&cks=${encodeURIComponent(awcRaw)}`;
           }
           try {
             const awinRes = await fetch(awinUrl);
-            console.log(`[awin] Conversion S2S: tier=${tier} commission=£${commission} awc=${awcRaw || 'none'} ref=${orderRef} status=${awinRes.status}`);
+            console.log(`[awin] Conversion S2S: tier=${tier} amount=£${saleAmount} awc=${awcRaw || 'none'} ref=${orderRef} status=${awinRes.status}`);
           } catch (err: any) {
             console.error('[awin] S2S tracking failed:', err.message);
           }

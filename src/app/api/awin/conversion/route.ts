@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const AWIN_ADVERTISER_ID = process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID || '125502';
 
-// Commission amounts: 20% of first month
+// Sale amounts (actual subscription price) — commission group rate handles the percentage
 const TIER_COMMISSIONS: Record<string, { amount: number; group: string }> = {
-  essential: { amount: 2.00, group: 'ESSENTIAL' },  // 20% of £4.99
-  pro: { amount: 4.00, group: 'PRO' },              // 20% of £9.99
+  essential: { amount: 4.99, group: 'ESSENTIAL' },
+  pro: { amount: 9.99, group: 'PRO' },
 };
 
 /**
