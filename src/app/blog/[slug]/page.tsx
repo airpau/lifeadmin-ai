@@ -7,12 +7,16 @@ import { Metadata } from 'next';
 // Force dynamic rendering so new blog posts are available immediately
 export const dynamic = 'force-dynamic';
 
-function getAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+function getClient() {
+  // Use anon key for public reads - blog_posts has RLS allowing public SELECT on published posts
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const supabase = getAdmin();
+  const supabase = getClient();
   const { data: post } = await supabase
     .from('blog_posts')
     .select('title, meta_description, slug')
@@ -44,7 +48,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function DynamicBlogPost({ params }: { params: { slug: string } }) {
-  const supabase = getAdmin();
+  const supabase = getClient();
   const { data: post } = await supabase
     .from('blog_posts')
     .select('*')
