@@ -420,8 +420,68 @@ ${liveData}`,
     const history = await getConversationHistory(supabase, chatId);
     const context = await getFullBusinessContext(supabase);
 
-    // For /ask commands, load specific agent data. For free-form, the business context is enough.
+    // Detect if Charlie needs to run agents
+    const lowerText = text.toLowerCase();
+    const wantsTeamUpdate = lowerText.includes('all agents') || lowerText.includes('team update') || lowerText.includes('the agents') || lowerText.includes('everyone') || lowerText.includes('full update') || lowerText.includes('run everyone') || lowerText.includes('brief me') || lowerText.includes('briefing');
+    const mentionedAgent = Object.entries(AGENT_NAMES).find(([name]) => lowerText.includes(name) && name !== 'charlie');
+
     let agentContext = '';
+
+    if (wantsTeamUpdate || mentionedAgent) {
+      const railwayUrl = process.env.RAILWAY_URL;
+      const agentsToRun = wantsTeamUpdate
+        ? ['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'support_lead'] // Key agents
+        : mentionedAgent
+          ? [mentionedAgent[0] === 'jordan' ? 'head_of_ads' : mentionedAgent[0] === 'sam' ? 'support_lead' : mentionedAgent[0] === 'riley' ? 'support_agent' : mentionedAgent[0]]
+          : [];
+
+      if (railwayUrl && agentsToRun.length > 0) {
+        const names = agentsToRun.map(r => {
+          const entry = Object.entries(AGENT_NAMES).find(([_, role]) => {
+            const dbRole = _ === 'jordan' ? 'head_of_ads' : _ === 'sam' ? 'support_lead' : _ === 'riley' ? 'support_agent' : _;
+            return dbRole === r;
+          });
+          return entry ? entry[0] : r;
+        });
+        await sendTelegram(chatId, `_Running ${names.join(', ')}..._`);
+
+        // Trigger all agents in parallel
+        await Promise.all(agentsToRun.map(role =>
+          fetch(`${railwayUrl}/api/trigger/${role}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
+          }).catch(() => null)
+        ));
+
+        // Wait for reports to save
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Pull their latest reports
+        const { data: freshReports } = await supabase
+          .from('executive_reports')
+          .select('title, content, recommendations, created_at')
+          .order('created_at', { ascending: false })
+          .limit(agentsToRun.length * 2);
+
+        if (freshReports?.length) {
+          agentContext = '\n\nFRESH AGENT REPORTS (just ran):\n' + freshReports.map(r =>
+            `${r.title} (${new Date(r.created_at).toLocaleString('en-GB')}):\n${r.content?.substring(0, 2000) || ''}\nRecommendations: ${Array.isArray(r.recommendations) ? r.recommendations.slice(0, 5).join('; ') : ''}`
+          ).join('\n\n---\n\n');
+        }
+      } else if (agentsToRun.length > 0) {
+        // No Railway - use live data queries instead
+        for (const role of agentsToRun) {
+          const name = Object.entries(AGENT_NAMES).find(([n]) => {
+            const dbRole = n === 'jordan' ? 'head_of_ads' : n === 'sam' ? 'support_lead' : n === 'riley' ? 'support_agent' : n;
+            return dbRole === role;
+          });
+          if (name) {
+            const data = await getLiveAgentData(supabase, name[0]);
+            agentContext += `\n\n${data}`;
+          }
+        }
+      }
+    }
 
     // Save user message
     await saveMessage(supabase, chatId, 'user', text);
