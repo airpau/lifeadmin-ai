@@ -26,6 +26,19 @@ export default function ChatWidget() {
   const [escalatedTicket, setEscalatedTicket] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState(false);
+  const [showTeaser, setShowTeaser] = useState(false);
+
+  // Auto-engage: show teaser bubble after 5 seconds on first visit
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const dismissed = sessionStorage.getItem('pb_chat_teaser_dismissed');
+    if (dismissed) return;
+
+    const timer = setTimeout(() => {
+      if (!open) setShowTeaser(true);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     const check = () => setHidden(document.body.dataset.hideChat === 'true');
@@ -102,10 +115,44 @@ export default function ChatWidget() {
 
   return (
     <>
+      {/* Chat teaser bubble - auto-engages after 5 seconds */}
+      {showTeaser && !open && (
+        <div className="fixed bottom-36 right-6 z-50 max-w-[280px] md:bottom-24 animate-bounce-slow">
+          <div className="bg-white text-slate-900 rounded-2xl rounded-br-sm shadow-xl p-4 relative">
+            <button
+              onClick={() => {
+                setShowTeaser(false);
+                sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
+              }}
+              className="absolute -top-2 -right-2 bg-slate-200 hover:bg-slate-300 rounded-full w-5 h-5 flex items-center justify-center text-xs text-slate-500"
+            >
+              x
+            </button>
+            <p className="text-sm font-medium mb-2">Been overcharged on a bill?</p>
+            <p className="text-xs text-slate-500 mb-3">I can generate a free complaint letter citing UK law in 30 seconds. Try me.</p>
+            <button
+              onClick={() => {
+                setShowTeaser(false);
+                sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
+                setOpen(true);
+                setInput('I want to dispute a bill');
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-semibold px-4 py-2 rounded-lg transition-all w-full"
+            >
+              Tell me more
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Chat button */}
       {!open && (
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setShowTeaser(false);
+            sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
+            setOpen(true);
+          }}
           className="fixed bottom-20 right-6 z-50 bg-amber-500 hover:bg-amber-600 text-slate-950 w-14 h-14 rounded-full shadow-lg shadow-amber-500/25 flex items-center justify-center transition-all hover:scale-105 md:bottom-6"
           aria-label="Open chat"
         >

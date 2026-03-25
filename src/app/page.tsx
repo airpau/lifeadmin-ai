@@ -110,36 +110,68 @@ export default function Home() {
         </header>
 
         <main className="container mx-auto px-6">
-          {/* Hero */}
-          <div className="max-w-4xl mx-auto py-16 md:py-24">
-            <div className="flex justify-center mb-8">
-              <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20">
-                <Sparkles className="h-4 w-4" />
-                {WAITLIST_MODE ? (
-                  <span>Launching Soon — Join the Waitlist for Early Access</span>
-                ) : (
-                  <span>AI-Powered Money Recovery — Now in Early Access</span>
-                )}
+          {/* Hero - Conversion focused */}
+          <div className="max-w-4xl mx-auto py-12 md:py-20">
+            <div className="flex justify-center mb-6">
+              <div className="inline-flex items-center gap-2 rounded-full bg-green-500/10 px-4 py-2 text-sm text-green-400 border border-green-500/20">
+                <CheckCircle className="h-4 w-4" />
+                <span>100% free to try - no credit card needed</span>
               </div>
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
-              Your Complete Financial Control Centre
+            <h1 className="text-4xl md:text-6xl font-bold text-center mb-6 bg-gradient-to-br from-white via-white to-slate-400 bg-clip-text text-transparent leading-tight">
+              Get your money back in 30 seconds
             </h1>
 
-            <p className="text-xl md:text-2xl text-center text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Track every penny. Switch to cheaper deals. Dispute unfair bills. Cancel forgotten subscriptions. AI-powered financial intelligence that saves you money automatically.
+            <p className="text-xl md:text-2xl text-center text-slate-300 mb-6 max-w-2xl mx-auto leading-relaxed">
+              Our AI writes formal complaint letters citing exact UK law. Energy bills, broadband, flight delays, parking fines, debt disputes. Free.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mb-10 text-sm text-slate-400">
-              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> Cites Consumer Rights Act 2015</span>
-              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> UK consumer law trained</span>
-              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> Open Banking powered</span>
-              <span className="flex items-center gap-1.5"><CheckCircle className="h-4 w-4 text-amber-500" /> GDPR compliant</span>
+            {/* Outcome stats - social proof */}
+            <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 mb-8">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-amber-400">£520</p>
+                <p className="text-slate-500 text-xs">max flight claim</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-amber-400">30 sec</p>
+                <p className="text-slate-500 text-xs">to generate letter</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-amber-400">56</p>
+                <p className="text-slate-500 text-xs">cheaper deals</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-amber-400">3 free</p>
+                <p className="text-slate-500 text-xs">letters per month</p>
+              </div>
             </div>
 
-            <div className="flex justify-center mb-16">
-              {ctaButton}
+            {/* Primary CTA */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+              {WAITLIST_MODE ? (
+                <a href="#waitlist" className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg">
+                  Try It Free - Generate Your First Letter
+                </a>
+              ) : (
+                <Link href="/auth/signup" className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg">
+                  Try It Free - Generate Your First Letter
+                </Link>
+              )}
+              <Link href="/pricing" className="text-slate-400 hover:text-white text-sm transition-all">
+                View pricing
+              </Link>
+            </div>
+
+            <p className="text-center text-slate-500 text-sm">No signup needed to browse. Create a free account to generate letters.</p>
+
+            {/* What can you claim for - quick visual */}
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-8">
+              {['Energy Bills', 'Flight Delays up to £520', 'Broadband', 'Parking Fines', 'Debt Disputes', 'Council Tax', 'Insurance', 'HMRC Tax Rebates'].map(item => (
+                <span key={item} className="text-xs bg-slate-800/50 text-slate-300 px-3 py-1.5 rounded-full border border-slate-700/50">
+                  {item}
+                </span>
+              ))}
             </div>
           </div>
 
