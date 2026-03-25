@@ -435,17 +435,43 @@ ${liveData}`,
           ? [mentionedAgent[0] === 'jordan' ? 'head_of_ads' : mentionedAgent[0] === 'sam' ? 'support_lead' : mentionedAgent[0] === 'riley' ? 'support_agent' : mentionedAgent[0]]
           : [];
 
-      // Trigger agents in background (fire and forget) - don't wait
       if (railwayUrl && agentsToRun.length > 0) {
+        const agentNames = agentsToRun.map(r => {
+          const e = Object.entries(AGENT_NAMES).find(([n]) => {
+            const dr = n === 'jordan' ? 'head_of_ads' : n === 'sam' ? 'support_lead' : n === 'riley' ? 'support_agent' : n;
+            return dr === r;
+          });
+          return e ? e[0] : r;
+        });
+
+        // Send immediate acknowledgment
+        await sendTelegram(chatId, `Running ${agentNames.join(', ')}. I'll send their updates in about 30 seconds.`);
+        await saveMessage(supabase, chatId, 'user', text);
+        await saveMessage(supabase, chatId, 'assistant', `Running ${agentNames.join(', ')}...`);
+
+        // Trigger all agents on Railway (fire and forget)
         for (const role of agentsToRun) {
           fetch(`${railwayUrl}/api/trigger/${role}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
           }).catch(() => null);
         }
+
+        // Trigger callback endpoint which will wait for agents and send results
+        // This runs as a separate Vercel function invocation
+        fetch(`https://paybacker.co.uk/api/telegram/agent-callback`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ chatId, question: text, agentRoles: agentsToRun }),
+        }).catch(err => console.error('[telegram] Callback trigger failed:', err.message));
+
+        return NextResponse.json({ ok: true });
       }
 
-      // Use live data queries for immediate response (don't wait for Railway)
+      // No Railway - use live data queries
       if (mentionedAgent) {
         const data = await getLiveAgentData(supabase, mentionedAgent[0]);
         agentContext = `\n\n${data}`;
