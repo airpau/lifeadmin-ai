@@ -489,6 +489,9 @@ ${liveData}`,
           });
         }
 
+        // Record timestamp before running agents
+        const triggerTime = new Date().toISOString();
+
         // Run agents in parallel (await so we can follow up)
         await Promise.all(agentsToRun.map(role =>
           fetch(`${railwayUrl}/api/trigger/${role}`, {
@@ -498,12 +501,14 @@ ${liveData}`,
           }).catch(() => null)
         ));
 
-        // Pull fresh data after agents ran
+        // Pull ONLY data created AFTER we triggered (not stale results)
         const [freshReports, newDrafts] = await Promise.all([
           supabase.from('executive_reports').select('title, recommendations, created_at')
+            .gte('created_at', triggerTime)
             .order('created_at', { ascending: false }).limit(agentsToRun.length),
           supabase.from('content_drafts').select('platform, caption, status, created_at')
-            .eq('status', 'pending').order('created_at', { ascending: false }).limit(5),
+            .gte('created_at', triggerTime)
+            .order('created_at', { ascending: false }).limit(5),
         ]);
 
         let followUp = '*Agent Results:*\n\n';

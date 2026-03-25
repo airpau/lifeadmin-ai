@@ -59,8 +59,9 @@ async function loadAgentContext(role: string): Promise<AgentRunContext> {
       .select('id, created_by, assigned_to, title, description, priority, category, status, notes, created_at, due_by')
       .eq('assigned_to', role)
       .in('status', ['pending', 'in_progress'])
-      .order('created_at', { ascending: true })
-      .limit(5),
+      .order('priority', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(10),
     sb.from('agent_feedback_events')
       .select('id, agent_role, event_type, source, feedback_content, impact_score, created_at')
       .eq('agent_role', role)
@@ -157,12 +158,26 @@ function buildRunMessage(role: string, context: AgentRunContext): string {
     parts.push('');
   }
 
-  if (context.pendingTasks.length > 0) {
-    parts.push('## Tasks Assigned to You');
-    for (const t of context.pendingTasks) {
+  // Separate founder Telegram requests (urgent) from regular tasks
+  const telegramTasks = context.pendingTasks.filter(t => t.category === 'telegram_request');
+  const otherTasks = context.pendingTasks.filter(t => t.category !== 'telegram_request');
+
+  if (telegramTasks.length > 0) {
+    parts.push('## URGENT: FOUNDER REQUEST VIA TELEGRAM');
+    parts.push('The founder has sent you a direct request. This is your #1 priority. Do this FIRST before anything else.');
+    for (const t of telegramTasks) {
+      parts.push(`>>> ${t.description} <<<`);
+    }
+    parts.push('ACT ON THIS IMMEDIATELY using your tools. Then use complete_task when done.');
+    parts.push('');
+  }
+
+  if (otherTasks.length > 0) {
+    parts.push('## Other Tasks Assigned to You');
+    for (const t of otherTasks) {
       parts.push(`- [${t.priority}] from ${t.created_by}: "${t.title}" - ${t.description}`);
     }
-    parts.push('Process these tasks using your tools, then use complete_task when done.');
+    parts.push('Process these after any urgent founder requests.');
     parts.push('');
   }
 
