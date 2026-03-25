@@ -457,8 +457,10 @@ ${liveData}`,
           }).catch(() => null);
         }
 
-        // Trigger callback endpoint which will wait for agents and send results
-        // This runs as a separate Vercel function invocation
+        // Trigger the callback as a separate Vercel function
+        // We return 200 to Telegram immediately via the sendTelegram above
+        // The callback runs independently and sends a second message
+        const controller = new AbortController();
         fetch(`https://paybacker.co.uk/api/telegram/agent-callback`, {
           method: 'POST',
           headers: {
@@ -466,8 +468,10 @@ ${liveData}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ chatId, question: text, agentRoles: agentsToRun }),
-        }).catch(err => console.error('[telegram] Callback trigger failed:', err.message));
+          signal: controller.signal,
+        }).catch(() => {});
 
+        // Return 200 to Telegram - the callback continues in its own function
         return NextResponse.json({ ok: true });
       }
 
