@@ -175,13 +175,14 @@ export async function POST(request: NextRequest) {
     // Handle quick commands with data
     if (text === '/status' || text === '/tickets' || text === '/reports' || text === '/users' || text === '/revenue') {
       const context = await getFullBusinessContext(supabase);
-      const section = {
+      const sectionMap: Record<string, string> = {
         '/status': 'Give a brief business status summary',
         '/tickets': 'List the open support tickets',
         '/reports': 'Summarise the latest agent reports with key recommendations',
         '/users': 'Break down the user stats',
         '/revenue': 'Give the revenue breakdown',
-      }[text] || 'Give a status update';
+      };
+      const section = sectionMap[text] || 'Give a status update';
 
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       const response = await anthropic.messages.create({
