@@ -123,6 +123,10 @@ export default function DashboardPage() {
             };
             if (typeof w.AWIN?.Tracking?.saleSubmit === 'function') {
               w.AWIN.Tracking.saleSubmit();
+            } else {
+              // Fallback image pixel if mastertag hasn't loaded
+              const pixel = new window.Image(0, 0);
+              pixel.src = `https://www.awin1.com/sread.img?tt=ns&tv=2&merchant=125502&amount=${amount}&cr=GBP&ref=${encodeURIComponent(orderRef)}&parts=${commGroup}:${amount}&vc=&ch=aw&customeracquisition=NEW`;
             }
           }
         })
