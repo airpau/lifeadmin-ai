@@ -59,6 +59,11 @@ export async function POST(request: NextRequest) {
         account_email: body.account_email || null,
         notes: body.notes || null,
         status: 'active',
+        contract_type: body.contract_type || null,
+        contract_end_date: body.contract_end_date || null,
+        auto_renews: body.auto_renews !== undefined ? body.auto_renews : true,
+        provider_type: body.provider_type || null,
+        current_tariff: body.current_tariff || null,
       })
       .select()
       .single();

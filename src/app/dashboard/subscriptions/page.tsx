@@ -5,7 +5,7 @@ export const runtime = 'edge';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 
 interface Subscription {
@@ -23,6 +23,13 @@ interface Subscription {
   source?: 'manual' | 'email' | 'bank' | 'bank_and_email';
   bank_description?: string | null;
   notes?: string | null;
+  contract_type?: string | null;
+  contract_end_date?: string | null;
+  contract_term_months?: number | null;
+  auto_renews?: boolean | null;
+  early_exit_fee?: number | null;
+  provider_type?: string | null;
+  current_tariff?: string | null;
 }
 
 interface BankConnection {
@@ -41,8 +48,10 @@ interface CancellationEmail {
   body: string;
 }
 
-const CATEGORIES = ['streaming', 'software', 'fitness', 'news', 'shopping', 'gaming', 'other'];
+const CATEGORIES = ['streaming', 'software', 'fitness', 'news', 'shopping', 'gaming', 'energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'council_tax', 'water', 'tv', 'other'];
 const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
+const CONTRACT_TYPES = ['subscription', 'fixed_contract', 'mortgage', 'loan', 'insurance', 'lease', 'membership', 'utility', 'other'];
+const PROVIDER_TYPES = ['energy', 'broadband', 'mobile', 'tv', 'insurance', 'mortgage', 'loan', 'credit_card', 'streaming', 'software', 'fitness', 'council_tax', 'water', 'other'];
 
 export default function SubscriptionsPage() {
   const searchParams = useSearchParams();
@@ -66,6 +75,11 @@ export default function SubscriptionsPage() {
     billing_cycle: 'monthly',
     next_billing_date: '',
     account_email: '',
+    contract_type: '',
+    contract_end_date: '',
+    auto_renews: true,
+    provider_type: '',
+    current_tariff: '',
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [newSub, setNewSub] = useState({
@@ -76,6 +90,11 @@ export default function SubscriptionsPage() {
     next_billing_date: '',
     account_email: '',
     usage_frequency: 'sometimes',
+    contract_type: '',
+    contract_end_date: '',
+    auto_renews: true,
+    provider_type: '',
+    current_tariff: '',
   });
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [bankLoading, setBankLoading] = useState(true);
@@ -185,6 +204,11 @@ export default function SubscriptionsPage() {
           amount: parseFloat(newSub.amount),
           next_billing_date: newSub.next_billing_date || null,
           account_email: newSub.account_email || null,
+          contract_type: newSub.contract_type || null,
+          contract_end_date: newSub.contract_end_date || null,
+          auto_renews: newSub.auto_renews,
+          provider_type: newSub.provider_type || null,
+          current_tariff: newSub.current_tariff || null,
         }),
       });
       if (res.ok) {
@@ -198,6 +222,11 @@ export default function SubscriptionsPage() {
           next_billing_date: '',
           account_email: '',
           usage_frequency: 'sometimes',
+          contract_type: '',
+          contract_end_date: '',
+          auto_renews: true,
+          provider_type: '',
+          current_tariff: '',
         });
       }
     } catch (error) {
@@ -267,6 +296,11 @@ export default function SubscriptionsPage() {
       billing_cycle: sub.billing_cycle,
       next_billing_date: sub.next_billing_date ? sub.next_billing_date.split('T')[0] : '',
       account_email: sub.account_email || '',
+      contract_type: sub.contract_type || '',
+      contract_end_date: sub.contract_end_date ? sub.contract_end_date.split('T')[0] : '',
+      auto_renews: sub.auto_renews !== false,
+      provider_type: sub.provider_type || '',
+      current_tariff: sub.current_tariff || '',
     });
   };
 
@@ -285,6 +319,11 @@ export default function SubscriptionsPage() {
           billing_cycle: editForm.billing_cycle,
           next_billing_date: editForm.next_billing_date || null,
           account_email: editForm.account_email || null,
+          contract_type: editForm.contract_type || null,
+          contract_end_date: editForm.contract_end_date || null,
+          auto_renews: editForm.auto_renews,
+          provider_type: editForm.provider_type || null,
+          current_tariff: editForm.current_tariff || null,
         }),
       });
       if (res.ok) {
@@ -553,7 +592,7 @@ export default function SubscriptionsPage() {
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
           <div className="bg-red-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
             <TrendingDown className="h-6 w-6 text-red-500" />
@@ -580,6 +619,20 @@ export default function SubscriptionsPage() {
             £{(totalMonthly * 12).toFixed(0)}
           </h3>
           <p className="text-slate-400 text-sm">Annual spend (est.)</p>
+        </div>
+
+        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+          <div className="bg-orange-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+            <AlertTriangle className="h-6 w-6 text-orange-500" />
+          </div>
+          <h3 className="text-3xl font-bold text-white mb-1">
+            {subscriptions.filter(s => {
+              if (!s.contract_end_date || s.status !== 'active') return false;
+              const daysLeft = Math.ceil((new Date(s.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+              return daysLeft > 0 && daysLeft <= 90;
+            }).length}
+          </h3>
+          <p className="text-slate-400 text-sm">Renewing within 90 days</p>
         </div>
       </div>
 
@@ -630,6 +683,21 @@ export default function SubscriptionsPage() {
                       <span>£{sub.amount.toFixed(2)}/{sub.billing_cycle === 'one-time' ? 'once' : sub.billing_cycle}</span>
                       {sub.next_billing_date && (
                         <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
+                      )}
+                      {sub.contract_end_date && (() => {
+                        const daysLeft = Math.ceil((new Date(sub.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const urgency = daysLeft <= 7 ? 'text-red-400 bg-red-500/10' : daysLeft <= 30 ? 'text-amber-400 bg-amber-500/10' : 'text-blue-400 bg-blue-500/10';
+                        return (
+                          <span className={`${urgency} px-2 py-0.5 rounded text-xs font-medium`}>
+                            {daysLeft > 0 ? `Ends in ${daysLeft}d` : 'Expired'}
+                          </span>
+                        );
+                      })()}
+                      {sub.contract_type && sub.contract_type !== 'subscription' && (
+                        <span className="text-xs bg-slate-700/50 text-slate-400 px-1.5 py-0.5 rounded capitalize">{sub.contract_type.replace('_', ' ')}</span>
+                      )}
+                      {sub.auto_renews === false && (
+                        <span className="text-xs bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded">No auto-renew</span>
                       )}
                     </div>
                     {sub.source === 'bank' && (
@@ -684,7 +752,7 @@ export default function SubscriptionsPage() {
                 </div>
 
                 {sub.status === 'active' && (
-                  <div className="mt-4 pt-4 border-t border-slate-800">
+                  <div className="mt-4 pt-4 border-t border-slate-800 flex flex-wrap gap-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -695,6 +763,16 @@ export default function SubscriptionsPage() {
                       <Mail className="h-4 w-4" />
                       Generate Cancellation Email
                     </button>
+                    {sub.provider_type && ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan'].includes(sub.provider_type) && (
+                      <a
+                        href={`/deals/${sub.provider_type === 'mortgage' ? 'mortgages' : sub.provider_type === 'loan' ? 'loans' : sub.provider_type}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 px-4 py-2 rounded-lg transition-all text-sm border border-green-500/20"
+                      >
+                        <TrendingDown className="h-4 w-4" />
+                        Find Better Deal
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -943,6 +1021,70 @@ export default function SubscriptionsPage() {
                 />
               </div>
 
+              {/* Contract details (collapsible) */}
+              <details className="border border-slate-800 rounded-lg">
+                <summary className="px-4 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white">
+                  Contract Details (optional)
+                </summary>
+                <div className="px-4 pb-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract Type</label>
+                      <select
+                        value={editForm.contract_type}
+                        onChange={(e) => setEditForm({ ...editForm, contract_type: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">Select...</option>
+                        {CONTRACT_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Provider Type</label>
+                      <select
+                        value={editForm.provider_type}
+                        onChange={(e) => setEditForm({ ...editForm, provider_type: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">Select...</option>
+                        {PROVIDER_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract End Date</label>
+                      <input
+                        type="date"
+                        value={editForm.contract_end_date}
+                        onChange={(e) => setEditForm({ ...editForm, contract_end_date: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Current Tariff</label>
+                      <input
+                        type="text"
+                        value={editForm.current_tariff}
+                        onChange={(e) => setEditForm({ ...editForm, current_tariff: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        placeholder="e.g. Standard Variable"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="auto_renews_edit"
+                      checked={editForm.auto_renews}
+                      onChange={(e) => setEditForm({ ...editForm, auto_renews: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-800 bg-slate-950 text-amber-500 focus:ring-amber-500"
+                    />
+                    <label htmlFor="auto_renews_edit" className="text-sm text-slate-300">Auto-renews at end of contract</label>
+                  </div>
+                </div>
+              </details>
+
               <button
                 type="submit"
                 disabled={savingEdit}
@@ -1074,6 +1216,70 @@ export default function SubscriptionsPage() {
                   placeholder="support@provider.com"
                 />
               </div>
+
+              {/* Contract details (collapsible) */}
+              <details className="border border-slate-800 rounded-lg">
+                <summary className="px-4 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white">
+                  Contract Details (optional)
+                </summary>
+                <div className="px-4 pb-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract Type</label>
+                      <select
+                        value={newSub.contract_type}
+                        onChange={(e) => setNewSub({ ...newSub, contract_type: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">Select...</option>
+                        {CONTRACT_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Provider Type</label>
+                      <select
+                        value={newSub.provider_type}
+                        onChange={(e) => setNewSub({ ...newSub, provider_type: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">Select...</option>
+                        {PROVIDER_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract End Date</label>
+                      <input
+                        type="date"
+                        value={newSub.contract_end_date}
+                        onChange={(e) => setNewSub({ ...newSub, contract_end_date: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Current Tariff</label>
+                      <input
+                        type="text"
+                        value={newSub.current_tariff}
+                        onChange={(e) => setNewSub({ ...newSub, current_tariff: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                        placeholder="e.g. Standard Variable"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="auto_renews_new"
+                      checked={newSub.auto_renews}
+                      onChange={(e) => setNewSub({ ...newSub, auto_renews: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-800 bg-slate-950 text-amber-500 focus:ring-amber-500"
+                    />
+                    <label htmlFor="auto_renews_new" className="text-sm text-slate-300">Auto-renews at end of contract</label>
+                  </div>
+                </div>
+              </details>
 
               <button
                 type="submit"
