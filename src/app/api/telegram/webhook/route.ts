@@ -36,7 +36,7 @@ async function getConversationHistory(supabase: ReturnType<typeof getAdmin>, cha
     .select('role, content')
     .eq('chat_id', chatId)
     .order('created_at', { ascending: false })
-    .limit(30);
+    .limit(15);
 
   return (data || []).reverse().map(m => ({
     role: m.role as 'user' | 'assistant',
@@ -329,20 +329,8 @@ ${liveData}`,
     const history = await getConversationHistory(supabase, chatId);
     const context = await getFullBusinessContext(supabase);
 
-    // Detect if asking about agents or wanting a team update
-    const lowerText = text.toLowerCase();
-    const wantsTeamUpdate = lowerText.includes('all agents') || lowerText.includes('team update') || lowerText.includes('the agents') || lowerText.includes('everyone') || lowerText.includes('full update');
-    const mentionedAgents = wantsTeamUpdate
-      ? [['alex'], ['morgan'], ['jamie'], ['taylor'], ['jordan'], ['sam']] // Key agents for team update
-      : Object.entries(AGENT_NAMES).filter(([name]) => lowerText.includes(name));
-
+    // For /ask commands, load specific agent data. For free-form, the business context is enough.
     let agentContext = '';
-    if (mentionedAgents.length > 0) {
-      // Load data for mentioned agents (or key agents for team update)
-      const agentDataPromises = mentionedAgents.map(([name]) => getLiveAgentData(supabase, name));
-      const agentDataResults = await Promise.all(agentDataPromises);
-      agentContext = agentDataResults.map(d => `\n\n${d}`).join('');
-    }
 
     // Save user message
     await saveMessage(supabase, chatId, 'user', text);
@@ -363,6 +351,23 @@ CRITICAL RULES:
 - When asked for a team update, go through each relevant agent's domain and summarise based on the live data, not by pretending to message them.
 
 The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head of Ads), Casey (CCO), Drew (CGO), Pippa (CRO), Leo (CLO), Nico (CIO), Bella (CXO), Finn (CFraudO), Sam (Support Lead), Riley (Support Agent).
+
+IMPORTANT CONTEXT (overrides any stale agent reports):
+- All test+oscar accounts (oscar1-7) are Awin integration tests, not real users. Oscar is from Awin testing our tracking.
+- aireyjohn9@gmail.com and paulair13@gmail.com are Paul's test accounts, not real users.
+- aireypaul@googlemail.com and air_sam@hotmail.co.uk are Paul's accounts.
+- The ONLY real external user is lewis.baker1995@gmail.com (Lewis Fields).
+- Awin integration is WORKING: mastertag, S2S (awaited), client-side, fallback pixel all confirmed. Oscar testing sign-off pending.
+- Stripe is on LIVE mode with correct webhook secret. Founding member prices created (Essential £4.99, Pro £9.99).
+- Google Ads ARE running (campaign 23678309004), driving ~15 clicks/day but 0 conversions so far.
+- Google Search Console verified and sitemap submitted.
+- Founding member programme (25 free Pro spots) is built but PAUSED for Awin testing.
+- All 15 agents run on Railway with Haiku, $0.10 budget cap. Riley and Drew had email permissions REMOVED (were spamming users).
+- FAL_KEY and Perplexity API key ARE configured on Railway. If agents say they need keys, they are wrong.
+- UTM tracking is live, capturing gclid from Google Ads on signup.
+- Blog auto-publishes Mon/Wed/Fri with Perplexity research.
+- 59 deals across 9 categories including 3 Lebara deals.
+- Google OAuth verification and Google Ads developer token still pending external approval.
 
 ${context}${agentContext}`,
       messages: [
