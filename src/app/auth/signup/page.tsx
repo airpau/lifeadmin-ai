@@ -86,6 +86,7 @@ export default function SignupPage() {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           mobile_number: mobile.trim() || null,
+          onboarded_at: new Date().toISOString(),
           ...utmUpdate,
         }).eq('id', data.user!.id);
 
