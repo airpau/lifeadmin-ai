@@ -249,6 +249,29 @@ export async function POST(request: NextRequest) {
     const history = await getConversationHistory(supabase, chatId);
     const context = await getFullBusinessContext(supabase);
 
+    // Detect if user is asking about a specific agent and pull their data
+    const mentionedAgent = Object.entries(AGENT_NAMES).find(([name]) =>
+      text.toLowerCase().includes(name)
+    );
+    let agentContext = '';
+    if (mentionedAgent) {
+      const [agentName, agentRole] = mentionedAgent;
+      const dbRole = agentName === 'jordan' ? 'head_of_ads' : agentName === 'sam' ? 'support_lead' : agentName === 'riley' ? 'support_agent' : agentName === 'charlie' ? 'exec_assistant' : agentName;
+      const [agentReports, agentMems] = await Promise.all([
+        supabase.from('executive_reports').select('title, content, recommendations, created_at')
+          .order('created_at', { ascending: false }).limit(2),
+        supabase.from('agent_memory').select('key, value')
+          .eq('agent_role', dbRole).order('created_at', { ascending: false }).limit(10),
+      ]);
+      const reportSnippets = (agentReports.data || []).map(r =>
+        `${r.title}: ${r.content?.substring(0, 1500) || ''}\nRecs: ${Array.isArray(r.recommendations) ? r.recommendations.slice(0, 3).join('; ') : ''}`
+      ).join('\n\n');
+      const memSnippets = (agentMems.data || []).map(m =>
+        `${m.key}: ${typeof m.value === 'string' ? m.value.substring(0, 200) : JSON.stringify(m.value).substring(0, 200)}`
+      ).join('\n');
+      agentContext = `\n\nDETAILED DATA FOR ${agentName.toUpperCase()} (${agentRole}):\nReports:\n${reportSnippets || 'No reports'}\nMemories:\n${memSnippets || 'No memories'}`;
+    }
+
     // Save user message
     await saveMessage(supabase, chatId, 'user', text);
 
@@ -258,15 +281,15 @@ export async function POST(request: NextRequest) {
       max_tokens: 1024,
       system: `You are Charlie, Executive Assistant at Paybacker LTD. You're chatting with Paul (the founder) via Telegram. You have persistent memory of the conversation and full access to business data.
 
-Be concise and direct. Use Markdown for formatting. Never use em dashes.
-
-You can reference what the other agents are doing based on their reports and memories. If Paul asks about a specific agent's work, use the data below. If he asks you to tell an agent something, note it as an action item.
+CRITICAL RULES:
+- You already have ALL the data from every agent's reports and memories loaded below. NEVER say "I'll check with them" or "let me ask them" or "I'm waiting for a response". Just answer directly using the data you have.
+- If Paul asks what an agent thinks or what they're working on, answer immediately using their reports and memories below.
+- Be concise and direct. Use Markdown for formatting. Never use em dashes.
+- You ARE the central hub. You know everything the agents know because their data is in your context.
 
 The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head of Ads), Casey (CCO), Drew (CGO), Pippa (CRO), Leo (CLO), Nico (CIO), Bella (CXO), Finn (CFraudO), Sam (Support Lead), Riley (Support Agent).
 
-Paul can use /ask [agent] [question] to talk directly to any agent.
-
-${context}`,
+${context}${agentContext}`,
       messages: [
         ...history,
         { role: 'user', content: text },
