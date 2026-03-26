@@ -4,12 +4,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 
 interface Profile {
   email: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  address: string | null;
+  postcode: string | null;
   subscription_status: string | null;
   subscription_tier: string | null;
   stripe_subscription_id: string | null;
@@ -26,6 +31,16 @@ export default function ProfilePage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    address: '',
+    postcode: '',
+  });
   const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
   const [renewalDate, setRenewalDate] = useState<string | null>(null);
   const [billingMessage, setBillingMessage] = useState<string | null>(null);
@@ -49,6 +64,11 @@ export default function ProfilePage() {
             setProfile({
               email: data.email,
               full_name: data.full_name,
+              first_name: data.first_name,
+              last_name: data.last_name,
+              phone: data.phone,
+              address: data.address,
+              postcode: data.postcode,
               subscription_status: data.subscription_status,
               subscription_tier: data.subscription_tier,
               stripe_subscription_id: data.stripe_subscription_id,
@@ -88,6 +108,54 @@ export default function ProfilePage() {
       })
       .catch(() => {});
   }, [supabase, searchParams]);
+
+  const startEditing = () => {
+    setEditForm({
+      first_name: profile?.first_name || '',
+      last_name: profile?.last_name || '',
+      phone: profile?.phone || '',
+      address: profile?.address || '',
+      postcode: profile?.postcode || '',
+    });
+    setEditing(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const fullName = [editForm.first_name, editForm.last_name].filter(Boolean).join(' ');
+
+      await supabase.from('profiles').update({
+        first_name: editForm.first_name || null,
+        last_name: editForm.last_name || null,
+        full_name: fullName || null,
+        phone: editForm.phone || null,
+        address: editForm.address || null,
+        postcode: editForm.postcode?.toUpperCase().trim() || null,
+      }).eq('id', user.id);
+
+      setProfile(prev => prev ? {
+        ...prev,
+        first_name: editForm.first_name || null,
+        last_name: editForm.last_name || null,
+        full_name: fullName || null,
+        phone: editForm.phone || null,
+        address: editForm.address || null,
+        postcode: editForm.postcode?.toUpperCase().trim() || null,
+      } : null);
+
+      setEditing(false);
+      setSaveMessage('Profile updated');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleManageBilling = async () => {
     setPortalLoading(true);
@@ -224,6 +292,128 @@ export default function ProfilePage() {
             {subscriptionStatusLabel()}
           </div>
         </div>
+      </div>
+
+      {/* Personal Details */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-mint-400" />
+            Personal Details
+          </h2>
+          {!editing && (
+            <button onClick={startEditing} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-all">
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
+          )}
+        </div>
+
+        {saveMessage && (
+          <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            {saveMessage}
+          </div>
+        )}
+
+        {editing ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">First name</label>
+                <input
+                  type="text"
+                  value={editForm.first_name}
+                  onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  placeholder="First name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Last name</label>
+                <input
+                  type="text"
+                  value={editForm.last_name}
+                  onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  placeholder="Last name"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Phone number</label>
+              <input
+                type="tel"
+                value={editForm.phone}
+                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                placeholder="07xxx xxxxxx"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Address</label>
+              <input
+                type="text"
+                value={editForm.address}
+                onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                placeholder="House number, street, city"
+              />
+            </div>
+
+            <div className="max-w-xs">
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Postcode</label>
+              <input
+                type="text"
+                value={editForm.postcode}
+                onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })}
+                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm uppercase"
+                placeholder="SW1A 1AA"
+                maxLength={8}
+              />
+            </div>
+
+            <p className="text-xs text-slate-500">Your address is used to auto-fill complaint letters. We never share your personal details.</p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setEditing(false)}
+                className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={saving}
+                className="flex items-center gap-2 px-5 py-2.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Name</p>
+              <p className="text-white text-sm">{profile?.full_name || 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Phone</p>
+              <p className="text-white text-sm">{profile?.phone || 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Address</p>
+              <p className="text-white text-sm">{profile?.address || 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-0.5">Postcode</p>
+              <p className="text-white text-sm">{profile?.postcode || 'Not set'}</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
