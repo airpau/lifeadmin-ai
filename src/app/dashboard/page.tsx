@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
-  CreditCard, FileText, Building2, BarChart3, CheckCircle,
+  CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles,
 } from 'lucide-react';
 
@@ -275,77 +275,105 @@ export default function DashboardPage() {
           </h2>
           <div className="space-y-3">
             {pendingTasks.map((task) => {
-              // Determine the best action based on task type and content
+              // Parse JSON description if present
               const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
-              const oppType = parsedDesc?.type || task.description?.split(' ')[0]?.toLowerCase() || '';
-              const isOvercharge = task.type === 'opportunity' && ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType);
-              const isComplaint = task.type === 'complaint_letter' || isOvercharge;
-              const isDeal = task.type === 'opportunity' && ['renewal', 'forgotten_subscription', 'insurance'].includes(oppType);
-              const isFlightDelay = (parsedDesc?.description || task.description || '').toLowerCase().includes('flight') || task.type === 'flight_delay';
+              const oppType = parsedDesc?.type || '';
+              const descText = parsedDesc?.description || task.description || '';
+              const descLower = descText.toLowerCase();
+              const provider = task.provider_name || parsedDesc?.provider || '';
+              const amount = task.disputed_amount || parsedDesc?.amount || parsedDesc?.paymentAmount || '';
 
-              // Build complaint URL with pre-filled data
+              // Intelligent action classification
+              const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
+              const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
+              const isRenewal = oppType === 'renewal' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir');
+              const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
+              const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
+              const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
+              const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
+              const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
+              const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
+              const needsDeal = isRenewal || isInsurance;
+              const needsSubscription = isSubscription;
+
+              // Determine badge
+              const badge = isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
+                : needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
+                : needsDeal ? { text: 'Switch and Save', color: 'bg-amber-500/10 text-amber-400' }
+                : needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
+                : isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
+                : isAdmin ? { text: 'Admin Task', color: 'bg-slate-700 text-slate-300' }
+                : { text: 'Review', color: 'bg-slate-700 text-slate-400' };
+
+              // Build correct action URL with proper params for each destination
               const complaintParams = new URLSearchParams();
-              if (task.provider_name) complaintParams.set('provider', task.provider_name);
-              if (task.title) complaintParams.set('subject', task.title);
-              if (task.disputed_amount) complaintParams.set('amount', task.disputed_amount);
+              if (provider) complaintParams.set('company', provider);
+              if (descText && descText.length < 500) complaintParams.set('issue', descText);
+              if (amount) complaintParams.set('amount', String(amount));
               const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+
+              const subscriptionParams = new URLSearchParams();
+              if (provider) subscriptionParams.set('name', provider);
+              if (amount) subscriptionParams.set('amount', String(amount));
 
               return (
                 <div key={task.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          isComplaint ? 'bg-red-500/10 text-red-400' :
-                          isDeal ? 'bg-amber-500/10 text-amber-400' :
-                          task.type === 'complaint_letter' ? 'bg-blue-500/10 text-blue-400' :
-                          'bg-slate-700 text-slate-400'
-                        }`}>{
-                          isComplaint ? 'Dispute' :
-                          isDeal ? 'Switch and Save' :
-                          isFlightDelay ? 'Compensation' :
-                          task.type === 'complaint_letter' ? 'Complaint' : 'Action'
-                        }</span>
-                        {task.provider_name && <span className="text-slate-500 text-xs">{task.provider_name}</span>}
-                        {task.disputed_amount && <span className="text-green-400 text-xs font-medium">£{parseFloat(task.disputed_amount).toFixed(0)}</span>}
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
+                        {provider && <span className="text-slate-500 text-xs">{provider}</span>}
+                        {amount && Number(amount) > 0 && <span className="text-green-400 text-xs font-medium">£{parseFloat(String(amount)).toFixed(0)}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
-                      {task.description && (() => {
-                        let desc = task.description;
-                        try {
-                          const parsed = JSON.parse(desc);
-                          if (parsed.description) desc = parsed.description;
-                        } catch {}
-                        return <p className="text-slate-400 text-xs mt-1 line-clamp-2">{desc}</p>;
-                      })()}
+                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{descText}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800">
-                    {/* Primary action - context aware */}
-                    {(isComplaint || task.type === 'complaint_letter') && (
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800 flex-wrap">
+                    {/* Context-aware primary action */}
+                    {needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Write Complaint Letter
                       </Link>
                     )}
-                    {isDeal && (
-                      <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Compare Deals
-                      </Link>
-                    )}
                     {isFlightDelay && (
-                      <Link href="/dashboard/forms?type=flight_delay" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Claim Compensation
+                      <Link href={`/dashboard/forms?type=flight_delay${provider ? `&airline=${encodeURIComponent(provider)}` : ''}`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Claim £520 Compensation
                       </Link>
                     )}
-                    {!isComplaint && !isDeal && !isFlightDelay && task.type !== 'complaint_letter' && (
-                      <Link href={complaintUrl} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                    {needsDeal && (
+                      <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Find Better Deal
+                      </Link>
+                    )}
+                    {needsSubscription && (
+                      <Link href="/dashboard/subscriptions" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <CreditCard className="h-3 w-3" /> Track Subscription
+                      </Link>
+                    )}
+                    {isLoan && (
+                      <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Review and Dispute
+                      </Link>
+                    )}
+                    {isAdmin && !needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && (
+                      <button
+                        onClick={async () => {
+                          await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
+                        }}
+                        className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+                      >
+                        <CheckCircle2 className="h-3 w-3" /> Mark as Done
+                      </button>
+                    )}
+                    {!needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && !isAdmin && (
+                      <Link href={complaintUrl} className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Take Action
                       </Link>
                     )}
 
                     <div className="flex-1" />
 
-                    {/* Remove */}
                     <button
                       onClick={async () => {
                         await supabase.from('tasks').update({ status: 'dismissed', resolved_at: new Date().toISOString() }).eq('id', task.id);
