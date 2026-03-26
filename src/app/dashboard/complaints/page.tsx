@@ -485,7 +485,7 @@ function ComplaintsPageInner() {
 
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Complaints</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">AI Letters</h1>
         <p className="text-slate-400">AI-powered complaint letters citing UK consumer law</p>
       </div>
 
@@ -617,6 +617,62 @@ function ComplaintsPageInner() {
                   className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                   placeholder="e.g. British Gas, Sky, Virgin Media"
                 />
+              </div>
+
+              {/* Upload a bill */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Got a bill to dispute? <span className="text-slate-500 font-normal">(optional)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    capture="environment"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+
+                      const fd = new FormData();
+                      fd.append('file', file);
+
+                      setGenerating(true);
+                      setLoadingCaption(0);
+                      const captionTimer = setInterval(() => {
+                        setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
+                      }, 3000);
+                      (window as any).__captionTimer = captionTimer;
+
+                      try {
+                        const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
+                        const data = await res.json();
+                        if (data.provider_name) {
+                          setFormData(prev => ({
+                            ...prev,
+                            companyName: prev.companyName || data.provider_name || '',
+                            amount: prev.amount || String(data.amount || ''),
+                            issueDescription: prev.issueDescription || `Bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${data.extracted_data?.line_items?.map((li: any) => li.description + ': £' + li.amount).join(', ') || ''}`,
+                          }));
+                        }
+                      } catch {
+                        alert('Could not scan the bill. Please try again or type the details manually.');
+                      } finally {
+                        setGenerating(false);
+                        clearInterval((window as any).__captionTimer);
+                      }
+                    }}
+                    className="hidden"
+                    id="bill-upload"
+                  />
+                  <label
+                    htmlFor="bill-upload"
+                    className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm"
+                  >
+                    <svg className="h-5 w-5 text-mint-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload a photo or PDF of the bill. Our AI will read it and fill in the details for you.
+                  </label>
+                </div>
               </div>
 
               <div>

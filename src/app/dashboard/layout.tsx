@@ -27,7 +27,7 @@ const navItems = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
   { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
-  { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
+  { name: 'AI Letters', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Forms', href: '/dashboard/forms', icon: Building2 },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },

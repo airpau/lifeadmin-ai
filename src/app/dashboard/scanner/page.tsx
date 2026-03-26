@@ -544,67 +544,7 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* Receipt Scanner */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mt-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center">
-              <Camera className="h-5 w-5 text-mint-400" />
-            </div>
-            <div>
-              <h2 className="text-white font-semibold text-lg">Receipt Scanner</h2>
-              <p className="text-slate-500 text-xs">Scan a receipt or bill to extract details with AI</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowReceiptScanner(true)}
-            className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
-          >
-            <Camera className="h-4 w-4" />
-            Scan
-          </button>
-        </div>
-
-        {/* Previously scanned receipts */}
-        {!receiptsLoading && receipts.length > 0 && (
-          <div className="space-y-3">
-            {receipts.map((r) => (
-              <ReceiptResults
-                key={r.id}
-                receipt={r}
-                onAction={(action) => {
-                  if (action === 'delete') {
-                    setReceipts((prev) => prev.filter((p) => p.id !== r.id));
-                  }
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {!receiptsLoading && receipts.length === 0 && (
-          <div className="text-center py-6 bg-navy-950/30 rounded-xl border border-navy-700/30">
-            <FileText className="h-8 w-8 text-slate-600 mx-auto mb-2" />
-            <p className="text-slate-500 text-sm">No receipts scanned yet</p>
-            <p className="text-slate-600 text-xs mt-1">Upload a photo or PDF of any receipt, bill, or invoice</p>
-          </div>
-        )}
-
-        {receiptsLoading && (
-          <div className="text-center py-6">
-            <Loader2 className="h-6 w-6 text-slate-500 animate-spin mx-auto" />
-          </div>
-        )}
-      </div>
-
-      {/* Receipt Scanner Modal */}
-      <ReceiptScanner
-        open={showReceiptScanner}
-        onClose={() => setShowReceiptScanner(false)}
-        onScanComplete={(receipt) => {
-          setReceipts((prev) => [receipt, ...prev]);
-        }}
-      />
+      {/* Receipt scanning is now integrated into the AI Letters tab */}
 
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
