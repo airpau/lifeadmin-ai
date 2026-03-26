@@ -12,6 +12,7 @@ import {
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
 import MeetingRoom from '@/components/admin/MeetingRoom';
+import LeadsList from '@/components/admin/LeadsList';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
@@ -53,7 +54,7 @@ export default function AdminPage() {
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [meetingOpen, setMeetingOpen] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'members' | 'tickets' | 'ai_team'>('overview');
+  const [tab, setTab] = useState<'overview' | 'members' | 'tickets' | 'leads' | 'ai_team'>('overview');
   const supabase = createClient();
 
   useEffect(() => {
@@ -225,6 +226,10 @@ export default function AdminPage() {
         <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
           <Ticket className="h-4 w-4" /> Tickets
+        </button>
+        <button onClick={() => { setTab('leads'); setSelectedMember(null); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
+          <Users className="h-4 w-4" /> Leads
         </button>
         <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
@@ -456,6 +461,9 @@ export default function AdminPage() {
 
       {/* TICKETS TAB */}
       {tab === 'tickets' && <TicketList />}
+
+      {/* LEADS TAB */}
+      {tab === 'leads' && <LeadsList />}
 
       {/* AI TEAM TAB */}
       {tab === 'ai_team' && <AITeamPanel />}
