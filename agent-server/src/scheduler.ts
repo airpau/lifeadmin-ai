@@ -32,7 +32,7 @@ const MIN_INTERVALS: Record<string, number> = {
   cro: 24 * 60 * 60 * 1000,
   cxo: 7 * 24 * 60 * 60 * 1000,       // Weekly
   cfraudo: 7 * 24 * 60 * 60 * 1000,   // Weekly
-  clo: 14 * 24 * 60 * 60 * 1000,      // Fortnightly
+  clo: 24 * 60 * 60 * 1000,            // Daily
   cio: 30 * 24 * 60 * 60 * 1000,      // Monthly
 };
 
