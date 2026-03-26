@@ -237,20 +237,25 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Social Proof Bar */}
+        {/* Trust Signals Bar */}
         <section className="border-y border-navy-700/50 bg-navy-900/50">
           <div className="container mx-auto px-4 md:px-6 py-8">
-            <p className="text-center text-slate-500 text-sm mb-6">Trusted by UK consumers. Powered by industry-leading technology.</p>
-            <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
+            <p className="text-center text-slate-500 text-sm mb-6">Regulated, secure, and built for UK consumers</p>
+            <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12">
               {[
-                { name: 'TrueLayer', sub: 'Open Banking' },
-                { name: 'FCA Regulated', sub: 'Via TrueLayer' },
-                { name: 'Stripe', sub: 'Secure Payments' },
-                { name: 'Awin', sub: 'Affiliate Partner' },
-              ].map((partner) => (
-                <div key={partner.name} className="text-center">
-                  <p className="text-slate-600 font-semibold text-sm">{partner.name}</p>
-                  <p className="text-slate-700 text-xs">{partner.sub}</p>
+                { name: 'ICO Registered', sub: 'Data Protection', icon: '🛡️' },
+                { name: 'FCA Regulated', sub: 'Via TrueLayer', icon: '✅' },
+                { name: 'TrueLayer', sub: 'Open Banking', icon: '🏦' },
+                { name: 'Stripe', sub: 'Secure Payments', icon: '🔒' },
+                { name: 'GDPR Compliant', sub: 'UK Data Laws', icon: '📋' },
+                { name: 'UK Company', sub: 'Paybacker LTD', icon: '🇬🇧' },
+              ].map((badge) => (
+                <div key={badge.name} className="flex items-center gap-2">
+                  <span className="text-lg">{badge.icon}</span>
+                  <div>
+                    <p className="text-slate-400 font-semibold text-xs">{badge.name}</p>
+                    <p className="text-slate-600 text-[10px]">{badge.sub}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -674,8 +679,10 @@ export default function Home() {
               <Image src="/logo.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
               <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
             </div>
-            <div className="flex items-center gap-2 text-slate-600 text-xs">
-              🇬🇧 Made in the UK
+            <div className="flex items-center gap-4 text-slate-600 text-xs">
+              <span>🇬🇧 Made in the UK</span>
+              <span>🛡️ ICO Registered</span>
+              <span>🔒 GDPR Compliant</span>
             </div>
           </div>
         </div>
