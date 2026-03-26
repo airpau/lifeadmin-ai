@@ -131,4 +131,55 @@ const getRecentPosts: ToolDef = {
   },
 };
 
-export const contentTools: ToolDef[] = [generateImage, createContentDraft, getRecentPosts];
+const publishToFacebook: ToolDef = {
+  name: 'publish_to_facebook',
+  description: 'Publish a post to the Paybacker Facebook page immediately. Requires caption text. Optionally include an image URL from generate_image. Only use when the founder has explicitly approved posting.',
+  schema: {
+    type: 'object',
+    properties: {
+      caption: { type: 'string', description: 'The post text/caption' },
+      hashtags: { type: 'string', description: 'Hashtags to append (e.g. #consumerrights #fintech #uk)' },
+      image_url: { type: 'string', description: 'Optional image URL from generate_image result' },
+    },
+    required: ['caption'],
+  },
+  handler: async (args) => {
+    const message = args.hashtags ? `${args.caption}\n\n${args.hashtags}` : args.caption;
+
+    try {
+      // Save as content draft first
+      const sb = getSupabase();
+      const { data: draft } = await sb.from('content_drafts').insert({
+        platform: 'facebook',
+        content_type: args.image_url ? 'image_post' : 'text_post',
+        caption: message,
+        asset_url: args.image_url || null,
+        status: 'approved', // Auto-approve for immediate posting
+      }).select('id').single();
+
+      // Call the Vercel posting endpoint which has the Meta API token
+      const res = await fetch(`${config.SITE_URL}/api/social/post-direct`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.CRON_SECRET}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          image_url: args.image_url || null,
+        }),
+      });
+
+      const result = await res.json();
+      if (result.error) {
+        return `Facebook post FAILED: ${result.error}`;
+      }
+
+      return `Facebook post published successfully! Post ID: ${result.postId || 'unknown'}`;
+    } catch (err: any) {
+      return `Facebook post FAILED: ${err.message}`;
+    }
+  },
+};
+
+export const contentTools: ToolDef[] = [generateImage, createContentDraft, getRecentPosts, publishToFacebook];

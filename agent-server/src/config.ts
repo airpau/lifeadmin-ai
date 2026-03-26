@@ -19,6 +19,8 @@ interface Config {
   GITHUB_TOKEN?: string;
   POSTHOG_API_KEY?: string;
   POSTHOG_HOST: string;
+  META_ACCESS_TOKEN?: string;
+  META_PAGE_ID?: string;
   SITE_URL: string;
   PORT: number;
   AGENTS_ENABLED: boolean;
@@ -53,6 +55,8 @@ function loadConfig(): Config {
     GITHUB_TOKEN: process.env.GITHUB_TOKEN || undefined,
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY || undefined,
     POSTHOG_HOST: process.env.POSTHOG_HOST || 'https://app.posthog.com',
+    META_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN || undefined,
+    META_PAGE_ID: process.env.META_PAGE_ID || '1056645287525328',
     SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || 'https://paybacker.co.uk',
     PORT: Number(process.env.PORT) || 3000,
     AGENTS_ENABLED: process.env.AGENTS_ENABLED !== 'false',
