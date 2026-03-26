@@ -26,12 +26,11 @@ import { useEffect, useState } from 'react';
 const navItems = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
-  { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch, comingSoon: true },
+  { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
   { name: 'Complaints', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Forms', href: '/dashboard/forms', icon: Building2 },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
-  { name: 'Spending', href: '/dashboard/spending', icon: BarChart3 },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Blog', href: '/blog', icon: BookOpen },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
