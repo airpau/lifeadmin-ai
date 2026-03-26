@@ -172,12 +172,12 @@ const publishToFacebook: ToolDef = {
         }),
       });
 
-      const result = await res.json();
+      const result: any = await res.json();
       if (result.error) {
-        return `Facebook post FAILED: ${result.error}`;
+        return `Post FAILED: ${result.error}`;
       }
 
-      const parts = [];
+      const parts: string[] = [];
       if (result.facebook?.ok) parts.push(`Facebook: posted (${result.facebook.postId})`);
       if (result.facebook?.error) parts.push(`Facebook: FAILED (${result.facebook.error})`);
       if (result.instagram?.ok) parts.push(`Instagram: posted (${result.instagram.postId})`);
