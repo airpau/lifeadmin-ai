@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, TrendingUp, TrendingDown, BarChart3, ArrowRight, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { formatGBP } from '@/lib/format';
 
 interface SpendingData {
   hasData: boolean;
@@ -279,7 +280,7 @@ export default function SpendingPage() {
                     {new Date(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} · {tx.category}
                   </p>
                 </div>
-                <span className="text-red-400 font-bold shrink-0 ml-4">-£{tx.amount.toFixed(2)}</span>
+                <span className="text-red-400 font-bold shrink-0 ml-4">-{formatGBP(tx.amount)}</span>
               </div>
             ))}
           </div>

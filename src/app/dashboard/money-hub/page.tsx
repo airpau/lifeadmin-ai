@@ -11,6 +11,7 @@ import {
   Shield, Zap, Mail, Calendar, DollarSign, X, Send, MessageCircle,
   ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye,
 } from 'lucide-react';
+import { formatGBP } from '@/lib/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1823,7 +1824,7 @@ export default function MoneyHubPage() {
                   {(CATEGORY_LABELS[drillCategory] || CATEGORY_LABELS.other).icon} {(CATEGORY_LABELS[drillCategory] || CATEGORY_LABELS.other).label}
                 </h2>
               </div>
-              {drillData && <span className="text-amber-400 font-bold">£{drillData.totalSpent.toFixed(2)}</span>}
+              {drillData && <span className="text-amber-400 font-bold">{formatGBP(drillData.totalSpent)}</span>}
             </div>
             <div className="flex-1 overflow-y-auto p-6">
               {drillLoading ? (
@@ -1841,7 +1842,7 @@ export default function MoneyHubPage() {
                               <span className="text-slate-500 text-xs ml-2">{m.count} transactions</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-white font-medium text-sm">£{m.total.toFixed(2)}</span>
+                              <span className="text-white font-medium text-sm">{formatGBP(m.total)}</span>
                               <select
                                 defaultValue={drillCategory || ''}
                                 onChange={async (e) => {
@@ -1869,7 +1870,7 @@ export default function MoneyHubPage() {
                             <span className="text-slate-500 text-xs">{t.date}</span>
                           </div>
                           <span className={`font-medium ml-2 ${t.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                            {t.amount < 0 ? '-' : '+'}£{Math.abs(t.amount).toFixed(2)}
+                            {t.amount < 0 ? '-' : '+'}{formatGBP(Math.abs(t.amount))}
                           </span>
                         </div>
                       ))}

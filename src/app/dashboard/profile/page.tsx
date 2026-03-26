@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import { formatGBP } from '@/lib/format';
 
 interface Profile {
   email: string;
@@ -232,7 +233,7 @@ export default function ProfilePage() {
             <TrendingUp className="h-6 w-6 text-green-500" />
           </div>
           <h3 className="text-3xl font-bold text-white mb-1">
-            £{profile?.total_money_recovered?.toFixed(2) || '0.00'}
+            {formatGBP(profile?.total_money_recovered || 0)}
           </h3>
           <p className="text-slate-400 text-sm">Money recovered</p>
         </div>

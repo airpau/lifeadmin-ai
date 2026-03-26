@@ -72,6 +72,29 @@ export async function POST(request: NextRequest) {
       previousLetter: body.previousLetter,
     });
 
+    // Auto-fill user profile data into placeholders
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, email, phone, mobile_number')
+      .eq('id', user.id)
+      .single();
+
+    if (profile && result.letter) {
+      const name = profile.full_name || '';
+      const email = profile.email || user.email || '';
+      const phone = profile.phone || profile.mobile_number || '';
+
+      result.letter = result.letter
+        .replace(/\[YOUR NAME\]/gi, name)
+        .replace(/\[YOUR FULL NAME\]/gi, name)
+        .replace(/\[YOUR EMAIL\]/gi, email)
+        .replace(/\[YOUR EMAIL ADDRESS\]/gi, email)
+        .replace(/\[YOUR PHONE\]/gi, phone)
+        .replace(/\[YOUR PHONE NUMBER\]/gi, phone)
+        .replace(/\[YOUR TELEPHONE\]/gi, phone)
+        .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
+    }
+
     // Save task to database
     const { data: task } = await supabase
       .from('tasks')

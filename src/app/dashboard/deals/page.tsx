@@ -21,7 +21,6 @@ interface Deal {
 
 const DEALS: Record<string, Deal[]> = {
   Energy: [
-    { id: 'octopus-energy', provider: 'Octopus Energy', headline: 'Flexible tariff - no exit fees', saving: 'Save up to £180/yr', awinMid: '8173', providerUrl: 'https://octopus.energy', category: 'Energy' },
     { id: 'ovo-energy', provider: 'OVO Energy', headline: 'Fixed rate - lock in your price', saving: 'Save up to £150/yr', awinMid: '5318', providerUrl: 'https://www.ovoenergy.com', category: 'Energy' },
     { id: 'eon-next', provider: 'E.ON Next', headline: 'Next Drive tariff for EV owners', saving: 'Save up to £120/yr', awinMid: '54765', providerUrl: 'https://www.eonenergy.com', category: 'Energy' },
     { id: 'edf-energy', provider: 'EDF', headline: 'Fixed price tariffs - price certainty', saving: 'Save up to £140/yr', awinMid: '1887', providerUrl: 'https://www.edfenergy.com', category: 'Energy' },

@@ -200,3 +200,31 @@ Priority: Start with the landing page (this is where mobile ad traffic lands)
 - Send notification: "Your BT contract ends in 14 days. We found 3 cheaper deals."
 
 NOTE: The full UX review document with all details is saved as paybacker-ux-feature-review.docx in outputs.
+
+---
+
+## 2026-03-26 08:11:02 - Cowork (Claude in Chrome)
+**Completed:** Completed comprehensive deep-dive functional test of every feature on paybacker.co.uk. Tested: landing page CTAs, public pages (about/blog/pricing), complaints (end-to-end letter generation), forms (11 types), subscriptions (add/edit/cancel/email), deals (all categories + affiliate links), Money Hub (income/spending/drill-downs), spending insights, rewards (badges/points/tiers), scanner, profile, chatbot, and overview action items. Found 38 bugs total: 5 Critical, 11 High, 14 Medium, 8 Low. Full report saved as paybacker-functional-test-report.docx.
+
+**Next steps:** Claude Code should fix the 38 bugs identified in priority order. Start with P1-Critical bugs:
+
+1. BUG-05/BUG-14: FIX DATES IN GENERATED LETTERS — The /api/chat complaint generation and cancellation email endpoints output wrong dates ('14 July 2025' and '[Date]'). Pass new Date().toLocaleDateString('en-GB', {day: 'numeric', month: 'long', year: 'numeric'}) to the AI prompt and ensure the date appears correctly in the letter body.
+
+2. BUG-09: AUTO-FILL USER DATA IN LETTERS — After letter generation, replace [YOUR NAME], [YOUR EMAIL], [YOUR PHONE NUMBER], [YOUR ADDRESS] placeholders with data from the user's profile (profiles table). At minimum fill name and email from Supabase auth.
+
+3. BUG-13: FIX SIDEBAR ACTIVE STATE — The sidebar component doesn't update its active state on client-side navigation. Use usePathname() from next/navigation and compare against each nav item's href. Ensure the component re-renders on route change.
+
+4. BUG-18: REMOVE/FIX DEAD OCTOPUS ENERGY DEAL — The Awin affiliate link for Octopus Energy goes to closedMerchant.html. Either update the affiliate URL or remove/hide the deal card.
+
+Then P2-High bugs:
+5. BUG-16: MERCHANT NAME NORMALISATION — Implement title-case conversion and a known-merchant mapping table to convert UPPERCASE bank names to proper display names. Apply across subscriptions, deals, Money Hub, spending, and chatbot.
+6. BUG-11/BUG-25: CURRENCY FORMATTING — Use Intl.NumberFormat('en-GB') consistently for all currency displays across all pages.
+7. BUG-33: ADD PROFILE EDIT — Add an Edit Profile section with name, address, phone, postcode fields. Save to profiles table.
+8. BUG-03: FIX PRICING PAGE NAV — Add the PublicNavbar component to the pricing page layout.
+9. BUG-02: ALLOW LOGGED-IN USERS TO VIEW LANDING PAGE — Remove auth redirect from / route.
+10. BUG-12: AUTO-ADVANCE BILLING DATES — Add logic to advance next_billing_date when it's in the past.
+11. BUG-15: SEPARATE EMAIL GENERATION FROM STATUS CHANGE — Don't set subscription to 'Cancelling' when generating the email.
+12. BUG-17: ADD MAILTO SEND BUTTON — Add a 'Send via Email' button to cancellation emails using mailto: link.
+13. BUG-19/BUG-20: CLEAN UP BANK DATA — Strip phone numbers from names, consolidate duplicate 'Other' categories.
+14. BUG-21: HUMAN-READABLE SYNC TIMES — Use formatDistanceToNow() for bank sync timestamps.
+15. BUG-01: MAKE CATEGORY TAGS CLICKABLE — Wrap landing page tags in Link components.

@@ -119,8 +119,11 @@ export async function POST(request: NextRequest) {
       ? `\n\nThe user has reviewed a previous version and wants changes:\nPrevious email: ${previousEmail}\nUser's feedback: ${feedback}\n\nPlease regenerate incorporating their feedback.`
       : '';
 
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
     const prompt = `You are a UK consumer rights expert writing a formal letter on behalf of a consumer.
 
+Today's date (use this as the letter date): ${today}
 Provider: ${providerName}
 Category: ${category || 'unknown'}
 Cost: £${amount}/${billingCycle === 'yearly' ? 'year' : billingCycle === 'quarterly' ? 'quarter' : 'month'}
@@ -168,17 +171,9 @@ Return as JSON with keys: subject (string), body (string)`;
 
     const result = JSON.parse(jsonMatch[0]);
 
-    // Mark subscription as pending cancellation
-    if (subscriptionId) {
-      await supabase
-        .from('subscriptions')
-        .update({
-          status: 'pending_cancellation',
-          cancel_requested_at: new Date().toISOString(),
-        })
-        .eq('id', subscriptionId)
-        .eq('user_id', user.id);
-    }
+    // Note: We do NOT update subscription status here. Generating a cancellation
+    // letter does not mean the user has cancelled yet. Status should only change
+    // when cancellation is confirmed by the provider.
 
     // Save to tasks + agent_runs for history
     const { data: task } = await supabase

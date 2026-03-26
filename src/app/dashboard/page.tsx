@@ -9,6 +9,7 @@ import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles,
 } from 'lucide-react';
+import { formatGBP } from '@/lib/format';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -245,7 +246,7 @@ export default function DashboardPage() {
         </div>
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
-          <p className="text-3xl font-bold text-white">£{monthlySpend.toFixed(0)}</p>
+          <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
           <p className="text-slate-400 text-sm">Monthly spend</p>
         </div>
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
@@ -348,7 +349,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
                         {provider && <span className="text-slate-500 text-xs">{provider}</span>}
-                        {amount && Number(amount) > 0 && <span className="text-green-400 text-xs font-medium">£{parseFloat(String(amount)).toFixed(0)}</span>}
+                        {amount && Number(amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(amount)))}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
                       <p className="text-slate-400 text-xs mt-1 line-clamp-2">{descText}</p>

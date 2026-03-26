@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
+import { formatGBP } from '@/lib/format';
 
 interface Subscription {
   id: string;
@@ -705,7 +706,7 @@ export default function SubscriptionsPage() {
                 <div>
                   <p className="text-white font-medium">{s.provider_name}</p>
                   <p className="text-slate-400 text-sm capitalize">
-                    {s.category} · £{s.amount > 0 ? s.amount.toFixed(2) : '?'}/{s.billing_cycle}
+                    {s.category} · {s.amount > 0 ? formatGBP(s.amount) : '£?'}/{s.billing_cycle}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -734,7 +735,7 @@ export default function SubscriptionsPage() {
           <div className="bg-red-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
             <TrendingDown className="h-6 w-6 text-red-500" />
           </div>
-          <h3 className="text-3xl font-bold text-white mb-1">£{totalMonthly.toFixed(2)}</h3>
+          <h3 className="text-3xl font-bold text-white mb-1">{formatGBP(totalMonthly)}</h3>
           <p className="text-slate-400 text-sm">Monthly spend (est.)</p>
         </div>
 
@@ -753,7 +754,7 @@ export default function SubscriptionsPage() {
             <Calendar className="h-6 w-6 text-blue-500" />
           </div>
           <h3 className="text-3xl font-bold text-white mb-1">
-            £{(totalMonthly * 12).toFixed(0)}
+            {formatGBP(totalMonthly * 12)}
           </h3>
           <p className="text-slate-400 text-sm">Annual spend (est.)</p>
         </div>
@@ -836,7 +837,7 @@ export default function SubscriptionsPage() {
                       {sub.category && (
                         <span className="capitalize bg-slate-800 px-2 py-0.5 rounded text-xs">{sub.category.replace('_', ' ')}</span>
                       )}
-                      <span>£{sub.amount.toFixed(2)}/{sub.billing_cycle === 'one-time' ? 'once' : sub.billing_cycle}</span>
+                      <span>{formatGBP(sub.amount)}/{sub.billing_cycle === 'one-time' ? 'once' : sub.billing_cycle}</span>
                       {sub.next_billing_date && (
                         <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
                       )}
@@ -881,7 +882,7 @@ export default function SubscriptionsPage() {
 
                   <div className="flex flex-col items-end gap-2 ml-4">
                     <div className="text-right">
-                      <p className="text-xl font-bold text-white">£{sub.amount.toFixed(2)}</p>
+                      <p className="text-xl font-bold text-white">{formatGBP(sub.amount)}</p>
                       <p className="text-xs text-slate-500">{sub.billing_cycle}</p>
                     </div>
                     <button

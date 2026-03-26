@@ -193,12 +193,19 @@ export default function PricingPage() {
       <div className="relative">
         {/* Header */}
         <header className="container mx-auto px-6 py-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
-            <span className="text-xl font-bold text-white">
-              Pay<span className="text-amber-500">backer</span>
-            </span>
-          </Link>
+          <div className="flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2">
+              <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
+              <span className="text-xl font-bold text-white">
+                Pay<span className="text-amber-500">backer</span>
+              </span>
+            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/about" className="text-slate-400 hover:text-white text-sm">About</Link>
+              <Link href="/blog" className="text-slate-400 hover:text-white text-sm">Blog</Link>
+              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium">Sign In</Link>
+            </div>
+          </div>
         </header>
 
         {/* Waitlist Banner */}

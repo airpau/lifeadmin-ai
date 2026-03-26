@@ -93,8 +93,11 @@ export async function generateComplaintLetter(
 
   console.log(`[claude] model=${COMPLAINT_MODEL} route=complaints-agent/generateComplaintLetter`);
 
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
   const userPrompt = `Generate a formal complaint letter for the following situation:
 
+Today's date (use this as the letter date): ${today}
 Company: ${input.companyName}
 Issue: ${issueDescription}
 Desired Outcome: ${input.desiredOutcome}
