@@ -3,6 +3,27 @@
 
 ---
 
+## UNIFIED SYSTEM — READ FIRST
+
+This project uses a unified system across three Claude interfaces (Code, Desktop, Browser Extension). At the START of every session:
+
+1. Read `shared-context/active-sessions.md` to see what other interfaces have done
+2. Read `shared-context/handoff-notes.md` for the latest handoff
+3. Read `shared-context/task-queue.md` for current priorities
+4. Check `gh pr list -R airpau/lifeadmin-ai --state open` for developer agent PRs
+5. Check `business_log` table in Supabase for recent agent activity
+
+At the END of every session:
+1. Update `shared-context/active-sessions.md` with what you did
+2. Append to `shared-context/handoff-notes.md` with summary and next steps
+3. Update `shared-context/task-queue.md` with any new/completed tasks
+4. Update `business_log` table so AI agents have current context
+5. Commit and push all changes
+
+The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks.
+
+---
+
 ## CRITICAL — READ THIS FIRST
 
 This project has an existing production codebase with real users and live data. Before making ANY change:
