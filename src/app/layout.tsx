@@ -85,6 +85,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
+        {/* Preconnect to critical external domains for faster loading */}
+        <link rel="preconnect" href="https://kcxxlesishltdmfctlmo.supabase.co" />
+        <link rel="dns-prefetch" href="https://kcxxlesishltdmfctlmo.supabase.co" />
+        <link rel="preconnect" href="https://www.googletagmanager.com" />
+        <link rel="dns-prefetch" href="https://connect.facebook.net" />
+
         {/* Awin Advertiser Mastertag. Set NEXT_PUBLIC_AWIN_ADVERTISER_ID in Vercel to activate. */}
         {process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID && (
           <script async src={`https://www.dwin1.com/${process.env.NEXT_PUBLIC_AWIN_ADVERTISER_ID}.js`} type="text/javascript" />
