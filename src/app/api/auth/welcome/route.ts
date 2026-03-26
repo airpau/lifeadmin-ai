@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendOnboardingEmail } from '@/lib/email/onboarding-sequence';
 import { resend, FROM_EMAIL } from '@/lib/resend';
 import { notifyAgents } from '@/lib/agent-notify';
+import { trackSignup } from '@/lib/meta-conversions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +29,15 @@ export async function POST(request: NextRequest) {
 
     // Notify AI agents about new signup
     notifyAgents('new_signup', `New signup: ${name || email}`, `New user signed up: ${email} (${name || 'no name'}). User ID: ${userId || 'unknown'}. Time: ${new Date().toISOString()}`, 'system').catch(() => {});
+
+    // Meta Conversions API - server-side Lead event (deduplicates with client Pixel)
+    trackSignup({
+      email,
+      userId: userId || '',
+      firstName: name || undefined,
+      ip: request.headers.get('x-forwarded-for') || undefined,
+      userAgent: request.headers.get('user-agent') || undefined,
+    }).catch(() => {});
 
     return NextResponse.json({ sent });
   } catch (err: any) {

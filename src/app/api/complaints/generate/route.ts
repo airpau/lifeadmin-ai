@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { generateComplaintLetter } from '@/lib/agents/complaints-agent';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
+import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
@@ -141,6 +142,13 @@ export async function POST(request: NextRequest) {
     awardPoints(user.id, 'complaint_generated', { company: body.companyName })
       .then(result => { if (result.awarded) console.log(`[loyalty] +${result.points} points for complaint`); })
       .catch(err => console.error('[loyalty] Failed to award points:', err.message));
+
+    // Meta Conversions API - track letter generation as conversion event
+    trackLetterGenerated({
+      userId: user.id,
+      email: user.email || undefined,
+      provider: body.companyName,
+    }).catch(() => {});
 
     return NextResponse.json({ ...result, taskId: task?.id });
   } catch (error: any) {

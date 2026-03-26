@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { notifyAgents } from '@/lib/agent-notify';
+import { trackSubscription } from '@/lib/meta-conversions';
 
 export const runtime = 'nodejs';
 
@@ -137,6 +138,18 @@ export async function POST(request: NextRequest) {
         // Notify agents about subscription change
         if (!updateError) {
           notifyAgents('subscription_change', `New ${tier} subscription`, `User ${userId} subscribed to ${tier} plan. Stripe sub: ${session.subscription}`, 'stripe').catch(() => {});
+
+          // Meta Conversions API - server-side Purchase event
+          if (userId) {
+            const { data: profile } = await supabase.from('profiles').select('email, fbclid').eq('id', userId).single();
+            trackSubscription({
+              email: profile?.email || session.customer_details?.email || '',
+              userId,
+              tier,
+              value: tier === 'pro' ? 9.99 : 4.99,
+              fbclid: profile?.fbclid || session.metadata?.fbclid || undefined,
+            }).catch(() => {});
+          }
         }
 
         // Process referral subscription reward
