@@ -67,6 +67,10 @@
     {
       "path": "/api/cron/weekly-money-digest",
       "schedule": "0 7 * * 1"
+    },
+    {
+      "path": "/api/cron/sync-audiences",
+      "schedule": "0 6 * * 3"
     }
   ]
 }
