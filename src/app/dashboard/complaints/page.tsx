@@ -662,17 +662,17 @@ function ComplaintsPageInner() {
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Got a bill to dispute? <span className="text-slate-500 font-normal">(optional)</span>
                 </label>
-                <div>
+                <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
+                  <svg className="h-5 w-5 text-mint-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <span>{generating ? 'Scanning bill...' : 'Upload a photo or PDF of the bill'}</span>
                   <input
-                    ref={(el) => { if (el) (window as any).__billUploadRef = el; }}
                     type="file"
                     accept="image/*,.pdf,.heic,.heif"
-                    style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
+                    className="sr-only"
+                    disabled={generating}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      // Reset input so same file can be re-selected
-                      e.target.value = '';
 
                       if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
 
@@ -681,10 +681,7 @@ function ComplaintsPageInner() {
 
                       setGenerating(true);
                       setLoadingCaption(0);
-                      const captionTimer = setInterval(() => {
-                        setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
-                      }, 3000);
-                      (window as any).__captionTimer = captionTimer;
+                      const timer = setInterval(() => setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length), 3000);
 
                       try {
                         const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
@@ -711,30 +708,21 @@ function ComplaintsPageInner() {
                             issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
                           }));
                         } else if (data.error) {
-                          alert(`Scan error: ${data.error}`);
+                          alert('Scan error: ' + data.error);
                         } else {
-                          alert('Could not extract details from this document. Please type the details manually.');
+                          alert('Could not extract details. Please type them manually.');
                         }
                       } catch (err: any) {
-                        alert(`Upload failed: ${err.message || 'Network error. Please try again.'}`);
+                        alert('Upload failed: ' + (err.message || 'Please try again.'));
                       } finally {
                         setGenerating(false);
-                        clearInterval((window as any).__captionTimer);
+                        clearInterval(timer);
+                        // Reset input for re-upload
+                        e.target.value = '';
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const ref = (window as any).__billUploadRef;
-                      if (ref) ref.click();
-                    }}
-                    className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm text-left"
-                  >
-                    <svg className="h-5 w-5 text-mint-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Upload a photo or PDF of the bill. Our AI will read it and fill in the details.
-                  </button>
-                </div>
+                </label>
               </div>
 
               <div>
