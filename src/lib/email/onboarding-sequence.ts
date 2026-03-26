@@ -1,37 +1,40 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
-const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;`;
-const header = `background:#0f172a;padding:28px 32px 20px;border-bottom:1px solid #1e293b;`;
+// Mint/Navy design system styles
+const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;`;
+const header = `background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`;
 const body = `padding:32px;`;
-const h1 = `color:#f59e0b;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
+const h1 = `color:#ffffff;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
+const h2 = `color:#ffffff;font-size:18px;font-weight:600;margin:0 0 12px;`;
 const p = `color:#94a3b8;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#1e293b;border-radius:10px;padding:20px 24px;margin:20px 0;border-left:3px solid #f59e0b;`;
-const cta = `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px;text-decoration:none;margin:8px 0;`;
-const ctaSecondary = `display:inline-block;background:#1e293b;color:#e2e8f0;font-weight:600;font-size:14px;padding:11px 22px;border-radius:8px;text-decoration:none;margin:8px 0 8px 12px;border:1px solid #334155;`;
-const footer = `padding:20px 32px 28px;border-top:1px solid #1e293b;`;
-const footerText = `color:#334155;font-size:12px;line-height:1.6;margin:0;`;
-const badge = `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:11px;padding:3px 8px;border-radius:4px;letter-spacing:0.05em;`;
+const pWhite = `color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;`;
+const box = `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #34d399;`;
+const tipBox = `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #FB923C;`;
+const cta = `display:inline-block;background:#34d399;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
+const ctaSecondary = `display:inline-block;background:#1e3a5f;color:#e2e8f0;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;margin:8px 0 8px 12px;border:1px solid #1e3a5f;`;
+const footer = `padding:20px 32px 28px;border-top:1px solid #1e3a5f;`;
+const footerText = `color:#475569;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
+const stepNum = `display:inline-block;width:28px;height:28px;background:#34d399;color:#0f172a;font-weight:700;font-size:14px;border-radius:50%;text-align:center;line-height:28px;margin-right:10px;`;
+const badge = `display:inline-block;background:#34d399;color:#0f172a;font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;letter-spacing:0.05em;text-transform:uppercase;`;
+const statCard = `display:inline-block;background:#162544;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;text-align:center;margin:4px;min-width:120px;`;
 
 const Logo = () => `
   <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="background:linear-gradient(135deg,#34d399,#FB923C);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">backer</span></span>
   </a>
 `;
 
 const Footer = () => `
   <div style="${footer}">
     <p style="${footerText}">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/>
-      You're receiving this because you created a Paybacker account.<br/>
+      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
+      AI-powered money recovery for UK consumers<br/><br/>
       <a href="https://paybacker.co.uk/legal/privacy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="https://paybacker.co.uk/legal/terms" style="color:#475569;text-decoration:none;">Terms</a> &nbsp;·&nbsp;
       <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
     </p>
   </div>
 `;
-
-// ─── Sequence definition ───────────────────────────────────────────────────────
 
 export interface OnboardingEmail {
   key: string;
@@ -42,290 +45,212 @@ export interface OnboardingEmail {
 
 export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
 
-  // ── Day 0: Welcome ──────────────────────────────────────────────────────────
+  // Day 0: Welcome
   {
     key: 'welcome',
     dayOffset: 0,
-    subject: 'Welcome to Paybacker — let\'s get your money back',
+    subject: 'Welcome to Paybacker, {{name}} — your money-back toolkit is ready',
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">Welcome, ${name} — let's get your money back</h1>
-    <p style="${p}">Your Paybacker account is live. Here's what you can do right now:</p>
+    <h1 style="${h1}">Hi ${name}, welcome to Paybacker</h1>
+    <p style="${pWhite}">You just unlocked a toolkit that most UK consumers don't have. Paybacker uses AI and UK consumer law to help you fight unfair charges, track every subscription, and find cheaper deals.</p>
+
+    <p style="${p}">Here is what you can do right now:</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">⚡ QUICK START — 3 STEPS</p>
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 4px;font-size:15px;">1. Connect Gmail</p>
-      <p style="color:#94a3b8;margin:0 0 14px;font-size:14px;line-height:1.6;">Let our AI scan your inbox for subscriptions and billing errors. Read-only, secure, takes 30 seconds.</p>
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 4px;font-size:15px;">2. Run the scanner</p>
-      <p style="color:#94a3b8;margin:0 0 14px;font-size:14px;line-height:1.6;">See every overcharge, renewal, and forgotten subscription in your inbox — last 2 years covered.</p>
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 4px;font-size:15px;">3. Generate your first letter</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Write a formal complaint citing the Consumer Rights Act 2015 in under 2 minutes.</p>
+      <p style="margin:0 0 16px;"><span style="${stepNum}">1</span><strong style="color:#e2e8f0;font-size:15px;">Connect your bank account</strong></p>
+      <p style="color:#94a3b8;margin:0 0 20px;font-size:14px;padding-left:38px;">We'll find every subscription, direct debit, and recurring payment automatically. Read-only, FCA regulated via TrueLayer. Takes 30 seconds.</p>
+
+      <p style="margin:0 0 16px;"><span style="${stepNum}">2</span><strong style="color:#e2e8f0;font-size:15px;">Write your first complaint letter</strong></p>
+      <p style="color:#94a3b8;margin:0 0 20px;font-size:14px;padding-left:38px;">Describe any billing issue in plain English. Our AI writes a professional letter citing the exact UK law that protects you. Energy, broadband, flights, debt, parking, council tax, HMRC, and more.</p>
+
+      <p style="margin:0 0 16px;"><span style="${stepNum}">3</span><strong style="color:#e2e8f0;font-size:15px;">Browse 53+ deals</strong></p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;padding-left:38px;">Compare energy, broadband, mobile, insurance, mortgages, and loans from verified UK providers. Free to browse, no signup needed.</p>
     </div>
 
-    <a href="https://paybacker.co.uk/dashboard/scanner" style="${cta}">Scan your inbox →</a>
-    <a href="https://paybacker.co.uk/dashboard" style="${ctaSecondary}">Go to dashboard</a>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="https://paybacker.co.uk/dashboard" style="${cta}">Go to your dashboard</a>
+    </div>
 
-    <p style="${p}; margin-top:24px;">Questions? Just reply to this email — I read every one.</p>
-    <p style="${p}">— Paul, Paybacker</p>
+    <div style="${tipBox}">
+      <p style="color:#FB923C;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Did you know?</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">The average UK household overpays by over £1,000 per year on bills, subscriptions, and contracts they could challenge or switch. Paybacker helps you find and recover that money.</p>
+    </div>
+
+    <p style="${p}">Questions? Just reply to this email. I read every one.</p>
+    <p style="${p}">Paul, Founder</p>
   </div>
   ${Footer()}
 </div>`,
   },
 
-  // ── Day 1: First complaint ───────────────────────────────────────────────────
+  // Day 2: First value
   {
-    key: 'day1_complaint',
-    dayOffset: 1,
-    subject: 'Your first complaint letter in 2 minutes',
+    key: 'day2_first_value',
+    dayOffset: 2,
+    subject: 'Your first complaint letter takes 30 seconds',
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
     <h1 style="${h1}">Write your first complaint letter, ${name}</h1>
-    <p style="${p}">The most common first complaint on Paybacker? An energy bill overcharge. Here's exactly how it works.</p>
+    <p style="${pWhite}">The most common complaints on Paybacker are energy overcharges, broadband price rises, and unexpected subscription renewals. Here is exactly how it works.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">REAL EXAMPLE</p>
-      <p style="color:#94a3b8;margin:0;line-height:1.75;font-size:14px;">
-        <strong style="color:#e2e8f0;">Problem:</strong> British Gas raised monthly direct debit by £42 without 30-day notice.<br/>
-        <strong style="color:#e2e8f0;">Paybacker generated:</strong> Formal complaint citing Ofgem's Standards of Conduct and Consumer Rights Act 2015 s.50.<br/>
-        <strong style="color:#e2e8f0;">Result:</strong> £126 refund + back to original tariff within 11 days.
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">How it works</p>
+      <ol style="color:#e2e8f0;padding-left:20px;margin:0;line-height:2.4;font-size:14px;">
+        <li>Go to <strong>Complaints</strong> in your dashboard</li>
+        <li>Type the company name and describe the issue in your own words</li>
+        <li>Paybacker's AI writes a professional letter citing the exact UK legislation</li>
+        <li>Copy it, tweak it if you want, and send it from your email</li>
+      </ol>
+    </div>
+
+    <div style="${tipBox}">
+      <p style="color:#FB923C;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Real example</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">
+        <strong style="color:#e2e8f0;">Issue:</strong> Energy supplier raised direct debit by £42 without proper notice.<br/>
+        <strong style="color:#e2e8f0;">Paybacker generated:</strong> Formal complaint citing Ofgem Standards of Conduct and Consumer Rights Act 2015 s.49-50.<br/>
+        <strong style="color:#e2e8f0;">Typical result:</strong> Refund, credit, or return to original tariff within 8 weeks, or the right to escalate to the Energy Ombudsman.
       </p>
     </div>
 
-    <p style="${p}">To write your first letter:</p>
-    <ol style="color:#94a3b8;font-size:15px;line-height:2.2;padding-left:20px;margin:0 0 20px;">
-      <li>Go to <strong style="color:#e2e8f0;">Complaints</strong> in your dashboard</li>
-      <li>Describe the issue in plain English — no legal knowledge needed</li>
-      <li>Paybacker writes the letter, citing the correct UK law</li>
-      <li>Copy it, edit it if you like, and send it from your own email</li>
-    </ol>
+    <p style="${p}">You don't need to know any law. Just describe what happened and Paybacker handles the rest.</p>
 
-    <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Write your first letter →</a>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Write your first letter</a>
+    </div>
 
-    <p style="${p}; margin-top:24px;font-size:13px;color:#64748b;">Free accounts include 3 complaint letters per month. <a href="https://paybacker.co.uk/pricing" style="color:#f59e0b;">Upgrade</a> for unlimited.</p>
+    <p style="color:#64748b;font-size:13px;margin:0;">Free accounts include 3 letters per month. <a href="https://paybacker.co.uk/pricing" style="color:#34d399;">Upgrade for unlimited</a>.</p>
   </div>
   ${Footer()}
 </div>`,
   },
 
-  // ── Day 3: Subscription scanner ─────────────────────────────────────────────
+  // Day 4: Social proof
   {
-    key: 'day3_subscriptions',
-    dayOffset: 3,
-    subject: 'Found any subscriptions? Here\'s how to cancel them',
+    key: 'day4_social_proof',
+    dayOffset: 4,
+    subject: 'UK consumers are owed billions — here is what you can claim',
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">How to find and cancel forgotten subscriptions, ${name}</h1>
-    <p style="${p}">The average UK adult pays for 4–7 subscriptions they barely use. Our scanner reads your inbox to surface all of them.</p>
+    <h1 style="${h1}">You might be owed money right now, ${name}</h1>
+    <p style="${pWhite}">Most UK consumers don't realise how much money they're leaving on the table. Here are three things worth checking today.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT THE SCANNER FINDS</p>
-      <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
-        <li>Monthly and annual subscriptions (Netflix, Adobe, gym, software)</li>
-        <li>Free trials that silently converted to paid</li>
-        <li>Duplicate services (two cloud storage plans, etc.)</li>
-        <li>Annual renewals you didn't notice charging</li>
-        <li>Services you meant to cancel but never did</li>
-      </ul>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">Flight delays = up to £520 per person</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Under UK261 regulations, if your flight was delayed over 3 hours in the last 6 years, you could be owed compensation. Paybacker writes the claim letter for you.</p>
     </div>
 
-    <p style="${p}">Once found, Paybacker generates a professional cancellation email for each — citing your right to cancel under the Consumer Contracts Regulations 2013. You copy it and send it from your own email.</p>
+    <div style="${box}">
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">Broadband mid-contract price rises = free exit</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Ofcom rules mean if your broadband provider raises prices mid-contract without telling you upfront, you can leave penalty-free. Many providers did exactly this.</p>
+    </div>
 
-    <a href="https://paybacker.co.uk/dashboard/subscriptions" style="${cta}">Scan for subscriptions →</a>
-    <a href="https://paybacker.co.uk/dashboard/scanner" style="${ctaSecondary}">Run opportunity scan</a>
+    <div style="${box}">
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">Energy credit balances = your money back</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">If you've switched energy suppliers, your old provider must refund any credit balance within 10 working days. If they haven't, that's a valid complaint.</p>
+    </div>
 
-    <p style="${p}; margin-top:24px;">If Gmail isn't connected yet, <a href="https://paybacker.co.uk/dashboard/profile" style="color:#f59e0b;">connect it here</a> — the scanner won't find anything without it.</p>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Check what you're owed</a>
+      <a href="https://paybacker.co.uk/deals" style="${ctaSecondary}">Browse deals</a>
+    </div>
   </div>
   ${Footer()}
 </div>`,
   },
 
-  // ── Day 7: Weekly summary prompt ────────────────────────────────────────────
+  // Day 7: Feature discovery
   {
-    key: 'day7_review',
+    key: 'day7_features',
     dayOffset: 7,
-    subject: 'Your week 1 Paybacker check-in',
+    subject: 'Have you tried these yet, ${name}?',
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">One week in — what have you found, ${name}?</h1>
-    <p style="${p}">You've had access for a week. Here's a quick check on the three things worth reviewing:</p>
+    <h1 style="${h1}">One week in. Here is what most people miss, ${name}.</h1>
+    <p style="${pWhite}">You've had Paybacker for a week. Here are four features that save the most money, and most people haven't tried them all yet.</p>
 
     <div style="${box}">
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">1. Bank Connection</p>
-      <p style="color:#94a3b8;margin:0 0 16px;font-size:14px;">Connect your bank account to automatically detect every subscription and recurring payment. Takes 30 seconds.</p>
-
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">2. Subscriptions</p>
-      <p style="color:#94a3b8;margin:0 0 16px;font-size:14px;">Track every subscription in one place. Add them manually or let the bank scan find them. See exactly what you're spending.</p>
-
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;">3. Complaint letters</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;">If you spot an overcharge or billing error, the Complaints agent writes the letter citing the exact UK law that applies.</p>
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Bank Connection</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Connect your bank and Paybacker finds every subscription, direct debit, and recurring payment. You'll probably find ones you've forgotten about. <a href="https://paybacker.co.uk/dashboard/subscriptions" style="color:#34d399;">Connect now</a></p>
     </div>
 
-    <a href="https://paybacker.co.uk/dashboard" style="${cta}">Review your dashboard →</a>
+    <div style="${box}">
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Spending Intelligence</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">See where your money goes each month, broken down by category. Set budgets and get alerts when you're close to your limit. <a href="https://paybacker.co.uk/dashboard/money-hub" style="color:#34d399;">View Money Hub</a></p>
+    </div>
 
-    <p style="${p}; margin-top:24px;">Reply to this email and tell me what you've found so far — good or bad. Every bit of feedback makes the product better.</p>
-    <p style="${p}">— Paul</p>
+    <div style="${box}">
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Government Forms</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">HMRC tax rebates, council tax challenges, DVLA issues, NHS complaints, parking appeals. Paybacker writes these too. <a href="https://paybacker.co.uk/dashboard/forms" style="color:#34d399;">View forms</a></p>
+    </div>
+
+    <div style="${box}">
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">AI Chatbot</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Ask our chatbot anything about UK consumer rights, your spending, or your subscriptions. It can manage your finances through conversation. Look for the chat bubble on any page.</p>
+    </div>
+
+    <div style="text-align:center;margin:28px 0;">
+      <a href="https://paybacker.co.uk/dashboard" style="${cta}">Explore your dashboard</a>
+    </div>
+
+    <p style="${p}">Reply and tell me what you've found so far. Every bit of feedback shapes what we build next.</p>
+    <p style="${p}">Paul</p>
   </div>
   ${Footer()}
 </div>`,
   },
 
-  // ── Day 10: Upgrade nudge ────────────────────────────────────────────────────
+  // Day 10: Upgrade nudge (free users only)
   {
     key: 'day10_upgrade',
     dayOffset: 10,
-    subject: 'Unlock unlimited complaint letters — Essential plan',
+    subject: 'Unlock unlimited with Essential — £4.99/month',
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">Hit your letter limit, ${name}?</h1>
-    <p style="${p}">Free accounts include 3 complaint letters per month. If you've used them — or you can see more opportunities to chase — the Essential plan unlocks everything.</p>
+    <h1 style="${h1}">Ready for more, ${name}?</h1>
+    <p style="${pWhite}">Free accounts include 3 complaint letters per month and a one-time bank scan. If you've seen the value, the Essential plan unlocks everything.</p>
+
+    <div style="background:#162544;border:1px solid #34d399;border-radius:12px;padding:24px;margin:24px 0;text-align:center;">
+      <p style="color:#34d399;font-weight:700;margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Essential Plan</p>
+      <p style="color:white;font-size:32px;font-weight:800;margin:0;">£4.99<span style="color:#94a3b8;font-size:14px;font-weight:400;">/month</span></p>
+    </div>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">Essential — £4.99/month</p>
-      <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
-        <li><strong style="color:#e2e8f0;">Unlimited</strong> AI complaint letters</li>
-        <li><strong style="color:#e2e8f0;">Unlimited</strong> inbox scanning</li>
-        <li><strong style="color:#e2e8f0;">Unlimited</strong> subscription tracking</li>
-        <li>AI cancellation emails for every subscription</li>
-        <li>Letters citing Consumer Rights Act 2015, Ofcom, FCA rules</li>
-        <li>Cancel anytime — no lock-in</li>
+      <ul style="color:#e2e8f0;padding-left:18px;margin:0;line-height:2.4;font-size:14px;">
+        <li><strong>Unlimited</strong> AI complaint and form letters</li>
+        <li><strong>1 bank account</strong> with daily auto-sync</li>
+        <li><strong>Monthly</strong> email and opportunity re-scans</li>
+        <li><strong>Full</strong> spending intelligence dashboard</li>
+        <li>Cancellation emails citing UK consumer law</li>
+        <li>Renewal reminders at 30, 14, and 7 days</li>
+        <li>Contract end date tracking</li>
       </ul>
     </div>
 
-    <p style="${p}">At the average success rate, one complaint letter pays for a year of Essential.</p>
+    <p style="${p}">At the average complaint success rate, one letter pays for a year of Essential.</p>
 
-    <a href="https://paybacker.co.uk/pricing" style="${cta}">Upgrade to Essential →</a>
-
-    <p style="${p}; margin-top:24px;font-size:13px;color:#64748b;">Not ready? Free accounts still get 3 letters/month — reset on the 1st of each month.</p>
-  </div>
-  ${Footer()}
-</div>`,
-  },
-
-  // ── Day 14: Pro features ─────────────────────────────────────────────────────
-  {
-    key: 'day14_pro',
-    dayOffset: 14,
-    subject: 'The full Paybacker toolkit — everything available now',
-    html: (name) => `
-<div style="${wrap}">
-  <div style="${header}">${Logo()}</div>
-  <div style="${body}">
-    <h1 style="${h1}">Two weeks in — here's everything Paybacker can do, ${name}</h1>
-    <p style="${p}">A quick look at the full toolkit, in case you haven't explored everything yet.</p>
-
-    <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">AVAILABLE NOW — FREE</p>
-      <ul style="color:#94a3b8;padding-left:18px;margin:0 0 16px;line-height:2;font-size:14px;">
-        <li>3 complaint letters/month (Consumer Rights Act 2015 citations)</li>
-        <li>Subscription tracker + manual add</li>
-        <li>Dashboard overview</li>
-      </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">ESSENTIAL (£4.99/mo)</p>
-      <ul style="color:#94a3b8;padding-left:18px;margin:0 0 16px;line-height:2;font-size:14px;">
-        <li>Unlimited complaint and form letters</li>
-        <li>1 bank account with daily auto-sync</li>
-        <li>Monthly email and opportunity re-scans</li>
-        <li>Full spending intelligence dashboard</li>
-        <li>Cancellation emails with legal context</li>
-        <li>Renewal reminders (30, 14, 7 days before)</li>
-      </ul>
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;">PRO (£9.99/mo)</p>
-      <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2;font-size:14px;">
-        <li>Everything in Essential</li>
-        <li>Unlimited bank accounts</li>
-        <li>Unlimited email and opportunity scans</li>
-        <li>Full transaction-level analysis</li>
-        <li>Priority support</li>
-      </ul>
+    <div style="text-align:center;margin:28px 0;">
+      <a href="https://paybacker.co.uk/pricing" style="${cta}">Upgrade to Essential</a>
     </div>
 
-    <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Write a complaint →</a>
-    <a href="https://paybacker.co.uk/pricing" style="${ctaSecondary}">View pricing</a>
-  </div>
-  ${Footer()}
-</div>`,
-  },
-
-  // ── Day 21: Social proof ─────────────────────────────────────────────────────
-  {
-    key: 'day21_social_proof',
-    dayOffset: 21,
-    subject: 'How people are using Paybacker to get money back',
-    html: (name) => `
-<div style="${wrap}">
-  <div style="${header}">${Logo()}</div>
-  <div style="${body}">
-    <h1 style="${h1}">Real complaints, real results, ${name}</h1>
-    <p style="${p}">Here are three types of complaints that typically succeed — and what makes them work.</p>
-
-    <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">💡 ENERGY OVERCHARGE</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Citing Ofgem's Standards of Conduct and Consumer Rights Act 2015 s.49–50, a formal complaint about an unexplained direct debit increase typically results in an explanation, a credit, or a return to the previous rate within 8 weeks — or the right to escalate to the Energy Ombudsman.</p>
-    </div>
-
-    <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">📡 BROADBAND PRICE RISE</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Under Ofcom rules, mid-contract price rises not disclosed at point of sale trigger an exit right. A complaint letter citing this gives you either a waived exit fee or a credit — your choice.</p>
-    </div>
-
-    <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">🔄 FORGOTTEN SUBSCRIPTION</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Cancellation emails citing the Consumer Contracts Regulations 2013 right to cancel — sent professionally rather than emotionally — get a much higher response rate than "please cancel my account" messages.</p>
-    </div>
-
-    <p style="${p}">Have you had a win with Paybacker? <a href="mailto:support@paybacker.co.uk?subject=My Paybacker win" style="color:#f59e0b;">Reply and tell me</a> — I'd love to share your story (anonymously if you prefer).</p>
-
-    <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Write a complaint now →</a>
-  </div>
-  ${Footer()}
-</div>`,
-  },
-
-  // ── Day 28: Month summary + referral ────────────────────────────────────────
-  {
-    key: 'day28_referral',
-    dayOffset: 28,
-    subject: 'Your first month with Paybacker — and a favour',
-    html: (name) => `
-<div style="${wrap}">
-  <div style="${header}">${Logo()}</div>
-  <div style="${body}">
-    <h1 style="${h1}">One month in, ${name}</h1>
-    <p style="${p}">You've had Paybacker for a month. Whether you've written one complaint or ten, you now have a tool that most people don't — the ability to fight back, quickly and with the law on your side.</p>
-
-    <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">THINGS WORTH DOING THIS MONTH</p>
-      <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
-        <li><a href="https://paybacker.co.uk/dashboard/scanner" style="color:#f59e0b;">Run the opportunity scanner</a> — covers 2 years of emails</li>
-        <li><a href="https://paybacker.co.uk/dashboard/subscriptions" style="color:#f59e0b;">Check for forgotten subscriptions</a> — "Detect from Inbox"</li>
-        <li><a href="https://paybacker.co.uk/dashboard/complaints" style="color:#f59e0b;">Write a complaint</a> — especially if any bills went up recently</li>
-      </ul>
-    </div>
-
-    <p style="${p}"><strong style="color:#e2e8f0;">A favour:</strong> If Paybacker has been useful, the best thing you can do is tell one person about it. We're a small team building something genuinely useful for UK consumers — word of mouth is everything at this stage.</p>
-
-    <a href="https://paybacker.co.uk" style="${cta}">Share Paybacker →</a>
-
-    <p style="${p}; margin-top:24px;">Thank you for being an early user. Your feedback shapes what we build next.</p>
-    <p style="${p}">— Paul, Paybacker</p>
+    <p style="color:#64748b;font-size:13px;margin:0;">Cancel anytime. No lock-in. Your data stays safe either way.</p>
   </div>
   ${Footer()}
 </div>`,
   },
 ];
 
-// ─── Send helper ──────────────────────────────────────────────────────────────
-
+// Send helper
 export async function sendOnboardingEmail(
   email: string,
   firstName: string,
@@ -335,12 +260,13 @@ export async function sendOnboardingEmail(
   if (!template) return false;
 
   try {
+    const name = firstName || 'there';
     await resend.emails.send({
       from: FROM_EMAIL,
       replyTo: REPLY_TO,
       to: email,
-      subject: template.subject,
-      html: template.html(firstName || 'there'),
+      subject: template.subject.replace('{{name}}', name).replace('${name}', name),
+      html: template.html(name),
     });
     return true;
   } catch (err) {
