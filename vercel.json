@@ -50,7 +50,11 @@
     },
     {
       "path": "/api/cron/social-engagement",
-      "schedule": "*/2 * * * *"
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/dm-responder",
+      "schedule": "* * * * *"
     }
   ]
 }
