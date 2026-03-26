@@ -162,38 +162,51 @@ Rules:
       const sender = participants.find((p: any) => p.id !== PAGE_ID);
       if (!sender) continue;
 
-      // Get messages in this conversation
-      const msgsRes = await fetch(`${API}/${conv.id}/messages?fields=message,from,created_time&limit=3&access_token=${pageToken}`);
+      // Get full conversation history for context
+      const msgsRes = await fetch(`${API}/${conv.id}/messages?fields=message,from,created_time&limit=10&access_token=${pageToken}`);
       const msgsData = await msgsRes.json();
-      const messages = msgsData.data || [];
+      const messages = (msgsData.data || []).reverse(); // oldest first
       if (messages.length === 0) continue;
 
-      const lastMsg = messages[0];
-      // Skip if last message is from us
+      const lastMsg = messages[messages.length - 1];
+      // Skip if last message is from us (we already replied)
       if (lastMsg.from?.id === PAGE_ID) continue;
 
-      // Check if message is recent (within 1 hour)
+      // Check if message is recent (within 10 minutes for responsive feel)
       const msgAge = Date.now() - new Date(lastMsg.created_time).getTime();
-      if (msgAge > 60 * 60 * 1000) continue;
+      if (msgAge > 10 * 60 * 1000) continue;
 
-      // Generate AI reply
+      // Build conversation history for Claude
+      const chatHistory = messages.map((m: any) => ({
+        role: m.from?.id === PAGE_ID ? 'assistant' as const : 'user' as const,
+        content: m.message || '',
+      })).filter((m: any) => m.content);
+
+      // Generate AI reply with full context
       const aiRes = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 400,
-        system: `You are Paybacker's support assistant responding to Facebook DMs. Be helpful, friendly, and professional. British English.
+        system: `You are a friendly support person at Paybacker, chatting with someone on Facebook Messenger. This is a real conversation, not a support ticket. Be natural, warm, and conversational. British English.
+
+About Paybacker:
+- UK consumer rights platform at paybacker.co.uk
+- Free AI complaint letters citing UK law (energy, broadband, flights, parking, debt)
+- Bank scanning to find hidden charges and subscriptions
+- 59+ deals from UK providers (energy, broadband, mobile, insurance, mortgages)
+- Subscription tracking with renewal alerts
+- First 25 members get Pro free for 30 days
+- Free tier: 3 letters per month. Essential: £4.99/mo. Pro: £9.99/mo.
 
 Rules:
-- Help with questions about Paybacker features and pricing
-- Direct complex issues to support@paybacker.co.uk
-- Direct feature requests to features@paybacker.co.uk
-- Never share internal business data, revenue, or technical details
+- Chat like a real person, not a corporate bot
+- Use their name if you know it
+- Ask follow-up questions to understand their situation
+- If they have a specific complaint, suggest trying the free letter generator
+- Never share internal data (revenue, user counts, tech stack)
 - Never use em dashes
-- If they need a complaint letter, tell them to sign up free at paybacker.co.uk
-- Keep responses concise but thorough`,
-        messages: [{
-          role: 'user',
-          content: `Facebook DM from a user: "${lastMsg.message}"\n\nWrite a helpful reply.`,
-        }],
+- Keep messages short and conversational (2-4 sentences)
+- If you cannot help, suggest support@paybacker.co.uk`,
+        messages: chatHistory,
       });
 
       const replyText = aiRes.content.find(b => b.type === 'text');
