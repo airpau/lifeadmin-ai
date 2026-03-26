@@ -287,6 +287,9 @@ export const BANK_CATEGORY_MAP: Record<string, string> = {
 
 /**
  * Categorise a transaction by description keywords and bank category.
+ * This is the hardcoded-only version. For learning-aware categorisation,
+ * use categoriseWithLearning() or categoriseWithLearningSync() from
+ * @/lib/learning-engine instead.
  */
 export function categoriseTransaction(description: string, bankCategory: string): string {
   const d = description.toLowerCase();

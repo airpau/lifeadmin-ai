@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { categoriseTransaction, normaliseMerchantName } from '@/lib/merchant-normalise';
+import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { loadLearnedRules, categoriseWithLearningSync } from '@/lib/learning-engine';
 
 export const runtime = 'nodejs';
 
@@ -58,10 +59,13 @@ export async function GET() {
       return NextResponse.json({ hasData: false });
     }
 
-    // Categorise all transactions
+    // Load learned rules for this request
+    await loadLearnedRules();
+
+    // Categorise all transactions (using learning-aware sync version)
     const categorised = transactions.map(tx => ({
       ...tx,
-      spending_category: categoriseTransaction(tx.description || '', tx.category || ''),
+      spending_category: categoriseWithLearningSync(tx.description || '', tx.category || '', parseFloat(String(tx.amount))),
       amount: parseFloat(String(tx.amount)),
     }));
 

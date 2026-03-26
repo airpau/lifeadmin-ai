@@ -72,8 +72,10 @@ export async function GET(request: Request) {
     const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
     const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
 
-    // Category breakdown - use shared categorisation from merchant-normalise library
-    const { categoriseTransaction: categorise, normaliseMerchantName } = await import('@/lib/merchant-normalise');
+    // Category breakdown - use learning-aware categorisation
+    const { normaliseMerchantName } = await import('@/lib/merchant-normalise');
+    const { loadLearnedRules, categoriseWithLearningSync: categorise } = await import('@/lib/learning-engine');
+    await loadLearnedRules();
 
     // Filter out transfers for spending analysis
     const isTransfer = (t: any) => {

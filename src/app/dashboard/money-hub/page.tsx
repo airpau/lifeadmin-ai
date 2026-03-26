@@ -318,6 +318,12 @@ export default function MoneyHubPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ merchantPattern, newIncomeType, applyToAll: true }),
       });
+      // Feed into self-learning engine
+      await fetch('/api/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawName: merchantPattern, incomeType: newIncomeType }),
+      });
       await refreshData();
       if (drillIncomeType) loadIncomeDrillDown(drillIncomeType);
     } catch { /* silent */ }
@@ -327,10 +333,17 @@ export default function MoneyHubPage() {
 
   const recategorise = async (merchantPattern: string, newCategory: string) => {
     try {
+      // Update user's transactions
       await fetch('/api/money-hub/recategorise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ merchantPattern, newCategory, applyToAll: true }),
+      });
+      // Feed into self-learning engine (applies across all users over time)
+      await fetch('/api/learn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawName: merchantPattern, category: newCategory }),
       });
       await refreshData();
       if (drillCategory) loadDrillDown(drillCategory);

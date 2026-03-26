@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { learnFromCorrection } from '@/lib/learning-engine';
 
 export const runtime = 'nodejs';
 
@@ -72,6 +73,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Feed correction into the self-learning engine so it applies across all users
+    await learnFromCorrection({
+      rawName: merchantPattern,
+      category: newCategory,
+      userId: user.id,
+    });
+
     return NextResponse.json({ updated, merchant: merchantPattern, category: newCategory });
   }
 
@@ -125,6 +133,13 @@ export async function POST(request: NextRequest) {
           updated++;
         }
       }
+      // Feed income type correction into learning engine
+      await learnFromCorrection({
+        rawName: merchantPattern,
+        incomeType: body.newIncomeType,
+        userId: user.id,
+      });
+
       return NextResponse.json({ updated, merchant: merchantPattern, incomeType: body.newIncomeType });
     }
   }

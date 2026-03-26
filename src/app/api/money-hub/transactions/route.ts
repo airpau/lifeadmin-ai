@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { categoriseTransaction as categorise, normaliseMerchantName } from '@/lib/merchant-normalise';
+import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { loadLearnedRules, categoriseWithLearningSync as categorise } from '@/lib/learning-engine';
 
 export const runtime = 'nodejs';
 
@@ -59,9 +60,12 @@ export async function GET(request: NextRequest) {
 
   const { data: txns } = await query;
 
+  // Load learned rules for learning-aware categorisation
+  await loadLearnedRules();
+
   let filtered = (txns || []).map(t => ({
     ...t,
-    spending_category: t.user_category || categorise(t.description || '', t.category || ''),
+    spending_category: t.user_category || categorise(t.description || '', t.category || '', parseFloat(t.amount)),
     amount: parseFloat(t.amount),
   }));
 
