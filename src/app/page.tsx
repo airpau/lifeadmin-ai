@@ -461,6 +461,77 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Plan Comparison Table */}
+        <section className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              viewport={{ once: true }}
+              className="text-center mb-12"
+            >
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">Choose your plan</h2>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto">All plans include our AI chatbot. Upgrade for unlimited letters, automatic scanning, and full spending intelligence.</p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              viewport={{ once: true }}
+              className="max-w-4xl mx-auto overflow-x-auto"
+            >
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-navy-700/50">
+                    <th className="text-left py-4 px-4 text-slate-400 font-normal">Feature</th>
+                    <th className="text-center py-4 px-4 text-white font-semibold">Free</th>
+                    <th className="text-center py-4 px-4 text-mint-400 font-semibold">Essential<br /><span className="text-xs font-normal text-slate-400">£4.99/mo</span></th>
+                    <th className="text-center py-4 px-4 text-brand-400 font-semibold">Pro<br /><span className="text-xs font-normal text-slate-400">£9.99/mo</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { feature: 'AI complaint and form letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { feature: 'Subscription tracking', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
+                    { feature: 'Bank account scanning', free: 'One-time', essential: '1 account, daily sync', pro: 'Unlimited accounts' },
+                    { feature: 'Email inbox scanning', free: 'One-time', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
+                    { feature: 'Opportunity scanner', free: 'One-time', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
+                    { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
+                    { feature: 'Cancellation emails', free: false, essential: true, pro: true },
+                    { feature: 'Renewal reminders', free: false, essential: true, pro: true },
+                    { feature: 'Contract end date tracking', free: false, essential: true, pro: true },
+                    { feature: 'Priority support', free: false, essential: false, pro: true },
+                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
+                  ].map((row, i) => (
+                    <tr key={i} className="border-b border-navy-700/30">
+                      <td className="py-3 px-4 text-slate-300">{row.feature}</td>
+                      {[row.free, row.essential, row.pro].map((val, j) => (
+                        <td key={j} className="py-3 px-4 text-center">
+                          {val === true ? (
+                            <Check className="h-5 w-5 text-mint-400 mx-auto" />
+                          ) : val === false ? (
+                            <span className="text-slate-600">-</span>
+                          ) : (
+                            <span className="text-slate-300 text-xs">{val}</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="text-center mt-8">
+                <Link href="/pricing" className="text-mint-400 hover:text-mint-300 text-sm font-medium inline-flex items-center gap-1">
+                  View full pricing details <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
         {/* How It Works */}
         <section id="how-it-works" className="py-20 md:py-28 bg-navy-900/30 scroll-mt-16">
           <div className="container mx-auto px-4 md:px-6">
