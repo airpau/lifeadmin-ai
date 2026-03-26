@@ -1,0 +1,103 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { findCheaperAlternatives, compareAllSubscriptions, saveComparisons } from '@/lib/comparison-engine';
+
+/**
+ * GET /api/subscriptions/compare?subscriptionId={id}
+ * Returns comparisons for a single subscription.
+ *
+ * GET /api/subscriptions/compare?all=1
+ * Returns all saved comparisons from DB for the logged-in user.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const all = request.nextUrl.searchParams.get('all');
+    if (all) {
+      // Fetch all saved comparisons for user's subscriptions
+      const { data: subs } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .is('dismissed_at', null);
+
+      if (!subs || subs.length === 0) {
+        return NextResponse.json({ comparisons: {} });
+      }
+
+      const subIds = subs.map(s => s.id);
+      const { data: comps } = await supabase
+        .from('subscription_comparisons')
+        .select('*')
+        .in('subscription_id', subIds)
+        .eq('dismissed', false)
+        .order('annual_saving', { ascending: false });
+
+      // Group by subscription_id
+      const grouped: Record<string, any[]> = {};
+      for (const c of (comps || [])) {
+        if (!grouped[c.subscription_id]) grouped[c.subscription_id] = [];
+        grouped[c.subscription_id].push({
+          dealProvider: c.deal_provider,
+          dealName: c.deal_name,
+          dealUrl: c.deal_url,
+          currentPrice: parseFloat(String(c.current_price)),
+          dealPrice: parseFloat(String(c.deal_price)),
+          annualSaving: parseFloat(String(c.annual_saving)),
+        });
+      }
+
+      return NextResponse.json({ comparisons: grouped });
+    }
+
+    const subscriptionId = request.nextUrl.searchParams.get('subscriptionId');
+    if (!subscriptionId) {
+      return NextResponse.json({ error: 'subscriptionId or all param required' }, { status: 400 });
+    }
+
+    const comparisons = await findCheaperAlternatives(subscriptionId, user.id);
+    return NextResponse.json({ comparisons });
+  } catch (err) {
+    console.error('Compare GET error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/subscriptions/compare
+ * Runs compareAllSubscriptions for the logged-in user, saves results, returns summary
+ * along with per-subscription comparisons.
+ */
+export async function POST() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const result = await compareAllSubscriptions(user.id);
+
+    // Save comparisons to DB
+    for (const [subId, comparisons] of Object.entries(result.comparisons)) {
+      const currentPrice = comparisons[0]?.currentPrice || 0;
+      await saveComparisons(subId, currentPrice, comparisons);
+    }
+
+    return NextResponse.json({
+      totalAnnualSaving: result.totalAnnualSaving,
+      count: result.count,
+      subscriptionsCompared: Object.keys(result.comparisons).length,
+      comparisons: result.comparisons,
+    });
+  } catch (err) {
+    console.error('Compare POST error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}

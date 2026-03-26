@@ -120,6 +120,40 @@ const findDeals: ChatTool = {
       }
     }
 
+    // Check for pre-computed comparisons from subscription_comparisons table
+    if (currentSub) {
+      const { data: subRow } = await admin
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('provider_name', `%${args.provider_name || ''}%`)
+        .eq('status', 'active')
+        .is('dismissed_at', null)
+        .limit(1)
+        .single();
+
+      if (subRow) {
+        const { data: savedComps } = await admin
+          .from('subscription_comparisons')
+          .select('deal_provider, deal_name, deal_url, current_price, deal_price, annual_saving')
+          .eq('subscription_id', subRow.id)
+          .eq('dismissed', false)
+          .order('annual_saving', { ascending: false })
+          .limit(3);
+
+        if (savedComps && savedComps.length > 0) {
+          result.pre_computed_comparisons = savedComps.map(c => ({
+            provider: c.deal_provider,
+            deal: c.deal_name,
+            url: c.deal_url,
+            current_monthly: c.current_price ? `£${parseFloat(String(c.current_price)).toFixed(2)}` : null,
+            deal_monthly: c.deal_price ? `£${parseFloat(String(c.deal_price)).toFixed(2)}` : null,
+            annual_saving: c.annual_saving ? `£${parseFloat(String(c.annual_saving)).toFixed(0)}/year` : null,
+          }));
+        }
+      }
+    }
+
     result.message = currentSub
       ? `I found your ${currentSub.provider_name} subscription. Check the deals page for alternatives.`
       : `Browse ${args.category} deals at paybacker.co.uk/deals/${args.category}`;

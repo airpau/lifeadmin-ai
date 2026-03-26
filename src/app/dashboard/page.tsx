@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
+import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -30,6 +31,8 @@ export default function DashboardPage() {
   const [editingSavingId, setEditingSavingId] = useState<string | null>(null);
   const [editingSavingAmount, setEditingSavingAmount] = useState('');
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
+  const [comparisonSaving, setComparisonSaving] = useState(0);
+  const [comparisonCount, setComparisonCount] = useState(0);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -264,6 +267,16 @@ export default function DashboardPage() {
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
 
+        // Fetch subscription comparison data
+        try {
+          const compRes = await fetch('/api/subscriptions/compare', { method: 'POST' });
+          if (compRes.ok) {
+            const compData = await compRes.json();
+            setComparisonSaving(compData.totalAnnualSaving || 0);
+            setComparisonCount(compData.count || 0);
+          }
+        } catch {} // Non-critical, don't block dashboard
+
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -488,6 +501,9 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Savings Opportunity Widget */}
+      <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} />
 
       {/* Price Increase Alerts */}
       {priceAlerts.length > 0 && (

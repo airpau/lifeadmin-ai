@@ -11,6 +11,7 @@ import ShareWinModal from '@/components/share/ShareWinModal';
 import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 import { isCreditProduct } from '@/lib/credit-product-detector';
+import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 
 interface Subscription {
   id: string;
@@ -214,6 +215,7 @@ export default function SubscriptionsPage() {
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [bankToast, setBankToast] = useState<string | null>(null);
+  const [subComparisons, setSubComparisons] = useState<Record<string, any[]>>({});
 
   const fetchSubscriptions = useCallback(async () => {
     try {
@@ -245,10 +247,23 @@ export default function SubscriptionsPage() {
     }
   }, []);
 
+  const fetchComparisons = useCallback(async () => {
+    try {
+      const res = await fetch('/api/subscriptions/compare', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.comparisons) {
+          setSubComparisons(data.comparisons);
+        }
+      }
+    } catch {} // Non-critical
+  }, []);
+
   useEffect(() => {
     fetchSubscriptions();
     fetchBankConnection();
-  }, [fetchSubscriptions, fetchBankConnection]);
+    fetchComparisons();
+  }, [fetchSubscriptions, fetchBankConnection, fetchComparisons]);
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
@@ -1019,7 +1034,7 @@ export default function SubscriptionsPage() {
                       <X className="h-4 w-4" />
                       Mark as Cancelled
                     </button>
-                    {sub.provider_type && ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan'].includes(sub.provider_type) && (
+                    {sub.provider_type && ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan'].includes(sub.provider_type) && !subComparisons[sub.id] && (
                       <a
                         href={`/deals/${sub.provider_type === 'mortgage' ? 'mortgages' : sub.provider_type === 'loan' ? 'loans' : sub.provider_type}`}
                         onClick={(e) => e.stopPropagation()}
@@ -1030,6 +1045,15 @@ export default function SubscriptionsPage() {
                       </a>
                     )}
                   </div>
+                )}
+
+                {/* Smart Bill Comparison */}
+                {sub.status === 'active' && subComparisons[sub.id] && subComparisons[sub.id].length > 0 && (
+                  <ComparisonCard
+                    subscription={sub}
+                    comparisons={subComparisons[sub.id]}
+                    category={sub.provider_type === 'mortgage' ? 'mortgages' : sub.provider_type === 'loan' ? 'loans' : sub.provider_type || undefined}
+                  />
                 )}
               </div>
             ))
