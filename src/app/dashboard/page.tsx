@@ -204,6 +204,33 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Onboarding checklist - only show for new users who haven't completed all steps */}
+      {(() => {
+        const steps = [
+          { num: 1, label: 'Connect your bank', href: '/dashboard/subscriptions', done: bankConnected },
+          { num: 2, label: 'Review your subscriptions', href: '/dashboard/subscriptions', done: subscriptionCount > 0 },
+          { num: 3, label: 'Generate your first complaint letter', href: '/dashboard/complaints', done: complaintsGenerated > 0 },
+          { num: 4, label: 'Browse deals', href: '/dashboard/deals', done: false },
+        ];
+        const allDone = steps.filter(s => s.num !== 4).every(s => s.done);
+        if (allDone) return null;
+        return (
+          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-8">
+            <h2 className="text-xl font-bold text-white mb-4">Welcome to Paybacker! Get started:</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {steps.map(step => (
+                <Link key={step.href + step.num} href={step.href} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${step.done ? 'bg-green-500/10 border border-green-500/20' : 'bg-slate-800/50 border border-slate-700 hover:border-amber-500/30'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done ? 'bg-green-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                    {step.done ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{step.num}</span>}
+                  </div>
+                  <span className={`text-sm ${step.done ? 'text-green-400' : 'text-white'}`}>{step.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2">Overview</h1>
         <p className="text-slate-400">Your financial snapshot and quick actions</p>

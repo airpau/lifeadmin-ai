@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -29,18 +30,29 @@ export default function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState(false);
   const [showTeaser, setShowTeaser] = useState(false);
+  const pathname = usePathname();
 
-  // Auto-engage: show teaser bubble after 5 seconds on first visit
+  // Pages where the teaser popup should never appear
+  const TEASER_EXCLUDED_PATHS = ['/pricing', '/checkout', '/auth', '/login', '/signup'];
+
+  // Auto-engage: show teaser bubble after 5 seconds on first visit only
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const dismissed = sessionStorage.getItem('pb_chat_teaser_dismissed');
     if (dismissed) return;
 
+    // Don't show teaser on pricing, checkout, or auth pages
+    if (TEASER_EXCLUDED_PATHS.some(p => pathname?.startsWith(p))) return;
+
     const timer = setTimeout(() => {
+      // Re-check dismissal inside the timeout in case it was dismissed while waiting
+      const dismissedNow = sessionStorage.getItem('pb_chat_teaser_dismissed');
+      if (dismissedNow) return;
       if (!open) setShowTeaser(true);
     }, 5000);
     return () => clearTimeout(timer);
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const check = () => setHidden(document.body.dataset.hideChat === 'true');
@@ -127,7 +139,7 @@ export default function ChatWidget() {
     <>
       {/* Chat teaser bubble - auto-engages after 5 seconds */}
       {showTeaser && !open && (
-        <div className="fixed bottom-36 right-6 z-50 max-w-[280px] md:bottom-24 animate-bounce-slow">
+        <div className="fixed bottom-36 right-6 z-50 max-w-[260px] sm:max-w-[280px] md:bottom-24 animate-bounce-slow">
           <div className="bg-white text-slate-900 rounded-2xl rounded-br-sm shadow-xl p-4 relative">
             <button
               onClick={() => {
@@ -172,7 +184,7 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-20 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-6rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px]">
+        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
             <div className="flex items-center gap-2">

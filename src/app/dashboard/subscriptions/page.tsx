@@ -50,6 +50,112 @@ interface CancellationEmail {
 
 const CATEGORIES = ['streaming', 'software', 'fitness', 'news', 'shopping', 'gaming', 'energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'council_tax', 'water', 'tv', 'other'];
 const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
+
+// Known merchant name patterns for normalising raw bank descriptions
+const MERCHANT_DISPLAY_NAMES: Record<string, string> = {
+  'netflix': 'Netflix',
+  'spotify': 'Spotify',
+  'amazon prime': 'Amazon Prime',
+  'amazon': 'Amazon',
+  'disney plus': 'Disney+',
+  'disney+': 'Disney+',
+  'apple': 'Apple',
+  'google': 'Google',
+  'youtube': 'YouTube',
+  'deliveroo': 'Deliveroo',
+  'uber eats': 'Uber Eats',
+  'uber': 'Uber',
+  'just eat': 'Just Eat',
+  'virgin media': 'Virgin Media',
+  'bt group': 'BT',
+  'sky': 'Sky',
+  'now tv': 'NOW TV',
+  'three': 'Three',
+  'vodafone': 'Vodafone',
+  'ee': 'EE',
+  'o2': 'O2',
+  'giffgaff': 'giffgaff',
+  'tesco mobile': 'Tesco Mobile',
+  'tesco': 'Tesco',
+  'sainsbury': 'Sainsbury\'s',
+  'asda': 'Asda',
+  'aldi': 'Aldi',
+  'lidl': 'Lidl',
+  'ocado': 'Ocado',
+  'british gas': 'British Gas',
+  'octopus energy': 'Octopus Energy',
+  'ovo energy': 'OVO Energy',
+  'ovo': 'OVO Energy',
+  'edf': 'EDF Energy',
+  'scottish power': 'Scottish Power',
+  'sse': 'SSE Energy',
+  'bulb': 'Bulb Energy',
+  'shell energy': 'Shell Energy',
+  'thames water': 'Thames Water',
+  'anglian water': 'Anglian Water',
+  'united utilities': 'United Utilities',
+  'severn trent': 'Severn Trent',
+  'council tax': 'Council Tax',
+  'hounslow': 'L.B. Hounslow Council Tax',
+  'l.b.hounslow': 'L.B. Hounslow Council Tax',
+  'gym': 'Gym',
+  'puregym': 'PureGym',
+  'the gym': 'The Gym Group',
+  'david lloyd': 'David Lloyd',
+  'nuffield': 'Nuffield Health',
+  'adobe': 'Adobe',
+  'microsoft': 'Microsoft',
+  'notion': 'Notion',
+  'slack': 'Slack',
+  'github': 'GitHub',
+  'chatgpt': 'ChatGPT',
+  'openai': 'OpenAI',
+  'dropbox': 'Dropbox',
+  'icloud': 'iCloud',
+  'playstation': 'PlayStation',
+  'xbox': 'Xbox',
+  'nintendo': 'Nintendo',
+  'crunchyroll': 'Crunchyroll',
+  'paramount': 'Paramount+',
+  'audible': 'Audible',
+  'times': 'The Times',
+  'guardian': 'The Guardian',
+  'telegraph': 'The Telegraph',
+  'aviva': 'Aviva',
+  'direct line': 'Direct Line',
+  'admiral': 'Admiral',
+  'axa': 'AXA',
+  'aa': 'AA',
+  'rac': 'RAC',
+  'green flag': 'Green Flag',
+};
+
+/** Normalise a raw bank merchant name (e.g. "DELIVEROO PLUS SUBS") to a clean display name */
+function normaliseProviderName(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  // Strip common bank suffixes
+  const cleaned = lower
+    .replace(/\s+(pymts?|payments?|subs?|subscriptions?|ltd|plc|uk|gbr|direct debit|dd|monthly|annual)\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Try exact match first, then partial match
+  for (const [pattern, display] of Object.entries(MERCHANT_DISPLAY_NAMES)) {
+    if (cleaned === pattern || cleaned.startsWith(pattern + ' ') || cleaned.includes(pattern)) {
+      return display;
+    }
+  }
+
+  // If no match found, title-case the cleaned name
+  if (raw === raw.toUpperCase() && raw.length > 3) {
+    return cleaned
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  return raw;
+}
 const CONTRACT_TYPES = ['subscription', 'fixed_contract', 'mortgage', 'loan', 'insurance', 'lease', 'membership', 'utility', 'other'];
 const PROVIDER_TYPES = ['energy', 'broadband', 'mobile', 'tv', 'insurance', 'mortgage', 'loan', 'credit_card', 'streaming', 'software', 'fitness', 'council_tax', 'water', 'other'];
 
@@ -704,21 +810,25 @@ export default function SubscriptionsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       {sub.logo_url ? (
-                        <Image
-                          src={sub.logo_url}
-                          alt={sub.provider_name}
-                          width={24}
-                          height={24}
-                          className="rounded-md shrink-0"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
-                        />
-                      ) : null}
-                      {!sub.logo_url && (
+                        <>
+                          <Image
+                            src={sub.logo_url}
+                            alt={sub.provider_name}
+                            width={24}
+                            height={24}
+                            className="rounded-md shrink-0"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                          />
+                          <span className="w-6 h-6 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold shrink-0 hidden">
+                            {normaliseProviderName(sub.provider_name).charAt(0).toUpperCase()}
+                          </span>
+                        </>
+                      ) : (
                         <span className="w-6 h-6 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold shrink-0">
-                          {sub.provider_name.charAt(0).toUpperCase()}
+                          {normaliseProviderName(sub.provider_name).charAt(0).toUpperCase()}
                         </span>
                       )}
-                      <h3 className="text-lg font-semibold text-white">{sub.provider_name}</h3>
+                      <h3 className="text-lg font-semibold text-white">{normaliseProviderName(sub.provider_name)}</h3>
                       {getStatusBadge(sub.status)}
                       {getSourceBadges(sub.source)}
                     </div>
