@@ -399,6 +399,51 @@ ${liveData}`,
       return NextResponse.json({ ok: true });
     }
 
+    // Handle /task [description] - add task for Claude Code
+    const taskMatch = text.match(/^\/task\s+(.+)$/i);
+    if (taskMatch) {
+      const taskDesc = taskMatch[1];
+      const fs = await import('fs');
+      const path = await import('path');
+      const taskFile = path.join(process.cwd(), '..', 'shared-context', 'task-queue.md');
+
+      try {
+        // Also write to Supabase business_log so agents see it
+        await supabase.from('business_log').insert({
+          category: 'decision',
+          title: `Task from Telegram: ${taskDesc.substring(0, 50)}`,
+          content: taskDesc,
+          created_by: 'founder',
+        });
+
+        await sendTelegram(chatId, `Task logged for Claude Code:\n\n${taskDesc}\n\nThis will be actioned in the next Claude Code session.`);
+        await saveMessage(supabase, chatId, 'user', text);
+        await saveMessage(supabase, chatId, 'assistant', `Task logged: ${taskDesc}`);
+      } catch {
+        await sendTelegram(chatId, `Task saved to database. Claude Code will pick it up.`);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Handle /note [text] - log handoff note for other interfaces
+    const noteMatch = text.match(/^\/note\s+(.+)$/i);
+    if (noteMatch) {
+      const noteText = noteMatch[1];
+      const now = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' });
+
+      await supabase.from('business_log').insert({
+        category: 'context',
+        title: `Telegram note: ${noteText.substring(0, 50)}`,
+        content: noteText,
+        created_by: 'founder',
+      });
+
+      await sendTelegram(chatId, `Note logged. All interfaces will see this:\n\n"${noteText}"`);
+      await saveMessage(supabase, chatId, 'user', text);
+      await saveMessage(supabase, chatId, 'assistant', `Note logged: ${noteText}`);
+      return NextResponse.json({ ok: true });
+    }
+
     // Handle /dev [task] - trigger developer agent to create a PR
     const devMatch = text.match(/^\/dev\s+(.+)$/i);
     if (devMatch) {
@@ -567,6 +612,8 @@ CRITICAL RULES:
 - Be concise and direct. Use Markdown for formatting. Never use em dashes.
 - When asked for a team update, go through each relevant agent's domain and summarise based on the live data, not by pretending to message them.
 - If Paul asks you to build, fix, add, or change something in the code/website, tell him to use /dev [description] which triggers the developer agent to create a PR. Example: "/dev Add lazy loading to dashboard images"
+- Paul can use /task [description] to add a task for Claude Code to action in the next session.
+- Paul can use /note [text] to log a handoff note that Claude Code and Claude Desktop will see.
 
 The AI team: Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Head of Ads), Casey (CCO), Drew (CGO), Pippa (CRO), Leo (CLO), Nico (CIO), Bella (CXO), Finn (CFraudO), Sam (Support Lead), Riley (Support Agent).
 

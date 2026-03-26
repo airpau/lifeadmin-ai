@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Session started. Read shared-context/handoff-notes.md and shared-context/task-queue.md for context from other interfaces.\"}'"
+          }
+        ]
+      }
+    ]
+  }
+}
