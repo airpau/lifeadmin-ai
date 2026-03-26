@@ -174,7 +174,7 @@ Rules:
 
       // Check if message is recent (within 10 minutes for responsive feel)
       const msgAge = Date.now() - new Date(lastMsg.created_time).getTime();
-      if (msgAge > 10 * 60 * 1000) continue;
+      if (msgAge > 15 * 60 * 1000) continue;
 
       // Build conversation history for Claude
       const chatHistory = messages.map((m: any) => ({
