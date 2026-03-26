@@ -19,3 +19,15 @@
 - 1 real external user: Lewis Fields (lewis.baker1995@gmail.com)
 - All test+oscar accounts are Awin integration tests
 - MRR: ~100 (all from test accounts)
+
+
+
+## Marketing Playbook (2026-03-26)
+Full marketing playbook created covering Google Ads, Meta Ads, and influencer marketing. Saved as paybacker-marketing-playbook.md in outputs. Key details:
+- Budget: £500-£1,500/mo across all channels
+- Google Ads: 40-50% of budget. Search campaigns for complaint letters, subscriptions, energy bills, flight delays, money saving. Plus brand campaign and Performance Max. Campaign ID: 23678309004.
+- Meta Ads: 25-30% of budget. Need to install Meta Pixel + Conversions API first, then let pixel learn 1-2 weeks. Conversion campaign + retargeting.
+- Influencer: 15-25% of budget. UK personal finance micro-influencers (1K-50K). Use Paybacker referral links for tracking. £50-150 per micro collab.
+- Tasks tagged [Claude Code] vs [Chrome] vs [Manual] for cross-interface execution.
+- Immediate priorities: check Google Ads dev token, install Meta Pixel, add fbclid tracking, research influencers.
+- Need to add: fbclid capture on signup, weekly signup-by-source SQL query, Telegram CAC report.

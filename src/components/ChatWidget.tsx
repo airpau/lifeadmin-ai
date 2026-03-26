@@ -23,6 +23,7 @@ export default function ChatWidget() {
   });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [userTier, setUserTier] = useState<string>('free');
   const [escalatedTicket, setEscalatedTicket] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -82,6 +83,11 @@ export default function ChatWidget() {
     setInput('');
     setLoading(true);
 
+    // Detect if this message is likely about subscriptions for loading indicator
+    const lowerText = text.toLowerCase();
+    const isSubRequest = /subscri|add\s|remove\s|delete\s|cancel\s|show\s(my|all)|list\s|update\s|change\s|edit\s|how much|spending/.test(lowerText);
+    setLoadingMessage(isSubRequest ? 'Checking your subscriptions...' : null);
+
     try {
       const distinctId = typeof window !== 'undefined' ? localStorage.getItem('pb_distinct_id') : null;
       const res = await fetch('/api/chat', {
@@ -91,6 +97,9 @@ export default function ChatWidget() {
       });
 
       const data = await res.json();
+      if (data.toolsUsed) {
+        setLoadingMessage(null);
+      }
       setMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
       if (data.escalated && data.ticketNumber) {
         setEscalatedTicket(data.ticketNumber);
@@ -246,8 +255,11 @@ export default function ChatWidget() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-slate-800 rounded-2xl px-4 py-2.5">
+                <div className="bg-slate-800 rounded-2xl px-4 py-2.5 flex items-center gap-2">
                   <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
+                  {loadingMessage && (
+                    <span className="text-xs text-slate-400">{loadingMessage}</span>
+                  )}
                 </div>
               </div>
             )}

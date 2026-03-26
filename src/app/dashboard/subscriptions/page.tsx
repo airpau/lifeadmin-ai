@@ -6,6 +6,7 @@ export const runtime = 'edge';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
+import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 
 interface Subscription {
@@ -30,6 +31,7 @@ interface Subscription {
   early_exit_fee?: number | null;
   provider_type?: string | null;
   current_tariff?: string | null;
+  logo_url?: string | null;
 }
 
 interface BankConnection {
@@ -703,6 +705,21 @@ export default function SubscriptionsPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
+                      {sub.logo_url ? (
+                        <Image
+                          src={sub.logo_url}
+                          alt={sub.provider_name}
+                          width={24}
+                          height={24}
+                          className="rounded-md shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                        />
+                      ) : null}
+                      {!sub.logo_url && (
+                        <span className="w-6 h-6 rounded-md bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold shrink-0">
+                          {sub.provider_name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
                       <h3 className="text-lg font-semibold text-white">{sub.provider_name}</h3>
                       {getStatusBadge(sub.status)}
                       {getSourceBadges(sub.source)}

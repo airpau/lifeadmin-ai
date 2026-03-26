@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { PRODUCT_CONTEXT } from '@/lib/product-context';
+import { getToolDefinitions, executeTool } from './tools/registry';
 
 export const maxDuration = 30;
 
@@ -95,6 +96,18 @@ Users can add subscriptions manually from the Subscriptions page, or connect the
 - Include the phrase "feature request" in your response so the system can detect and log it.
 - Always make the user feel heard and valued when giving feedback
 
+## SUBSCRIPTION MANAGEMENT TOOLS
+You have tools to manage the user's subscriptions. When the user asks to add, edit, remove, or view their subscriptions, use the appropriate tool. Always confirm before making destructive changes (dismiss/delete). After using a tool, describe what you did in natural language.
+
+Available tools:
+- list_subscriptions: List all subscriptions, optionally filtered by status or category
+- get_subscription: Look up a specific subscription by name or ID
+- update_subscription: Update subscription fields (category, amount, billing cycle, dates, notes)
+- create_subscription: Add a new subscription
+- dismiss_subscription: Remove a subscription (soft delete)
+
+When a user says things like "add Netflix for £15.99/month" or "show my subscriptions" or "change my BT broadband to £35" or "remove my old gym membership", use the relevant tool.
+
 ## Response Format
 - Use line breaks between paragraphs for readability
 - Use bullet points for lists
@@ -115,7 +128,7 @@ export async function POST(request: NextRequest) {
       const { data: { user } } = await supabase.auth.getUser();
       userId = user?.id || null;
     } catch {
-      // Anonymous user — that's fine
+      // Anonymous user -- that's fine
     }
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -131,7 +144,7 @@ export async function POST(request: NextRequest) {
     const isLoggedIn = !!userId;
     const userTier = isLoggedIn ? (tier || 'free') : 'anonymous';
 
-    // Anonymous visitors get a restricted prompt — no free advice
+    // Anonymous visitors get a restricted prompt -- no free advice
     const anonymousRules = !isLoggedIn ? `
 
 ## CRITICAL: THIS USER IS NOT LOGGED IN
@@ -146,7 +159,7 @@ Your ONLY job is to:
 4. Answer general questions about pricing and plans
 
 If they ask for specific advice (e.g. "how do I respond to a debt letter", "what are my rights", "can you write me a letter"):
-- Say: "Great question! Paybacker can generate a professional response letter for you citing the correct UK legislation. Sign up for free to get started — you get 3 complaint letters per month on the free plan."
+- Say: "Great question! Paybacker can generate a professional response letter for you citing the correct UK legislation. Sign up for free to get started -- you get 3 complaint letters per month on the free plan."
 - NEVER draft the letter or give the specific legal advice they need
 - ALWAYS redirect to signing up
 
@@ -156,12 +169,14 @@ If they describe a specific situation:
 - Tell them to sign up: "Create a free account at paybacker.co.uk to get your personalised response letter in under 30 seconds."
 
 NEVER say: "Under the Consumer Credit Act..." or give specific section references to anonymous users.
-ALWAYS say: "Sign up for free and our AI will cite the exact legislation for your situation."` : '';
+ALWAYS say: "Sign up for free and our AI will cite the exact legislation for your situation."
+
+You do NOT have access to subscription management tools for anonymous users.` : '';
 
     const tierContext = `
 ## Current User's Plan: ${userTier.toUpperCase()}
 
-IMPORTANT PLAN GATING RULES — you MUST follow these:
+IMPORTANT PLAN GATING RULES -- you MUST follow these:
 ${userTier === 'free' ? `
 - This user is on the FREE plan
 - They can: 3 complaint/form letters per month, unlimited subscription tracking (manual add), one-time bank scan, one-time email inbox scan, one-time opportunity scan, basic spending overview (top 5 categories), AI chatbot
@@ -179,26 +194,112 @@ ${userTier === 'pro' ? `
 - Full transaction-level analysis, priority support
 - Coming soon: automated cancellations, deal comparison` : ''}`;
 
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      system: SYSTEM_PROMPT + anonymousRules + tierContext,
-      messages: messages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-    });
-
-    const text = response.content[0];
-    if (text.type !== 'text') {
-      return NextResponse.json({ error: 'Unexpected response' }, { status: 500 });
+    // Build user context for tool-aware prompting
+    let subscriptionContext = '';
+    if (isLoggedIn && userId) {
+      try {
+        const admin = getAdmin();
+        const { count } = await admin
+          .from('subscriptions')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .is('dismissed_at', null);
+        subscriptionContext = `\n\nThis user currently has ${count || 0} tracked subscriptions.`;
+      } catch {
+        // Non-critical
+      }
     }
 
-    // Track cost — Haiku: input $0.80/1M, output $4/1M
-    const inputTokens = response.usage?.input_tokens || 0;
-    const outputTokens = response.usage?.output_tokens || 0;
-    const inputCost = inputTokens * 0.0000008;
-    const outputCost = outputTokens * 0.000004;
+    const systemPrompt = SYSTEM_PROMPT + anonymousRules + tierContext + subscriptionContext;
+
+    // Only provide tools to logged-in users
+    const tools: Anthropic.Messages.Tool[] = isLoggedIn
+      ? getToolDefinitions().map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema as Anthropic.Messages.Tool.InputSchema,
+        }))
+      : [];
+
+    // Build the messages for Claude
+    const claudeMessages: Anthropic.Messages.MessageParam[] = messages.map((m: { role: string; content: string }) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // Tool use loop: Claude may call multiple tools in sequence
+    let currentMessages: Anthropic.Messages.MessageParam[] = [...claudeMessages];
+    let finalText = '';
+    let toolsUsed: Array<{ tool: string; args: any; result: any }> = [];
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    const MAX_TOOL_ROUNDS = 5;
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: currentMessages,
+        ...(tools.length > 0 ? { tools } : {}),
+      });
+
+      totalInputTokens += response.usage?.input_tokens || 0;
+      totalOutputTokens += response.usage?.output_tokens || 0;
+
+      // Check if response contains tool_use blocks
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.Messages.ToolUseBlock => block.type === 'tool_use'
+      );
+      const textBlocks = response.content.filter(
+        (block): block is Anthropic.Messages.TextBlock => block.type === 'text'
+      );
+
+      if (toolUseBlocks.length === 0) {
+        // No tools called, we have the final response
+        finalText = textBlocks.map((b) => b.text).join('\n');
+        break;
+      }
+
+      // Execute each tool and build tool_result messages
+      const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+      for (const toolBlock of toolUseBlocks) {
+        let result: any;
+        if (userId) {
+          result = await executeTool(toolBlock.name, toolBlock.input, userId);
+        } else {
+          result = { error: 'You must be logged in to use subscription tools.' };
+        }
+
+        toolsUsed.push({
+          tool: toolBlock.name,
+          args: toolBlock.input,
+          result,
+        });
+
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolBlock.id,
+          content: JSON.stringify(result),
+        });
+      }
+
+      // Add the assistant response and tool results to the conversation
+      currentMessages = [
+        ...currentMessages,
+        { role: 'assistant' as const, content: response.content as Anthropic.Messages.ContentBlock[] },
+        { role: 'user' as const, content: toolResults as Anthropic.Messages.ToolResultBlockParam[] },
+      ];
+
+      // If this was the last round, collect any text
+      if (round === MAX_TOOL_ROUNDS - 1) {
+        finalText = textBlocks.map((b) => b.text).join('\n') || 'I have completed the requested changes to your subscriptions.';
+      }
+    }
+
+    // Cost tracking -- Sonnet 4: input $3/1M, output $15/1M
+    const inputCost = totalInputTokens * 0.000003;
+    const outputCost = totalOutputTokens * 0.000015;
     const estimatedCost = parseFloat((inputCost + outputCost).toFixed(6));
 
     // Log to agent_runs using service role (bypasses RLS, works for anonymous users)
@@ -206,22 +307,41 @@ ${userTier === 'pro' ? `
     admin.from('agent_runs').insert({
       user_id: userId || null,
       agent_type: 'chatbot',
-      model_name: 'claude-haiku-4-5-20251001',
+      model_name: 'claude-sonnet-4-20250514',
       status: 'completed',
-      input_data: { message_count: messages.length, tier: userTier, distinct_id: distinctId || null },
-      output_data: { reply_length: text.text.length },
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
+      input_data: {
+        message_count: messages.length,
+        tier: userTier,
+        distinct_id: distinctId || null,
+        tools_used: toolsUsed.length > 0 ? toolsUsed.map((t) => t.tool) : undefined,
+      },
+      output_data: { reply_length: finalText.length, tool_calls: toolsUsed.length },
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens,
       estimated_cost: estimatedCost,
       completed_at: new Date().toISOString(),
     }).then(({ error }) => {
       if (error) console.error('Chat cost tracking failed:', error.message);
     });
 
-    // Detect escalation — chatbot directed user to support email
+    // Log tool executions to audit table
+    if (toolsUsed.length > 0 && userId) {
+      for (const tu of toolsUsed) {
+        admin.from('chat_tool_audit').insert({
+          user_id: userId,
+          tool_name: tu.tool,
+          tool_args: tu.args,
+          tool_result: tu.result,
+        }).then(({ error }) => {
+          if (error) console.error('Tool audit log failed:', error.message);
+        });
+      }
+    }
+
+    // Detect escalation -- chatbot directed user to support email
     let escalated = false;
     let ticketNumber: string | null = null;
-    const reply = text.text;
+    const reply = finalText;
 
     // Create ticket when chatbot says it has created one, or when user reports a problem
     const botCreatedTicket = reply.toLowerCase().includes('created a support ticket') || reply.toLowerCase().includes('created a ticket');
@@ -314,7 +434,12 @@ ${userTier === 'pro' ? `
       }
     }
 
-    return NextResponse.json({ reply, escalated, ticketNumber });
+    return NextResponse.json({
+      reply,
+      escalated,
+      ticketNumber,
+      toolsUsed: toolsUsed.length > 0,
+    });
   } catch (error: any) {
     console.error('Chat error:', error.message);
     return NextResponse.json({

@@ -1,0 +1,423 @@
+import { createClient } from '@supabase/supabase-js';
+import { resolveProviderLogo } from '@/lib/logo-resolver';
+import { ChatTool } from './registry';
+
+function getAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+const listSubscriptions: ChatTool = {
+  name: 'list_subscriptions',
+  description:
+    'List the user\'s subscriptions. Optionally filter by status (active, cancelled, pending_cancellation) or category (streaming, software, fitness, energy, broadband, mobile, insurance, etc.).',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      status: {
+        type: 'string',
+        description: 'Filter by status: active, cancelled, pending_cancellation, expired',
+      },
+      category: {
+        type: 'string',
+        description: 'Filter by category: streaming, software, fitness, news, shopping, gaming, energy, broadband, mobile, insurance, mortgage, loan, council_tax, water, tv, other',
+      },
+    },
+    required: [],
+  },
+  handler: async (args: { status?: string; category?: string }, userId: string) => {
+    const admin = getAdmin();
+    let query = admin
+      .from('subscriptions')
+      .select('id, provider_name, category, amount, billing_cycle, status, next_billing_date, contract_end_date, provider_type, notes, logo_url, source')
+      .eq('user_id', userId)
+      .is('dismissed_at', null)
+      .order('created_at', { ascending: false });
+
+    if (args.status) {
+      query = query.eq('status', args.status);
+    }
+    if (args.category) {
+      query = query.eq('category', args.category);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (!data || data.length === 0) {
+      return {
+        message: 'No subscriptions found matching your criteria.',
+        subscriptions: [],
+        count: 0,
+      };
+    }
+
+    const totalMonthly = data
+      .filter((s) => s.status === 'active')
+      .reduce((sum, s) => {
+        if (s.billing_cycle === 'monthly') return sum + Number(s.amount);
+        if (s.billing_cycle === 'yearly') return sum + Number(s.amount) / 12;
+        if (s.billing_cycle === 'quarterly') return sum + Number(s.amount) / 3;
+        return sum;
+      }, 0);
+
+    return {
+      subscriptions: data.map((s) => ({
+        id: s.id,
+        provider_name: s.provider_name,
+        category: s.category,
+        amount: `£${Number(s.amount).toFixed(2)}`,
+        billing_cycle: s.billing_cycle,
+        status: s.status,
+        next_billing_date: s.next_billing_date,
+        contract_end_date: s.contract_end_date,
+        provider_type: s.provider_type,
+        notes: s.notes,
+      })),
+      count: data.length,
+      total_monthly_spend: `£${totalMonthly.toFixed(2)}`,
+    };
+  },
+};
+
+const getSubscription: ChatTool = {
+  name: 'get_subscription',
+  description:
+    'Look up a specific subscription by provider name (fuzzy match) or by subscription ID.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider_name: {
+        type: 'string',
+        description: 'The provider/company name to search for (e.g. "Netflix", "BT")',
+      },
+      id: {
+        type: 'string',
+        description: 'The subscription UUID',
+      },
+    },
+    required: [],
+  },
+  handler: async (args: { provider_name?: string; id?: string }, userId: string) => {
+    const admin = getAdmin();
+
+    if (args.id) {
+      const { data, error } = await admin
+        .from('subscriptions')
+        .select('*')
+        .eq('id', args.id)
+        .eq('user_id', userId)
+        .is('dismissed_at', null)
+        .single();
+
+      if (error || !data) {
+        return { error: 'Subscription not found.' };
+      }
+      return { subscription: data };
+    }
+
+    if (args.provider_name) {
+      const { data, error } = await admin
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .is('dismissed_at', null)
+        .ilike('provider_name', `%${args.provider_name}%`);
+
+      if (error) {
+        return { error: error.message };
+      }
+      if (!data || data.length === 0) {
+        return { error: `No subscription found matching "${args.provider_name}".` };
+      }
+      if (data.length === 1) {
+        return { subscription: data[0] };
+      }
+      return {
+        message: `Found ${data.length} matching subscriptions. Please be more specific.`,
+        matches: data.map((s) => ({
+          id: s.id,
+          provider_name: s.provider_name,
+          amount: `£${Number(s.amount).toFixed(2)}`,
+          status: s.status,
+        })),
+      };
+    }
+
+    return { error: 'Please provide either a provider_name or id.' };
+  },
+};
+
+const updateSubscription: ChatTool = {
+  name: 'update_subscription',
+  description:
+    'Update fields on an existing subscription. You must provide the subscription id. Updatable fields: category, amount, billing_cycle, contract_end_date, provider_type, notes, next_billing_date.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      id: {
+        type: 'string',
+        description: 'The subscription UUID (required)',
+      },
+      category: {
+        type: 'string',
+        description: 'New category',
+      },
+      amount: {
+        type: 'number',
+        description: 'New amount in GBP',
+      },
+      billing_cycle: {
+        type: 'string',
+        description: 'New billing cycle: monthly, quarterly, yearly, one-time',
+      },
+      contract_end_date: {
+        type: 'string',
+        description: 'New contract end date (YYYY-MM-DD)',
+      },
+      provider_type: {
+        type: 'string',
+        description: 'New provider type',
+      },
+      notes: {
+        type: 'string',
+        description: 'Updated notes',
+      },
+      next_billing_date: {
+        type: 'string',
+        description: 'Next billing date (YYYY-MM-DD)',
+      },
+    },
+    required: ['id'],
+  },
+  handler: async (
+    args: {
+      id: string;
+      category?: string;
+      amount?: number;
+      billing_cycle?: string;
+      contract_end_date?: string;
+      provider_type?: string;
+      notes?: string;
+      next_billing_date?: string;
+    },
+    userId: string
+  ) => {
+    const admin = getAdmin();
+
+    // Build update payload with only provided fields
+    const updates: Record<string, any> = {};
+    if (args.category !== undefined) updates.category = args.category;
+    if (args.amount !== undefined) updates.amount = args.amount;
+    if (args.billing_cycle !== undefined) updates.billing_cycle = args.billing_cycle;
+    if (args.contract_end_date !== undefined) updates.contract_end_date = args.contract_end_date;
+    if (args.provider_type !== undefined) updates.provider_type = args.provider_type;
+    if (args.notes !== undefined) updates.notes = args.notes;
+    if (args.next_billing_date !== undefined) updates.next_billing_date = args.next_billing_date;
+
+    if (Object.keys(updates).length === 0) {
+      return { error: 'No fields to update.' };
+    }
+
+    const { data, error } = await admin
+      .from('subscriptions')
+      .update(updates)
+      .eq('id', args.id)
+      .eq('user_id', userId)
+      .is('dismissed_at', null)
+      .select('id, provider_name, category, amount, billing_cycle, status, next_billing_date, contract_end_date, provider_type, notes')
+      .single();
+
+    if (error) {
+      return { error: error.message };
+    }
+    if (!data) {
+      return { error: 'Subscription not found.' };
+    }
+
+    return {
+      message: `Updated ${data.provider_name} successfully.`,
+      subscription: {
+        ...data,
+        amount: `£${Number(data.amount).toFixed(2)}`,
+      },
+    };
+  },
+};
+
+const createSubscription: ChatTool = {
+  name: 'create_subscription',
+  description:
+    'Create a new subscription for the user. Required: provider_name, amount. Optional: category, billing_cycle (defaults to monthly), contract_end_date, provider_type, notes, next_billing_date.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider_name: {
+        type: 'string',
+        description: 'The provider/company name (e.g. "Netflix", "Sky")',
+      },
+      amount: {
+        type: 'number',
+        description: 'Amount in GBP',
+      },
+      category: {
+        type: 'string',
+        description: 'Category: streaming, software, fitness, news, shopping, gaming, energy, broadband, mobile, insurance, mortgage, loan, council_tax, water, tv, other',
+      },
+      billing_cycle: {
+        type: 'string',
+        description: 'Billing cycle: monthly, quarterly, yearly, one-time. Defaults to monthly.',
+      },
+      contract_end_date: {
+        type: 'string',
+        description: 'Contract end date (YYYY-MM-DD)',
+      },
+      provider_type: {
+        type: 'string',
+        description: 'Provider type',
+      },
+      notes: {
+        type: 'string',
+        description: 'Any notes',
+      },
+      next_billing_date: {
+        type: 'string',
+        description: 'Next billing date (YYYY-MM-DD)',
+      },
+    },
+    required: ['provider_name', 'amount'],
+  },
+  handler: async (
+    args: {
+      provider_name: string;
+      amount: number;
+      category?: string;
+      billing_cycle?: string;
+      contract_end_date?: string;
+      provider_type?: string;
+      notes?: string;
+      next_billing_date?: string;
+    },
+    userId: string
+  ) => {
+    const admin = getAdmin();
+
+    // Try to resolve logo
+    const logoUrl = await resolveProviderLogo(args.provider_name);
+
+    const { data, error } = await admin
+      .from('subscriptions')
+      .insert({
+        user_id: userId,
+        provider_name: args.provider_name,
+        amount: args.amount,
+        category: args.category || 'other',
+        billing_cycle: args.billing_cycle || 'monthly',
+        currency: 'GBP',
+        status: 'active',
+        usage_frequency: 'sometimes',
+        contract_end_date: args.contract_end_date || null,
+        provider_type: args.provider_type || null,
+        notes: args.notes || null,
+        next_billing_date: args.next_billing_date || null,
+        logo_url: logoUrl,
+        source: 'manual',
+      })
+      .select('id, provider_name, category, amount, billing_cycle, status')
+      .single();
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return {
+      message: `Created subscription for ${data.provider_name}.`,
+      subscription: {
+        ...data,
+        amount: `£${Number(data.amount).toFixed(2)}`,
+      },
+    };
+  },
+};
+
+const dismissSubscription: ChatTool = {
+  name: 'dismiss_subscription',
+  description:
+    'Soft-delete (dismiss) a subscription. The user must confirm before you call this. Provide either the subscription id or provider_name to find it first.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      id: {
+        type: 'string',
+        description: 'The subscription UUID',
+      },
+      provider_name: {
+        type: 'string',
+        description: 'The provider name to find and dismiss',
+      },
+    },
+    required: [],
+  },
+  handler: async (args: { id?: string; provider_name?: string }, userId: string) => {
+    const admin = getAdmin();
+
+    let subscriptionId = args.id;
+
+    // If provider_name given, look it up first
+    if (!subscriptionId && args.provider_name) {
+      const { data } = await admin
+        .from('subscriptions')
+        .select('id, provider_name')
+        .eq('user_id', userId)
+        .is('dismissed_at', null)
+        .ilike('provider_name', `%${args.provider_name}%`);
+
+      if (!data || data.length === 0) {
+        return { error: `No subscription found matching "${args.provider_name}".` };
+      }
+      if (data.length > 1) {
+        return {
+          error: `Found ${data.length} matching subscriptions. Please be more specific.`,
+          matches: data.map((s) => ({ id: s.id, provider_name: s.provider_name })),
+        };
+      }
+      subscriptionId = data[0].id;
+    }
+
+    if (!subscriptionId) {
+      return { error: 'Please provide either an id or provider_name.' };
+    }
+
+    const { data, error } = await admin
+      .from('subscriptions')
+      .update({ dismissed_at: new Date().toISOString(), status: 'dismissed' })
+      .eq('id', subscriptionId)
+      .eq('user_id', userId)
+      .select('id, provider_name')
+      .single();
+
+    if (error) {
+      return { error: error.message };
+    }
+    if (!data) {
+      return { error: 'Subscription not found.' };
+    }
+
+    return {
+      message: `Dismissed ${data.provider_name}. It will no longer appear in your subscriptions list.`,
+    };
+  },
+};
+
+export const subscriptionTools: ChatTool[] = [
+  listSubscriptions,
+  getSubscription,
+  updateSubscription,
+  createSubscription,
+  dismissSubscription,
+];
