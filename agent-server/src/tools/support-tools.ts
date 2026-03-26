@@ -106,6 +106,21 @@ const respondToTicket: ToolDef = {
   handler: async (args, agentRole) => {
     const sb = getSupabase();
 
+    // GUARDRAIL: Block any response containing sensitive internal information
+    const blockedTerms = [
+      'next.js', 'nextjs', 'supabase', 'truelayer', 'claude', 'anthropic',
+      'stripe', 'vercel', 'railway', 'posthog', 'perplexity', 'fal.ai',
+      'resend', 'awin', 'typescript', 'tailwind', 'react', 'node.js',
+      'postgresql', 'gemini', 'imagen', 'elevenlabs', 'openai', 'gpt',
+      'haiku', 'sonnet', 'opus', 'api key', 'secret key', 'webhook',
+      'cron job', 'deployment', 'git', 'github', 'docker', 'dockerfile',
+    ];
+    const msgLower = args.message.toLowerCase();
+    const leaked = blockedTerms.filter(term => msgLower.includes(term));
+    if (leaked.length > 0) {
+      return `BLOCKED: Response contains sensitive internal terms (${leaked.join(', ')}). Rewrite without mentioning any internal systems, tech stack, APIs, or tools. Only discuss user-facing features.`;
+    }
+
     // Insert message
     const { error: msgErr } = await sb.from('ticket_messages').insert({
       ticket_id: args.ticket_id,
@@ -121,7 +136,7 @@ const respondToTicket: ToolDef = {
     // Update ticket status
     const update: Record<string, any> = { status: 'awaiting_reply' };
     // Set first_response_at if this is the first response
-    const { data: ticket } = await sb.from('support_tickets').select('first_response_at, user_id').eq('id', args.ticket_id).single();
+    const { data: ticket } = await sb.from('support_tickets').select('first_response_at, user_id, ticket_number').eq('id', args.ticket_id).single();
     if (ticket && !ticket.first_response_at) {
       update.first_response_at = new Date().toISOString();
     }
@@ -135,26 +150,44 @@ const respondToTicket: ToolDef = {
       if (profile?.email) {
         try {
           const resend = new Resend(config.RESEND_API_KEY);
+          const ticketRef = ticket.ticket_number || args.ticket_id.slice(0, 8).toUpperCase();
+          // Clean message: strip markdown bold/headers for email
+          const cleanMsg = args.message
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/^### (.*$)/gm, '<h3 style="color:#f59e0b;margin:16px 0 8px;">$1</h3>')
+            .replace(/^## (.*$)/gm, '<h3 style="color:#f59e0b;margin:16px 0 8px;">$1</h3>')
+            .replace(/^- (.*$)/gm, '<li style="color:#cbd5e1;margin:4px 0;">$1</li>')
+            .replace(/(<li.*<\/li>\n?)+/g, '<ul style="padding-left:20px;margin:8px 0;">$&</ul>')
+            .replace(/\n\n/g, '</p><p style="color:#cbd5e1;font-size:14px;line-height:1.7;margin:12px 0;">')
+            .replace(/\n/g, '<br>');
+
           await resend.emails.send({
-            from: 'support@paybacker.co.uk',
+            from: 'Paybacker Support <noreply@paybacker.co.uk>',
             to: profile.email,
             replyTo: 'support@mail.paybacker.co.uk',
-            subject: `Re: Your support request`,
+            subject: `Re: Your support request (${ticketRef})`,
             html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background-color:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:600px;margin:0 auto;">
-    <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
-      <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    <div style="background:#0f172a;padding:24px 32px;border-bottom:2px solid #f59e0b;">
+      <table width="100%"><tr>
+        <td><span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span></td>
+        <td align="right"><span style="color:#64748b;font-size:12px;">${ticketRef}</span></td>
+      </tr></table>
     </div>
-    <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
-      <div style="color:#e2e8f0;font-size:14px;line-height:1.8;">${args.message.replace(/\n/g, '<br>')}</div>
-      <div style="margin-top:24px;">
-        <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">View Your Dashboard</a>
-      </div>
+    <div style="background:#0f172a;padding:32px;">
+      <p style="color:#cbd5e1;font-size:14px;line-height:1.7;margin:0 0 12px;">${cleanMsg}</p>
     </div>
-    <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
-      <div style="color:#475569;font-size:11px;">Paybacker Support Team - paybacker.co.uk</div>
-      <div style="color:#334155;font-size:10px;margin-top:4px;">Reply to this email or visit your dashboard for more help.</div>
+    <div style="background:#0f172a;padding:24px 32px;border-top:1px solid #1e293b;">
+      <table width="100%"><tr>
+        <td>
+          <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:10px 20px;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px;">View Dashboard</a>
+        </td>
+        <td align="right" style="color:#475569;font-size:11px;">
+          Reply to this email to respond<br>
+          <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+        </td>
+      </tr></table>
     </div>
   </div>
 </body></html>`,
@@ -184,8 +217,17 @@ const escalateTicket: ToolDef = {
   handler: async (args, agentRole) => {
     const sb = getSupabase();
 
+    // Get ticket details
+    const { data: ticket } = await sb.from('support_tickets').select('ticket_number, subject, user_id').eq('id', args.ticket_id).single();
+    const ticketRef = ticket?.ticket_number || 'Unknown';
+
+    // Determine if this is a feature request or a bug
+    const reasonLower = (args.reason || '').toLowerCase();
+    const isFeatureRequest = reasonLower.includes('feature') || reasonLower.includes('request') || reasonLower.includes('suggestion');
+    const isBug = reasonLower.includes('bug') || reasonLower.includes('broken') || reasonLower.includes('not work') || reasonLower.includes('error');
+
     await sb.from('support_tickets').update({
-      assigned_to: 'Human Required',
+      assigned_to: isFeatureRequest ? 'Feature Review' : isBug ? 'Claude Code' : 'Human Required',
       priority: args.new_priority || 'high',
       status: 'in_progress',
     }).eq('id', args.ticket_id);
@@ -194,10 +236,34 @@ const escalateTicket: ToolDef = {
       ticket_id: args.ticket_id,
       sender_type: 'system',
       sender_name: agentRole === 'support_agent' ? 'Riley' : 'Sam',
-      message: `Escalated to human: ${args.reason}`,
+      message: `Escalated: ${args.reason}`,
     });
 
-    return `Ticket escalated to human. Reason: ${args.reason}`;
+    // Log to business_log so Claude Code picks it up
+    const category = isFeatureRequest ? 'decision' : isBug ? 'blocker' : 'context';
+    await sb.from('business_log').insert({
+      category,
+      title: `${isFeatureRequest ? 'Feature Request' : isBug ? 'Bug Report' : 'Escalated Ticket'}: ${ticketRef} - ${ticket?.subject || 'Unknown'}`,
+      content: `${args.reason}. Ticket: ${ticketRef}. ${isFeatureRequest ? 'Needs product review.' : isBug ? 'Needs Claude Code fix.' : 'Needs human review.'}`,
+      created_by: 'support_agent',
+    });
+
+    // Notify founder via Telegram
+    try {
+      const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+      if (telegramToken && chatId) {
+        const emoji = isFeatureRequest ? '💡' : isBug ? '🐛' : '⚠️';
+        const msg = `${emoji} Ticket ${ticketRef} escalated\n\n${ticket?.subject || 'Unknown'}\n\nReason: ${args.reason}\n\nAssigned to: ${isFeatureRequest ? 'Feature Review' : isBug ? 'Claude Code' : 'Human'}`;
+        await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: Number(chatId), text: msg }),
+        });
+      }
+    } catch {}
+
+    return `Ticket ${ticketRef} escalated. ${isFeatureRequest ? 'Queued for feature review.' : isBug ? 'Queued for Claude Code fix.' : 'Assigned to human.'} Founder notified via Telegram.`;
   },
 };
 
