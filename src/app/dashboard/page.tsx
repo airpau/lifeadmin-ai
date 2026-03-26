@@ -21,6 +21,8 @@ export default function DashboardPage() {
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  const [moneySaved, setMoneySaved] = useState(0);
+  const [potentialSavings, setPotentialSavings] = useState(0);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -139,8 +141,8 @@ export default function DashboardPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const [profile, subs, tasks, banks, userTasks] = await Promise.all([
-          supabase.from('profiles').select('subscription_tier').eq('id', user.id).single(),
+        const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
+          supabase.from('profiles').select('subscription_tier, total_money_recovered').eq('id', user.id).single(),
           supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('tasks').select('id', { count: 'exact', head: true })
@@ -150,12 +152,55 @@ export default function DashboardPage() {
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(20),
+          supabase.from('subscriptions').select('amount, billing_cycle, money_saved, cancelled_at')
+            .eq('user_id', user.id).eq('status', 'cancelled'),
+          supabase.from('tasks').select('money_recovered')
+            .eq('user_id', user.id).eq('status', 'resolved'),
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
         setBankConnected((banks.count || 0) > 0);
         setComplaintsGenerated(tasks.count || 0);
         setPendingTasks(userTasks.data || []);
+
+        // Calculate Money Recovery Score
+        let saved = parseFloat(String(profile.data?.total_money_recovered || 0));
+
+        // Add cancelled subscription savings
+        for (const sub of (cancelledSubs.data || [])) {
+          if (sub.money_saved) {
+            saved += parseFloat(String(sub.money_saved));
+          } else if (sub.cancelled_at && sub.amount) {
+            // Estimate: monthly amount x months since cancellation
+            const monthsSince = Math.max(1, Math.floor(
+              (Date.now() - new Date(sub.cancelled_at).getTime()) / (30 * 24 * 60 * 60 * 1000)
+            ));
+            const monthlyAmt = sub.billing_cycle === 'yearly'
+              ? parseFloat(String(sub.amount)) / 12
+              : sub.billing_cycle === 'quarterly'
+                ? parseFloat(String(sub.amount)) / 3
+                : parseFloat(String(sub.amount));
+            saved += monthlyAmt * monthsSince;
+          }
+        }
+
+        // Add resolved task recoveries
+        for (const t of (resolvedTasks.data || [])) {
+          if (t.money_recovered) {
+            saved += parseFloat(String(t.money_recovered));
+          }
+        }
+        setMoneySaved(saved);
+
+        // Potential savings: estimate from active subscriptions (assume 15% could be saved by switching)
+        const activeSubs = subs.data || [];
+        const annualSpend = activeSubs.reduce((sum, s) => {
+          const amt = parseFloat(String(s.amount)) || 0;
+          if (s.billing_cycle === 'yearly') return sum + amt;
+          if (s.billing_cycle === 'quarterly') return sum + amt * 4;
+          return sum + amt * 12;
+        }, 0);
+        setPotentialSavings(annualSpend * 0.15);
 
         const subsList = subs.data || [];
         setSubscriptionCount(subsList.length);
@@ -235,6 +280,49 @@ export default function DashboardPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
         <p className="text-slate-400">Your financial snapshot and quick actions</p>
+      </div>
+
+      {/* Money Recovery Score */}
+      <div className="bg-gradient-to-r from-mint-400/10 to-brand-400/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="h-5 w-5 text-mint-400" />
+              <h2 className="text-sm font-semibold text-mint-400 uppercase tracking-wider">Money Recovery Score</h2>
+            </div>
+            <p className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-heading)]">
+              {formatGBP(moneySaved)}
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              {moneySaved > 0
+                ? 'saved through cancelled subscriptions and recovered money'
+                : 'Start saving by cancelling unused subscriptions or disputing unfair charges'}
+            </p>
+          </div>
+          {potentialSavings > 0 && (
+            <div className="bg-navy-900/50 rounded-xl px-5 py-3 text-center sm:text-right">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Potential savings</p>
+              <p className="text-xl font-bold text-brand-400">{formatGBP(potentialSavings)}<span className="text-sm font-normal text-slate-500">/yr</span></p>
+              <Link href="/dashboard/deals" className="text-xs text-mint-400 hover:text-mint-300 flex items-center justify-center sm:justify-end gap-1 mt-1">
+                Find deals <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          )}
+        </div>
+        {moneySaved > 0 && potentialSavings > 0 && (
+          <div className="mt-4">
+            <div className="flex justify-between text-xs text-slate-500 mb-1">
+              <span>Recovered</span>
+              <span>Potential total: {formatGBP(moneySaved + potentialSavings)}</span>
+            </div>
+            <div className="w-full bg-navy-800 rounded-full h-2">
+              <div
+                className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, (moneySaved / (moneySaved + potentialSavings)) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
