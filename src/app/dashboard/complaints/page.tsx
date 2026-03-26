@@ -613,12 +613,6 @@ function ComplaintsPageInner() {
                   {' '}to auto-fill your details in generated letters.
                 </p>
               </div>
-              <div className="flex items-start gap-2">
-                <svg className="h-4 w-4 text-mint-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                <p className="text-xs text-slate-400">
-                  Paybacker never stores your file uploads. Uploaded documents are scanned by AI, the information is extracted, and the file is immediately deleted.
-                </p>
-              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -673,9 +667,10 @@ function ComplaintsPageInner() {
 
               {/* Upload a bill */}
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Got a bill to dispute? <span className="text-slate-500 font-normal">(optional)</span>
                 </label>
+                <p className="text-[11px] text-slate-600 mb-2">Files are scanned by AI then immediately deleted. We never store your uploads.</p>
                 <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
                   <svg className="h-5 w-5 text-mint-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                   <span>{generating ? 'Scanning bill...' : 'Upload a photo or PDF of the bill'}</span>
@@ -718,12 +713,14 @@ function ComplaintsPageInner() {
                           setUploadedBillContext(fullContext);
                           setUploadedBillName(file.name);
 
-                          // Only auto-fill company name and amount (not the description)
+                          // Auto-fill fields extracted from the bill
                           setFormData(prev => ({
                             ...prev,
                             letterType: detectedType,
                             companyName: data.provider_name || prev.companyName || '',
                             amount: String(data.amount || prev.amount || ''),
+                            accountNumber: data.extracted_data?.reference_number || prev.accountNumber || '',
+                            incidentDate: data.receipt_date || prev.incidentDate || '',
                           }));
                         } else if (data.error) {
                           alert('Scan error: ' + data.error);
