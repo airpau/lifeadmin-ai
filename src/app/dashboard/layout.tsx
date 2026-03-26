@@ -29,7 +29,6 @@ const navItems = [
   { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
   { name: 'AI Letters', href: '/dashboard/complaints', icon: FileText },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
-  { name: 'Forms', href: '/dashboard/forms', icon: Building2 },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Blog', href: '/blog', icon: BookOpen },

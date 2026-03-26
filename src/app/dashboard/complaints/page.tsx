@@ -276,9 +276,10 @@ function LetterModal({ task, onClose }: LetterModalProps) {
 function ComplaintsPageInner() {
   const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
+    letterType: searchParams.get('type') || 'complaint',
     companyName: searchParams.get('company') || '',
     issueDescription: searchParams.get('issue') || '',
-    desiredOutcome: '',
+    desiredOutcome: searchParams.get('outcome') || '',
     amount: searchParams.get('amount') || '',
     accountNumber: '',
     incidentDate: '',
@@ -377,7 +378,7 @@ function ComplaintsPageInner() {
 
   const clearForm = () => {
     setFormData({
-      companyName: '', issueDescription: '', desiredOutcome: '',
+      letterType: 'complaint', companyName: '', issueDescription: '', desiredOutcome: '',
       amount: '', accountNumber: '', incidentDate: '', previousContact: '',
     });
     setResult(null);
@@ -608,14 +609,51 @@ function ComplaintsPageInner() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Company Name *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">What type of letter?</label>
+                <select
+                  value={formData.letterType || 'complaint'}
+                  onChange={(e) => setFormData({ ...formData, letterType: e.target.value })}
+                  className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                >
+                  <option value="complaint">Company Complaint</option>
+                  <option value="energy_dispute">Energy Bill Dispute</option>
+                  <option value="broadband_complaint">Broadband / Mobile Complaint</option>
+                  <option value="flight_compensation">Flight Delay Compensation (up to £520)</option>
+                  <option value="parking_appeal">Parking Charge Appeal</option>
+                  <option value="debt_dispute">Debt Dispute Response</option>
+                  <option value="refund_request">Formal Refund Request</option>
+                  <option value="hmrc_tax_rebate">HMRC Tax Rebate</option>
+                  <option value="council_tax_band">Council Tax Band Challenge</option>
+                  <option value="dvla_vehicle">DVLA Vehicle Issue</option>
+                  <option value="nhs_complaint">NHS Complaint</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  {formData.letterType === 'hmrc_tax_rebate' ? 'HMRC Office / Tax Office' :
+                   formData.letterType === 'council_tax_band' ? 'Council Name' :
+                   formData.letterType === 'dvla_vehicle' ? 'DVLA' :
+                   formData.letterType === 'nhs_complaint' ? 'NHS Trust / GP Surgery' :
+                   formData.letterType === 'flight_compensation' ? 'Airline Name' :
+                   formData.letterType === 'parking_appeal' ? 'Parking Company / Council' :
+                   formData.letterType === 'debt_dispute' ? 'Debt Collector / Creditor' :
+                   'Company Name'} *
+                </label>
                 <input
                   type="text"
                   required
                   value={formData.companyName}
                   onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                   className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                  placeholder="e.g. British Gas, Sky, Virgin Media"
+                  placeholder={
+                    formData.letterType === 'flight_compensation' ? 'e.g. British Airways, Ryanair, EasyJet' :
+                    formData.letterType === 'parking_appeal' ? 'e.g. ParkingEye, NCP, Local Council' :
+                    formData.letterType === 'hmrc_tax_rebate' ? 'e.g. HMRC' :
+                    formData.letterType === 'council_tax_band' ? 'e.g. Winchester City Council' :
+                    formData.letterType === 'nhs_complaint' ? 'e.g. Royal Hampshire County Hospital' :
+                    'e.g. British Gas, Sky, Virgin Media'
+                  }
                 />
               </div>
 
