@@ -70,28 +70,28 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const storagePath = `receipts/${user.id}/${timestamp}.${ext}`;
 
-    // Upload to Supabase Storage (media bucket) using admin client to bypass RLS
+    // Upload to Supabase Storage (optional - don't block scan if it fails)
     const admin = getAdmin();
-    const { error: uploadError } = await admin.storage
-      .from('media')
-      .upload(storagePath, buffer, {
-        contentType: fileType,
-        upsert: false,
-      });
+    let imageUrl = '';
+    try {
+      const { error: uploadError } = await admin.storage
+        .from('media')
+        .upload(storagePath, buffer, {
+          contentType: fileType,
+          upsert: true,
+        });
 
-    if (uploadError) {
-      console.error('Storage upload error:', uploadError);
-      return NextResponse.json(
-        { error: 'Failed to upload file' },
-        { status: 500 }
-      );
+      if (!uploadError) {
+        const { data: urlData } = admin.storage
+          .from('media')
+          .getPublicUrl(storagePath);
+        imageUrl = urlData.publicUrl;
+      } else {
+        console.error('Storage upload error (non-blocking):', uploadError.message);
+      }
+    } catch (storageErr: any) {
+      console.error('Storage error (non-blocking):', storageErr.message);
     }
-
-    // Get public URL
-    const { data: urlData } = admin.storage
-      .from('media')
-      .getPublicUrl(storagePath);
-    const imageUrl = urlData.publicUrl;
 
     // Send to Claude Vision for extraction
     const anthropic = new Anthropic({
@@ -153,32 +153,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to scanned_receipts table (admin bypasses RLS)
-    const { data: receipt, error: insertError } = await admin
-      .from('scanned_receipts')
-      .insert({
-        user_id: user.id,
-        image_url: imageUrl,
-        extracted_data: extractedData,
-        provider_name: extractedData.provider_name || null,
-        amount: extractedData.total_amount ? parseFloat(extractedData.total_amount) : null,
-        receipt_date: extractedData.date || null,
-        receipt_type: extractedData.receipt_type || null,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      return NextResponse.json(
-        { error: 'Failed to save receipt' },
-        { status: 500 }
-      );
+    // Save to scanned_receipts table (non-blocking)
+    let receiptId = null;
+    try {
+      const { data: receipt } = await admin
+        .from('scanned_receipts')
+        .insert({
+          user_id: user.id,
+          image_url: imageUrl || 'pending',
+          extracted_data: extractedData,
+          provider_name: extractedData.provider_name || null,
+          amount: extractedData.total_amount ? parseFloat(extractedData.total_amount) : null,
+          receipt_date: extractedData.date || null,
+          receipt_type: extractedData.receipt_type || null,
+        })
+        .select('id')
+        .single();
+      receiptId = receipt?.id;
+    } catch (dbErr: any) {
+      console.error('DB save error (non-blocking):', dbErr.message);
     }
 
+    // Always return the extracted data regardless of storage/DB success
     return NextResponse.json({
-      id: receipt.id,
-      image_url: imageUrl,
+      id: receiptId,
+      image_url: imageUrl || null,
       provider_name: extractedData.provider_name,
       amount: extractedData.total_amount,
       receipt_date: extractedData.date,
