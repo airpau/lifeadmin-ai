@@ -361,25 +361,31 @@ export default function ScannerPage() {
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Choose your email provider</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <a href="/api/gmail/auth" className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all">
+                  <button
+                    onClick={() => { window.location.href = '/api/gmail/auth'; }}
+                    className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                  >
                     <span className="text-xl">📧</span>
                     <div>
                       <p className="text-white text-sm font-medium">Gmail</p>
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
-                  </a>
-                  <a href="/api/outlook/auth" className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all">
+                  </button>
+                  <button
+                    onClick={() => { window.location.href = '/api/outlook/auth'; }}
+                    className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                  >
                     <span className="text-xl">📬</span>
                     <div>
                       <p className="text-white text-sm font-medium">Outlook / Hotmail</p>
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
-                  </a>
+                  </button>
                   <button onClick={() => setConnectEmail('@yahoo.')} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">📨</span>
                     <div>
                       <p className="text-white text-sm font-medium">Yahoo Mail</p>
-                      <p className="text-slate-500 text-[10px]">App Password required</p>
+                      <p className="text-slate-500 text-[10px]">Password required</p>
                     </div>
                   </button>
                   <button onClick={() => setConnectEmail('@')} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
