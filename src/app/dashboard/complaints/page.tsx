@@ -604,13 +604,21 @@ function ComplaintsPageInner() {
               Complaint Details
             </h2>
 
-            <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-mint-400 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-slate-400">
-                Add your address and postcode in your{' '}
-                <Link href="/dashboard/profile" className="text-mint-400 hover:text-mint-300 underline">Profile</Link>
-                {' '}to auto-fill your details in generated letters.
-              </p>
+            <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 mb-4 space-y-1.5">
+              <div className="flex items-start gap-2">
+                <Sparkles className="h-4 w-4 text-mint-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-slate-400">
+                  Add your address and postcode in your{' '}
+                  <Link href="/dashboard/profile" className="text-mint-400 hover:text-mint-300 underline">Profile</Link>
+                  {' '}to auto-fill your details in generated letters.
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <svg className="h-4 w-4 text-mint-400 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <p className="text-xs text-slate-400">
+                  Paybacker never stores your file uploads. Uploaded documents are scanned by AI, the information is extracted, and the file is immediately deleted.
+                </p>
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
