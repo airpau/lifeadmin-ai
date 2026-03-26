@@ -66,7 +66,7 @@
     },
     {
       "path": "/api/cron/weekly-money-digest",
-      "schedule": "0 9 * * 1"
+      "schedule": "0 7 * * 1"
     }
   ]
 }
