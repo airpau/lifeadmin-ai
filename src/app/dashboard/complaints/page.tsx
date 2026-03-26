@@ -663,64 +663,71 @@ function ComplaintsPageInner() {
                   Got a bill to dispute? <span className="text-slate-500 font-normal">(optional)</span>
                 </label>
                 <div>
+                  <input
+                    ref={(el) => { if (el) (window as any).__billUploadRef = el; }}
+                    type="file"
+                    accept="image/*,.pdf,.heic,.heif"
+                    style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      // Reset input so same file can be re-selected
+                      e.target.value = '';
+
+                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+
+                      const fd = new FormData();
+                      fd.append('file', file);
+
+                      setGenerating(true);
+                      setLoadingCaption(0);
+                      const captionTimer = setInterval(() => {
+                        setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
+                      }, 3000);
+                      (window as any).__captionTimer = captionTimer;
+
+                      try {
+                        const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
+                        const data = await res.json();
+                        if (data.provider_name) {
+                          const prov = (data.provider_name || '').toLowerCase();
+                          let detectedType = 'complaint';
+                          if (/british gas|eon|octopus|ovo|edf|scottish power|energy|gas|electric/i.test(prov)) detectedType = 'energy_dispute';
+                          else if (/sky|virgin media|bt|broadband|vodafone|ee|three|o2|mobile/i.test(prov)) detectedType = 'broadband_complaint';
+                          else if (/hmrc|tax|revenue/i.test(prov)) detectedType = 'hmrc_tax_rebate';
+                          else if (/council/i.test(prov)) detectedType = 'council_tax_band';
+                          else if (/nhs|hospital|gp/i.test(prov)) detectedType = 'nhs_complaint';
+                          else if (/dvla/i.test(prov)) detectedType = 'dvla_vehicle';
+                          else if (/parking|pcn/i.test(prov)) detectedType = 'parking_appeal';
+
+                          const lineItems = data.extracted_data?.line_items?.map((li: any) => `${li.description}: £${li.amount}`).join(', ') || '';
+                          const fullContext = `Scanned bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${lineItems ? `Line items: ${lineItems}.` : ''} ${data.extracted_data?.reference_number ? `Reference: ${data.extracted_data.reference_number}.` : ''}`;
+
+                          setFormData(prev => ({
+                            ...prev,
+                            letterType: detectedType,
+                            companyName: data.provider_name || prev.companyName || '',
+                            amount: String(data.amount || prev.amount || ''),
+                            issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
+                          }));
+                        } else if (data.error) {
+                          alert(`Scan error: ${data.error}`);
+                        } else {
+                          alert('Could not extract details from this document. Please type the details manually.');
+                        }
+                      } catch (err: any) {
+                        alert(`Upload failed: ${err.message || 'Network error. Please try again.'}`);
+                      } finally {
+                        setGenerating(false);
+                        clearInterval((window as any).__captionTimer);
+                      }
+                    }}
+                  />
                   <button
                     type="button"
                     onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'image/jpeg,image/png,image/webp,image/heic,application/pdf';
-                      input.onchange = async (ev) => {
-                        const file = (ev.target as HTMLInputElement).files?.[0];
-                        if (!file) return;
-                        if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
-
-                        const fd = new FormData();
-                        fd.append('file', file);
-
-                        setGenerating(true);
-                        setLoadingCaption(0);
-                        const captionTimer = setInterval(() => {
-                          setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
-                        }, 3000);
-                        (window as any).__captionTimer = captionTimer;
-
-                        try {
-                          const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
-                          const data = await res.json();
-                          if (data.provider_name) {
-                            const prov = (data.provider_name || '').toLowerCase();
-                            let detectedType = 'complaint';
-                            if (/british gas|eon|octopus|ovo|edf|scottish power|energy|gas|electric/i.test(prov)) detectedType = 'energy_dispute';
-                            else if (/sky|virgin media|bt|broadband|vodafone|ee|three|o2|mobile/i.test(prov)) detectedType = 'broadband_complaint';
-                            else if (/hmrc|tax|revenue/i.test(prov)) detectedType = 'hmrc_tax_rebate';
-                            else if (/council/i.test(prov)) detectedType = 'council_tax_band';
-                            else if (/nhs|hospital|gp/i.test(prov)) detectedType = 'nhs_complaint';
-                            else if (/dvla/i.test(prov)) detectedType = 'dvla_vehicle';
-                            else if (/parking|pcn/i.test(prov)) detectedType = 'parking_appeal';
-
-                            const lineItems = data.extracted_data?.line_items?.map((li: any) => `${li.description}: £${li.amount}`).join(', ') || '';
-                            const fullContext = `Scanned bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${lineItems ? `Line items: ${lineItems}.` : ''} ${data.extracted_data?.reference_number ? `Reference: ${data.extracted_data.reference_number}.` : ''}`;
-
-                            setFormData(prev => ({
-                              ...prev,
-                              letterType: detectedType,
-                              companyName: data.provider_name || prev.companyName || '',
-                              amount: String(data.amount || prev.amount || ''),
-                              issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
-                            }));
-                          } else if (data.error) {
-                            alert(`Scan error: ${data.error}`);
-                          } else {
-                            alert('Could not extract details from this document. Please type the details manually.');
-                          }
-                        } catch (err: any) {
-                          alert(`Upload failed: ${err.message || 'Please try again.'}`);
-                        } finally {
-                          setGenerating(false);
-                          clearInterval((window as any).__captionTimer);
-                        }
-                      };
-                      input.click();
+                      const ref = (window as any).__billUploadRef;
+                      if (ref) ref.click();
                     }}
                     className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm text-left"
                   >
