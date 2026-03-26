@@ -59,20 +59,10 @@ async function generateImage(prompt: string): Promise<string | null> {
   }
 }
 
-// Topic pool for daily posts
-const TOPICS = [
-  { theme: 'energy', prompt: 'glowing lightbulb with golden electricity sparks', caption: 'Your energy supplier could owe you money right now. Millions of UK households have credit balances they have never claimed. Paybacker writes the formal complaint citing Ofgem rules in 30 seconds.' },
-  { theme: 'broadband', prompt: 'golden wifi signal radiating outward with data particles', caption: 'Your broadband provider raised your price mid-contract? Under Ofcom rules, you may be entitled to exit penalty-free or claim compensation. Paybacker writes the complaint for you.' },
-  { theme: 'flight', prompt: 'golden airplane silhouette with trailing sparkles', caption: 'Flight delayed or cancelled? Under UK261 regulations you could be owed up to £520 per person. You can claim for flights in the last 6 years. Paybacker generates the claim letter in 30 seconds.' },
-  { theme: 'subscriptions', prompt: 'golden calendar with alert notification icons floating', caption: 'How many subscriptions are you paying for that you have forgotten about? Connect your bank to Paybacker and we find every single recurring payment. Cancel what you do not need with one AI-generated email.' },
-  { theme: 'deals', prompt: 'golden shopping tag with discount percentage floating', caption: 'Compare 59+ deals from verified UK providers. Energy, broadband, mobile, insurance, mortgages, loans, and more. Find cheaper alternatives to what you are paying right now.' },
-  { theme: 'debt', prompt: 'golden shield protecting against dark arrows', caption: 'Received a debt collection letter? Do not panic. Under the Consumer Credit Act 1974, you have rights. Paybacker writes the formal response citing the exact law that protects you.' },
-  { theme: 'rights', prompt: 'golden scales of justice with balanced coins', caption: 'Most UK consumers do not know their rights. The Consumer Rights Act 2015 protects you more than you think. Paybacker uses AI to cite the exact law for your situation.' },
-];
-
 /**
  * Daily social media post cron - runs at 10am UK time.
- * Generates a branded image, writes a post, publishes to Facebook + Instagram.
+ * Researches trending UK consumer topics via Perplexity, writes a relevant post,
+ * generates a branded image, publishes to Facebook + Instagram.
  */
 export async function GET(request: NextRequest) {
   const auth = request.headers.get('authorization');
@@ -86,25 +76,100 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdmin();
-
-  // Pick today's topic based on day of year
-  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
-  const topic = TOPICS[dayOfYear % TOPICS.length];
-
-  // Use Claude to enhance the caption
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const enhanced = await anthropic.messages.create({
+
+  // Step 1: Research trending UK consumer topics via Perplexity
+  let researchContext = '';
+  const perplexityKey = process.env.PERPLEXITY_API_KEY;
+  if (perplexityKey) {
+    try {
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const researchRes = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${perplexityKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [{
+            role: 'user',
+            content: `What are the top UK consumer news stories today (${today})? Focus on: energy prices, broadband/mobile changes, flight disruptions, new consumer regulations, price increases, bank charges, subscription scams, cost of living, insurance changes, mortgage rates. Give me 3-5 current stories with specific details, figures, and company names.`,
+          }],
+        }),
+      });
+      if (researchRes.ok) {
+        const data = await researchRes.json();
+        researchContext = data.choices?.[0]?.message?.content || '';
+      }
+    } catch {}
+  }
+
+  // Step 2: Get recent posts to avoid repetition
+  const { data: recentPosts } = await supabase
+    .from('content_drafts')
+    .select('caption')
+    .eq('status', 'posted')
+    .order('created_at', { ascending: false })
+    .limit(5);
+  const recentTopics = (recentPosts || []).map(p => p.caption?.substring(0, 100)).join('\n');
+
+  // Step 3: Use Claude to write a topical, engaging post based on research
+  const postRes = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 500,
-    system: 'You write social media posts for Paybacker, a UK consumer rights fintech. Keep it punchy, relatable, and practical. British English. Never use em dashes. End with "Try it free at paybacker.co.uk" and 8-12 relevant hashtags. Max 2000 characters total.',
-    messages: [{ role: 'user', content: `Enhance this post for Facebook and Instagram. Make it engaging and add a hook at the start: "${topic.caption}"` }],
+    max_tokens: 800,
+    system: `You are Casey, the Chief Content Officer for Paybacker, a UK consumer rights fintech platform. You write social media posts that are timely, relevant, and engaging.
+
+Your job: write ONE social media post based on today's UK consumer news. Connect the news to how Paybacker helps.
+
+Paybacker features you can mention:
+- Free AI complaint letters citing UK consumer law (energy, broadband, flights, debt, parking, council tax)
+- Bank scanning to detect all subscriptions and recurring payments
+- 59+ deals from UK providers (energy, broadband, mobile, insurance, mortgages, loans)
+- Contract tracking with renewal alerts (30/14/7 days before)
+- AI cancellation emails
+- First 25 members get Pro free for 30 days
+
+Rules:
+- British English, £ symbols
+- Never use em dashes
+- Keep it under 2000 characters
+- Start with a strong hook related to today's news
+- Be specific (use real figures, company names, dates from the research)
+- End with "Try it free at paybacker.co.uk"
+- Add 8-12 relevant hashtags at the end
+- Do NOT repeat topics from recent posts
+
+Return JSON: {"caption": "the post text", "imagePrompt": "brief description for image generation, abstract, no text"}`,
+    messages: [{
+      role: 'user',
+      content: `Today's UK consumer news:\n${researchContext || 'No research available - write about a general UK consumer rights topic.'}\n\nRecent posts (avoid repeating):\n${recentTopics || 'None yet'}`,
+    }],
   });
 
-  const captionBlock = enhanced.content.find(b => b.type === 'text');
-  const caption = captionBlock?.type === 'text' ? captionBlock.text : topic.caption + '\n\nTry it free at paybacker.co.uk\n\n#consumerrights #fintech #moneysaving #ukfinance #paybacker';
+  const postBlock = postRes.content.find(b => b.type === 'text');
+  let caption = '';
+  let imagePrompt = 'golden abstract financial symbols floating on dark background';
 
-  // Generate image
-  const imageUrl = await generateImage(topic.prompt);
+  if (postBlock?.type === 'text') {
+    try {
+      let jsonText = postBlock.text;
+      const fenceMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) jsonText = fenceMatch[1];
+      const parsed = JSON.parse(jsonText.match(/\{[\s\S]*\}/)?.[0] || '{}');
+      caption = parsed.caption || '';
+      imagePrompt = parsed.imagePrompt || imagePrompt;
+    } catch {
+      caption = postBlock.text;
+    }
+  }
+
+  if (!caption) {
+    caption = 'UK consumers are owed billions in unclaimed refunds. Energy overcharges, broadband price rises, flight delay compensation. Paybacker writes the formal complaint letter for you, citing exact UK law, in 30 seconds.\n\nTry it free at paybacker.co.uk\n\n#consumerrights #fintech #moneysaving #ukfinance #paybacker';
+  }
+
+  // Generate image based on AI-chosen prompt
+  const imageUrl = await generateImage(imagePrompt);
 
   const results: Record<string, any> = {};
 
@@ -167,7 +232,7 @@ export async function GET(request: NextRequest) {
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
   const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (telegramToken && founderChatId) {
-    const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n\nTopic: ${topic.theme}\nCaption: ${caption.substring(0, 100)}...`;
+    const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n\nCaption: ${caption.substring(0, 150)}...`;
     await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,5 +240,5 @@ export async function GET(request: NextRequest) {
     }).catch(() => {});
   }
 
-  return NextResponse.json({ ok: true, topic: topic.theme, ...results });
+  return NextResponse.json({ ok: true, caption: caption.substring(0, 100), ...results });
 }
