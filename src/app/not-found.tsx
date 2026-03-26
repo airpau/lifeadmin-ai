@@ -7,7 +7,7 @@ export default function NotFound() {
       <div className="text-center px-6 max-w-md">
         <Link href="/" className="inline-flex items-center gap-2 mb-8">
           <Image src="/logo.png" alt="Paybacker" width={36} height={36} className="rounded-lg" />
-          <span className="text-2xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
+          <span className="text-2xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
         </Link>
 
         <h1 className="text-6xl font-bold text-mint-400 mb-4 font-[family-name:var(--font-heading)]">404</h1>

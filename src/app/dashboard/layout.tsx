@@ -72,7 +72,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Link href="/dashboard" className="flex items-center gap-2 mb-2">
         <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
         <span className="text-xl font-bold text-white">
-          Pay<span className="text-mint-400">backer</span>
+          Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
         </span>
       </Link>
 
@@ -145,7 +145,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Link href="/dashboard" className="flex items-center gap-2">
           <Image src="/logo.png" alt="Paybacker" width={28} height={28} className="rounded-lg" />
           <span className="text-lg font-bold text-white">
-            Pay<span className="text-mint-400">backer</span>
+            Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
           </span>
         </Link>
         <button

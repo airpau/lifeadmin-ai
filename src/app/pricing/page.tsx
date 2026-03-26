@@ -196,7 +196,7 @@ export default function PricingPage() {
         <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-            <span className="text-xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
+            <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
             <Link href="/about" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">About</Link>

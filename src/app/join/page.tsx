@@ -24,7 +24,7 @@ function JoinContent() {
       <div className="max-w-md mx-auto px-6 py-16 text-center">
         <Link href="/" className="inline-flex items-center gap-2 mb-8">
           <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="rounded-lg" />
-          <span className="text-2xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
+          <span className="text-2xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
         </Link>
 
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-6">
