@@ -134,3 +134,15 @@ Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)
 - Video generation requires paid plan (Creator $22/mo minimum)
 - This simplifies the stack to just ONE subscription (ElevenLabs) instead of ElevenLabs + HeyGen
 - Previous task in MCP should be updated: remove HeyGen references, use ElevenLabs native video instead
+
+
+
+## Pre-Launch Status (Updated 26 March 2026)
+- **Launch target:** ~2 April 2026
+- **Mode:** PRE-LAUNCH — build everything, deploy nothing live
+- **Hard blockers:** (1) Google Ads Basic access, (2) Google OAuth verification, (3) TrueLayer production
+- **Google Ads API:** Explorer access ONLY (2,880 ops/day). Can create campaigns but must be PAUSED. Awaiting Basic upgrade.
+- **All ad campaigns:** Must be created in PAUSED state — Paul will approve go-live after blockers clear
+- **MSE Forum:** DO NOT USE for promotion — high ban risk (Paul confirmed). Use editorial/press pitch route instead.
+- **PR drafts in Gmail:** MSE, Guardian (Patrick Collinson), BBC Money Box, Which? — all ready, DO NOT SEND until product is live and tested
+- **Social media posting:** Continues through pre-launch (Casey agent, brand awareness only)

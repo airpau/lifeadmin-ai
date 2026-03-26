@@ -6,10 +6,13 @@
 Paybacker is live at paybacker.co.uk in waitlist mode. Core product is built and functional. Stripe billing is live with founding member pricing. AI agent team (15 agents) running on Railway. Social media posting automated to Facebook and Instagram.
 
 ## Current Sprint
+PRE-LAUNCH MODE (target launch: ~2 April 2026)
+- Build ad campaigns in PAUSED state (Google Ads + Meta Ads)
+- Build referral system, SEO content, daily metrics cron
+- Bug fixes from UX review (38 bugs logged, fixing in priority order)
+- Interactive chatbot Phase 1 implementation
+- Pre-launch prep: influencer research, PR pitch drafting, MSE editorial outreach prep
 - Awin affiliate integration testing (waiting Oscar sign-off)
-- Founding member programme (paused during Awin testing)
-- MCP server for cross-interface coordination
-- ElevenLabs video content pipeline (planned)
 
 ## What's Live
 - Landing page with waitlist signup
@@ -62,21 +65,34 @@ Paybacker is live at paybacker.co.uk in waitlist mode. Core product is built and
 ## Integrations
 - **Stripe:** Live mode, founding member prices, webhook processing
 - **Supabase:** Full schema deployed, RLS enabled
-- **TrueLayer:** Open Banking connected
-- **Google OAuth:** Gmail inbox scanning
+- **TrueLayer:** Open Banking connected (DEV MODE — awaiting production approval)
+- **Google OAuth:** Gmail inbox scanning (AWAITING VERIFICATION — submitted 24 Mar)
 - **Resend:** Transactional emails + inbound
-- **Meta:** Facebook + Instagram posting (system user token)
-- **Awin:** Publisher + Advertiser accounts, S2S tracking
-- **Google Ads:** Campaign running
-- **Telegram:** Bot for founder notifications + agent triggering
+- **Meta:** Facebook + Instagram posting (system user token, never-expiring)
+- **Awin:** Publisher 2825812, Advertiser 125502, S2S tracking
+- **Google Ads:** Explorer access only (awaiting Basic upgrade). Dev token: jCSfgPvX1M1zrWb92a3Zyw. Customer ID: 390-589-8717. 2,880 ops/day limit.
+- **Telegram:** Bot @PaybackerAssistantBot, Founder chat ID 1003645878
 - **Perplexity:** Agent research + blog content
 - **PostHog:** Product analytics
 - **fal.ai:** Image generation for social posts
 
 ## Blocking Issues
-1. Awin sign-off from Oscar (blocks founding member re-enable)
-2. Meta App Review (blocks Instagram API in production mode)
-3. Google Ads developer token approval (blocks Jordan agent optimisation)
+## HARD BLOCKERS — must clear before launch (~2 April 2026)
+1. **Google Ads API Basic access** — Explorer only, need Basic for campaign management at scale
+2. **Google OAuth verification** — Submitted 24 March, pending (blocks Gmail scanning)
+3. **TrueLayer production approval** — Blocks Open Banking features for real users
+
+## Soft Blockers
+4. Awin sign-off from Oscar (blocks founding member re-enable)
+5. Meta App Review (blocks Instagram API in production mode)
+
+## CRITICAL INSTRUCTION FOR CLAUDE CODE:
+**Build ad campaigns and automation NOW, but set everything to PAUSED/DRAFT status. Nothing goes live until Paul explicitly approves after all 3 blockers are cleared.**
+- Google Ads campaigns: Create in PAUSED state
+- Meta Ads campaigns: Create in PAUSED state  
+- Welcome emails: Build but don't trigger until real signups arrive
+- Referral system: Build the infrastructure, don't promote yet
+- All marketing automation: Build and test, but no live spend
 
 ## Key Metrics
 - Users: 27 (1 real external)
@@ -86,6 +102,28 @@ Paybacker is live at paybacker.co.uk in waitlist mode. Core product is built and
 - Agent runs: 100+ daily across all agents
 
 ## Automation System
+### Cowork Scheduled Tasks (Pre-Launch Mode as of 26 Mar)
+1. **Daily Morning Briefing** — 8:30am — Pre-launch prep tasks, blocker status updates
+2. **Daily Social Media** — 10am — ACTIVE (brand awareness, continues through pre-launch)
+3. **Midday Ad Monitor** — 12pm — PAUSED (no ads running yet)
+4. **Weekly Performance Review** — Monday 9am — PAUSED (no ads to review yet)
+5. **Influencer/PR Pipeline** — Wednesday 2pm — Research mode only: finding creators, drafting outreach
+6. **Monthly P&L** — 1st of month 10am — Active
+
+### Gmail Integration
+- Connected: hello@paybacker.co.uk
+- Active drafts: MSE pitch, Guardian Money pitch, BBC Money Box pitch, Which? pitch, Meaningful Money podcast pitch
+- All PR drafts ready — DO NOT SEND until product is live and tested
+
+### Claude Code Requirements (build NOW, all in PAUSED/DRAFT state)
+- Google Ads: 3 search campaigns (CREATE PAUSED)
+- Meta Ads: 2 conversion campaigns (CREATE PAUSED)
+- Daily ad metrics logging cron (build it — will return empty until ads run)
+- Weekly auto-optimisation cron (build it — won't fire until ads are live)
+- Referral system upgrade (dual-sided £5 reward)
+- 4 SEO blog articles (1500+ words — these CAN go live immediately)
+- Signup attribution tracking (utm → user profile + business_log)
+
 ## Active Scheduled Tasks (Cowork)
 1. **Daily Morning Briefing** — 8:30am — Tells Paul his tasks, reports metrics, drafts outreach emails
 2. **Daily Social Media** — 10am — Auto-posts to Facebook + Instagram via MCP
@@ -108,3 +146,13 @@ Paybacker is live at paybacker.co.uk in waitlist mode. Core product is built and
 
 ## Data Flow
 Claude Code (6-7am: pull ad data, optimise) → MCP (data store) → Cowork (8:30am: read data, brief Paul, draft emails) → Paul (acts on briefing) → Gmail (outreach) → Cowork (monitors replies)
+
+## £100K MRR Growth Model
+- Starting budget: £5K/mo, reinvest 80% of MRR, cap at £18K/mo
+- Ramp-up: M1=25%, M2=50%, M3=75%, M4+=100% efficiency
+- Signups per £1: 0.52 (influencer-led)
+- Conversion: 8.5% free-to-paid | Churn: 2.5% monthly
+- Budget split: Influencers 40%, Google 20%, Meta 15%, TikTok 10%, SEO 10%, Tools 5%
+- M12 projection: ~£69K MRR paid channels + £15K+ PR = £100K+ MRR
+- Full model: paybacker-100k-mrr-execution-plan.xlsx
+- 90-day ops plan: paybacker-90-day-operations-plan.xlsx

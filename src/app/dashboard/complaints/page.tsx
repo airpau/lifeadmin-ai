@@ -285,6 +285,20 @@ function ComplaintsPageInner() {
 
   const [generating, setGenerating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [loadingCaption, setLoadingCaption] = useState(0);
+
+  const LOADING_CAPTIONS = [
+    { icon: '📚', text: 'Reading up on UK consumer law...' },
+    { icon: '⚖️', text: 'Finding the exact legislation that protects you...' },
+    { icon: '🔍', text: 'Analysing your case for maximum impact...' },
+    { icon: '✍️', text: 'Writing a letter that would make a lawyer jealous...' },
+    { icon: '💪', text: 'Making your complaint impossible to ignore...' },
+    { icon: '🎯', text: 'Citing the sections they hope you never read...' },
+    { icon: '📝', text: 'Politely but firmly demanding what you are owed...' },
+    { icon: '🧠', text: 'Our AI has read more consumer law than their entire legal team...' },
+    { icon: '⏱️', text: 'What would take a solicitor 2 hours takes us 30 seconds...' },
+    { icon: '🏆', text: 'Putting the "back" in Paybacker...' },
+  ];
   const [result, setResult] = useState<any>(null);
   const [feedback, setFeedback] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
@@ -324,6 +338,13 @@ function ComplaintsPageInner() {
     setShowFeedback(false);
     setFeedback('');
     setLetterApproved(false);
+    setLoadingCaption(0);
+
+    // Cycle through loading captions every 3 seconds
+    const captionTimer = setInterval(() => {
+      setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
+    }, 3000);
+    (window as any).__captionTimer = captionTimer;
 
     try {
       const res = await fetch('/api/complaints/generate', {
@@ -347,6 +368,7 @@ function ComplaintsPageInner() {
       alert('Failed to generate complaint letter. Please try again.');
     } finally {
       setGenerating(false);
+      clearInterval((window as any).__captionTimer);
     }
   };
 
@@ -683,7 +705,31 @@ function ComplaintsPageInner() {
           <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-6">
             <h2 className="text-xl font-bold text-white mb-6 font-[family-name:var(--font-heading)]">Generated Letter</h2>
 
-            {!result ? (
+            {generating ? (
+              <div className="text-center py-16">
+                <div className="relative mx-auto w-20 h-20 mb-6">
+                  <div className="absolute inset-0 rounded-full border-4 border-navy-700" />
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-mint-400 animate-spin" />
+                  <span className="absolute inset-0 flex items-center justify-center text-3xl">
+                    {LOADING_CAPTIONS[loadingCaption].icon}
+                  </span>
+                </div>
+                <p className="text-white font-semibold text-lg mb-2 transition-all duration-300">
+                  {LOADING_CAPTIONS[loadingCaption].text}
+                </p>
+                <p className="text-slate-500 text-sm">This usually takes 15-30 seconds</p>
+                <div className="flex justify-center gap-1.5 mt-6">
+                  {LOADING_CAPTIONS.slice(0, 5).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                        i <= loadingCaption % 5 ? 'bg-mint-400' : 'bg-navy-700'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : !result ? (
               <div className="text-center py-12">
                 <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
                 <p className="text-slate-400">Fill in the form and click Generate to create your complaint letter</p>

@@ -34,3 +34,13 @@
 **Decision:** Marketing plan Day 1 is gated on: (1) Google Ads developer token approval, (2) Google OAuth verification, (3) TrueLayer production status. Until all three are live, focus on pre-launch tasks that don't require these: MSE Forum reputation building, influencer identification, SEO content, and product bug fixes. The 90-day clock starts when all three are approved, not on a fixed calendar date.
 **Reason:** Spending £5K/month on ads that drive users to a product where bank connections and email scanning don't work would waste budget and create a bad first impression. Better to nail the product experience first, build MSE Forum reputation (free), identify creators (free), and fix remaining bugs — then launch hard when everything is ready.
 **Made by:** Cowork + Paul
+
+## 2026-03-26 16:09:39 - Google Ads API: Explorer access confirmed. Awaiting upgrade to Basic access. Campaigns cannot launch until Basic access approved. Updated blocker status accordingly.
+**Decision:** Google Ads API: Explorer access confirmed. Awaiting upgrade to Basic access. Campaigns cannot launch until Basic access approved. Updated blocker status accordingly.
+**Reason:** Paul confirmed Google Ads API access at Explorer level but Basic access (needed for campaign management) is still pending approval. This remains a launch blocker alongside Google OAuth verification and TrueLayer production.
+**Made by:** Paul + Cowork
+
+## 2026-03-26 16:09:42 - Pre-launch mode activated. Paused ad-performance-monitor and weekly-performance-review scheduled tasks. Morning briefing updated to deliver pre-launch prep tasks until all 3 blockers clear (~2 April). Social posting continues as brand awareness.
+**Decision:** Pre-launch mode activated. Paused ad-performance-monitor and weekly-performance-review scheduled tasks. Morning briefing updated to deliver pre-launch prep tasks until all 3 blockers clear (~2 April). Social posting continues as brand awareness.
+**Reason:** No ads running yet, no product live yet. Monitoring tasks would produce empty reports. Focus shifts to free preparation work: influencer research, MSE forum engagement, PR prep, SEO content, and product testing.
+**Made by:** Cowork

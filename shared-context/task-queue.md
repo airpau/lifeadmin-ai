@@ -57,3 +57,16 @@
 - [ ] Full end-to-end test of all features
 - [ ] Commit and push all changes
 - [ ] Verify Vercel deploy successful
+
+## High
+- [x] PRE-LAUNCH: Create MoneySavingExpert Forum account and start engaging (Deprioritised — MSE forums aggressively ban self-promotion. Forum engagement is low-ROI vs direct editorial pitching. Replaced with PR-focused MSE editorial pitch task.) - Sign up to MSE Forum, create profile, start genuinely engaging in money-saving discussions (NOT promoting Paybacker yet). Build credibility for 1-2 weeks before any product mentions. This is free and can be done now. (@Paul)
+- [ ] PRE-LAUNCH: Research and log 20 TikTok nano/micro finance creators - Search TikTok for UK personal finance creators with 5K-50K followers. Log names, follower counts, engagement rates, and contact info to the Influencer Tracker sheet. Draft outreach DMs but don't send until launch week. (@Paul + Cowork)
+- [ ] PRE-LAUNCH: Draft MSE editorial pitch + press release - Write a press release and pitch email targeting MSE's editorial team (not the forum). Angle: AI-powered app that automatically finds overpayments, cancels unused subscriptions, and switches bills for UK consumers. Include real savings data if available from beta testing. Find the right editorial contact. Save as Gmail draft — don't send until product is fully live and tested. (@Cowork)
+
+## Medium
+- [ ] PRE-LAUNCH: Set up Trustpilot business page - Claim Paybacker on Trustpilot, complete the business profile, and have it ready for launch. Early reviews from beta testers will help conversion rates. (@Paul)
+- [ ] PRE-LAUNCH: Set up TikTok Business Account - Create TikTok Business Account for Paybacker if not already done. Needed for TikTok Spark Ads and influencer campaign tracking. (@Paul)
+- [ ] PRE-LAUNCH: Research UK money journalists (Guardian, BBC, Which?) - Find specific journalist names, beats, and contact emails at Guardian Money, BBC Money, Which? Magazine. Draft PR pitch emails for review. Don't send until product is fully live and tested. (@Cowork)
+
+## Critical
+- [ ] PRE-LAUNCH: Full end-to-end product test of all features - Before launch, do a complete walkthrough: signup flow, Stripe payments, chatbot, money hub, energy monitor, all 15 AI agents. Log any bugs for Claude Code to fix. (@Paul)

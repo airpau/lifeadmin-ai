@@ -310,3 +310,22 @@ Budget allocations per channel per month are in the 'Budget Calendar' sheet.
 5. CHURN PREVENTION: Automated emails for inactive users (7-day, 14-day triggers).
 
 All of this feeds into the automated morning briefing that Cowork generates for Paul at 8:30am daily.
+
+---
+
+## 2026-03-26 16:45:18 - Cowork (Desktop)
+**Completed:** Switched entire system to PRE-LAUNCH MODE (target launch ~2 April). Paused ad monitor + weekly performance review. Updated influencer/PR pipeline to research-only. Added 6 pre-launch tasks to queue. Built PR contact database (MSE, Guardian, BBC, Which?, Podcasts, Fintech press). Created 4 Gmail draft pitch emails ready to send at launch. Dropped MSE Forum strategy (ban risk) — replaced with editorial pitch. Logged all decisions to MCP.
+
+**Next steps:** CLAUDE CODE — BUILD ALL OF THE FOLLOWING IN PAUSED/DRAFT STATE (nothing goes live until Paul approves after 3 blockers clear: Google Ads Basic access, Google OAuth verification, TrueLayer production):
+
+1. Google Ads: 3 search campaigns (complaint letters, subscription management, energy savings) — CREATE IN PAUSED STATE via API
+2. Meta Ads: 2 conversion campaigns — CREATE IN PAUSED STATE via API
+3. Daily ad metrics logging cron to Supabase (build it — will return empty until ads run)
+4. Weekly auto-optimisation cron (build logic, won't fire until ads enabled)
+5. Referral system upgrade (dual-sided £5 reward infrastructure)
+6. 4 SEO blog articles 1500+ words each (THESE CAN GO LIVE NOW — no blocker)
+7. Signup attribution tracking (utm params → user profile + business_log)
+
+THINGS THAT CAN GO LIVE IMMEDIATELY: SEO articles, bug fixes from UX review, chatbot improvements, referral backend. Social posting already running via Casey agent.
+
+IMPORTANT: Google Ads API is Explorer access only (not Basic yet). Explorer can still create campaigns but has 2880 ops/day limit. All campaigns must be created in PAUSED state regardless.
