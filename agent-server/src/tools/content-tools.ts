@@ -133,13 +133,14 @@ const getRecentPosts: ToolDef = {
 
 const publishToFacebook: ToolDef = {
   name: 'publish_to_facebook',
-  description: 'Publish a post to the Paybacker Facebook page immediately. Requires caption text. Optionally include an image URL from generate_image. Only use when the founder has explicitly approved posting.',
+  description: 'Publish a post to Facebook and/or Instagram. Requires caption text. Optionally include an image URL from generate_image (REQUIRED for Instagram). Set platform to "facebook", "instagram", or "both". Only use when the founder has requested posting.',
   schema: {
     type: 'object',
     properties: {
       caption: { type: 'string', description: 'The post text/caption' },
       hashtags: { type: 'string', description: 'Hashtags to append (e.g. #consumerrights #fintech #uk)' },
-      image_url: { type: 'string', description: 'Optional image URL from generate_image result' },
+      image_url: { type: 'string', description: 'Image URL from generate_image (required for Instagram)' },
+      platform: { type: 'string', enum: ['facebook', 'instagram', 'both'], description: 'Which platform to post to. Default: facebook' },
     },
     required: ['caption'],
   },
@@ -167,6 +168,7 @@ const publishToFacebook: ToolDef = {
         body: JSON.stringify({
           message,
           image_url: args.image_url || null,
+          platform: args.platform || 'facebook',
         }),
       });
 
@@ -175,9 +177,14 @@ const publishToFacebook: ToolDef = {
         return `Facebook post FAILED: ${result.error}`;
       }
 
-      return `Facebook post published successfully! Post ID: ${result.postId || 'unknown'}`;
+      const parts = [];
+      if (result.facebook?.ok) parts.push(`Facebook: posted (${result.facebook.postId})`);
+      if (result.facebook?.error) parts.push(`Facebook: FAILED (${result.facebook.error})`);
+      if (result.instagram?.ok) parts.push(`Instagram: posted (${result.instagram.postId})`);
+      if (result.instagram?.error) parts.push(`Instagram: FAILED (${result.instagram.error})`);
+      return parts.length > 0 ? parts.join('\n') : `Post result: ${JSON.stringify(result)}`;
     } catch (err: any) {
-      return `Facebook post FAILED: ${err.message}`;
+      return `Post FAILED: ${err.message}`;
     }
   },
 };
