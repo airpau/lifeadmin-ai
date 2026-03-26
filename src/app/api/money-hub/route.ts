@@ -72,38 +72,8 @@ export async function GET(request: Request) {
     const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
     const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
 
-    // Category breakdown
-    const CATEGORY_MAP: Record<string, string> = {
-      PURCHASE: 'shopping', DEBIT: 'shopping', DIRECT_DEBIT: 'bills',
-      STANDING_ORDER: 'bills', TRANSFER: 'transfers', ATM: 'cash',
-      CREDIT: 'income', FEE: 'fees',
-    };
-    const DESC_CATS: Array<{ keywords: string[]; category: string }> = [
-      { keywords: ['mortgage', 'lendinvest', 'skipton b.s'], category: 'mortgage' },
-      { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank'], category: 'loans' },
-      { keywords: ['council', 'winchester city'], category: 'council_tax' },
-      { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power'], category: 'energy' },
-      { keywords: ['thames water', 'severn trent'], category: 'water' },
-      { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'vodafone broad'], category: 'broadband' },
-      { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff'], category: 'mobile' },
-      { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'youtube'], category: 'streaming' },
-      { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton'], category: 'fitness' },
-      { keywords: ['tesco', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'ocado'], category: 'groceries' },
-      { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'starbucks', 'costa', 'pret'], category: 'eating_out' },
-      { keywords: ['petrol', 'shell ', 'bp ', 'esso', 'fuel'], category: 'fuel' },
-      { keywords: ['insurance', 'admiral', 'aviva', 'direct line'], category: 'insurance' },
-      { keywords: ['dvla', 'trainline', 'tfl', 'uber', 'bolt', 'parking'], category: 'transport' },
-      { keywords: ['hmrc'], category: 'tax' },
-      { keywords: ['amazon', 'ebay', 'asos', 'argos', 'currys'], category: 'shopping' },
-    ];
-
-    function categorise(desc: string, bankCat: string): string {
-      const d = desc.toLowerCase();
-      for (const { keywords, category } of DESC_CATS) {
-        if (keywords.some(kw => d.includes(kw))) return category;
-      }
-      return CATEGORY_MAP[bankCat] || 'other';
-    }
+    // Category breakdown - use shared categorisation from merchant-normalise library
+    const { categoriseTransaction: categorise, normaliseMerchantName } = await import('@/lib/merchant-normalise');
 
     // Filter out transfers for spending analysis
     const isTransfer = (t: any) => {
@@ -124,7 +94,7 @@ export async function GET(request: Request) {
       const cat = t.user_category || categorise(t.description || '', t.category || '');
       const amt = Math.abs(parseFloat(t.amount));
       categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
-      const merchant = t.merchant_name || (t.description || '').substring(0, 30);
+      const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
       merchantTotals[merchant] = (merchantTotals[merchant] || 0) + amt;
     }
 

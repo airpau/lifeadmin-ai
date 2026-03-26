@@ -1,53 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { categoriseTransaction } from '@/lib/merchant-normalise';
 
 export const runtime = 'nodejs';
-
-const CATEGORY_MAP: Record<string, string> = {
-  PURCHASE: 'shopping',
-  DEBIT: 'shopping',
-  DIRECT_DEBIT: 'bills',
-  STANDING_ORDER: 'bills',
-  TRANSFER: 'transfers',
-  ATM: 'cash',
-  CREDIT: 'income',
-  FEE: 'fees',
-  INTEREST: 'interest',
-  DIVIDEND: 'income',
-};
-
-// Keywords to categorise transactions by description
-const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'lendinvest', 'skipton', 'halifax mort', 'nationwide mort', 'skipton b.s'], category: 'mortgage' },
-  { keywords: ['natwest loan', 'santander loans', 'novuna personal', 'ca auto finance', 'auto finance', 'tesco bank'], category: 'loans' },
-  { keywords: ['klarna', 'clearpay', 'afterpay'], category: 'credit' },
-  { keywords: ['council', 'testvalley', 'winchester city counci', 'hounslow', 'lbh'], category: 'council_tax' },
-  { keywords: ['hmrc', 'hm revenue'], category: 'tax' },
-  { keywords: ['auriga advocates', 'solicitor', 'accountant', 'property accountant'], category: 'professional' },
-  { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },
-  { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
-  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'bt fibre', 'talktalk', 'plusnet', 'communityfibre', 'vodafone broad', 'hyperoptic'], category: 'broadband' },
-  { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'lebara', 'smarty', 'tesco mobile'], category: 'mobile' },
-  { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'now tv', 'youtube', 'dazn', 'plex', 'patreon'], category: 'streaming' },
-  { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton', 'strava', 'fitness'], category: 'fitness' },
-  { keywords: ['tesco', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'co-op', 'ocado', 'iceland'], category: 'groceries' },
-  { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'nando', 'pizza', 'greggs', 'starbucks', 'costa', 'pret'], category: 'eating_out' },
-  { keywords: ['petrol', 'shell ', 'bp ', 'esso', 'texaco', 'total ', 'fuel'], category: 'fuel' },
-  { keywords: ['amazon', 'ebay', 'asos', 'next ', 'argos', 'john lewis', 'currys'], category: 'shopping' },
-  { keywords: ['insurance', 'admiral', 'aviva', 'direct line', 'manypets', 'petplan'], category: 'insurance' },
-  { keywords: ['dvla', 'trainline', 'tfl', 'uber', 'bolt', 'parking'], category: 'transport' },
-  { keywords: ['betfair', 'bet365', 'paddy', 'william hill', 'coral', 'ladbrokes'], category: 'gambling' },
-  { keywords: ['nursery', 'childcare', 'school'], category: 'childcare' },
-  { keywords: ['experian', 'adobe', 'microsoft', 'google', 'openai', 'anthropic', 'github'], category: 'software' },
-];
-
-function categoriseTransaction(description: string, bankCategory: string): string {
-  const desc = description.toLowerCase();
-  for (const { keywords, category } of DESCRIPTION_CATEGORIES) {
-    if (keywords.some(kw => desc.includes(kw))) return category;
-  }
-  return CATEGORY_MAP[bankCategory] || 'other';
-}
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: string }> = {
   mortgage: { label: 'Mortgage', color: '#8b5cf6', icon: '🏠' },

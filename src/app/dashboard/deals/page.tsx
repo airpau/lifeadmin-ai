@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Tag, Loader2, Clock, AlertTriangle, Zap } from 'lucide-react';
 import { capture } from '@/lib/posthog';
+import { normaliseMerchantName } from '@/lib/merchant-normalise';
 
 // Awin affiliate ID — update this once Awin approval comes through
 const AWIN_AFF_ID = process.env.NEXT_PUBLIC_AWIN_AFF_ID || '2825812';
@@ -366,7 +367,7 @@ export default function DealsPage() {
                     return (
                       <div key={`urgent-note-${sub.id}`} className="flex items-center gap-3 mb-2 flex-wrap">
                         <div className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-1.5 flex items-center gap-2">
-                          <span className="text-white text-sm font-semibold">{sub.provider_name}</span>
+                          <span className="text-white text-sm font-semibold">{normaliseMerchantName(sub.provider_name)}</span>
                           <span className="text-slate-500 text-sm">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
                         </div>
                         <div className={`border rounded-lg px-3 py-1.5 flex items-center gap-1.5 ${urgency.bg}`}>
@@ -417,7 +418,7 @@ export default function DealsPage() {
                       <span className="text-slate-400">Currently paying</span>
                       <span className="text-white font-semibold">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
                       <span className="text-slate-400">to</span>
-                      <span className="text-white font-semibold">{sub.provider_name}</span>
+                      <span className="text-white font-semibold">{normaliseMerchantName(sub.provider_name)}</span>
                     </div>
                   ))}
                 </div>
