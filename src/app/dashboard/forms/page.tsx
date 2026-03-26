@@ -175,7 +175,7 @@ export default function FormsPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Forms & Government Letters</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Forms & Government Letters</h1>
         <p className="text-slate-400">Generate formal letters to HMRC, councils, DVLA, NHS, airlines, and more</p>
       </div>
 
@@ -183,13 +183,13 @@ export default function FormsPage() {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => { setActiveTab('generate'); setResult(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'generate' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'generate' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}
         >
           <Sparkles className="h-4 w-4" /> Generate
         </button>
         <button
           onClick={() => { setActiveTab('history'); loadHistory(); setSelectedHistoryTask(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'history' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'history' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}
         >
           <History className="h-4 w-4" /> History ({historyTasks.length})
         </button>
@@ -199,20 +199,20 @@ export default function FormsPage() {
       {activeTab === 'history' && (
         <div>
           {loadingHistory ? (
-            <div className="text-center py-12"><Loader2 className="h-8 w-8 text-amber-500 animate-spin mx-auto" /></div>
+            <div className="text-center py-12"><Loader2 className="h-8 w-8 text-mint-400 animate-spin mx-auto" /></div>
           ) : selectedHistoryTask ? (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
               <button onClick={() => setSelectedHistoryTask(null)} className="text-slate-400 hover:text-white text-sm mb-4 flex items-center gap-1">
                 ← Back to history
               </button>
               <h3 className="text-lg font-bold text-white mb-2">{selectedHistoryTask.title}</h3>
               <p className="text-slate-500 text-xs mb-4">{new Date(selectedHistoryTask.created_at).toLocaleString('en-GB')}</p>
               {selectedHistoryTask.letter ? (
-                <div className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+                <div className="bg-navy-950 rounded-lg p-4 border border-navy-700/50">
                   <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{selectedHistoryTask.letter}</pre>
                   <button
                     onClick={() => { navigator.clipboard.writeText(selectedHistoryTask.letter!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                    className="mt-4 flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm"
+                    className="mt-4 flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg text-sm"
                   >
                     {copied ? <><CheckCircle className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
                   </button>
@@ -222,10 +222,10 @@ export default function FormsPage() {
               )}
             </div>
           ) : historyTasks.length === 0 ? (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-12 text-center">
               <FileText className="h-12 w-12 text-slate-600 mx-auto mb-3" />
               <p className="text-slate-400 mb-2">No letters generated yet</p>
-              <button onClick={() => setActiveTab('generate')} className="text-amber-400 text-sm">Generate your first letter</button>
+              <button onClick={() => setActiveTab('generate')} className="text-mint-400 text-sm">Generate your first letter</button>
             </div>
           ) : (
             <div className="space-y-2">
@@ -233,7 +233,7 @@ export default function FormsPage() {
                 <button
                   key={task.id}
                   onClick={() => loadTaskLetter(task)}
-                  className="w-full text-left bg-slate-900/50 border border-slate-800 hover:border-amber-500/50 rounded-xl px-5 py-4 transition-all"
+                  className="w-full text-left bg-navy-900 border border-navy-700/50 hover:border-mint-400/50 rounded-xl px-5 py-4 transition-all"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -264,8 +264,8 @@ export default function FormsPage() {
                   onClick={() => setSelectedForm(form.key)}
                   className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
                     selectedForm === form.key
-                      ? 'border-amber-500/50 bg-amber-500/5'
-                      : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
+                      ? 'border-mint-400/50 bg-mint-400/5'
+                      : 'border-navy-700/50 bg-navy-900 hover:border-navy-700/50'
                   }`}
                 >
                   <span className="text-xl">{form.icon}</span>
@@ -279,11 +279,11 @@ export default function FormsPage() {
           </div>
 
           {/* Details form */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
             {selectedForm ? (
               <div className="space-y-4">
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-amber-500" />
+                  <FileText className="h-5 w-5 text-mint-400" />
                   {FORM_TYPES.find(f => f.key === selectedForm)?.label}
                 </h2>
 
@@ -295,7 +295,7 @@ export default function FormsPage() {
                         <label className="block text-sm font-medium text-slate-300 mb-2">Describe your situation *</label>
                         <textarea
                           required rows={5} value={details} onChange={(e) => setDetails(e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                           placeholder={formConfig?.situationPlaceholder || 'Explain what happened, when, and any relevant details...'}
                         />
                       </div>
@@ -304,7 +304,7 @@ export default function FormsPage() {
                         <label className="block text-sm font-medium text-slate-300 mb-2">What outcome do you want? *</label>
                         <input
                           type="text" required value={desiredOutcome} onChange={(e) => setDesiredOutcome(e.target.value)}
-                          className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                           placeholder={formConfig?.outcomePlaceholder || 'e.g. Refund, correction, compensation...'}
                         />
                       </div>
@@ -314,7 +314,7 @@ export default function FormsPage() {
                           <label className="block text-sm font-medium text-slate-300 mb-2">Amount (optional)</label>
                           <input
                             type="text" value={amount} onChange={(e) => setAmount(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                             placeholder="£"
                           />
                         </div>
@@ -322,7 +322,7 @@ export default function FormsPage() {
                           <label className="block text-sm font-medium text-slate-300 mb-2">{formConfig?.refLabel || 'Reference'} (optional)</label>
                           <input
                             type="text" value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                             placeholder={formConfig?.refPlaceholder || 'Reference number'}
                           />
                         </div>
@@ -338,7 +338,7 @@ export default function FormsPage() {
                 <button
                   onClick={handleGenerate}
                   disabled={generating || !details || !desiredOutcome}
-                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating...</> : <><Sparkles className="h-4 w-4" /> Generate Letter</>}
                 </button>
@@ -364,37 +364,37 @@ export default function FormsPage() {
             </button>
           </div>
 
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-6">
             <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">{result.letter}</pre>
           </div>
 
           {result.legalReferences?.length > 0 && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-6">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 mb-6">
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Legal References</h3>
               <ul className="text-xs text-slate-400 space-y-1">
                 {result.legalReferences.map((ref: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2"><span className="text-amber-500">•</span> {ref}</li>
+                  <li key={i} className="flex items-start gap-2"><span className="text-mint-400">•</span> {ref}</li>
                 ))}
               </ul>
             </div>
           )}
 
           {result.nextSteps?.length > 0 && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-6">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 mb-6">
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Next Steps</h3>
               <ol className="text-sm text-slate-300 space-y-2">
                 {result.nextSteps.map((step: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2"><span className="text-amber-500 font-bold">{i + 1}.</span> {step}</li>
+                  <li key={i} className="flex items-start gap-2"><span className="text-mint-400 font-bold">{i + 1}.</span> {step}</li>
                 ))}
               </ol>
             </div>
           )}
 
           {result.estimatedSuccess && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-6">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 mb-6">
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 text-sm">Estimated success rate</span>
-                <span className={`font-bold ${result.estimatedSuccess >= 70 ? 'text-green-400' : result.estimatedSuccess >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                <span className={`font-bold ${result.estimatedSuccess >= 70 ? 'text-green-400' : result.estimatedSuccess >= 50 ? 'text-mint-400' : 'text-red-400'}`}>
                   {result.estimatedSuccess}%
                 </span>
               </div>
@@ -403,11 +403,11 @@ export default function FormsPage() {
 
           <div className="flex gap-3">
             <button onClick={handleCopy}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all">
+              className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all">
               {copied ? <><CheckCircle className="h-4 w-4" /> Copied!</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
             </button>
             <button onClick={handlePDF}
-              className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-3 rounded-lg transition-all">
+              className="flex-1 flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all">
               <Download className="h-4 w-4" /> Download PDF
             </button>
           </div>

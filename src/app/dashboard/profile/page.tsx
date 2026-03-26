@@ -143,7 +143,7 @@ export default function ProfilePage() {
   const subscriptionBadge = () => {
     const colors = {
       free: 'bg-slate-500/10 text-slate-400 border-slate-500/30',
-      essential: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+      essential: 'bg-mint-400/10 text-mint-400 border-mint-400/30',
       pro: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
     };
 
@@ -192,16 +192,16 @@ export default function ProfilePage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Profile</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
         <p className="text-slate-400">Manage your account and view your stats</p>
       </div>
 
       {/* Account Info */}
-      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 mb-6">
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8 text-slate-950" />
+            <div className="w-16 h-16 bg-gradient-to-br from-mint-400 to-mint-500 rounded-full flex items-center justify-center">
+              <User className="h-8 w-8 text-navy-950" />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">{profile?.full_name || 'User'}</h2>
@@ -214,7 +214,7 @@ export default function ProfilePage() {
           {subscriptionBadge()}
         </div>
 
-        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-slate-800">
+        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-navy-700/50">
           <div>
             <p className="text-sm text-slate-500 mb-1">Member since</p>
             <p className="text-white font-semibold">{memberSince}</p>
@@ -228,7 +228,7 @@ export default function ProfilePage() {
 
       {/* Stats */}
       <div className="grid md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
           <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
             <TrendingUp className="h-6 w-6 text-green-500" />
           </div>
@@ -238,7 +238,7 @@ export default function ProfilePage() {
           <p className="text-slate-400 text-sm">Money recovered</p>
         </div>
 
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
           <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
             <CheckCircle2 className="h-6 w-6 text-blue-500" />
           </div>
@@ -248,7 +248,7 @@ export default function ProfilePage() {
           <p className="text-slate-400 text-sm">Tasks completed</p>
         </div>
 
-        <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
           <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
             <Clock className="h-6 w-6 text-purple-500" />
           </div>
@@ -260,12 +260,12 @@ export default function ProfilePage() {
       </div>
 
       {/* Connected Accounts */}
-      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 mb-6">
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <h2 className="text-xl font-bold text-white mb-6">Connected Accounts</h2>
         
         <div className="space-y-4">
           {/* Gmail - Coming Soon */}
-          <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800">
+          <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
                 <Mail className="h-6 w-6 text-red-400" />
@@ -276,14 +276,14 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+              <span className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30">
                 Coming Soon
               </span>
             </div>
           </div>
 
           {/* Bank - Coming Soon */}
-          <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800">
+          <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
                 <CreditCard className="h-6 w-6 text-blue-400" />
@@ -294,7 +294,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+              <span className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30">
                 Coming Soon
               </span>
             </div>
@@ -309,7 +309,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Subscription Management */}
-      <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8">
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8">
         <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
         
         {effectiveTier === 'free' ? (
@@ -321,14 +321,14 @@ export default function ProfilePage() {
             </p>
             <a
               href="/pricing"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-6 py-3 rounded-lg transition-all"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-6 py-3 rounded-lg transition-all"
             >
               Upgrade Plan
             </a>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg">
               <div>
                 <h3 className="text-white font-semibold capitalize">{effectiveTier} Plan</h3>
                 <p className="text-sm text-slate-400">
@@ -341,7 +341,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleManageBilling}
                 disabled={portalLoading}
-                className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
+                className="inline-flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
               >
                 <CreditCard className="h-4 w-4" />
                 {portalLoading ? 'Loading...' : 'Manage Billing'}
@@ -350,19 +350,19 @@ export default function ProfilePage() {
 
             {/* Pending downgrade or cancellation notice */}
             {pendingChange && (
-              <div className="flex items-start gap-3 p-4 rounded-lg border bg-amber-500/5 border-amber-500/20">
-                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-400" />
+              <div className="flex items-start gap-3 p-4 rounded-lg border bg-mint-400/5 border-mint-400/20">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-mint-400" />
                 <div>
                   {pendingChange.type === 'cancel' ? (
                     <>
-                      <p className="text-sm text-amber-400 font-medium">Subscription set to not renew</p>
+                      <p className="text-sm text-mint-400 font-medium">Subscription set to not renew</p>
                       <p className="text-xs text-slate-400 mt-0.5">
                         Your {effectiveTier} plan will not renew after {pendingChange.date}. You keep full access until then. To continue your subscription, click Manage Billing and reactivate.
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="text-sm text-amber-400 font-medium">
+                      <p className="text-sm text-mint-400 font-medium">
                         Changing to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)}
                       </p>
                       <p className="text-xs text-slate-400 mt-0.5">
@@ -384,7 +384,7 @@ export default function ProfilePage() {
         )}
       </div>
       {/* Danger Zone — Delete Account */}
-      <div className="bg-slate-900/50 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
+      <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
           <Trash2 className="h-5 w-5 text-red-400" />
           Delete Account
@@ -416,7 +416,7 @@ export default function ProfilePage() {
               </button>
               <button
                 onClick={() => setDeleteConfirm(false)}
-                className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-lg transition-all text-sm"
+                className="bg-navy-800 hover:bg-navy-700 text-white px-5 py-2.5 rounded-lg transition-all text-sm"
               >
                 Cancel
               </button>

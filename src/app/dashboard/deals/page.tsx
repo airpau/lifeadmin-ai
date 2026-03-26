@@ -171,7 +171,7 @@ function urgencyLabel(days: number): { text: string; color: string; bg: string }
   if (days <= 0) return { text: 'Contract ended', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' };
   if (days <= 7) return { text: `Ends in ${days} days`, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' };
   if (days <= 14) return { text: `Ends in ${days} days`, color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30' };
-  if (days <= 30) return { text: `Ends in ${days} days`, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' };
+  if (days <= 30) return { text: `Ends in ${days} days`, color: 'text-mint-400', bg: 'bg-mint-400/10 border-mint-400/30' };
   if (days <= 90) return { text: `Ends in ${Math.ceil(days / 7)} weeks`, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' };
   return { text: `Ends in ${Math.ceil(days / 30)} months`, color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/30' };
 }
@@ -207,9 +207,9 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   };
 
   return (
-    <div className={`bg-slate-900/50 backdrop-blur-sm border rounded-2xl p-6 transition-all flex flex-col gap-4 ${
-      highlight ? 'border-amber-500/40 ring-1 ring-amber-500/20' : 'border-slate-800'
-    } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-slate-600'}`}>
+    <div className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-6 transition-all flex flex-col gap-4 ${
+      highlight ? 'border-mint-400/40 ring-1 ring-mint-400/20' : 'border-navy-700/50'
+    } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-navy-600'}`}>
       <div className="flex-1">
         <h3 className="text-lg font-semibold text-white mb-1">{deal.provider}</h3>
         <p className="text-slate-400 text-sm">{deal.headline}</p>
@@ -218,20 +218,20 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
         )}
       </div>
       <div className="flex items-center justify-between gap-4">
-        <span className="text-sm font-semibold text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full">
+        <span className="text-sm font-semibold text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full">
           {deal.saving}
         </span>
         {DEALS_LIVE ? (
           <a
             href={deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl)}
             onClick={handleClick}
-            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
+            className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
           >
             {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             View Deal →
           </a>
         ) : (
-          <span className="bg-slate-700 text-slate-400 font-medium px-4 py-2 rounded-lg text-sm cursor-not-allowed">
+          <span className="bg-navy-700 text-slate-400 font-medium px-4 py-2 rounded-lg text-sm cursor-not-allowed">
             Coming Soon
           </span>
         )}
@@ -298,7 +298,7 @@ export default function DealsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
       </div>
     );
   }
@@ -307,7 +307,7 @@ export default function DealsPage() {
     <div className="max-w-7xl">
       {/* Hero */}
       <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Find Better Deals</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Find Better Deals</h1>
         <p className="text-slate-400">Personalised savings based on your contracts and bills.</p>
       </div>
 
@@ -317,8 +317,8 @@ export default function DealsPage() {
           onClick={() => setActiveCategory(null)}
           className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
             activeCategory === null
-              ? 'bg-amber-500 text-slate-950'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              ? 'bg-mint-400 text-navy-950'
+              : 'bg-navy-800 text-slate-300 hover:bg-navy-700'
           }`}
         >
           All
@@ -329,8 +329,8 @@ export default function DealsPage() {
             onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
               activeCategory === cat
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                ? 'bg-mint-400 text-navy-950'
+                : 'bg-navy-800 text-slate-300 hover:bg-navy-700'
             }`}
           >
             {cat}
@@ -365,7 +365,7 @@ export default function DealsPage() {
                     const urgency = urgencyLabel(days);
                     return (
                       <div key={`urgent-note-${sub.id}`} className="flex items-center gap-3 mb-2 flex-wrap">
-                        <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                        <div className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-1.5 flex items-center gap-2">
                           <span className="text-white text-sm font-semibold">{sub.provider_name}</span>
                           <span className="text-slate-500 text-sm">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
                         </div>
@@ -374,10 +374,10 @@ export default function DealsPage() {
                           <span className={`text-sm font-semibold ${urgency.color}`}>{urgency.text}</span>
                         </div>
                         {sub.auto_renews && (
-                          <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded">Auto-renews</span>
+                          <span className="text-xs text-mint-400 bg-mint-400/10 px-2 py-1 rounded">Auto-renews</span>
                         )}
                         {sub.early_exit_fee && days > 0 && (
-                          <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">Exit fee: £{parseFloat(String(sub.early_exit_fee)).toFixed(0)}</span>
+                          <span className="text-xs text-slate-500 bg-navy-800 px-2 py-1 rounded">Exit fee: £{parseFloat(String(sub.early_exit_fee)).toFixed(0)}</span>
                         )}
                       </div>
                     );
@@ -406,14 +406,14 @@ export default function DealsPage() {
           return (
             <section key={category}>
               <div className="flex items-center gap-2 mb-3">
-                <Zap className="h-5 w-5 text-amber-400" />
+                <Zap className="h-5 w-5 text-mint-400" />
                 <h2 className="text-xl font-bold text-white">{category} Deals</h2>
               </div>
 
               {matchingSubs.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-4">
                   {matchingSubs.map((sub) => (
-                    <div key={`ctx-${sub.id}-${category}`} className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm">
+                    <div key={`ctx-${sub.id}-${category}`} className="bg-navy-800/50 border border-navy-700/50 rounded-lg px-3 py-1.5 flex items-center gap-2 text-sm">
                       <span className="text-slate-400">Currently paying</span>
                       <span className="text-white font-semibold">£{parseFloat(String(sub.amount)).toFixed(2)}/{sub.billing_cycle}</span>
                       <span className="text-slate-400">to</span>
@@ -434,7 +434,7 @@ export default function DealsPage() {
       </div>
 
       {/* Affiliate disclosure */}
-      <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-3 mt-10">
+      <div className="flex items-start gap-3 bg-navy-800/40 border border-navy-700/50 rounded-xl px-4 py-3 mt-10">
         <Tag className="h-4 w-4 text-slate-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-slate-400">
           <span className="font-semibold text-slate-300">Affiliate disclosure:</span> We may earn a commission when you switch via our links. This never affects the price you pay.

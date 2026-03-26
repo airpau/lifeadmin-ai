@@ -69,14 +69,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const NavContent = () => (
     <>
-      <Link href="/dashboard" className="flex items-center gap-2 mb-8">
+      <Link href="/dashboard" className="flex items-center gap-2 mb-2">
         <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
         <span className="text-xl font-bold text-white">
-          Pay<span className="text-amber-500">backer</span>
+          Pay<span className="text-mint-400">backer</span>
         </span>
       </Link>
 
-      <nav className="space-y-1 flex-1">
+      {/* User info below logo */}
+      <div className="mb-6 pb-6 border-b border-navy-700/50">
+        {firstName && (
+          <p className="text-sm font-medium text-white">{firstName}</p>
+        )}
+        <p className="text-xs text-slate-500 truncate">{userEmail}</p>
+        <span className="inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider text-mint-400 bg-mint-400/10 px-2 py-0.5 rounded-full">
+          Free Plan
+        </span>
+      </div>
+
+      <nav className="space-y-0.5 flex-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.href === '/dashboard' || item.href === '/blog'
@@ -86,16 +97,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all min-h-[48px] ${
+              className={`flex items-center gap-3 px-4 py-2.5 rounded-r-lg transition-all duration-200 min-h-[44px] ${
                 isActive
-                  ? 'bg-amber-500 text-slate-950 font-semibold'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  ? 'bg-mint-400/10 text-mint-400 border-l-2 border-mint-400 font-semibold'
+                  : 'text-slate-400 hover:text-white hover:bg-navy-800/50 border-l-2 border-transparent'
               }`}
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
-              <span>{item.name}</span>
+              <span className="text-sm">{item.name}</span>
               {(item as any).comingSoon && (
-                <span className="text-[9px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded-full ml-auto">Soon</span>
+                <span className="text-[9px] bg-navy-700 text-slate-400 px-1.5 py-0.5 rounded-full ml-auto">Soon</span>
               )}
             </Link>
           );
@@ -103,28 +114,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {userEmail === 'aireypaul@googlemail.com' && (
           <Link
             href="/dashboard/admin"
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all min-h-[48px] mt-4 border-t border-slate-800 pt-4 ${
+            className={`flex items-center gap-3 px-4 py-2.5 rounded-r-lg transition-all duration-200 min-h-[44px] mt-4 border-t border-navy-700/50 pt-4 ${
               pathname === '/dashboard/admin'
-                ? 'bg-red-500 text-white font-semibold'
-                : 'text-red-400 hover:text-white hover:bg-red-500/10'
+                ? 'bg-red-500/10 text-red-400 border-l-2 border-red-400 font-semibold'
+                : 'text-red-400/70 hover:text-red-400 hover:bg-red-500/10 border-l-2 border-transparent'
             }`}
           >
             <ShieldAlert className="h-5 w-5 flex-shrink-0" />
-            <span>Admin</span>
+            <span className="text-sm">Admin</span>
           </Link>
         )}
       </nav>
 
-      <div className="pt-6 border-t border-slate-800 mt-6">
-        <div className="mb-3">
-          {firstName && (
-            <p className="text-sm font-semibold text-white mb-0.5">Welcome, {firstName}</p>
-          )}
-          <p className="text-xs text-slate-500 truncate">{userEmail}</p>
-        </div>
+      <div className="pt-6 border-t border-navy-700/50 mt-6">
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 text-slate-400 hover:text-white transition-all w-full min-h-[44px]"
+          className="flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all duration-200 w-full min-h-[44px]"
         >
           <LogOut className="h-4 w-4" />
           <span className="text-sm">Sign out</span>
@@ -134,13 +139,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-screen bg-navy-950">
       {/* Mobile header */}
-      <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900/80 border-b border-slate-800 sticky top-0 z-40">
+      <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-navy-900 border-b border-navy-700/50 sticky top-0 z-40">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Image src="/logo.png" alt="Paybacker" width={28} height={28} />
           <span className="text-lg font-bold text-white">
-            Pay<span className="text-amber-500">backer</span>
+            Pay<span className="text-mint-400">backer</span>
           </span>
         </Link>
         <button
@@ -155,7 +160,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/70" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative w-72 bg-slate-900 border-r border-slate-800 p-6 flex flex-col">
+          <aside className="relative w-[260px] bg-navy-900 border-r border-navy-700/50 p-6 flex flex-col">
             <button
               onClick={() => setSidebarOpen(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-2"
@@ -169,18 +174,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="flex">
         {/* Desktop sidebar */}
-        <aside className="hidden lg:flex w-64 min-h-screen bg-slate-900/50 backdrop-blur-sm border-r border-slate-800 p-6 flex-col">
+        <aside className="hidden lg:flex w-[260px] min-h-screen bg-navy-900 border-r border-navy-700/50 p-6 flex-col flex-shrink-0">
           <NavContent />
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0 bg-navy-950">
           {children}
         </main>
       </div>
 
       {/* Mobile bottom nav - show 5 key items only */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 flex z-40">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-navy-900/95 backdrop-blur-sm border-t border-navy-700/50 flex z-40">
         {[
           { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
           { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
@@ -196,8 +201,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link
               key={item.href}
               href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] transition-all ${
-                isActive ? 'text-amber-500' : 'text-slate-500'
+              className={`flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] transition-all duration-200 ${
+                isActive ? 'text-mint-400' : 'text-slate-500'
               }`}
             >
               <Icon className="h-5 w-5 mb-1" />

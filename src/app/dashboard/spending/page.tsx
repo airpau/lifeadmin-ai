@@ -58,7 +58,7 @@ export default function SpendingPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
       </div>
     );
   }
@@ -70,14 +70,14 @@ export default function SpendingPage() {
     return (
       <div className="max-w-5xl">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Spending Insights</h1>
+          <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
           <p className="text-slate-400">Connect your bank account to see where your money goes</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-12 text-center">
           <BarChart3 className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-white mb-2">No spending data yet</h3>
           <p className="text-slate-400 mb-6">Connect your bank account to get personalised spending insights.</p>
-          <Link href="/dashboard/subscriptions" className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-lg transition-all">
+          <Link href="/dashboard/subscriptions" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-lg transition-all">
             Connect Bank Account
           </Link>
         </div>
@@ -91,7 +91,7 @@ export default function SpendingPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Spending Insights</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
         <p className="text-slate-400">
           Based on {summary.months_analysed} months of bank data · {summary.total_transactions.toLocaleString()} transactions
         </p>
@@ -99,15 +99,15 @@ export default function SpendingPage() {
 
       {/* Summary Cards — Monthly Averages */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
           <p className="text-slate-500 text-xs mb-1">Average monthly spend</p>
           <p className="text-2xl font-bold text-white">£{summary.monthly_avg_spend?.toLocaleString() || Math.round(summary.total_spend / Math.max(summary.months_analysed, 1)).toLocaleString()}</p>
         </div>
-        <div className="bg-slate-900/50 border border-green-500/20 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-green-500/20 rounded-2xl p-5">
           <p className="text-slate-500 text-xs mb-1">Average monthly income</p>
           <p className="text-2xl font-bold text-green-400">£{summary.monthly_avg_income?.toLocaleString() || Math.round(summary.total_income / Math.max(summary.months_analysed, 1)).toLocaleString()}</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
           <p className="text-slate-500 text-xs mb-1">This month so far</p>
           <p className="text-2xl font-bold text-white">£{summary.current_month_spend.toLocaleString()}</p>
           {summary.month_change_percent !== 0 && (
@@ -117,14 +117,14 @@ export default function SpendingPage() {
             </div>
           )}
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
           <p className="text-slate-500 text-xs mb-1">Last month</p>
           <p className="text-2xl font-bold text-white">£{summary.previous_month_spend.toLocaleString()}</p>
         </div>
       </div>
 
       {/* Monthly Breakdown — Spend vs Income */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
         <h2 className="text-lg font-bold text-white mb-1">Monthly Overview</h2>
         <p className="text-slate-500 text-xs mb-4">Spend vs income over the last {summary.months_analysed} months</p>
         <div className="space-y-4">
@@ -145,14 +145,14 @@ export default function SpendingPage() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-slate-500 text-xs w-12">Out</span>
-                    <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
+                    <div className="flex-1 bg-navy-800 rounded-full h-4 overflow-hidden">
                       <div className="bg-gradient-to-r from-red-500 to-red-600 h-full rounded-full" style={{ width: `${spendWidth}%` }} />
                     </div>
                     <span className="text-red-400 text-xs font-semibold w-20 text-right">£{m.spend.toLocaleString()}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-slate-500 text-xs w-12">In</span>
-                    <div className="flex-1 bg-slate-800 rounded-full h-4 overflow-hidden">
+                    <div className="flex-1 bg-navy-800 rounded-full h-4 overflow-hidden">
                       <div className="bg-gradient-to-r from-green-500 to-green-600 h-full rounded-full" style={{ width: `${incomeWidth}%` }} />
                     </div>
                     <span className="text-green-400 text-xs font-semibold w-20 text-right">£{m.income.toLocaleString()}</span>
@@ -165,7 +165,7 @@ export default function SpendingPage() {
       </div>
 
       {/* Category Breakdown — Expandable */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
         <h2 className="text-lg font-bold text-white mb-1">Where your money goes</h2>
         <p className="text-slate-500 text-xs mb-4">Monthly average per category · click to expand</p>
         <div className="space-y-2">
@@ -178,7 +178,7 @@ export default function SpendingPage() {
                   onClick={() => setExpandedCategory(isExpanded ? null : cat.category)}
                   className="w-full text-left"
                 >
-                  <div className="flex items-center gap-3 py-2 hover:bg-slate-800/30 rounded-lg px-2 transition-all">
+                  <div className="flex items-center gap-3 py-2 hover:bg-navy-800/30 rounded-lg px-2 transition-all">
                     <span className="text-lg w-8 text-center">{cat.icon}</span>
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-1">
@@ -187,12 +187,12 @@ export default function SpendingPage() {
                           {isExpanded ? <ChevronUp className="h-3 w-3 text-slate-500" /> : <ChevronDown className="h-3 w-3 text-slate-500" />}
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="text-amber-400 text-xs font-semibold">£{cat.monthly_avg.toLocaleString()}/mo</span>
+                          <span className="text-mint-400 text-xs font-semibold">£{cat.monthly_avg.toLocaleString()}/mo</span>
                           <span className="text-white text-sm font-bold">£{cat.total.toLocaleString()}</span>
                           <span className="text-slate-500 text-xs w-10 text-right">{cat.percentage}%</span>
                         </div>
                       </div>
-                      <div className="bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div className="bg-navy-800 rounded-full h-2 overflow-hidden">
                         <div className="h-full rounded-full transition-all" style={{ width: `${barWidth}%`, backgroundColor: cat.color }} />
                       </div>
                     </div>
@@ -201,7 +201,7 @@ export default function SpendingPage() {
 
                 {/* Expanded detail with individual payments */}
                 {isExpanded && isPaid && (
-                  <div className="ml-12 mt-2 mb-3 bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                  <div className="ml-12 mt-2 mb-3 bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
                     <div className="grid grid-cols-3 gap-4 mb-4">
                       <div>
                         <p className="text-slate-500 text-xs">Total ({summary.months_analysed}mo)</p>
@@ -209,7 +209,7 @@ export default function SpendingPage() {
                       </div>
                       <div>
                         <p className="text-slate-500 text-xs">Monthly average</p>
-                        <p className="text-amber-400 font-semibold">£{cat.monthly_avg.toLocaleString()}</p>
+                        <p className="text-mint-400 font-semibold">£{cat.monthly_avg.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-slate-500 text-xs">Share of spending</p>
@@ -222,7 +222,7 @@ export default function SpendingPage() {
                       <div className="space-y-1 mb-3">
                         <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-2">Payments in this category</p>
                         {data.category_transactions[cat.category].map((tx, j) => (
-                          <div key={j} className="flex items-center justify-between bg-slate-900/50 rounded px-3 py-2 text-sm">
+                          <div key={j} className="flex items-center justify-between bg-navy-900 rounded px-3 py-2 text-sm">
                             <div>
                               <span className="text-white">{tx.description}</span>
                               <span className="text-slate-600 text-xs ml-2">({tx.count} payments)</span>
@@ -236,15 +236,15 @@ export default function SpendingPage() {
                       </div>
                     )}
 
-                    <Link href="/dashboard/deals" className="text-amber-400 hover:text-amber-300 text-xs font-medium flex items-center gap-1">
+                    <Link href="/dashboard/deals" className="text-mint-400 hover:text-mint-300 text-xs font-medium flex items-center gap-1">
                       Find better deals for {cat.label.toLowerCase()} <ArrowRight className="h-3 w-3" />
                     </Link>
                   </div>
                 )}
 
                 {isExpanded && !isPaid && (
-                  <div className="ml-12 mt-2 mb-3 bg-amber-500/5 border border-amber-500/20 rounded-lg p-4 text-center">
-                    <Lock className="h-4 w-4 text-amber-500 mx-auto mb-1" />
+                  <div className="ml-12 mt-2 mb-3 bg-mint-400/5 border border-mint-400/20 rounded-lg p-4 text-center">
+                    <Lock className="h-4 w-4 text-mint-400 mx-auto mb-1" />
                     <p className="text-slate-400 text-xs">Upgrade to Essential to see detailed breakdown</p>
                   </div>
                 )}
@@ -254,11 +254,11 @@ export default function SpendingPage() {
         </div>
 
         {!isPaid && category_breakdown.length > 5 && (
-          <div className="mt-6 bg-amber-500/5 border border-amber-500/20 rounded-xl p-5 text-center">
-            <Lock className="h-6 w-6 text-amber-500 mx-auto mb-2" />
+          <div className="mt-6 bg-mint-400/5 border border-mint-400/20 rounded-xl p-5 text-center">
+            <Lock className="h-6 w-6 text-mint-400 mx-auto mb-2" />
             <p className="text-white font-semibold mb-1">See all {category_breakdown.length} categories</p>
             <p className="text-slate-400 text-sm mb-3">Upgrade to Essential to unlock full spending breakdown</p>
-            <Link href="/pricing" className="inline-block bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+            <Link href="/pricing" className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
               Upgrade Plan
             </Link>
           </div>
@@ -266,14 +266,14 @@ export default function SpendingPage() {
       </div>
 
       {/* Biggest Transactions — Pro only */}
-      <div className={`bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8 ${!isPro ? 'relative' : ''}`}>
+      <div className={`bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8 ${!isPro ? 'relative' : ''}`}>
         <h2 className="text-lg font-bold text-white mb-1">Biggest Transactions</h2>
         <p className="text-slate-500 text-xs mb-4">Your largest single payments</p>
 
         {isPro ? (
           <div className="space-y-2">
             {biggest_transactions.map((tx, i) => (
-              <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+              <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
                 <div>
                   <p className="text-white text-sm font-medium truncate max-w-xs">{tx.description}</p>
                   <p className="text-slate-500 text-xs">
@@ -288,7 +288,7 @@ export default function SpendingPage() {
           <div className="relative">
             <div className="space-y-2 blur-sm pointer-events-none select-none">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+                <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
                   <div>
                     <p className="text-white text-sm font-medium">Transaction details hidden</p>
                     <p className="text-slate-500 text-xs">Date · Category</p>
@@ -298,11 +298,11 @@ export default function SpendingPage() {
               ))}
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-6 text-center">
-                <Lock className="h-6 w-6 text-amber-500 mx-auto mb-2" />
+              <div className="bg-navy-900 border border-mint-400/30 rounded-xl p-6 text-center">
+                <Lock className="h-6 w-6 text-mint-400 mx-auto mb-2" />
                 <p className="text-white font-semibold mb-1">Pro feature</p>
                 <p className="text-slate-400 text-sm mb-3">See your biggest transactions with Pro</p>
-                <Link href="/pricing" className="inline-block bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+                <Link href="/pricing" className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
                   Upgrade to Pro
                 </Link>
               </div>
@@ -312,10 +312,10 @@ export default function SpendingPage() {
       </div>
 
       {/* Deal suggestion */}
-      <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 text-center">
-        <p className="text-amber-400 font-semibold mb-2">Based on your spending, we can help you save</p>
+      <div className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-6 text-center">
+        <p className="text-mint-400 font-semibold mb-2">Based on your spending, we can help you save</p>
         <p className="text-slate-400 text-sm mb-4">Check our deals page for alternatives to your most expensive bills</p>
-        <Link href="/dashboard/deals" className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-lg transition-all">
+        <Link href="/dashboard/deals" className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-lg transition-all">
           View Deals <ArrowRight className="h-4 w-4" />
         </Link>
       </div>

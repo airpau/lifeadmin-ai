@@ -176,7 +176,7 @@ export default function RewardsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
       </div>
     );
   }
@@ -230,20 +230,20 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 1: Hero Stats Bar ═══ */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-slate-900/50 border rounded-2xl p-5 text-center" style={{ borderColor: data.tierInfo.color + '44' }}>
+        <div className="bg-navy-900 border rounded-2xl p-5 text-center" style={{ borderColor: data.tierInfo.color + '44' }}>
           <TierIcon className="h-8 w-8 mx-auto mb-2" style={{ color: data.tierInfo.color }} />
           <p className="text-lg font-bold text-white">{data.tierInfo.label}</p>
           <p className="text-slate-500 text-xs">{data.tierInfo.multiplier}x points</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 text-center">
-          <p className="text-4xl font-bold text-amber-500">{data.balance.toLocaleString()}</p>
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 text-center">
+          <p className="text-4xl font-bold text-mint-400">{data.balance.toLocaleString()}</p>
           <p className="text-slate-500 text-xs">Points balance</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 text-center">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 text-center">
           <p className="text-2xl font-bold text-slate-300">{data.lifetime.toLocaleString()}</p>
           <p className="text-slate-500 text-xs">Lifetime earned</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 text-center">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
             <Flame className="h-5 w-5 text-orange-400" />
             <p className="text-2xl font-bold text-orange-400">{data.currentStreak}</p>
@@ -253,7 +253,7 @@ export default function RewardsPage() {
       </div>
 
       {/* ═══ SECTION 2: Tier Progress ═══ */}
-      <div id="tiers" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+      <div id="tiers" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
         <h2 className="text-lg font-bold text-white mb-4">Tier Progress</h2>
         {isMaxTier ? (
           <div className="text-center py-4">
@@ -279,8 +279,8 @@ export default function RewardsPage() {
                 <span>Points: {data.lifetime.toLocaleString()} / {nextTier.minPoints.toLocaleString()}</span>
                 <span>{Math.min(100, Math.round((data.lifetime / nextTier.minPoints) * 100))}%</span>
               </div>
-              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${Math.min(100, (data.lifetime / nextTier.minPoints) * 100)}%` }} />
+              <div className="h-2 bg-navy-800 rounded-full overflow-hidden">
+                <div className="h-full bg-mint-400 rounded-full transition-all" style={{ width: `${Math.min(100, (data.lifetime / nextTier.minPoints) * 100)}%` }} />
               </div>
             </div>
             <p className="text-slate-400 text-sm mt-3">
@@ -288,7 +288,7 @@ export default function RewardsPage() {
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {nextTier.perks.map((perk, i) => (
-                <span key={i} className="text-xs bg-slate-800 text-slate-300 px-2 py-1 rounded-full">{perk}</span>
+                <span key={i} className="text-xs bg-navy-800 text-slate-300 px-2 py-1 rounded-full">{perk}</span>
               ))}
             </div>
           </>
@@ -304,10 +304,10 @@ export default function RewardsPage() {
             const isRedeeming = redeemingId === opt.id;
             const pointsNeeded = Math.max(0, opt.points - data.balance);
             return (
-              <div key={opt.id} className={`bg-slate-900/50 border rounded-2xl p-4 text-center transition-all ${isLocked ? 'border-slate-800 opacity-60' : 'border-amber-500/30 hover:border-amber-500/60'}`}>
+              <div key={opt.id} className={`bg-navy-900 border rounded-2xl p-4 text-center transition-all ${isLocked ? 'border-navy-700/50 opacity-60' : 'border-mint-400/30 hover:border-mint-400/60'}`}>
                 <span className="text-3xl block mb-2">{redemptionEmojis[opt.id] || '🎁'}</span>
                 <p className="text-white font-semibold text-sm mb-1">{opt.label}</p>
-                <p className="text-amber-400 font-bold text-sm mb-2">{opt.points.toLocaleString()} pts</p>
+                <p className="text-mint-400 font-bold text-sm mb-2">{opt.points.toLocaleString()} pts</p>
                 {isLocked ? (
                   <div>
                     <Lock className="h-4 w-4 text-slate-600 mx-auto mb-1" />
@@ -321,7 +321,7 @@ export default function RewardsPage() {
                       }
                     }}
                     disabled={isRedeeming}
-                    className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
+                    className="bg-mint-400 hover:bg-mint-500 disabled:opacity-50 text-navy-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
                   >
                     {isRedeeming ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : 'Redeem'}
                   </button>
@@ -333,7 +333,7 @@ export default function RewardsPage() {
       </div>
 
       {/* ═══ SECTION 4: Badges Collection ═══ */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">Badges</h2>
           <span className="text-slate-500 text-sm">{earnedBadgeIds.size} of {ALL_BADGES.length} earned</span>
@@ -347,8 +347,8 @@ export default function RewardsPage() {
                 key={badge.id}
                 href={earned ? '#' : badge.action}
                 className={`rounded-xl p-3 text-center transition-all border ${earned
-                  ? 'bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40'
-                  : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 opacity-40'
+                  ? 'bg-mint-400/5 border-mint-400/20 hover:border-mint-400/40'
+                  : 'bg-navy-950/50 border-navy-700/50 hover:border-navy-700/50 opacity-40'
                 }`}
                 title={earned ? `${badge.name} - earned ${earnedData ? new Date(earnedData.earned_at).toLocaleDateString('en-GB') : ''}` : badge.description}
               >
@@ -361,7 +361,7 @@ export default function RewardsPage() {
       </div>
 
       {/* ═══ SECTION 5: Streak Tracker ═══ */}
-      <div id="streaks" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+      <div id="streaks" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
         <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
           <Flame className="h-5 w-5 text-orange-400" /> Streak Tracker
         </h2>
@@ -370,7 +370,7 @@ export default function RewardsPage() {
             const isActive = activeMonths.has(m.key);
             return (
               <div key={m.key} className="flex-1 text-center">
-                <div className={`w-6 h-6 mx-auto rounded-full ${isActive ? 'bg-green-500' : 'bg-slate-800'}`} />
+                <div className={`w-6 h-6 mx-auto rounded-full ${isActive ? 'bg-green-500' : 'bg-navy-800'}`} />
                 <p className="text-[9px] text-slate-500 mt-1">{m.label}</p>
               </div>
             );
@@ -393,17 +393,17 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 6: Referrals ═══ */}
       {referrals && (
-        <div id="referrals" className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-8">
+        <div id="referrals" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
           <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-            <Share2 className="h-5 w-5 text-amber-500" /> Earn 200 points for every friend who upgrades
+            <Share2 className="h-5 w-5 text-mint-400" /> Earn 200 points for every friend who upgrades
           </h2>
           <p className="text-slate-400 text-sm mb-4">They get a free start. You get 100 points when they join, plus 200 more when they upgrade.</p>
 
-          <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800 mb-4">
+          <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50 mb-4">
             <p className="text-slate-500 text-xs mb-2">Your referral link</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-amber-400 text-sm bg-slate-900 rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
-              <button onClick={handleCopyCode} className="shrink-0 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
+              <code className="flex-1 text-mint-400 text-sm bg-slate-900 rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
+              <button onClick={handleCopyCode} className="shrink-0 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
                 {codeCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
               <button onClick={handleWhatsAppShare} className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm transition-all">
@@ -413,22 +413,22 @@ export default function RewardsPage() {
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-slate-950/50 rounded-lg p-3 text-center border border-slate-800">
+            <div className="bg-navy-950/50 rounded-lg p-3 text-center border border-navy-700/50">
               <p className="text-white font-bold text-lg">{referrals.totalReferred}</p>
               <p className="text-slate-500 text-[10px]">Invited</p>
             </div>
-            <div className="bg-slate-950/50 rounded-lg p-3 text-center border border-slate-800">
+            <div className="bg-navy-950/50 rounded-lg p-3 text-center border border-navy-700/50">
               <p className="text-white font-bold text-lg">{referrals.totalSignedUp}</p>
               <p className="text-slate-500 text-[10px]">Signed up</p>
             </div>
-            <div className="bg-slate-950/50 rounded-lg p-3 text-center border border-slate-800">
-              <p className="text-amber-400 font-bold text-lg">{referrals.totalSubscribed}</p>
+            <div className="bg-navy-950/50 rounded-lg p-3 text-center border border-navy-700/50">
+              <p className="text-mint-400 font-bold text-lg">{referrals.totalSubscribed}</p>
               <p className="text-slate-500 text-[10px]">Upgraded</p>
             </div>
           </div>
 
           {referrals.pendingUpgrades > 0 && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-amber-400 text-sm">
+            <div className="bg-mint-400/10 border border-mint-400/20 rounded-lg p-3 text-mint-400 text-sm">
               {referrals.pendingUpgrades} friend{referrals.pendingUpgrades > 1 ? 's have' : ' has'} signed up but not upgraded yet. You will earn 200 points for each one that upgrades.
             </div>
           )}
@@ -452,11 +452,11 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 7: Points History ═══ */}
       {data.recentEvents.length > 0 && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-8">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
           <h2 className="text-lg font-bold text-white mb-4">Points History</h2>
           <div className="space-y-2">
             {(showAllHistory ? data.recentEvents : data.recentEvents.slice(0, 8)).map((event, i) => (
-              <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-2.5 border border-slate-800">
+              <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/50">
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm truncate">{event.description}</p>
                   <p className="text-slate-500 text-xs">
@@ -470,7 +470,7 @@ export default function RewardsPage() {
             ))}
           </div>
           {data.recentEvents.length > 8 && (
-            <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-amber-400 text-sm mt-3 flex items-center gap-1 hover:text-amber-300 transition-all">
+            <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-mint-400 text-sm mt-3 flex items-center gap-1 hover:text-mint-300 transition-all">
               {showAllHistory ? <><ChevronUp className="h-4 w-4" /> Show less</> : <><ChevronDown className="h-4 w-4" /> View all activity</>}
             </button>
           )}
@@ -478,7 +478,7 @@ export default function RewardsPage() {
       )}
 
       {/* ═══ SECTION 8: How Points Work (FAQ) ═══ */}
-      <div id="earn" className="bg-slate-900/50 border border-slate-800 rounded-2xl mb-8 overflow-hidden">
+      <div id="earn" className="bg-navy-900 border border-navy-700/50 rounded-2xl mb-8 overflow-hidden">
         <button onClick={() => setShowFaq(!showFaq)} className="w-full flex items-center justify-between p-6 text-left">
           <h2 className="text-lg font-bold text-white">How Points Work</h2>
           {showFaq ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />}
@@ -491,12 +491,12 @@ export default function RewardsPage() {
               <h3 className="text-white font-semibold mb-3">How to earn points</h3>
               <div className="grid sm:grid-cols-2 gap-2">
                 {EARN_ACTIONS.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-950/50 border border-slate-800">
+                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2 bg-navy-950/50 border border-navy-700/50">
                     <div className="flex items-center gap-2">
                       <span>{item.emoji}</span>
                       <span className="text-slate-300 text-xs">{item.action}</span>
                     </div>
-                    <span className="text-amber-400 font-bold text-xs">+{item.points}</span>
+                    <span className="text-mint-400 font-bold text-xs">+{item.points}</span>
                   </div>
                 ))}
               </div>
@@ -508,7 +508,7 @@ export default function RewardsPage() {
               <p className="text-slate-400 text-sm mb-3">Tiers are based on both your membership duration and lifetime points earned. Higher tiers unlock better perks and a points multiplier.</p>
               <div className="space-y-2">
                 {data.allTiers.map((t) => (
-                  <div key={t.key} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${t.isCurrent ? 'border-amber-500/50 bg-amber-500/5' : 'border-slate-800 bg-slate-950/50'}`}>
+                  <div key={t.key} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${t.isCurrent ? 'border-mint-400/50 bg-mint-400/5' : 'border-navy-700/50 bg-navy-950/50'}`}>
                     <span>{tierEmojis[t.key]}</span>
                     <div className="flex-1">
                       <span className="text-white font-semibold text-sm">{t.label}</span>
@@ -516,7 +516,7 @@ export default function RewardsPage() {
                         {t.minMonths === 0 ? 'From day one' : `${t.minMonths}+ months + ${t.minPoints.toLocaleString()}+ pts`}
                       </span>
                     </div>
-                    <span className="text-amber-400 text-xs font-bold">{t.multiplier}x</span>
+                    <span className="text-mint-400 text-xs font-bold">{t.multiplier}x</span>
                   </div>
                 ))}
               </div>

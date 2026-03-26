@@ -191,7 +191,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
       </div>
     );
   }
@@ -216,12 +216,12 @@ export default function DashboardPage() {
         const allDone = steps.filter(s => s.num !== 4).every(s => s.done);
         if (allDone) return null;
         return (
-          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-6 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4">Welcome to Paybacker! Get started:</h2>
+          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
+            <h2 className="text-xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Welcome to Paybacker! Get started:</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {steps.map(step => (
-                <Link key={step.href + step.num} href={step.href} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${step.done ? 'bg-green-500/10 border border-green-500/20' : 'bg-slate-800/50 border border-slate-700 hover:border-amber-500/30'}`}>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done ? 'bg-green-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                <Link key={step.href + step.num} href={step.href} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${step.done ? 'bg-green-500/10 border border-green-500/20' : 'bg-navy-800/50 border border-navy-700/50 hover:border-mint-400/30'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done ? 'bg-green-500 text-white' : 'bg-navy-700 text-slate-400'}`}>
                     {step.done ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{step.num}</span>}
                   </div>
                   <span className={`text-sm ${step.done ? 'text-green-400' : 'text-white'}`}>{step.label}</span>
@@ -233,28 +233,28 @@ export default function DashboardPage() {
       })()}
 
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Overview</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
         <p className="text-slate-400">Your financial snapshot and quick actions</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-          <CreditCard className="h-6 w-6 text-amber-500 mb-3" />
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+          <CreditCard className="h-6 w-6 text-mint-400 mb-3" />
           <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
           <p className="text-slate-400 text-sm">Subscriptions tracked</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
           <p className="text-slate-400 text-sm">Monthly spend</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
           <FileText className="h-6 w-6 text-blue-400 mb-3" />
           <p className="text-3xl font-bold text-white">{complaintsGenerated}</p>
           <p className="text-slate-400 text-sm">Complaints generated</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
           <Building2 className="h-6 w-6 text-green-400 mb-3" />
           <p className="text-3xl font-bold text-white">{bankConnected ? 'Connected' : 'Not set up'}</p>
           <p className="text-slate-400 text-sm">Bank account</p>
@@ -263,15 +263,15 @@ export default function DashboardPage() {
 
       {/* Alerts */}
       {expiringContracts > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
+        <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400" />
+            <AlertTriangle className="h-5 w-5 text-mint-400" />
             <div>
               <p className="text-white font-semibold text-sm">{expiringContracts} contract{expiringContracts > 1 ? 's' : ''} expiring within 30 days</p>
               <p className="text-slate-400 text-xs">Review these before they auto-renew at a higher rate</p>
             </div>
           </div>
-          <Link href="/dashboard/subscriptions" className="text-amber-400 hover:text-amber-300 text-sm font-medium flex items-center gap-1">
+          <Link href="/dashboard/subscriptions" className="text-mint-400 hover:text-mint-300 text-sm font-medium flex items-center gap-1">
             View <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -295,8 +295,8 @@ export default function DashboardPage() {
       {/* Action Items */}
       {pendingTasks.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Clock className="h-5 w-5 text-amber-500" />
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+            <Clock className="h-5 w-5 text-mint-400" />
             Your Action Items ({pendingTasks.length})
           </h2>
           <div className="space-y-3">
@@ -325,11 +325,11 @@ export default function DashboardPage() {
               // Determine badge
               const badge = isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
                 : needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
-                : needsDeal ? { text: 'Switch and Save', color: 'bg-amber-500/10 text-amber-400' }
+                : needsDeal ? { text: 'Switch and Save', color: 'bg-mint-400/10 text-mint-400' }
                 : needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
                 : isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
-                : isAdmin ? { text: 'Admin Task', color: 'bg-slate-700 text-slate-300' }
-                : { text: 'Review', color: 'bg-slate-700 text-slate-400' };
+                : isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
+                : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
 
               // Build correct action URL with proper params for each destination
               const complaintParams = new URLSearchParams();
@@ -343,7 +343,7 @@ export default function DashboardPage() {
               if (amount) subscriptionParams.set('amount', String(amount));
 
               return (
-                <div key={task.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+                <div key={task.id} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -355,7 +355,7 @@ export default function DashboardPage() {
                       <p className="text-slate-400 text-xs mt-1 line-clamp-2">{descText}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-800 flex-wrap">
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
                     {/* Context-aware primary action */}
                     {needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
@@ -368,7 +368,7 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {needsDeal && (
-                      <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Find Better Deal
                       </Link>
                     )}
@@ -387,13 +387,13 @@ export default function DashboardPage() {
                         onClick={async () => {
                           await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
                         }}
-                        className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+                        className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
                       >
                         <CheckCircle2 className="h-3 w-3" /> Mark as Done
                       </button>
                     )}
                     {!needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && !isAdmin && (
-                      <Link href={complaintUrl} className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href={complaintUrl} className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Take Action
                       </Link>
                     )}
@@ -418,74 +418,74 @@ export default function DashboardPage() {
       )}
 
       {/* Quick Actions */}
-      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-        <Sparkles className="h-5 w-5 text-amber-500" />
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+        <Sparkles className="h-5 w-5 text-mint-400" />
         Quick Actions
       </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Link
           href="/dashboard/complaints"
-          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+          className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
-          <FileText className="h-8 w-8 text-amber-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Write a Complaint Letter</h3>
+          <FileText className="h-8 w-8 text-mint-400 mb-3" />
+          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Write a Complaint Letter</h3>
           <p className="text-slate-400 text-sm">Generate a formal letter citing UK consumer law. Energy bills, broadband, debt, refunds, and more.</p>
-          <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">Get started <ArrowRight className="h-3 w-3" /></span>
+          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Get started <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         <Link
           href="/dashboard/subscriptions"
-          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+          className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <CreditCard className="h-8 w-8 text-green-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Track Subscriptions</h3>
+          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Track Subscriptions</h3>
           <p className="text-slate-400 text-sm">See every subscription in one place. Sync from your bank or add manually. Cancel what you don't need.</p>
-          <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">Manage <ArrowRight className="h-3 w-3" /></span>
+          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Manage <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         <Link
           href="/dashboard/forms"
-          className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+          className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <Building2 className="h-8 w-8 text-purple-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Generate Legal Forms</h3>
+          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Generate Legal Forms</h3>
           <p className="text-slate-400 text-sm">HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
-          <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">Browse forms <ArrowRight className="h-3 w-3" /></span>
+          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Browse forms <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         {userTier !== 'free' && (
           <Link
             href="/dashboard/spending"
-            className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+            className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
           >
             <BarChart3 className="h-8 w-8 text-sky-500 mb-3" />
-            <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Spending Insights</h3>
+            <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Spending Insights</h3>
             <p className="text-slate-400 text-sm">See where every pound goes. Category breakdown, monthly trends, and smart savings suggestions.</p>
-            <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">View insights <ArrowRight className="h-3 w-3" /></span>
+            <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">View insights <ArrowRight className="h-3 w-3" /></span>
           </Link>
         )}
 
         {userTier === 'free' && (
           <Link
             href="/pricing"
-            className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-6 hover:border-amber-500/50 transition-all group"
+            className="bg-navy-900 border border-mint-400/30 rounded-2xl p-6 hover:border-mint-400/50 transition-all group"
           >
-            <Sparkles className="h-8 w-8 text-amber-500 mb-3" />
-            <h3 className="text-white font-semibold mb-1 group-hover:text-amber-400 transition-all">Upgrade Your Plan</h3>
+            <Sparkles className="h-8 w-8 text-mint-400 mb-3" />
+            <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Upgrade Your Plan</h3>
             <p className="text-slate-400 text-sm">Get unlimited complaints, daily bank sync, spending insights, cancellation emails, and renewal reminders.</p>
-            <span className="text-amber-400 text-sm mt-3 flex items-center gap-1">View plans <ArrowRight className="h-3 w-3" /></span>
+            <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">View plans <ArrowRight className="h-3 w-3" /></span>
           </Link>
         )}
       </div>
 
       {/* Quick links */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/dashboard/deals" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+        <Link href="/dashboard/deals" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <h3 className="text-white font-semibold mb-1">Browse 59 Deals</h3>
           <p className="text-slate-500 text-xs">Compare energy, broadband, mobile, insurance, and more. Find cheaper alternatives to your current providers.</p>
         </Link>
-        <Link href="/dashboard/subscriptions" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+        <Link href="/dashboard/subscriptions" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <h3 className="text-white font-semibold mb-1">Track Contracts</h3>
           <p className="text-slate-500 text-xs">Add your subscriptions and contracts with end dates. Get alerts before renewals and find better deals.</p>
         </Link>

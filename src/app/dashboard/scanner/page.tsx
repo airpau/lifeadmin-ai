@@ -34,7 +34,7 @@ interface ConnectedAccount {
 
 const typeConfig: Record<string, { icon: typeof AlertCircle; color: string; bg: string; label: string }> = {
   overcharge: { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-500/10', label: 'Overcharge' },
-  renewal: { icon: Calendar, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Renewal Alert' },
+  renewal: { icon: Calendar, color: 'text-mint-400', bg: 'bg-mint-400/10', label: 'Renewal Alert' },
   forgotten_subscription: { icon: CreditCard, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Unused Subscription' },
   price_increase: { icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Price Increase' },
   loan: { icon: CreditCard, color: 'text-purple-500', bg: 'bg-purple-500/10', label: 'Loan' },
@@ -48,10 +48,10 @@ const typeConfig: Record<string, { icon: typeof AlertCircle; color: string; bg: 
 const actionLabels: Record<string, { text: string; color: string }> = {
   track: { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' },
   cancel: { text: 'Track & Cancel', color: 'bg-red-600 hover:bg-red-700' },
-  switch_deal: { text: 'Track & Find Deal', color: 'bg-amber-500 hover:bg-amber-600 text-slate-950' },
+  switch_deal: { text: 'Track & Find Deal', color: 'bg-mint-400 hover:bg-mint-500 text-navy-950' },
   dispute: { text: 'Track & Dispute', color: 'bg-orange-600 hover:bg-orange-700' },
   claim_refund: { text: 'Track & Claim', color: 'bg-green-600 hover:bg-green-700' },
-  monitor: { text: 'Monitor', color: 'bg-slate-700 hover:bg-slate-600' },
+  monitor: { text: 'Monitor', color: 'bg-navy-700 hover:bg-navy-600' },
 };
 
 const GoogleIcon = () => (
@@ -106,7 +106,7 @@ export default function ScannerPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Scanner</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Scanner</h1>
         <p className="text-slate-400">Detect subscriptions, overcharges, and savings opportunities</p>
       </div>
 
@@ -114,7 +114,7 @@ export default function ScannerPage() {
       {!bankLoading && bankConnections.length > 0 && (
         <div className="mb-6 space-y-3">
           {bankConnections.map((conn) => (
-            <div key={conn.id} className="bg-slate-900/50 border border-green-500/30 rounded-2xl p-5">
+            <div key={conn.id} className="bg-navy-900 border border-green-500/30 rounded-2xl p-5">
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
                   <Shield className="h-5 w-5 text-green-400" />
@@ -132,7 +132,7 @@ export default function ScannerPage() {
                 <button
                   onClick={handleSync}
                   disabled={syncing}
-                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+                  className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
                 >
                   <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
                   {syncing ? 'Syncing...' : 'Sync Now'}
@@ -144,8 +144,8 @@ export default function ScannerPage() {
       )}
 
       {/* Email scanning coming soon */}
-      <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 text-center mb-6">
-        <Mail className="h-12 w-12 text-amber-400 mx-auto mb-4" />
+      <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 text-center mb-6">
+        <Mail className="h-12 w-12 text-mint-400 mx-auto mb-4" />
         <h2 className="text-xl font-bold text-white mb-2">Email Scanning Coming Soon</h2>
         <p className="text-slate-400 max-w-md mx-auto mb-4">
           Our email scanning feature is currently being verified by Google to ensure the highest security standards for your data. This will be available shortly.
@@ -156,21 +156,21 @@ export default function ScannerPage() {
       {!bankLoading && expiredBanks.length > 0 && bankConnections.length === 0 && (
         <div className="mb-6 space-y-3">
           {expiredBanks.map((conn) => (
-            <div key={conn.id} className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-5">
+            <div key={conn.id} className="bg-navy-900 border border-mint-400/30 rounded-2xl p-5">
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="bg-amber-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
-                  <Shield className="h-5 w-5 text-amber-400" />
+                <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                  <Shield className="h-5 w-5 text-mint-400" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-amber-400 font-semibold text-sm">{conn.bank_name || 'Bank'}</span>
-                    <span className="text-xs bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded">Expired</span>
+                    <span className="text-mint-400 font-semibold text-sm">{conn.bank_name || 'Bank'}</span>
+                    <span className="text-xs bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded">Expired</span>
                   </div>
                   <p className="text-slate-500 text-xs">Connection expired. Your data is safe. Reconnect to resume syncing.</p>
                 </div>
                 <a
                   href="/api/auth/truelayer"
-                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                  className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Reconnect
@@ -183,7 +183,7 @@ export default function ScannerPage() {
 
       {/* Connect bank if not connected */}
       {!bankLoading && bankConnections.length === 0 && expiredBanks.length === 0 && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
               <Shield className="h-6 w-6 text-blue-400" />
@@ -205,12 +205,12 @@ export default function ScannerPage() {
 
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-        <a href="/dashboard/subscriptions" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
-          <CreditCard className="h-8 w-8 text-amber-500 mb-3" />
+        <a href="/dashboard/subscriptions" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 hover:border-mint-400/30 transition-all">
+          <CreditCard className="h-8 w-8 text-mint-400 mb-3" />
           <h3 className="text-white font-semibold mb-1">Track Subscriptions</h3>
           <p className="text-slate-400 text-sm">View and manage all your subscriptions, contracts, and recurring payments</p>
         </a>
-        <a href="/dashboard/money-hub" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all">
+        <a href="/dashboard/money-hub" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 hover:border-mint-400/30 transition-all">
           <TrendingUp className="h-8 w-8 text-green-500 mb-3" />
           <h3 className="text-white font-semibold mb-1">Spending Intelligence</h3>
           <p className="text-slate-400 text-sm">See your full spending breakdown, budgets, and savings opportunities</p>
@@ -366,7 +366,7 @@ export default function ScannerPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
-          <ScanSearch className="h-10 w-10 text-amber-500" />
+          <ScanSearch className="h-10 w-10 text-mint-400" />
           Opportunity Scanner
         </h1>
         <p className="text-slate-400">
@@ -375,7 +375,7 @@ export default function ScannerPage() {
       </div>
 
       {/* Data security notice */}
-      <div className="flex items-start gap-3 bg-slate-800/40 border border-slate-700 rounded-xl px-4 py-3 mb-6">
+      <div className="flex items-start gap-3 bg-navy-800/40 border border-navy-700/50 rounded-xl px-4 py-3 mb-6">
         <Shield className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-slate-400">
           <span className="font-semibold text-slate-300">Your data is 100% secure.</span> We use read-only access to scan for financial information. We never store full email content, never share your data with third parties, and you can disconnect at any time. All data is encrypted and stored on UK/EU servers.
@@ -384,8 +384,8 @@ export default function ScannerPage() {
 
       {/* Connect prompt */}
       {!loading && connectedAccounts.length === 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8 mb-8 text-center">
-          <ScanSearch className="h-12 w-12 text-amber-500/40 mx-auto mb-4" />
+        <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 mb-8 text-center">
+          <ScanSearch className="h-12 w-12 text-mint-400/40 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-white mb-2">Connect your email to scan for savings</h2>
           <p className="text-slate-400 text-sm max-w-lg mx-auto mb-4">
             Connect your Gmail or Outlook and our AI will scan up to 2 years of email history to find overcharges, forgotten subscriptions, and savings opportunities.
@@ -404,14 +404,14 @@ export default function ScannerPage() {
 
       {/* Connect accounts section */}
       {!loading && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-6">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-white font-semibold text-lg">Connected Inboxes</h2>
             {connectedAccounts.length > 0 && (
               <button
                 onClick={handleScan}
                 disabled={scanning}
-                className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
+                className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 text-navy-950 font-semibold px-5 py-2 rounded-lg transition-all text-sm"
               >
                 {scanning
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Deep scanning your emails...</>
@@ -424,7 +424,7 @@ export default function ScannerPage() {
           {connectedAccounts.length > 0 && (
             <div className="space-y-3 mb-4">
               {connectedAccounts.map((acct) => (
-                <div key={acct.provider} className="flex items-center justify-between bg-slate-950/50 rounded-xl px-4 py-3 border border-slate-800">
+                <div key={acct.provider} className="flex items-center justify-between bg-navy-950/50 rounded-xl px-4 py-3 border border-navy-700/50">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
                     {acct.provider === 'gmail' ? <GoogleIcon /> : <OutlookIcon />}
@@ -479,9 +479,9 @@ export default function ScannerPage() {
 
       {/* Scanning progress */}
       {scanning && (
-        <div className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-8 mb-6">
+        <div className="bg-navy-900 border border-mint-400/30 rounded-2xl p-8 mb-6">
           <div className="flex flex-col items-center text-center">
-            <Loader2 className="h-12 w-12 text-amber-500 animate-spin mb-4" />
+            <Loader2 className="h-12 w-12 text-mint-400 animate-spin mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">Deep scanning your inbox</h3>
             <p className="text-slate-400 text-sm mb-4">
               Scanning up to 2 years of emails for subscriptions, bills, loans, insurance, renewals, and savings opportunities. This may take up to a minute.
@@ -497,7 +497,7 @@ export default function ScannerPage() {
 
       {/* Scan summary */}
       {!scanning && scanDebug && opportunities.length > 0 && (
-        <div className="bg-slate-900/50 border border-green-500/30 rounded-2xl p-5 mb-6">
+        <div className="bg-navy-900 border border-green-500/30 rounded-2xl p-5 mb-6">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
             <div>
@@ -516,21 +516,21 @@ export default function ScannerPage() {
       {/* Stats */}
       {!scanning && opportunities.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
             <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
               <TrendingUp className="h-6 w-6 text-green-500" />
             </div>
             <h3 className="text-3xl font-bold text-white mb-1">£{totalSavings.toFixed(2)}</h3>
             <p className="text-slate-400 text-sm">Potential savings found</p>
           </div>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
-            <div className="bg-amber-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-              <Sparkles className="h-6 w-6 text-amber-500" />
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+            <div className="bg-mint-400/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+              <Sparkles className="h-6 w-6 text-mint-400" />
             </div>
             <h3 className="text-3xl font-bold text-white mb-1">{opportunities.length}</h3>
             <p className="text-slate-400 text-sm">Opportunities detected</p>
           </div>
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
             <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
               <AlertCircle className="h-6 w-6 text-blue-500" />
             </div>
@@ -542,14 +542,14 @@ export default function ScannerPage() {
 
       {/* First-time prompt */}
       {!loading && !scanning && connectedAccounts.length > 0 && opportunities.length === 0 && !scannedAt && (
-        <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
-          <Sparkles className="h-16 w-16 text-amber-500/40 mx-auto mb-4" />
+        <div className="text-center py-16 bg-navy-900 border border-navy-700/50 rounded-2xl">
+          <Sparkles className="h-16 w-16 text-mint-400/40 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">Ready to scan</h3>
           <p className="text-slate-400 mb-2">Click "Scan All" to analyse your inbox for savings opportunities</p>
           <p className="text-slate-600 text-sm mb-6">Covers the last 12 months of emails</p>
           <button
             onClick={handleScan}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-8 py-3 rounded-lg transition-all"
+            className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-3 rounded-lg transition-all"
           >
             Start Scanning
           </button>
@@ -558,8 +558,8 @@ export default function ScannerPage() {
 
       {/* Scanning spinner */}
       {scanning && (
-        <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
-          <Loader2 className="h-16 w-16 text-amber-500 mx-auto mb-4 animate-spin" />
+        <div className="text-center py-16 bg-navy-900 border border-navy-700/50 rounded-2xl">
+          <Loader2 className="h-16 w-16 text-mint-400 mx-auto mb-4 animate-spin" />
           <h3 className="text-xl font-semibold text-white mb-2">Scanning your inbox...</h3>
           <p className="text-slate-400">Paybacker is scanning your bills and subscription emails</p>
         </div>
@@ -567,7 +567,7 @@ export default function ScannerPage() {
 
       {/* No results after scan */}
       {!scanning && scannedAt && opportunities.length === 0 && (
-        <div className="text-center py-16 bg-slate-900/50 border border-slate-800 rounded-2xl">
+        <div className="text-center py-16 bg-navy-900 border border-navy-700/50 rounded-2xl">
           <CheckCircle2 className="h-16 w-16 text-green-500/40 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">No opportunities found</h3>
           {scanDebug && (
@@ -576,7 +576,7 @@ export default function ScannerPage() {
             </p>
           )}
           {scanDebug && scanDebug.emailsFound === 0 && (
-            <p className="text-amber-400 text-sm mb-4">
+            <p className="text-mint-400 text-sm mb-4">
               No billing emails matched — try disconnecting and reconnecting your inbox to refresh permissions.
             </p>
           )}
@@ -601,7 +601,7 @@ export default function ScannerPage() {
                 key={f}
                 onClick={() => setFilter(f as any)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  filter === f ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
+                  filter === f ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'
                 }`}
               >
                 {f === 'all' ? 'All' : f === 'new' ? 'New' : 'Reviewing'}
@@ -614,7 +614,7 @@ export default function ScannerPage() {
               const config = typeConfig[opp.type] || typeConfig.overcharge;
               const Icon = config.icon;
               return (
-                <div key={opp.id} className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/50 transition-all">
+                <div key={opp.id} className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 hover:border-mint-400/50 transition-all">
                   <div className="flex items-start justify-between">
                     <div className="flex gap-4 flex-1">
                       <div className={`${config.bg} w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0`}>
@@ -633,7 +633,7 @@ export default function ScannerPage() {
                         <p className="text-slate-400 text-sm mb-4">{opp.description}</p>
                         <div className="flex items-center gap-3 mb-4">
                           <span className="text-xs text-slate-500">Confidence:</span>
-                          <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden max-w-xs">
+                          <div className="flex-1 h-2 bg-navy-800 rounded-full overflow-hidden max-w-xs">
                             <div
                               className={`h-full ${opp.confidence >= 80 ? 'bg-green-500' : opp.confidence >= 60 ? 'bg-amber-500' : 'bg-slate-500'}`}
                               style={{ width: `${opp.confidence}%` }}
@@ -728,7 +728,7 @@ export default function ScannerPage() {
                                 });
                                 router.push(`/dashboard/complaints?${params}`);
                               }}
-                              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                              className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                             >
                               Take Action
                             </button>
@@ -748,7 +748,7 @@ export default function ScannerPage() {
                                 setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
                               } catch {}
                             }}
-                            className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-all text-sm"
+                            className="bg-navy-700 hover:bg-navy-600 text-white px-4 py-2 rounded-lg transition-all text-sm"
                           >
                             Create Task
                           </button>
@@ -760,7 +760,7 @@ export default function ScannerPage() {
                               // Mark as dismissed in DB
                               try { await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id); } catch {};
                             }}
-                            className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-4 py-2 rounded-lg transition-all text-sm"
+                            className="bg-navy-800 hover:bg-navy-700 text-slate-400 px-4 py-2 rounded-lg transition-all text-sm"
                           >
                             Dismiss
                           </button>
