@@ -81,7 +81,7 @@ async function processEmail(
         return { action: 'error', error: msgError.message };
       }
 
-      // Reopen if resolved/closed, update timestamp
+      // Check ticket status
       const { data: ticket } = await supabase
         .from('support_tickets')
         .select('status')
@@ -89,7 +89,21 @@ async function processEmail(
         .single();
 
       const update: Record<string, any> = { updated_at: new Date().toISOString() };
+
+      // Detect "thank you" / closure replies on resolved tickets
+      const lowerText = text.toLowerCase().replace(/[^a-z\s]/g, '');
+      const isClosureReply = /^(thanks|thank you|thats? (sorted|fixed|great|perfect|done)|cheers|all (good|sorted|done)|no worries|appreciated|brilliant|lovely|sorted|perfect|great|wonderful)\b/.test(lowerText.trim());
+
+      if ((ticket?.status === 'resolved' || ticket?.status === 'awaiting_reply') && isClosureReply) {
+        // Auto-close: user confirmed the issue is resolved
+        update.status = 'closed';
+        update.resolved_at = update.resolved_at || new Date().toISOString();
+        await supabase.from('support_tickets').update(update).eq('id', existingTicket.id);
+        return { action: 'ticket_closed', ticket_id: existingTicket.id, ticket_number: ticketNumber, reason: 'User confirmed resolution' };
+      }
+
       if (ticket?.status === 'resolved' || ticket?.status === 'closed') {
+        // Non-closure reply on resolved ticket: reopen
         update.status = 'open';
         update.resolved_at = null;
       }
