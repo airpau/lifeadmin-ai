@@ -273,12 +273,14 @@ ${userTier === 'pro' ? `
           ticketNumber = ticket.ticket_number;
           escalated = true;
 
-          // Add conversation as first message on the ticket
+          // Store just the user's issue, not the full chat transcript
+          // The full conversation is in ticket metadata for reference
+          const userIssue = userMessages.map((m: any) => m.content).join('\n\n');
           await admin.from('ticket_messages').insert({
             ticket_id: ticket.id,
-            sender_type: 'system',
-            sender_name: 'Chatbot',
-            message: messages.map((m: any) => `[${m.role}]: ${m.content}`).join('\n\n'),
+            sender_type: 'user',
+            sender_name: 'User (via chatbot)',
+            message: userIssue,
           });
 
           // Email the user to confirm their ticket was created
