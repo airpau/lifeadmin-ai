@@ -1,10 +1,69 @@
 import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
 
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+function getStripe(): Stripe | null {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' as any });
+}
+
+/**
+ * Apply a 1-month free discount to a user's Stripe subscription.
+ * Creates a one-time 100% off coupon and applies it as a credit.
+ */
+async function applyFreeMonthReward(userId: string, reason: string): Promise<boolean> {
+  const stripe = getStripe();
+  if (!stripe) return false;
+
+  const supabase = getAdmin();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('stripe_customer_id, stripe_subscription_id, subscription_tier')
+    .eq('id', userId)
+    .single();
+
+  if (!profile?.stripe_subscription_id) return false;
+
+  try {
+    // Get the subscription to find the current price
+    const subscription = await stripe.subscriptions.retrieve(profile.stripe_subscription_id);
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') return false;
+
+    const priceAmount = subscription.items.data[0]?.price?.unit_amount || 499; // fallback to £4.99
+
+    // Create a one-time coupon for the exact subscription amount
+    const coupon = await stripe.coupons.create({
+      amount_off: priceAmount,
+      currency: 'gbp',
+      duration: 'once',
+      name: `Referral reward: ${reason}`,
+      max_redemptions: 1,
+    });
+
+    // Apply the coupon to the subscription
+    await stripe.subscriptions.update(profile.stripe_subscription_id, {
+      coupon: coupon.id,
+    });
+
+    // Log the reward
+    await supabase.from('business_log').insert({
+      category: 'progress',
+      title: `Referral reward applied: ${reason}`,
+      content: `User ${userId} received 1 free month (£${(priceAmount / 100).toFixed(2)} credit) via Stripe coupon ${coupon.id}. Reason: ${reason}`,
+      created_by: 'system',
+    });
+
+    return true;
+  } catch (err: any) {
+    console.error(`[referrals] Stripe reward failed for ${userId}:`, err.message);
+    return false;
+  }
 }
 
 /**
@@ -76,30 +135,31 @@ async function sendReferralSignupEmail(referrerId: string, referredEmail: string
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
+      from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+      replyTo: 'support@paybacker.co.uk',
       to: referrer.email,
-      subject: 'Your friend joined Paybacker - you earned 100 points!',
+      subject: 'Your friend joined Paybacker!',
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:600px;margin:0 auto;">
-  <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
-    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></span>
+<body style="margin:0;padding:0;background:#0A1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;">
+  <div style="background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;">
+    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></span>
   </div>
-  <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
-    <div style="font-size:36px;text-align:center;margin-bottom:12px;">📣</div>
+  <div style="padding:32px;">
     <h1 style="color:#fff;font-size:22px;margin:0 0 12px;text-align:center;">Your friend joined!</h1>
-    <p style="color:#94a3b8;font-size:14px;line-height:1.7;text-align:center;">Hi ${name}, great news - ${maskedEmail} signed up to Paybacker using your referral link.</p>
-    <div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
-      <span style="color:#f59e0b;font-weight:700;font-size:24px;">+100 points</span>
-      <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Added to your loyalty balance</p>
+    <p style="color:#94a3b8;font-size:14px;line-height:1.7;text-align:center;">Hi ${name}, great news. ${maskedEmail} signed up to Paybacker using your referral link.</p>
+    <div style="background:#34d39922;border:1px solid #34d39944;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
+      <span style="color:#34d399;font-weight:700;font-size:20px;">+100 loyalty points</span>
+      <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Added to your rewards balance</p>
     </div>
-    <p style="color:#94a3b8;font-size:14px;text-align:center;">Earn <strong style="color:#f59e0b;">200 more points</strong> when they upgrade to a paid plan.</p>
-    <div style="text-align:center;margin-top:20px;">
-      <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">View Your Rewards</a>
+    <p style="color:#e2e8f0;font-size:14px;text-align:center;font-weight:600;">When they upgrade to a paid plan, you BOTH get 1 free month.</p>
+    <p style="color:#94a3b8;font-size:13px;text-align:center;">Plus 200 bonus loyalty points for you.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;background:#34d399;color:#0f172a;padding:14px 28px;border-radius:12px;text-decoration:none;font-weight:700;">View Your Rewards</a>
     </div>
   </div>
-  <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
-    <div style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</div>
+  <div style="padding:20px 32px;border-top:1px solid #1e3a5f;text-align:center;">
+    <p style="color:#475569;font-size:11px;margin:0;">Paybacker LTD · ICO Registered · paybacker.co.uk</p>
   </div>
 </div></body></html>`,
     });
@@ -128,29 +188,34 @@ async function sendReferralPaidEmail(referrerId: string): Promise<void> {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
+      from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+      replyTo: 'support@paybacker.co.uk',
       to: referrer.email,
-      subject: 'Your referral upgraded - you earned 200 points!',
+      subject: 'Your referral upgraded. You both get 1 free month!',
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:600px;margin:0 auto;">
-  <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
-    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></span>
+<body style="margin:0;padding:0;background:#0A1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;">
+  <div style="background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;">
+    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></span>
   </div>
-  <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
-    <div style="font-size:36px;text-align:center;margin-bottom:12px;">🌟</div>
+  <div style="padding:32px;">
     <h1 style="color:#fff;font-size:22px;margin:0 0 12px;text-align:center;">Your referral upgraded!</h1>
-    <p style="color:#94a3b8;font-size:14px;line-height:1.7;text-align:center;">Hi ${name}, someone you referred has upgraded to a paid plan.</p>
-    <div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
-      <span style="color:#f59e0b;font-weight:700;font-size:24px;">+200 points</span>
-      <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Bonus added to your loyalty balance</p>
+    <p style="color:#94a3b8;font-size:14px;line-height:1.7;text-align:center;">Hi ${name}, someone you referred has upgraded to a paid plan. As a thank you, you both get a reward.</p>
+    <div style="background:#34d39922;border:1px solid #34d39944;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">
+      <span style="color:#34d399;font-weight:700;font-size:22px;">1 Free Month Applied</span>
+      <p style="color:#94a3b8;font-size:13px;margin:8px 0 0;">Your next billing cycle will be free. The discount has been applied to your Stripe subscription automatically.</p>
     </div>
-    <div style="text-align:center;margin-top:20px;">
-      <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">View Your Rewards</a>
+    <div style="background:#162544;border:1px solid #1e3a5f;border-radius:12px;padding:16px;text-align:center;margin:20px 0;">
+      <span style="color:#FB923C;font-weight:700;font-size:18px;">+200 bonus points</span>
+      <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Added to your loyalty rewards</p>
+    </div>
+    <p style="color:#94a3b8;font-size:14px;text-align:center;">Keep sharing your referral link to earn more free months.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;background:#34d399;color:#0f172a;padding:14px 28px;border-radius:12px;text-decoration:none;font-weight:700;">View Your Rewards</a>
     </div>
   </div>
-  <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
-    <div style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</div>
+  <div style="padding:20px 32px;border-top:1px solid #1e3a5f;text-align:center;">
+    <p style="color:#475569;font-size:11px;margin:0;">Paybacker LTD · ICO Registered · paybacker.co.uk</p>
   </div>
 </div></body></html>`,
     });
@@ -252,6 +317,12 @@ export async function processReferralSubscription(userId: string): Promise<void>
   // Award bonus points to referrer
   const { awardPoints } = await import('@/lib/loyalty');
   await awardPoints(profile.referred_by, 'referral_paid', { referred_user_id: userId });
+
+  // Apply 1 free month to BOTH parties via Stripe
+  await Promise.all([
+    applyFreeMonthReward(profile.referred_by, 'Referrer reward: friend subscribed'),
+    applyFreeMonthReward(userId, 'New subscriber referral reward'),
+  ]);
 
   // Send notification email (non-blocking)
   sendReferralPaidEmail(profile.referred_by).catch(() => {});
