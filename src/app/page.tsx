@@ -20,6 +20,8 @@ export default function Home() {
   const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
   const [stats, setStats] = useState<{ lettersGenerated: number; subscriptionsTracked: number; usersJoined: number; dealClicks: number } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [claimingFounder, setClaimingFounder] = useState(false);
+  const [claimResult, setClaimResult] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user is logged in
@@ -185,6 +187,30 @@ export default function Home() {
                   <a href="#waitlist" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
                     Get Started Free <ArrowRight className="h-5 w-5" />
                   </a>
+                ) : isLoggedIn && foundingSpots !== null && foundingSpots > 0 ? (
+                  <button
+                    onClick={async () => {
+                      setClaimingFounder(true);
+                      try {
+                        const res = await fetch('/api/founding-member', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.claimed) {
+                          setClaimResult(data.alreadyMember ? 'You are already a founding member!' : 'Pro activated for 30 days!');
+                          setFoundingSpots(data.spotsRemaining ?? (foundingSpots - 1));
+                        } else {
+                          setClaimResult(data.reason || 'Could not claim spot');
+                        }
+                      } catch {
+                        setClaimResult('Something went wrong. Please try again.');
+                      } finally {
+                        setClaimingFounder(false);
+                      }
+                    }}
+                    disabled={claimingFounder}
+                    className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {claimingFounder ? 'Claiming...' : (claimResult || 'Claim Your Free Pro Account')} <ArrowRight className="h-5 w-5" />
+                  </button>
                 ) : (
                   <Link href={isLoggedIn ? '/dashboard' : '/auth/signup'} className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
                     {isLoggedIn ? 'Go to Dashboard' : (foundingSpots !== null ? 'Claim Your Free Pro Account' : 'Get Started Free')} <ArrowRight className="h-5 w-5" />
