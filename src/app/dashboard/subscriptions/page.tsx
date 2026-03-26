@@ -253,17 +253,28 @@ export default function SubscriptionsPage() {
     }
   }, [searchParams]);
 
-  const totalMonthly = subscriptions
-    .filter((s) => s.status === 'active')
+  // Filter out loans, mortgages, credit cards from subscriptions view
+  // These are shown in Money Hub / Spending Insights instead
+  const DEBT_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
+  const CREDIT_CARD_KEYWORDS = ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
+  const COUNCIL_TAX_KEYWORDS = ['council', 'testvalley', 'winchester city', 'hounslow', 'lbh', 'l.b.'];
+
+  const isFinancePayment = (name: string) => {
+    const lower = name.toLowerCase();
+    return DEBT_KEYWORDS.some(kw => lower.includes(kw)) ||
+      CREDIT_CARD_KEYWORDS.some(kw => lower.includes(kw));
+  };
+
+  // Subscriptions = everything except loans, mortgages, credit cards
+  const displaySubscriptions = subscriptions.filter(s => !isFinancePayment(s.provider_name));
+  const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
+
+  const totalMonthly = displaySubscriptions
+    .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time')
     .reduce((sum, s) => {
-      // Exclude one-off payments from recurring total
-      if (s.billing_cycle === 'one-time') return sum;
       let monthlyAmt = s.amount;
       if (s.billing_cycle === 'yearly') monthlyAmt = s.amount / 12;
       else if (s.billing_cycle === 'quarterly') monthlyAmt = s.amount / 3;
-      // Sanity check: if a single subscription's annual cost exceeds £2,000, exclude it
-      // (likely a misclassified one-off payment or data error)
-      if (monthlyAmt * 12 > 2000) return sum;
       return sum + monthlyAmt;
     }, 0);
 
@@ -767,54 +778,40 @@ export default function SubscriptionsPage() {
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-red-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <TrendingDown className="h-6 w-6 text-red-500" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">{formatGBP(totalMonthly)}</h3>
-          <p className="text-slate-400 text-sm">Monthly spend (est.)</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+          <p className="text-slate-400 text-xs mb-1">Subscriptions</p>
+          <h3 className="text-2xl font-bold text-white">{formatGBP(totalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">{formatGBP(totalMonthly * 12)}/year</p>
         </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-mint-400/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <CreditCard className="h-6 w-6 text-mint-400" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {subscriptions.filter((s) => s.status === 'active').length}
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+          <p className="text-slate-400 text-xs mb-1">Active</p>
+          <h3 className="text-2xl font-bold text-white">
+            {displaySubscriptions.filter((s) => s.status === 'active').length}
           </h3>
-          <p className="text-slate-400 text-sm">Active subscriptions</p>
+          <p className="text-slate-500 text-xs mt-1">tracked payments</p>
         </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <Calendar className="h-6 w-6 text-blue-500" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+          <p className="text-slate-400 text-xs mb-1">Annual Total</p>
+          <h3 className="text-2xl font-bold text-white">
             {formatGBP(totalMonthly * 12)}
           </h3>
-          <p className="text-slate-400 text-sm">Annual spend (est.)</p>
-        </div>
-
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-orange-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <AlertTriangle className="h-6 w-6 text-orange-500" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {subscriptions.filter(s => {
-              if (!s.contract_end_date || s.status !== 'active') return false;
-              const daysLeft = Math.ceil((new Date(s.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-              return daysLeft > 0 && daysLeft <= 90;
-            }).length}
-          </h3>
-          <p className="text-slate-400 text-sm">Renewing within 90 days</p>
+          <p className="text-slate-500 text-xs mt-1">annual subscriptions</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Subscriptions list */}
         <div className="space-y-4">
-          {subscriptions.length === 0 ? (
+          {hiddenFinanceCount > 0 && (
+            <div className="bg-navy-900/50 border border-navy-700/30 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+              <p className="text-slate-500 text-xs">{hiddenFinanceCount} loan/mortgage/credit card payment{hiddenFinanceCount !== 1 ? 's' : ''} hidden. These are tracked in your <a href="/dashboard/money-hub" className="text-mint-400 hover:text-mint-300">Money Hub</a>.</p>
+            </div>
+          )}
+
+          {displaySubscriptions.length === 0 ? (
             <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-12 text-center">
               <CreditCard className="h-16 w-16 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400 mb-4">No subscriptions tracked yet</p>
@@ -826,7 +823,7 @@ export default function SubscriptionsPage() {
               </button>
             </div>
           ) : (
-            subscriptions.map((sub) => (
+            displaySubscriptions.map((sub) => (
               <div
                 key={sub.id}
                 className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer ${
