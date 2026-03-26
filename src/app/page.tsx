@@ -145,81 +145,31 @@ export default function Home() {
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-400/5 via-transparent to-transparent" />
           <div className="container mx-auto px-4 md:px-6 pt-16 md:pt-28 pb-20">
             <div className="max-w-4xl mx-auto text-center">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8"
-              >
+              <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8">
                 <CheckCircle className="h-4 w-4" />
                 <span>{foundingSpots !== null ? 'Limited spaces: Pro plan FREE for 30 days' : '100% free to try - no credit card needed'}</span>
-              </motion.div>
+              </div>
 
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight"
-              >
+              <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
                 Take Back{' '}
                 <span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">
                   Control
                 </span>{' '}
                 of Your Money
-              </motion.h1>
+              </h1>
 
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10"
-              >
+              <p className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
                 AI-powered complaint letters citing exact UK law. Track every subscription. Find cheaper deals. All in one platform, built for UK consumers.
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
-              >
-                {WAITLIST_MODE ? (
-                  <a href="#waitlist" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
-                    Get Started Free <ArrowRight className="h-5 w-5" />
-                  </a>
-                ) : isLoggedIn && foundingSpots !== null && foundingSpots > 0 ? (
-                  <button
-                    onClick={async () => {
-                      setClaimingFounder(true);
-                      try {
-                        const res = await fetch('/api/founding-member', { method: 'POST' });
-                        const data = await res.json();
-                        if (data.claimed) {
-                          setClaimResult(data.alreadyMember ? 'You are already a founding member!' : 'Pro activated for 30 days!');
-                          setFoundingSpots(data.spotsRemaining ?? (foundingSpots - 1));
-                        } else {
-                          setClaimResult(data.reason || 'Could not claim spot');
-                        }
-                      } catch {
-                        setClaimResult('Something went wrong. Please try again.');
-                      } finally {
-                        setClaimingFounder(false);
-                      }
-                    }}
-                    disabled={claimingFounder}
-                    className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {claimingFounder ? 'Claiming...' : (claimResult || 'Claim Your Free Pro Account')} <ArrowRight className="h-5 w-5" />
-                  </button>
-                ) : (
-                  <Link href={isLoggedIn ? '/dashboard' : '/auth/signup'} className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
-                    {isLoggedIn ? 'Go to Dashboard' : (foundingSpots !== null ? 'Claim Your Free Pro Account' : 'Get Started Free')} <ArrowRight className="h-5 w-5" />
-                  </Link>
-                )}
-                <a href="#how-it-works" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-8 py-4 rounded-xl transition-all duration-200 text-center text-lg">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+                <Link href="/auth/signup" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
+                  {foundingSpots !== null ? 'Claim Your Free Pro Account' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
+                </Link>
+                <a href="#how-it-works" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-8 py-4 rounded-xl transition-all duration-200 text-center text-lg inline-flex items-center justify-center gap-2">
                   See How It Works
                 </a>
-              </motion.div>
+              </div>
 
               {/* Live stats row */}
               <motion.div
@@ -464,57 +414,64 @@ export default function Home() {
         {/* Plan Comparison Table */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true }}
-              className="text-center mb-12"
-            >
+            <div className="text-center mb-12">
               <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">Choose your plan</h2>
-              <p className="text-slate-400 text-lg max-w-2xl mx-auto">All plans include our AI chatbot. Upgrade for unlimited letters, automatic scanning, and full spending intelligence.</p>
-            </motion.div>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto">Start free. Upgrade when you want unlimited access, daily scanning, and full financial intelligence.</p>
+            </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              viewport={{ once: true }}
-              className="max-w-4xl mx-auto overflow-x-auto"
-            >
+            <div className="max-w-5xl mx-auto overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-navy-700/50">
-                    <th className="text-left py-4 px-4 text-slate-400 font-normal">Feature</th>
-                    <th className="text-center py-4 px-4 text-white font-semibold">Free</th>
-                    <th className="text-center py-4 px-4 text-mint-400 font-semibold">Essential<br /><span className="text-xs font-normal text-slate-400">£4.99/mo</span></th>
-                    <th className="text-center py-4 px-4 text-brand-400 font-semibold">Pro<br /><span className="text-xs font-normal text-slate-400">£9.99/mo</span></th>
+                  <tr className="border-b-2 border-navy-700/50">
+                    <th className="text-left py-4 px-3 text-slate-500 font-normal text-xs uppercase tracking-wider">Feature</th>
+                    <th className="text-center py-4 px-3 w-[140px]">
+                      <span className="text-white font-bold text-base block">Free</span>
+                      <span className="text-slate-500 text-xs">£0/month</span>
+                    </th>
+                    <th className="text-center py-4 px-3 w-[140px] bg-mint-400/5 rounded-t-xl">
+                      <span className="inline-block bg-mint-400 text-navy-950 text-[10px] font-bold px-2 py-0.5 rounded-full mb-1">MOST POPULAR</span>
+                      <span className="text-mint-400 font-bold text-base block">Essential</span>
+                      <span className="text-slate-400 text-xs">£4.99/month</span>
+                    </th>
+                    <th className="text-center py-4 px-3 w-[140px]">
+                      <span className="text-brand-400 font-bold text-base block">Pro</span>
+                      <span className="text-slate-400 text-xs">£9.99/month</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { feature: 'AI complaint and form letters', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { feature: 'Subscription tracking', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
-                    { feature: 'Bank account scanning', free: 'One-time', essential: '1 account, daily sync', pro: 'Unlimited accounts' },
-                    { feature: 'Email inbox scanning', free: 'One-time', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
-                    { feature: 'Opportunity scanner', free: 'One-time', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
-                    { feature: 'Spending intelligence', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
-                    { feature: 'Cancellation emails', free: false, essential: true, pro: true },
-                    { feature: 'Renewal reminders', free: false, essential: true, pro: true },
-                    { feature: 'Contract end date tracking', free: false, essential: true, pro: true },
-                    { feature: 'Priority support', free: false, essential: false, pro: true },
-                    { feature: 'AI support chatbot', free: true, essential: true, pro: true },
+                    { label: 'AI Complaint Letters', sub: 'Energy, broadband, flights, debt, parking, HMRC', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { label: 'Government Form Letters', sub: 'Council tax, DVLA, NHS, tax rebates', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { label: 'AI Cancellation Emails', sub: 'Professional cancellation citing UK law', free: false, essential: true, pro: true },
+                    { label: 'Subscription Tracking', sub: 'Track every recurring payment', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
+                    { label: 'Bank Account Scanning', sub: 'Find hidden subscriptions and charges', free: 'One-time scan', essential: '1 account, daily sync', pro: 'Unlimited accounts' },
+                    { label: 'Email Inbox Scanning', sub: 'Scan 2 years of email for bills', free: 'One-time scan', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
+                    { label: 'Opportunity Scanner', sub: 'Detect overcharges, flight delays, refunds', free: 'One-time scan', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
+                    { label: 'Spending Intelligence', sub: 'Category breakdown and trends', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transaction detail' },
+                    { label: 'Budget Planner', sub: 'Set limits and get alerts', free: false, essential: true, pro: true },
+                    { label: 'Renewal Reminders', sub: '30, 14, and 7 days before contracts end', free: false, essential: true, pro: true },
+                    { label: 'Contract Tracking', sub: 'End dates, auto-renewal alerts, exit fees', free: false, essential: true, pro: true },
+                    { label: 'Deal Comparison', sub: '53+ deals across 9 categories', free: 'Browse only', essential: 'Personalised', pro: 'Personalised' },
+                    { label: 'Energy Tariff Monitor', sub: 'Daily price checks, switch alerts', free: false, essential: true, pro: true },
+                    { label: 'Weekly Money Digest', sub: 'Spending summary email every Monday', free: false, essential: true, pro: true },
+                    { label: 'AI Support Chatbot', sub: 'UK consumer rights advice', free: true, essential: true, pro: true },
+                    { label: 'Priority Support', sub: 'Faster response times', free: false, essential: false, pro: true },
+                    { label: 'Money Recovery Score', sub: 'Track your total savings', free: true, essential: true, pro: true },
                   ].map((row, i) => (
-                    <tr key={i} className="border-b border-navy-700/30">
-                      <td className="py-3 px-4 text-slate-300">{row.feature}</td>
+                    <tr key={i} className="border-b border-navy-700/20 hover:bg-navy-900/30 transition-colors">
+                      <td className="py-3 px-3">
+                        <span className="text-white text-sm font-medium block">{row.label}</span>
+                        <span className="text-slate-500 text-xs">{row.sub}</span>
+                      </td>
                       {[row.free, row.essential, row.pro].map((val, j) => (
-                        <td key={j} className="py-3 px-4 text-center">
+                        <td key={j} className={`py-3 px-3 text-center ${j === 1 ? 'bg-mint-400/5' : ''}`}>
                           {val === true ? (
                             <Check className="h-5 w-5 text-mint-400 mx-auto" />
                           ) : val === false ? (
-                            <span className="text-slate-600">-</span>
+                            <X className="h-4 w-4 text-slate-700 mx-auto" />
                           ) : (
-                            <span className="text-slate-300 text-xs">{val}</span>
+                            <span className={`text-xs font-medium ${val === 'Unlimited' || val === 'Unlimited accounts' ? 'text-mint-400' : 'text-slate-300'}`}>{val}</span>
                           )}
                         </td>
                       ))}
@@ -523,12 +480,26 @@ export default function Home() {
                 </tbody>
               </table>
 
-              <div className="text-center mt-8">
-                <Link href="/pricing" className="text-mint-400 hover:text-mint-300 text-sm font-medium inline-flex items-center gap-1">
-                  View full pricing details <ArrowRight className="h-4 w-4" />
-                </Link>
+              {/* CTA row below table */}
+              <div className="grid grid-cols-4 gap-0 mt-4">
+                <div />
+                <div className="text-center px-3">
+                  <Link href="/auth/signup" className="block w-full bg-navy-800 hover:bg-navy-700 text-white font-semibold py-3 rounded-xl transition-all text-sm border border-navy-700/50">
+                    Start Free
+                  </Link>
+                </div>
+                <div className="text-center px-3">
+                  <Link href="/pricing" className="block w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all text-sm">
+                    Get Essential
+                  </Link>
+                </div>
+                <div className="text-center px-3">
+                  <Link href="/pricing" className="block w-full bg-brand-400 hover:bg-brand-500 text-navy-950 font-semibold py-3 rounded-xl transition-all text-sm">
+                    Get Pro
+                  </Link>
+                </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </section>
 
@@ -696,29 +667,18 @@ export default function Home() {
         <section className="py-20 md:py-28 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-mint-400/5 via-brand-400/5 to-mint-400/5" />
           <div className="container mx-auto px-4 md:px-6 relative">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-3xl mx-auto text-center"
-            >
+            <div className="max-w-3xl mx-auto text-center">
               <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
                 Ready to get your money back?
               </h2>
-              <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
+              <p className="text-slate-300 text-lg mb-4 max-w-xl mx-auto">
                 Most UK households are being overcharged by over £1,000 a year. Paybacker finds it, disputes it, and cancels it in minutes.
               </p>
-              {WAITLIST_MODE ? (
-                <a href="#waitlist" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-lg inline-flex items-center gap-2">
-                  Get Started Free <ArrowRight className="h-5 w-5" />
-                </a>
-              ) : (
-                <Link href={isLoggedIn ? '/dashboard' : '/auth/signup'} className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-lg inline-flex items-center gap-2">
-                  {isLoggedIn ? 'Go to Dashboard' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
-                </Link>
-              )}
-            </motion.div>
+              <p className="text-slate-400 text-sm mb-8">Create a free account in 30 seconds. No credit card required.</p>
+              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-lg inline-flex items-center gap-2">
+                Create Free Account <ArrowRight className="h-5 w-5" />
+              </Link>
+            </div>
           </div>
         </section>
       </main>
