@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdmin } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
+function getAdmin() {
+  return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf', 'application/octet-stream'];
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,9 +26,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    // Determine actual type - iOS sometimes sends wrong MIME or empty
+    let fileType = file.type;
+    const fileName = file.name?.toLowerCase() || '';
+    if (!fileType || fileType === 'application/octet-stream') {
+      if (fileName.endsWith('.pdf')) fileType = 'application/pdf';
+      else if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) fileType = 'image/jpeg';
+      else if (fileName.endsWith('.png')) fileType = 'image/png';
+      else if (fileName.endsWith('.webp')) fileType = 'image/webp';
+      else if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) fileType = 'image/jpeg'; // HEIC gets converted
+      else fileType = 'image/jpeg'; // Default fallback
+    }
+    // Treat HEIC as JPEG for Claude (iOS converts on upload)
+    if (fileType === 'image/heic' || fileType === 'image/heif') fileType = 'image/jpeg';
+
+    if (!ALLOWED_TYPES.includes(fileType) && !fileType.startsWith('image/')) {
       return NextResponse.json(
-        { error: 'Invalid file type. Accepted: JPEG, PNG, WebP, PDF' },
+        { error: `File type "${fileType}" not supported. Upload JPEG, PNG, or PDF.` },
         { status: 400 }
       );
     }
@@ -47,15 +66,16 @@ export async function POST(request: NextRequest) {
       'image/webp': 'webp',
       'application/pdf': 'pdf',
     };
-    const ext = extMap[file.type] || 'jpg';
+    const ext = extMap[fileType] || 'jpg';
     const timestamp = Date.now();
     const storagePath = `receipts/${user.id}/${timestamp}.${ext}`;
 
-    // Upload to Supabase Storage (media bucket)
-    const { error: uploadError } = await supabase.storage
+    // Upload to Supabase Storage (media bucket) using admin client to bypass RLS
+    const admin = getAdmin();
+    const { error: uploadError } = await admin.storage
       .from('media')
       .upload(storagePath, buffer, {
-        contentType: file.type,
+        contentType: fileType,
         upsert: false,
       });
 
@@ -68,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = admin.storage
       .from('media')
       .getPublicUrl(storagePath);
     const imageUrl = urlData.publicUrl;
@@ -83,7 +103,7 @@ export async function POST(request: NextRequest) {
     // Build content blocks - PDFs use document type, images use image type
     const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
 
-    if (file.type === 'application/pdf') {
+    if (fileType === 'application/pdf') {
       contentBlocks.push({
         type: 'document',
         source: {
@@ -93,7 +113,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } else {
-      const imageMimeType = file.type as 'image/jpeg' | 'image/png' | 'image/webp';
+      const imageMimeType = fileType as 'image/jpeg' | 'image/png' | 'image/webp';
       contentBlocks.push({
         type: 'image',
         source: {
@@ -133,8 +153,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to scanned_receipts table
-    const { data: receipt, error: insertError } = await supabase
+    // Save to scanned_receipts table (admin bypasses RLS)
+    const { data: receipt, error: insertError } = await admin
       .from('scanned_receipts')
       .insert({
         user_id: user.id,

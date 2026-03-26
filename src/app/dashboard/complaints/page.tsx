@@ -708,11 +708,13 @@ function ComplaintsPageInner() {
                               amount: String(data.amount || prev.amount || ''),
                               issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
                             }));
+                          } else if (data.error) {
+                            alert(`Scan error: ${data.error}`);
                           } else {
-                            alert('Could not read the document. Please type the details manually.');
+                            alert('Could not extract details from this document. Please type the details manually.');
                           }
-                        } catch {
-                          alert('Upload failed. Please try again or type the details manually.');
+                        } catch (err: any) {
+                          alert(`Upload failed: ${err.message || 'Please try again.'}`);
                         } finally {
                           setGenerating(false);
                           clearInterval((window as any).__captionTimer);
