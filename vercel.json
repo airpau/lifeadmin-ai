@@ -59,6 +59,10 @@
     {
       "path": "/api/cron/weekly-acquisition-report",
       "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/energy-tariff-monitor",
+      "schedule": "0 7 * * *"
     }
   ]
 }
