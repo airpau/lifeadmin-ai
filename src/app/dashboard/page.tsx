@@ -10,6 +10,7 @@ import {
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
+import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -28,6 +29,7 @@ export default function DashboardPage() {
   const [unconfirmedSavings, setUnconfirmedSavings] = useState<{ id: string; provider_name: string; money_saved: number }[]>([]);
   const [editingSavingId, setEditingSavingId] = useState<string | null>(null);
   const [editingSavingAmount, setEditingSavingAmount] = useState('');
+  const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -253,6 +255,15 @@ export default function DashboardPage() {
         ).length;
         setExpiringContracts(expiring);
 
+        // Fetch active price increase alerts
+        const { data: priceAlertData } = await supabase
+          .from('price_increase_alerts')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .order('annual_impact', { ascending: false });
+        setPriceAlerts(priceAlertData || []);
+
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -477,6 +488,40 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Price Increase Alerts */}
+      {priceAlerts.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            Price Increase Alerts ({priceAlerts.length})
+          </h2>
+          <div className="space-y-3">
+            {priceAlerts.map((alert) => (
+              <PriceIncreaseCard
+                key={alert.id}
+                alert={alert}
+                onDismiss={async (id) => {
+                  await fetch('/api/price-alerts', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, status: 'dismissed' }),
+                  });
+                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
+                }}
+                onAction={async (id) => {
+                  await fetch('/api/price-alerts', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, status: 'actioned' }),
+                  });
+                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

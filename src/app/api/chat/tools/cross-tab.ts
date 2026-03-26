@@ -335,9 +335,51 @@ const getContractAlerts: ChatTool = {
   },
 };
 
+const detectPriceIncreases: ChatTool = {
+  name: 'detect_price_increases',
+  description:
+    'Check if any of your recurring payments have increased in price recently. Use when the user asks "have any of my bills gone up?", "price increases?", "am I paying more than before?", "any hidden price rises?".',
+  input_schema: {
+    type: 'object' as const,
+    properties: {},
+    required: [],
+  },
+  handler: async (_args: Record<string, never>, userId: string) => {
+    const admin = getAdmin();
+
+    const { data: alerts, error } = await admin
+      .from('price_increase_alerts')
+      .select('merchant_normalized, old_amount, new_amount, increase_pct, annual_impact, old_date, new_date, status')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('annual_impact', { ascending: false });
+
+    if (error) return { error: error.message };
+    if (!alerts || alerts.length === 0) {
+      return { message: 'No price increases detected on your recurring payments. We check daily after your bank syncs.' };
+    }
+
+    const totalAnnualImpact = alerts.reduce((sum, a) => sum + parseFloat(String(a.annual_impact)), 0);
+
+    return {
+      price_increases: alerts.map(a => ({
+        merchant: a.merchant_normalized,
+        old_amount: `£${parseFloat(String(a.old_amount)).toFixed(2)}`,
+        new_amount: `£${parseFloat(String(a.new_amount)).toFixed(2)}`,
+        increase: `${a.increase_pct}%`,
+        annual_impact: `£${parseFloat(String(a.annual_impact)).toFixed(2)}/year`,
+      })),
+      count: alerts.length,
+      total_annual_impact: `£${totalAnnualImpact.toFixed(2)}/year`,
+      message: `Found ${alerts.length} price increase${alerts.length !== 1 ? 's' : ''} costing you £${totalAnnualImpact.toFixed(2)} more per year. You can write a complaint letter or find a better deal for any of these.`,
+    };
+  },
+};
+
 export const crossTabTools: ChatTool[] = [
   findDeals,
   generateComplaintWithContext,
   getScannerOpportunities,
   getContractAlerts,
+  detectPriceIncreases,
 ];

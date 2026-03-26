@@ -87,6 +87,10 @@
     {
       "path": "/api/cron/ad-optimise",
       "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/price-increases",
+      "schedule": "0 8 * * *"
     }
   ]
 }
