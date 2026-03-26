@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient as createSupabase } from '@supabase/supabase-js';
 import { PRODUCT_CONTEXT, SOCIAL_RULES } from '@/lib/product-context';
+
+function getDb() {
+  return createSupabase(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -140,6 +145,17 @@ Rules:
           }),
         });
         const replyData = await replyRes.json();
+        // Capture as lead
+        await getDb().from('leads').upsert({
+          platform: 'instagram_comment',
+          platform_user_id: comment.username,
+          name: comment.username,
+          first_message: comment.text?.substring(0, 500) || '',
+          source_post_id: media.id,
+          status: 'new',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'platform_user_id' }).catch(() => {});
+
         results.push({ platform: 'instagram', type: 'comment_reply', comment: comment.text?.substring(0, 50), reply: replyText.text.substring(0, 50), success: !replyData.error });
       }
     }

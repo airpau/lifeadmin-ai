@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@supabase/supabase-js';
 import { PRODUCT_CONTEXT, SOCIAL_RULES } from '@/lib/product-context';
 
 export const runtime = 'nodejs';
@@ -88,6 +89,18 @@ ${SOCIAL_RULES}`,
         }),
       });
       const sendData = await sendRes.json();
+
+      // Capture as lead
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+      await supabase.from('leads').upsert({
+        platform: 'facebook_dm',
+        platform_user_id: sender.id,
+        name: sender.name || null,
+        first_message: lastMsg.message?.substring(0, 500) || '',
+        status: 'new',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'platform_user_id' }).catch(() => {});
+
       results.push({
         to: sender.name,
         reply: reply.text.substring(0, 50),
