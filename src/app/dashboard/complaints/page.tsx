@@ -517,6 +517,15 @@ function ComplaintsPageInner() {
               Complaint Details
             </h2>
 
+            <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 mb-4 flex items-start gap-2">
+              <Sparkles className="h-4 w-4 text-mint-400 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-slate-400">
+                Add your address and postcode in your{' '}
+                <Link href="/dashboard/profile" className="text-mint-400 hover:text-mint-300 underline">Profile</Link>
+                {' '}to auto-fill your details in generated letters.
+              </p>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Company Name *</label>

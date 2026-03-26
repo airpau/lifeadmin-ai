@@ -37,6 +37,17 @@
 - [ ] Full Website Redesign — Calm & Trustworthy Design System - Complete visual redesign of paybacker.co.uk — landing page, all public pages, and full dashboard. Direction: "Calm & Trustworthy" fintech aesthetic inspired by Monzo, Revolut, and Linear. Must feel fresh, modern, premium, and desirable.
 - [ ] Implement Welcome Email Sequence via Resend - Build a 5-email welcome/onboarding sequence triggered on new user signup. Full email copy and templates are in paybacker-marketing-pack.docx and MCP memory. Use Resend (already integrated). Emails should be behaviour-triggered with conditional content based on user state (bank_connected, letters_generated, plan tier). Sequence: Welcome (immediate), First Value (day 2), Social Proof (day 4), Feature Discovery (day 7), Upgrade Nudge (day 10, free users only). Also implement the Weekly Money Digest email (Monday 7am cron) that pulls user spending data from Supabase. (@Claude Code)
 - [ ] ElevenLabs + HeyGen Integration — Video Ads Pipeline & Voice Features - Integrate ElevenLabs API (and optionally HeyGen API) for automated video ad creation and product voice features.
+- [ ] Store ElevenLabs API key and configure voice cloning - Paul has signed up for ElevenLabs Creator plan ($22/mo). Set up the integration:
+
+1. Add ELEVENLABS_API_KEY to environment variables (Railway for agents, Vercel for Next.js app)
+2. Test the API connection with a basic TTS call
+3. Once Paul provides his cloned voice ID, add ELEVENLABS_VOICE_ID to env vars
+4. Then proceed with the ElevenLabs integration task already in the queue (TTS endpoint, "Listen to letter" button, voice chatbot, video ad pipeline)
+
+API base URL: https://api.elevenlabs.io/v1
+Auth header: xi-api-key: {ELEVENLABS_API_KEY}
+
+Paul will provide the API key — get it from him via Telegram/Charlie or he'll add it to env vars directly. (@Claude Code)
 
 ## ACCOUNTS NEEDED (Paul to set up)
 - ElevenLabs: Creator plan ($22/mo) for voice cloning + sound effects + music. Upgrade to Pro ($99/mo) later for higher volume.
