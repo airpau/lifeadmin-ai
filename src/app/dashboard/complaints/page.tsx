@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2 } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import UpgradeModal from '@/components/UpgradeModal';
+import ShareWinModal from '@/components/share/ShareWinModal';
+import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 
 interface Task {
   id: string;
@@ -311,6 +313,7 @@ function ComplaintsPageInner() {
     open: false, used: 0, limit: 3, tier: 'free',
   });
   const [usageInfo, setUsageInfo] = useState<{ used: number; limit: number | null; tier: string } | null>(null);
+  const [shareModal, setShareModal] = useState<{ open: boolean; amount: number; provider: string }>({ open: false, amount: 0, provider: '' });
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -470,6 +473,14 @@ function ComplaintsPageInner() {
         used={upgradeModal.used}
         limit={upgradeModal.limit}
         tier={upgradeModal.tier}
+      />
+
+      <ShareWinModal
+        open={shareModal.open}
+        onClose={() => setShareModal((m) => ({ ...m, open: false }))}
+        amount={shareModal.amount}
+        type="complaint"
+        providerName={shareModal.provider}
       />
 
       {/* Header */}
@@ -757,7 +768,7 @@ function ComplaintsPageInner() {
                   </pre>
                 </div>
 
-                {/* Copy + PDF */}
+                {/* Copy + PDF + Share */}
                 <div className="flex gap-3">
                   <button
                     onClick={handleCopy}
@@ -774,6 +785,28 @@ function ComplaintsPageInner() {
                     Download PDF
                   </button>
                 </div>
+
+                {/* Share your win */}
+                {(result.estimatedRefund || parseFloat(formData.amount)) > 0 &&
+                  shouldShowShareModal('complaint', result.estimatedRefund || parseFloat(formData.amount)) &&
+                  !hasSharedThisSession() && (
+                  <button
+                    onClick={() =>
+                      setShareModal({
+                        open: true,
+                        amount: result.estimatedRefund || parseFloat(formData.amount),
+                        provider: formData.companyName,
+                      })
+                    }
+                    className="w-full flex items-center justify-center gap-2 bg-mint-400/10 hover:bg-mint-400/20 border border-mint-400/30 text-mint-400 py-3 rounded-lg transition-all text-sm font-medium"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                    </svg>
+                    Share your win and earn 25 loyalty points
+                  </button>
+                )}
 
                 {/* Satisfaction prompt */}
                 {!showFeedback ? (

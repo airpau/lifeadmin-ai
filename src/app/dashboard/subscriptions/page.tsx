@@ -7,6 +7,10 @@ import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, L
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
+import ShareWinModal from '@/components/share/ShareWinModal';
+import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
+import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
+import { isCreditProduct } from '@/lib/credit-product-detector';
 
 interface Subscription {
   id: string;
@@ -203,6 +207,8 @@ export default function SubscriptionsPage() {
     provider_type: '',
     current_tariff: '',
   });
+  const [shareModal, setShareModal] = useState<{ open: boolean; amount: number; provider: string }>({ open: false, amount: 0, provider: '' });
+  const [creditWarning, setCreditWarning] = useState<{ open: boolean; productType: string; providerName: string; warningContent: string; sub: Subscription | null }>({ open: false, productType: '', providerName: '', warningContent: '', sub: null });
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
   const [bankLoading, setBankLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -364,8 +370,30 @@ export default function SubscriptionsPage() {
   const [cancelFeedback, setCancelFeedback] = useState('');
   const [showCancelFeedback, setShowCancelFeedback] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+
+  const attemptMarkCancelled = (sub: Subscription) => {
+    const credit = isCreditProduct(sub.provider_name, sub.category || undefined);
+    if (credit.isCreditProduct) {
+      setCreditWarning({
+        open: true,
+        productType: credit.productType,
+        providerName: sub.provider_name,
+        warningContent: credit.warningContent,
+        sub,
+      });
+      return;
+    }
+    handleMarkCancelled(sub);
+  };
+
   const handleMarkCancelled = async (sub: Subscription) => {
-    // Auto-calculate monthly saving and mark cancelled immediately
+    // Auto-calculate annual saving for the share modal
+    const annualSaving = sub.billing_cycle === 'yearly'
+      ? parseFloat(String(sub.amount))
+      : sub.billing_cycle === 'quarterly'
+        ? parseFloat(String(sub.amount)) * 4
+        : (parseFloat(String(sub.amount)) || 0) * 12;
+
     const monthlyAmt = sub.billing_cycle === 'yearly'
       ? parseFloat(String(sub.amount)) / 12
       : sub.billing_cycle === 'quarterly'
@@ -383,6 +411,11 @@ export default function SubscriptionsPage() {
         }),
       });
       await fetchSubscriptions();
+
+      // Show share modal if the saving is substantial
+      if (shouldShowShareModal('cancellation', annualSaving) && !hasSharedThisSession()) {
+        setShareModal({ open: true, amount: Math.round(annualSaving), provider: sub.provider_name });
+      }
     } catch (err) {
       console.error('Failed to mark as cancelled:', err);
     }
@@ -584,6 +617,28 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="max-w-7xl">
+      {/* Share Win Modal */}
+      <ShareWinModal
+        open={shareModal.open}
+        onClose={() => setShareModal((m) => ({ ...m, open: false }))}
+        amount={shareModal.amount}
+        type="cancellation"
+        providerName={shareModal.provider}
+      />
+
+      {/* Credit Score Warning Modal */}
+      <CreditScoreWarning
+        open={creditWarning.open}
+        onClose={() => setCreditWarning((m) => ({ ...m, open: false }))}
+        productType={creditWarning.productType}
+        providerName={creditWarning.providerName}
+        warningContent={creditWarning.warningContent}
+        onProceed={() => {
+          setCreditWarning((m) => ({ ...m, open: false }));
+          if (creditWarning.sub) handleMarkCancelled(creditWarning.sub);
+        }}
+      />
+
       {/* Bank toast (success or error) */}
       {bankToast && (
         <div className={`fixed top-6 right-6 z-50 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${bankToast.toLowerCase().includes('fail') || bankToast.toLowerCase().includes('error') ? 'bg-red-600' : 'bg-green-500'}`}>
@@ -957,7 +1012,7 @@ export default function SubscriptionsPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleMarkCancelled(sub);
+                        attemptMarkCancelled(sub);
                       }}
                       className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg transition-all text-sm border border-red-500/20"
                     >
