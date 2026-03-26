@@ -7,9 +7,10 @@ export interface ChatTool {
 
 import { subscriptionTools } from './subscriptions';
 import { moneyHubTools } from './money-hub';
+import { crossTabTools } from './cross-tab';
 
 export function getAllTools(): ChatTool[] {
-  return [...subscriptionTools, ...moneyHubTools];
+  return [...subscriptionTools, ...moneyHubTools, ...crossTabTools];
 }
 
 export function getToolDefinitions(): Array<{
