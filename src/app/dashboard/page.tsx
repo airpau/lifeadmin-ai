@@ -381,7 +381,7 @@ export default function DashboardPage() {
           { num: 1, label: 'Connect your bank', href: '/dashboard/subscriptions', done: bankConnected },
           { num: 2, label: 'Review your subscriptions', href: '/dashboard/subscriptions', done: subscriptionCount > 0 },
           { num: 3, label: 'Generate your first complaint letter', href: '/dashboard/complaints', done: complaintsGenerated > 0 },
-          { num: 4, label: 'Browse deals', href: '/dashboard/deals', done: false },
+          { num: 4, label: 'Start a savings challenge', href: '/dashboard/rewards', done: false },
         ];
         const allDone = steps.filter(s => s.num !== 4).every(s => s.done);
         if (allDone) return null;

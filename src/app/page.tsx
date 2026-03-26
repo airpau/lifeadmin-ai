@@ -451,6 +451,7 @@ export default function Home() {
                     { label: 'AI Support Chatbot', sub: 'UK consumer rights advice', free: true, essential: true, pro: true },
                     { label: 'AI Financial Chatbot', sub: 'Ask about spending, set budgets via chat', free: 'Basic', essential: 'Full', pro: 'Full + queries' },
                     { label: 'Smart Bill Comparison', sub: 'Side-by-side deal alternatives', free: false, essential: true, pro: true },
+                    { label: 'Savings Challenges', sub: 'Gamified money-saving goals verified by bank data', free: false, essential: true, pro: true },
                     { label: 'Savings Goals', sub: 'Set targets, track progress', free: false, essential: false, pro: true },
                     { label: 'Priority Support', sub: 'Faster response times', free: false, essential: false, pro: true },
                     { label: 'Money Recovery Score', sub: 'Track your total savings', free: true, essential: true, pro: true },

@@ -193,6 +193,11 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     </div>
 
     <div style="${box}">
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Savings Challenges</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Try "No Takeaways for 7 Days" or "Cancel an Unused Subscription". Paybacker verifies your progress using your bank data and awards loyalty points when you complete a challenge. A fun way to save real money. <a href="https://paybacker.co.uk/dashboard/rewards" style="color:#34d399;">View challenges</a></p>
+    </div>
+
+    <div style="${box}">
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">AI Chatbot</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Ask our chatbot anything about UK consumer rights, your spending, or your subscriptions. It can manage your finances through conversation. Look for the chat bubble on any page.</p>
     </div>
