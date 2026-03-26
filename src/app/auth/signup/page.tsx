@@ -71,9 +71,11 @@ export default function SignupPage() {
           utm_content: searchParams.get('utm_content') || getCookie('pb_utm_content'),
           utm_term: searchParams.get('utm_term') || getCookie('pb_utm_term'),
           gclid: searchParams.get('gclid') || getCookie('pb_gclid'),
+          fbclid: searchParams.get('fbclid') || getCookie('pb_fbclid'),
         };
         // Determine signup source
         const signupSource = utmData.gclid ? 'google_ads'
+          : utmData.fbclid ? 'meta_ads'
           : utmData.utm_source || 'organic';
         // Filter out nulls
         const utmUpdate: Record<string, string> = { signup_source: signupSource };

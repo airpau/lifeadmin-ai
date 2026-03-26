@@ -19,6 +19,27 @@ export async function GET() {
 
     if (error) throw error;
 
+    // Auto-advance next_billing_date if in the past
+    const now = new Date();
+    for (const sub of data || []) {
+      if (sub.next_billing_date && sub.status === 'active') {
+        const billDate = new Date(sub.next_billing_date);
+        if (billDate < now) {
+          // Advance based on billing cycle
+          const newDate = new Date(billDate);
+          while (newDate < now) {
+            if (sub.billing_cycle === 'monthly') newDate.setMonth(newDate.getMonth() + 1);
+            else if (sub.billing_cycle === 'quarterly') newDate.setMonth(newDate.getMonth() + 3);
+            else if (sub.billing_cycle === 'yearly') newDate.setFullYear(newDate.getFullYear() + 1);
+            else break;
+          }
+          sub.next_billing_date = newDate.toISOString().split('T')[0];
+          // Update in background
+          supabase.from('subscriptions').update({ next_billing_date: sub.next_billing_date }).eq('id', sub.id);
+        }
+      }
+    }
+
     return NextResponse.json(data || []);
   } catch (error: any) {
     console.error('Error fetching subscriptions:', error);

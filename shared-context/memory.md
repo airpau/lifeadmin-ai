@@ -31,3 +31,39 @@ Full marketing playbook created covering Google Ads, Meta Ads, and influencer ma
 - Tasks tagged [Claude Code] vs [Chrome] vs [Manual] for cross-interface execution.
 - Immediate priorities: check Google Ads dev token, install Meta Pixel, add fbclid tracking, research influencers.
 - Need to add: fbclid capture on signup, weekly signup-by-source SQL query, Telegram CAC report.
+
+
+
+## GTM Strategy & Roadmap (March 2026)
+
+### Readiness Scores
+- Core Product: 8/10 | UX Polish: 5/10 | Trust & Social Proof: 3/10 | Onboarding: 4/10 | Acquisition Engine: 4/10 | Retention: 6/10 | Monetisation: 6/10 | Legal & Compliance: 5/10
+
+### Critical Blockers
+1. Awin affiliate sign-off (revenue dependent)
+2. Meta App Review for social login
+3. Google Ads developer token
+4. UX bug fixes (38 bugs logged, 8 tasks in queue)
+
+### Key New Feature Proposals
+1. Money Recovery Score — gamified dashboard metric showing potential savings
+2. AI Bill Negotiator — automated negotiation letters/scripts
+3. Household Mode — shared household finance management
+4. Weekly Money Digest Email — retention-driving email digest
+5. Savings Passport — visual savings tracker with milestones
+6. Smart Document Scanner — OCR for bills/contracts
+7. Energy Tariff Monitor — real-time energy deal alerts
+8. Paybacker for Business — B2B expansion for small businesses
+
+### 12-Week Roadmap Summary
+- Weeks 1-4: Fix critical bugs, UX polish, trust signals, onboarding flow
+- Weeks 5-8: New features (Money Recovery Score, Weekly Digest, Household Mode)
+- Weeks 9-12: Growth engine (referrals, content marketing, PR push, Paybacker for Business scoping)
+
+### Competitive Differentiation
+- vs Emma/Snoop/Plum: Paybacker combines budgeting WITH complaint resolution AND bill switching — none do all three
+- vs Resolver: Paybacker adds AI-powered letter generation + open banking data, Resolver is manual templates only
+- vs Citizens Advice/Which?: Paybacker automates the process end-to-end rather than just providing information
+
+### Strategy Document
+Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)

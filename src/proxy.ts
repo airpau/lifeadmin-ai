@@ -20,7 +20,7 @@ export async function proxy(request: NextRequest) {
 
   // UTM + gclid tracking — capture on first landing, persist as cookies for signup attribution
   // Not httpOnly so client-side signup form can read them
-  const utmParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'gclid', 'gad_campaignid'];
+  const utmParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'gclid', 'gad_campaignid', 'fbclid'];
   for (const param of utmParams) {
     const value = request.nextUrl.searchParams.get(param);
     if (value) {
