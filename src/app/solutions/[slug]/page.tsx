@@ -334,8 +334,8 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
   const Icon = page.icon;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-transparent to-transparent" />
+    <div className="min-h-screen bg-navy-950">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-900/20 via-transparent to-transparent" />
 
       <div className="relative">
         {/* Header */}
@@ -343,12 +343,12 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
               <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
-              <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
+              <span className="text-xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
             </Link>
             <div className="flex items-center gap-3">
-              <Link href="/pricing" className="hidden md:block text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">Pricing</Link>
-              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">Sign In</Link>
-              <Link href="/auth/signup" className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all">Get Started Free</Link>
+              <Link href="/pricing" className="hidden md:block text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-900 transition-all">Pricing</Link>
+              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all">Sign In</Link>
+              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
             </div>
           </div>
         </header>
@@ -356,22 +356,22 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
         <main className="container mx-auto px-6 py-12">
           {/* Hero */}
           <div className="max-w-4xl mx-auto mb-16 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20 mb-8">
+            <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8">
               <Icon className={`h-4 w-4 ${page.iconColor}`} />
               <span>Free to use - no credit card required</span>
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">{page.h1}</h1>
+            <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight font-[family-name:var(--font-heading)]">{page.h1}</h1>
             <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto leading-relaxed">{page.subtitle}</p>
 
             <div className="flex justify-center mb-8">
-              <div className="bg-slate-900/50 border border-amber-500/20 rounded-xl px-8 py-4 text-center">
+              <div className="bg-navy-900 border border-mint-400/20 rounded-2xl px-8 py-4 text-center">
                 <p className={`text-4xl font-bold ${page.iconColor}`}>{page.heroStat}</p>
                 <p className="text-slate-500 text-sm">{page.heroStatLabel}</p>
               </div>
             </div>
 
-            <Link href={page.ctaLink} className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-lg">
+            <Link href={page.ctaLink} className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all text-lg">
               {page.ctaText}
             </Link>
 
@@ -380,10 +380,10 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
 
           {/* Benefits */}
           <div className="max-w-3xl mx-auto mb-16">
-            <h2 className="text-2xl font-bold text-white mb-6 text-center">What you get</h2>
+            <h2 className="text-2xl font-bold text-white mb-6 text-center font-[family-name:var(--font-heading)]">What you get</h2>
             <div className="space-y-3">
               {page.benefits.map((b, i) => (
-                <div key={i} className="flex items-start gap-3 bg-slate-900/30 border border-slate-800 rounded-xl p-4">
+                <div key={i} className="flex items-start gap-3 bg-navy-900 border border-navy-700/50 rounded-2xl p-4">
                   <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                   <span className="text-slate-300">{b}</span>
                 </div>
@@ -393,11 +393,11 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
 
           {/* How It Works */}
           <div className="max-w-4xl mx-auto mb-16">
-            <h2 className="text-2xl font-bold text-white mb-8 text-center">How it works</h2>
+            <h2 className="text-2xl font-bold text-white mb-8 text-center font-[family-name:var(--font-heading)]">How it works</h2>
             <div className="grid md:grid-cols-3 gap-6">
               {page.howItWorks.map((step) => (
-                <div key={step.step} className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 text-center">
-                  <div className="bg-amber-500 text-slate-950 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">{step.step}</div>
+                <div key={step.step} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 text-center">
+                  <div className="bg-mint-400 text-navy-950 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">{step.step}</div>
                   <h3 className="text-white font-semibold mb-2">{step.title}</h3>
                   <p className="text-slate-400 text-sm">{step.description}</p>
                 </div>
@@ -407,10 +407,10 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
 
           {/* Feature Highlight */}
           <div className="max-w-3xl mx-auto mb-16">
-            <div className="bg-gradient-to-r from-amber-500/10 to-purple-500/5 border border-amber-500/20 rounded-2xl p-8 text-center">
+            <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 text-center">
               <Icon className={`h-8 w-8 ${page.iconColor} mx-auto mb-4`} />
               <p className="text-slate-300 text-lg">{page.featureHighlight}</p>
-              <Link href={page.ctaLink} className="inline-flex items-center gap-2 text-amber-400 font-semibold mt-4 hover:text-amber-300 transition-all">
+              <Link href={page.ctaLink} className="inline-flex items-center gap-2 text-mint-400 font-semibold mt-4 hover:text-mint-300 transition-all">
                 Get started free <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
@@ -418,10 +418,10 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
 
           {/* FAQs */}
           <div className="max-w-3xl mx-auto mb-16">
-            <h2 className="text-2xl font-bold text-white mb-6 text-center">Frequently asked questions</h2>
+            <h2 className="text-2xl font-bold text-white mb-6 text-center font-[family-name:var(--font-heading)]">Frequently asked questions</h2>
             <div className="space-y-4">
               {page.faqs.map((faq, i) => (
-                <div key={i} className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+                <div key={i} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
                   <h3 className="text-white font-semibold mb-2">{faq.q}</h3>
                   <p className="text-slate-400 text-sm">{faq.a}</p>
                 </div>
@@ -431,16 +431,16 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
 
           {/* Final CTA */}
           <div className="max-w-3xl mx-auto mb-16 text-center">
-            <h2 className="text-3xl font-bold text-white mb-4">Ready to take control?</h2>
+            <h2 className="text-3xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Ready to take control?</h2>
             <p className="text-slate-400 mb-8">Join thousands of UK consumers who are using Paybacker to save money and fight unfair charges.</p>
-            <Link href={page.ctaLink} className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-lg">
+            <Link href={page.ctaLink} className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all text-lg">
               {page.ctaText}
             </Link>
           </div>
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-slate-800 py-8">
+        <footer className="border-t border-navy-700/50 py-8">
           <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-slate-500 text-sm">Paybacker LTD - paybacker.co.uk</div>
             <div className="flex gap-4 text-slate-500 text-sm">

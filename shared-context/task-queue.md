@@ -35,6 +35,7 @@
 - [x] ~~Cancellation email status~~ DONE - no longer changes to pending_cancellation
 - [ ] Build Google Ads API Integration & Create First Search Campaigns - Build a Google Ads API integration for Paybacker to programmatically create and manage ad campaigns.
 - [ ] Full Website Redesign — Calm & Trustworthy Design System - Complete visual redesign of paybacker.co.uk — landing page, all public pages, and full dashboard. Direction: "Calm & Trustworthy" fintech aesthetic inspired by Monzo, Revolut, and Linear. Must feel fresh, modern, premium, and desirable.
+- [ ] Implement Welcome Email Sequence via Resend - Build a 5-email welcome/onboarding sequence triggered on new user signup. Full email copy and templates are in paybacker-marketing-pack.docx and MCP memory. Use Resend (already integrated). Emails should be behaviour-triggered with conditional content based on user state (bank_connected, letters_generated, plan tier). Sequence: Welcome (immediate), First Value (day 2), Social Proof (day 4), Feature Discovery (day 7), Upgrade Nudge (day 10, free users only). Also implement the Weekly Money Digest email (Monday 7am cron) that pulls user spending data from Supabase. (@Claude Code)
 
 ## APPROACH: v0 by Vercel + Claude Code
 

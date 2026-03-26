@@ -248,8 +248,8 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
   if (!cat) notFound();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-transparent to-transparent" />
+    <div className="min-h-screen bg-navy-950">
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-900/20 via-transparent to-transparent" />
 
       <div className="relative">
         {/* Header */}
@@ -257,11 +257,11 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
               <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
-              <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
+              <span className="text-xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
             </Link>
             <div className="flex items-center gap-3">
-              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">Sign In</Link>
-              <Link href="/auth/signup" className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all">Get Started Free</Link>
+              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all">Sign In</Link>
+              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
             </div>
           </div>
         </header>
@@ -280,21 +280,21 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
 
           {/* Hero */}
           <div className="max-w-4xl mx-auto mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">{cat.h1}</h1>
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-6 font-[family-name:var(--font-heading)]">{cat.h1}</h1>
             <p className="text-xl text-slate-300 mb-8 leading-relaxed">{cat.longDescription}</p>
 
             <div className="grid grid-cols-3 gap-4 mb-8">
-              <div className="bg-slate-900/50 border border-green-500/20 rounded-xl p-4 text-center">
+              <div className="bg-navy-900 border border-green-500/20 rounded-2xl p-4 text-center">
                 <TrendingDown className="h-6 w-6 text-green-400 mx-auto mb-2" />
                 <p className="text-green-400 font-bold text-xl">{cat.avgSaving}</p>
                 <p className="text-slate-500 text-xs">Average yearly saving</p>
               </div>
-              <div className="bg-slate-900/50 border border-amber-500/20 rounded-xl p-4 text-center">
-                <Clock className="h-6 w-6 text-amber-400 mx-auto mb-2" />
-                <p className="text-amber-400 font-bold text-xl">{cat.switchTime}</p>
+              <div className="bg-navy-900 border border-mint-400/20 rounded-2xl p-4 text-center">
+                <Clock className="h-6 w-6 text-mint-400 mx-auto mb-2" />
+                <p className="text-mint-400 font-bold text-xl">{cat.switchTime}</p>
                 <p className="text-slate-500 text-xs">Typical switch time</p>
               </div>
-              <div className="bg-slate-900/50 border border-blue-500/20 rounded-xl p-4 text-center">
+              <div className="bg-navy-900 border border-blue-500/20 rounded-2xl p-4 text-center">
                 <Zap className="h-6 w-6 text-blue-400 mx-auto mb-2" />
                 <p className="text-blue-400 font-bold text-xl">{cat.deals.length}</p>
                 <p className="text-slate-500 text-xs">Deals to compare</p>
@@ -304,24 +304,24 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
 
           {/* Deals */}
           <div className="max-w-4xl mx-auto mb-12">
-            <h2 className="text-2xl font-bold text-white mb-6">Top {category.replace('-', ' ')} deals</h2>
+            <h2 className="text-2xl font-bold text-white mb-6 font-[family-name:var(--font-heading)]">Top {category.replace('-', ' ')} deals</h2>
             <div className="space-y-4">
               {cat.deals.map((deal) => (
-                <div key={deal.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 hover:border-amber-500/30 transition-all flex items-center justify-between gap-6">
+                <div key={deal.id} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 hover:border-mint-400/30 transition-all flex items-center justify-between gap-6">
                   <div className="flex-1">
                     <h3 className="text-white font-semibold text-lg">{deal.provider}</h3>
                     <p className="text-slate-400 text-sm mt-1">{deal.headline}</p>
                     {deal.promoCode && (
-                      <p className="text-xs text-green-400 mt-2">Promo code: <span className="font-mono font-bold bg-green-500/10 px-2 py-0.5 rounded">{deal.promoCode}</span> — apply at checkout</p>
+                      <p className="text-xs text-green-400 mt-2">Promo code: <span className="font-mono font-bold bg-green-500/10 px-2 py-0.5 rounded">{deal.promoCode}</span> - apply at checkout</p>
                     )}
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-amber-400 font-bold text-sm mb-2">{deal.saving}</p>
+                    <p className="text-mint-400 font-bold text-sm mb-2">{deal.saving}</p>
                     <a
                       href={deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm transition-all"
+                      className="inline-flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-xl text-sm transition-all"
                     >
                       View Deal <ArrowRight className="h-4 w-4" />
                     </a>
@@ -334,7 +334,7 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
           {/* Warning (for mortgages/loans) */}
           {cat.warningText && (
             <div className="max-w-4xl mx-auto mb-8">
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-300 text-sm">
+              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-red-300 text-sm">
                 <strong>Important:</strong> {cat.warningText}
               </div>
             </div>
@@ -342,24 +342,24 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
 
           {/* Tip */}
           <div className="max-w-4xl mx-auto mb-12">
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-6">
-              <h3 className="text-amber-400 font-semibold mb-2">{cat.tipTitle}</h3>
+            <div className="bg-mint-400/5 border border-mint-400/20 rounded-2xl p-6">
+              <h3 className="text-mint-400 font-semibold mb-2">{cat.tipTitle}</h3>
               <p className="text-slate-300 text-sm">{cat.tipBody}</p>
             </div>
           </div>
 
           {/* Paybacker CTA */}
           <div className="max-w-4xl mx-auto mb-12">
-            <div className="bg-gradient-to-r from-amber-500/10 to-purple-500/5 border border-amber-500/20 rounded-2xl p-8 text-center">
-              <BarChart3 className="h-10 w-10 text-amber-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-white mb-3">Get personalised {category.replace('-', ' ')} recommendations</h2>
+            <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 text-center">
+              <BarChart3 className="h-10 w-10 text-mint-400 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-3 font-[family-name:var(--font-heading)]">Get personalised {category.replace('-', ' ')} recommendations</h2>
               <p className="text-slate-300 mb-6 max-w-xl mx-auto">Connect your bank account and Paybacker will analyse your actual bills, alert you before contracts renew, and show you the best deals based on what you really pay.</p>
               <div className="flex flex-wrap justify-center gap-4 mb-6">
                 <span className="flex items-center gap-1.5 text-sm text-slate-400"><CheckCircle className="h-4 w-4 text-green-400" /> Free to start</span>
                 <span className="flex items-center gap-1.5 text-sm text-slate-400"><CheckCircle className="h-4 w-4 text-green-400" /> Bank-level security</span>
                 <span className="flex items-center gap-1.5 text-sm text-slate-400"><CheckCircle className="h-4 w-4 text-green-400" /> Renewal alerts at 30, 14, 7 days</span>
               </div>
-              <Link href="/auth/signup" className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-lg">
+              <Link href="/auth/signup" className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all text-lg">
                 Create Free Account
               </Link>
             </div>
@@ -367,14 +367,14 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
 
           {/* Affiliate Disclosure */}
           <div className="max-w-4xl mx-auto mb-12">
-            <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-4">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4">
               <p className="text-slate-500 text-xs"><strong className="text-slate-400">Affiliate disclosure:</strong> Some links on this page are affiliate links. If you switch through one of these links, we may receive a commission from the provider at no extra cost to you. This helps us keep Paybacker free for basic use. We only recommend providers we believe offer genuine value.</p>
             </div>
           </div>
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-slate-800 py-8">
+        <footer className="border-t border-navy-700/50 py-8">
           <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-slate-500 text-sm">Paybacker LTD - paybacker.co.uk</div>
             <div className="flex gap-4 text-slate-500 text-sm">

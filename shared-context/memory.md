@@ -90,3 +90,15 @@ Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)
 - Key principles: Emotional predictability, generous whitespace, rounded cards (16px), soft shadows, framer-motion animations
 - Task logged with full design tokens, colour palette, typography scale, every page specification, and v0 prompts
 - Paul approved flexible budget
+
+
+
+## Marketing Pack Created (March 2026)
+- Full Google Ads copy for 4 campaigns: Complaint Letters, Subscription Management, Energy Savings, Money Recovery
+- 15 RSA headlines + 4 descriptions per campaign, all within character limits
+- Callout and sitelink extensions for all campaigns
+- 2-week social media content calendar (14 posts) for Facebook + Instagram
+- 5-email welcome/onboarding sequence with conditional logic
+- Weekly Money Digest email template
+- All saved in paybacker-marketing-pack.docx
+- Implementation notes for Claude Code: use Resend for emails, Casey agent for social, Google Ads API for campaigns

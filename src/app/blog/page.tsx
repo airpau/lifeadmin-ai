@@ -82,37 +82,37 @@ export default async function BlogIndexPage() {
     ...posts,
   ];
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <header className="container mx-auto px-6 py-6 border-b border-slate-800">
+    <div className="min-h-screen bg-navy-950">
+      <header className="container mx-auto px-6 py-6 border-b border-navy-700/50">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
             <span className="text-xl font-bold text-white">
-              Pay<span className="text-amber-500">backer</span>
+              Pay<span className="text-mint-400">backer</span>
             </span>
           </Link>
           <nav className="flex items-center gap-1 md:gap-3 text-sm">
             <Link
               href="/about"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               About
             </Link>
             <Link
               href="/blog"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               Blog
             </Link>
             <Link
               href="/pricing"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               Pricing
             </Link>
             <Link
               href="/auth/login"
-              className="text-slate-300 hover:text-white font-medium px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="text-slate-300 hover:text-white font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               Sign In
             </Link>
@@ -122,7 +122,7 @@ export default async function BlogIndexPage() {
 
       <main className="container mx-auto px-6 py-16 max-w-5xl">
         <div className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             Blog
           </h1>
           <p className="text-lg text-slate-300 leading-relaxed">
@@ -133,13 +133,13 @@ export default async function BlogIndexPage() {
         <div className="grid gap-6">
           {allPosts.map((post) => (
             <Link key={post.href} href={post.href} className="block group">
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-slate-600 transition-all">
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 hover:border-mint-400/30 transition-all">
                 <p className="text-slate-500 text-sm mb-2">{post.date}</p>
-                <h2 className="text-xl font-bold text-white mb-2 group-hover:text-amber-400 transition-colors">
+                <h2 className="text-xl font-bold text-white mb-2 group-hover:text-mint-400 transition-colors">
                   {post.title}
                 </h2>
                 <p className="text-slate-400 text-sm mb-3">{post.excerpt}</p>
-                <span className="text-amber-400 hover:text-amber-300 text-sm font-medium">
+                <span className="text-mint-400 text-sm font-medium">
                   Read more &rarr;
                 </span>
               </div>
@@ -148,7 +148,7 @@ export default async function BlogIndexPage() {
         </div>
       </main>
 
-      <footer className="container mx-auto px-6 py-8 border-t border-slate-800 mt-16">
+      <footer className="container mx-auto px-6 py-8 border-t border-navy-700/50 mt-16">
         <div className="text-center text-slate-500 text-sm space-y-3">
           <div className="flex flex-wrap justify-center gap-6">
             <Link href="/about" className="hover:text-white transition-all">
@@ -183,7 +183,7 @@ export default async function BlogIndexPage() {
             Need help? Email{" "}
             <a
               href="mailto:support@paybacker.co.uk"
-              className="text-amber-500 hover:text-amber-400"
+              className="text-mint-400 hover:text-mint-300"
             >
               support@paybacker.co.uk
             </a>

@@ -28,37 +28,37 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <header className="container mx-auto px-4 md:px-6 py-4 md:py-6 border-b border-slate-800">
+    <div className="min-h-screen bg-navy-950">
+      <header className="container mx-auto px-4 md:px-6 py-4 md:py-6 border-b border-navy-700/50">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
             <span className="text-xl font-bold text-white">
-              Pay<span className="text-amber-500">backer</span>
+              Pay<span className="text-mint-400">backer</span>
             </span>
           </Link>
           <nav className="flex items-center gap-1 md:gap-3 text-sm">
             <Link
               href="/about"
-              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               About
             </Link>
             <Link
               href="/blog"
-              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               Blog
             </Link>
             <Link
               href="/pricing"
-              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               Pricing
             </Link>
             <Link
               href="/auth/login"
-              className="text-slate-300 hover:text-white font-medium px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="text-slate-300 hover:text-white font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
             >
               Sign In
             </Link>
@@ -69,7 +69,7 @@ export default function AboutPage() {
       <main className="container mx-auto px-4 md:px-6 py-10 md:py-16 max-w-3xl">
         {/* Hero */}
         <div className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             About Paybacker
           </h1>
           <p className="text-lg text-slate-300 leading-relaxed">
@@ -81,7 +81,7 @@ export default function AboutPage() {
 
         {/* What Paybacker Is */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">
+          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             What Paybacker Is
           </h2>
           <p className="text-slate-300 leading-relaxed mb-4">
@@ -101,11 +101,11 @@ export default function AboutPage() {
 
         {/* How It Works */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">How It Works</h2>
+          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">How It Works</h2>
           <div className="grid gap-4">
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
               <div className="flex items-start gap-4">
-                <span className="text-amber-500 font-bold text-lg mt-0.5">
+                <span className="text-mint-400 font-bold text-lg mt-0.5">
                   1
                 </span>
                 <div>
@@ -120,9 +120,9 @@ export default function AboutPage() {
                 </div>
               </div>
             </div>
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
               <div className="flex items-start gap-4">
-                <span className="text-amber-500 font-bold text-lg mt-0.5">
+                <span className="text-mint-400 font-bold text-lg mt-0.5">
                   2
                 </span>
                 <div>
@@ -137,9 +137,9 @@ export default function AboutPage() {
                 </div>
               </div>
             </div>
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
               <div className="flex items-start gap-4">
-                <span className="text-amber-500 font-bold text-lg mt-0.5">
+                <span className="text-mint-400 font-bold text-lg mt-0.5">
                   3
                 </span>
                 <div>
@@ -159,7 +159,7 @@ export default function AboutPage() {
 
         {/* Why We Built It */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">
+          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             Why We Built It
           </h2>
           <p className="text-slate-300 leading-relaxed mb-4">
@@ -179,17 +179,17 @@ export default function AboutPage() {
 
         {/* Trust & Transparency */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">
+          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             Trust &amp; Transparency
           </h2>
-          <div className="bg-slate-900/50 border border-amber-500/30 rounded-xl p-5">
+          <div className="bg-navy-900 border border-mint-400/30 rounded-2xl p-5">
             <p className="text-slate-300 leading-relaxed mb-4">
               We believe in full transparency about how we operate and earn
               revenue.
             </p>
             <ul className="space-y-3 text-slate-300">
               <li className="flex items-start gap-2">
-                <span className="text-amber-500 mt-1">&#8226;</span>
+                <span className="text-mint-400 mt-1">&#8226;</span>
                 <span>
                   <strong className="text-white">
                     Affiliate relationships disclosed.
@@ -200,7 +200,7 @@ export default function AboutPage() {
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-500 mt-1">&#8226;</span>
+                <span className="text-mint-400 mt-1">&#8226;</span>
                 <span>
                   <strong className="text-white">
                     Read-only data access.
@@ -211,7 +211,7 @@ export default function AboutPage() {
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-500 mt-1">&#8226;</span>
+                <span className="text-mint-400 mt-1">&#8226;</span>
                 <span>
                   <strong className="text-white">
                     Your data is never sold.
@@ -221,7 +221,7 @@ export default function AboutPage() {
                 </span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="text-amber-500 mt-1">&#8226;</span>
+                <span className="text-mint-400 mt-1">&#8226;</span>
                 <span>
                   <strong className="text-white">Regulated under UK law.</strong>{" "}
                   We comply with UK GDPR, the Data Protection Act 2018 and all
@@ -234,7 +234,7 @@ export default function AboutPage() {
 
         {/* Company Info */}
         <section>
-          <h2 className="text-2xl font-bold text-white mb-4">
+          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             Company Information
           </h2>
           <p className="text-slate-300 leading-relaxed mb-2">
@@ -244,7 +244,7 @@ export default function AboutPage() {
             For any questions, feedback or press enquiries, contact us at{" "}
             <a
               href="mailto:hello@paybacker.co.uk"
-              className="text-amber-400 hover:text-amber-300"
+              className="text-mint-400 hover:text-mint-300"
             >
               hello@paybacker.co.uk
             </a>
@@ -253,7 +253,7 @@ export default function AboutPage() {
         </section>
       </main>
 
-      <footer className="container mx-auto px-4 md:px-6 py-8 border-t border-slate-800 mt-16">
+      <footer className="container mx-auto px-4 md:px-6 py-8 border-t border-navy-700/50 mt-16">
         <div className="text-center text-slate-500 text-sm space-y-3">
           <div className="flex flex-wrap justify-center gap-4 md:gap-6">
             <Link href="/about" className="hover:text-white transition-all">
@@ -288,7 +288,7 @@ export default function AboutPage() {
             Need help? Email{" "}
             <a
               href="mailto:support@paybacker.co.uk"
-              className="text-amber-500 hover:text-amber-400"
+              className="text-mint-400 hover:text-mint-300"
             >
               support@paybacker.co.uk
             </a>

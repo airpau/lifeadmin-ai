@@ -69,17 +69,17 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-screen bg-navy-950">
       <div className="relative">
         <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
               <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
-              <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
+              <span className="text-xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
             </Link>
             <div className="flex items-center gap-3">
               <Link href="/blog" className="text-slate-400 hover:text-white text-sm">Blog</Link>
-              <Link href="/auth/signup" className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all">Get Started Free</Link>
+              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
             </div>
           </div>
         </header>
@@ -92,10 +92,10 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
                 <span>/</span>
                 <span className="text-slate-400">{post.title.substring(0, 40)}...</span>
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">{post.title}</h1>
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight font-[family-name:var(--font-heading)]">{post.title}</h1>
               <div className="flex items-center gap-4 text-sm text-slate-500">
                 <span>{publishedDate}</span>
-                {post.target_keyword && <span className="bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full text-xs">{post.category}</span>}
+                {post.target_keyword && <span className="bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full text-xs">{post.category}</span>}
               </div>
             </div>
 
@@ -105,10 +105,10 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
             />
 
             {/* CTA */}
-            <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-8 my-10 text-center">
-              <h2 className="text-2xl font-bold text-white mb-3">Need help with this? Paybacker can generate a formal letter in 30 seconds</h2>
+            <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 my-10 text-center">
+              <h2 className="text-2xl font-bold text-white mb-3 font-[family-name:var(--font-heading)]">Need help with this? Paybacker can generate a formal letter in 30 seconds</h2>
               <p className="text-slate-400 mb-6">Our AI writes complaint letters citing exact UK law. Free to try - 3 letters per month.</p>
-              <Link href="/auth/signup" className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-lg">
+              <Link href="/auth/signup" className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all text-lg">
                 Generate Your Letter Free
               </Link>
             </div>
@@ -126,7 +126,7 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
           </article>
         </main>
 
-        <footer className="border-t border-slate-800 py-8 mt-16">
+        <footer className="border-t border-navy-700/50 py-8 mt-16">
           <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-slate-500 text-sm">Paybacker LTD - paybacker.co.uk</div>
             <div className="flex gap-4 text-slate-500 text-sm">

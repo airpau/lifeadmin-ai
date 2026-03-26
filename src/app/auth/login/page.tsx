@@ -20,7 +20,7 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirect') || '/dashboard';
-  
+
   const supabase = createClient();
 
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -69,37 +69,37 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-navy-950 flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
             <Image src="/logo.png" alt="Paybacker" width={36} height={36} />
             <span className="text-2xl font-bold text-white">
-              Pay<span className="text-amber-500">backer</span>
+              Pay<span className="text-mint-400">backer</span>
             </span>
           </Link>
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
+          <h1 className="text-3xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Welcome back</h1>
           <p className="text-slate-400">Sign in to your account</p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 shadow-2xl">
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-8 shadow-2xl">
           {magicLinkSent ? (
             <div className="text-center py-8">
-              <Mail className="h-16 w-16 text-amber-500 mx-auto mb-4" />
+              <Mail className="h-16 w-16 text-mint-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">Check your email</h3>
               <p className="text-slate-400">We sent you a magic link to {email}</p>
             </div>
           ) : (
             <>
               {/* Toggle */}
-              <div className="flex gap-2 mb-6 bg-slate-950 rounded-lg p-1">
+              <div className="flex gap-2 mb-6 bg-navy-950 rounded-lg p-1">
                 <button
                   onClick={() => setUseMagicLink(false)}
                   className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
                     !useMagicLink
-                      ? 'bg-amber-500 text-slate-950'
+                      ? 'bg-mint-400 text-navy-950'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -109,7 +109,7 @@ export default function LoginPage() {
                   onClick={() => setUseMagicLink(true)}
                   className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
                     useMagicLink
-                      ? 'bg-amber-500 text-slate-950'
+                      ? 'bg-mint-400 text-navy-950'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -129,7 +129,7 @@ export default function LoginPage() {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                      className="w-full pl-10 pr-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                       placeholder="you@example.com"
                     />
                   </div>
@@ -147,7 +147,7 @@ export default function LoginPage() {
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                        className="w-full pl-10 pr-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                         placeholder="••••••••"
                       />
                     </div>
@@ -163,7 +163,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Please wait...' : useMagicLink ? 'Send magic link' : 'Sign in'}
                 </button>
@@ -172,7 +172,7 @@ export default function LoginPage() {
               <div className="mt-6 text-center">
                 <p className="text-slate-400 text-sm">
                   Don't have an account?{' '}
-                  <Link href="/auth/signup" className="text-amber-500 hover:text-amber-400 font-medium">
+                  <Link href="/auth/signup" className="text-mint-400 hover:text-mint-300 font-medium">
                     Sign up
                   </Link>
                 </p>

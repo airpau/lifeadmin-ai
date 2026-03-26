@@ -3,22 +3,22 @@ import Image from 'next/image';
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-navy-950 flex items-center justify-center">
       <div className="text-center px-6 max-w-md">
         <Link href="/" className="inline-flex items-center gap-2 mb-8">
           <Image src="/logo.png" alt="Paybacker" width={36} height={36} />
-          <span className="text-2xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
+          <span className="text-2xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
         </Link>
 
-        <h1 className="text-6xl font-bold text-amber-500 mb-4">404</h1>
+        <h1 className="text-6xl font-bold text-mint-400 mb-4 font-[family-name:var(--font-heading)]">404</h1>
         <p className="text-xl text-white mb-2">Page not found</p>
         <p className="text-slate-400 mb-8">The page you are looking for does not exist or has been moved.</p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link href="/" className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-xl transition-all">
+          <Link href="/" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all">
             Go Home
           </Link>
-          <Link href="/auth/signup" className="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-6 py-3 rounded-xl transition-all">
+          <Link href="/auth/signup" className="bg-navy-900 hover:bg-navy-800 text-white font-semibold px-6 py-3 rounded-xl transition-all border border-navy-700/50">
             Generate Free Letter
           </Link>
         </div>

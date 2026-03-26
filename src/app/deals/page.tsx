@@ -21,42 +21,42 @@ const categories = [
 
 export default function PublicDealsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-screen bg-navy-950">
       <header className="container mx-auto px-6 py-6">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
-            <span className="text-xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
+            <span className="text-xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/auth/login" className="text-slate-400 hover:text-white text-sm">Sign In</Link>
-            <Link href="/auth/signup" className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-semibold px-4 py-2 rounded-lg transition-all">Get Started Free</Link>
+            <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-6 py-12 max-w-5xl">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">Compare 59+ UK Deals</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Compare 59+ UK Deals</h1>
           <p className="text-lg text-slate-300">Find cheaper alternatives to what you are paying now. Free to browse, no signup needed.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {categories.map(cat => (
-            <Link key={cat.slug} href={`/deals/${cat.slug}`} className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/30 transition-all group">
+            <Link key={cat.slug} href={`/deals/${cat.slug}`} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 hover:border-mint-400/30 transition-all group">
               <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${cat.color} flex items-center justify-center mb-4`}>
                 <span className="text-white font-bold text-lg">{cat.count}</span>
               </div>
-              <h2 className="text-xl font-bold text-white mb-1 group-hover:text-amber-400 transition-colors">{cat.name}</h2>
+              <h2 className="text-xl font-bold text-white mb-1 group-hover:text-mint-400 transition-colors">{cat.name}</h2>
               <p className="text-slate-400 text-sm mb-3">{cat.desc}</p>
-              <span className="text-amber-400 text-sm font-medium">View {cat.count} deals &rarr;</span>
+              <span className="text-mint-400 text-sm font-medium">View {cat.count} deals &rarr;</span>
             </Link>
           ))}
         </div>
 
         <div className="mt-12 text-center">
           <p className="text-slate-500 text-sm mb-4">Already tracking your subscriptions? Sign in to see personalised deal recommendations.</p>
-          <Link href="/auth/signup" className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-8 py-3 rounded-xl transition-all">Sign Up Free</Link>
+          <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-3 rounded-xl transition-all">Sign Up Free</Link>
         </div>
       </main>
     </div>
