@@ -222,12 +222,11 @@ ${userTier === 'pro' ? `
     let ticketNumber: string | null = null;
     const reply = text.text;
 
-    if (reply.includes('support@paybacker.co.uk') && (
-      reply.includes('speak to someone') ||
-      reply.includes('support team') ||
-      reply.includes('get back to you') ||
-      reply.includes('reach our')
-    )) {
+    // Only escalate if the USER asked to speak to someone (not when bot mentions support in passing)
+    const lastUserMsg = messages.filter((m: any) => m.role === 'user').pop()?.content?.toLowerCase() || '';
+    const userWantsHuman = lastUserMsg.includes('speak to') || lastUserMsg.includes('talk to') || lastUserMsg.includes('human') || lastUserMsg.includes('real person') || lastUserMsg.includes('complaint') && lastUserMsg.includes('not help');
+
+    if (userWantsHuman && reply.includes('support@paybacker.co.uk')) {
       try {
         // Auto-create support ticket with conversation history
         const firstUserMsg = messages.find((m: any) => m.role === 'user');
