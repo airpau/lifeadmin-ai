@@ -192,7 +192,7 @@ export default function PricingPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <div className="relative">
         {/* Header */}
-        <header className="container mx-auto px-6 py-6">
+        <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
               <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
@@ -200,9 +200,9 @@ export default function PricingPage() {
                 Pay<span className="text-amber-500">backer</span>
               </span>
             </Link>
-            <div className="flex items-center gap-3">
-              <Link href="/about" className="text-slate-400 hover:text-white text-sm">About</Link>
-              <Link href="/blog" className="text-slate-400 hover:text-white text-sm">Blog</Link>
+            <div className="flex items-center gap-1 md:gap-3">
+              <Link href="/about" className="hidden md:block text-slate-400 hover:text-white text-sm">About</Link>
+              <Link href="/blog" className="hidden md:block text-slate-400 hover:text-white text-sm">Blog</Link>
               <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium">Sign In</Link>
             </div>
           </div>
@@ -211,7 +211,7 @@ export default function PricingPage() {
         {/* Waitlist Banner */}
         {WAITLIST_MODE && (
           <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/10 border-y border-amber-500/20">
-            <div className="container mx-auto px-6 py-3 text-center">
+            <div className="container mx-auto px-4 md:px-6 py-3 text-center">
               <p className="text-amber-400 text-sm font-medium">
                 Launching soon — join the waitlist for early access and 30% off your first month
               </p>
@@ -220,13 +220,13 @@ export default function PricingPage() {
         )}
 
         {/* Hero */}
-        <div className="container mx-auto px-6 py-16 text-center">
+        <div className="container mx-auto px-4 md:px-6 py-10 md:py-16 text-center">
           <div className="inline-flex items-center gap-2 bg-amber-500/10 px-4 py-2 rounded-full text-amber-400 text-sm mb-6">
             <TrendingUp className="h-4 w-4" />
             AI-powered consumer rights for UK households
           </div>
 
-          <h1 className="text-5xl md:text-6xl font-bold text-white mb-4">
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
             Simple, transparent pricing
           </h1>
 
@@ -281,7 +281,7 @@ export default function PricingPage() {
                   key={plan.name}
                   className={`relative bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 transition-all ${
                     plan.highlighted
-                      ? 'border-2 border-amber-500 scale-105'
+                      ? 'border-2 border-amber-500 md:scale-105'
                       : 'border border-slate-800'
                   }`}
                 >
@@ -311,7 +311,7 @@ export default function PricingPage() {
                     <p className="text-slate-400 text-sm mb-4">{plan.description}</p>
 
                     <div className="flex items-baseline gap-1 mb-1">
-                      <span className="text-5xl font-bold text-white">£{price}</span>
+                      <span className="text-3xl md:text-5xl font-bold text-white">£{price}</span>
                       {price > 0 && (
                         <span className="text-slate-400">
                           /{billingCycle === 'monthly' ? 'mo' : 'yr'}
@@ -477,7 +477,7 @@ export default function PricingPage() {
         </div>
 
         {/* Footer */}
-        <footer className="container mx-auto px-6 py-8 mt-16 border-t border-slate-800">
+        <footer className="container mx-auto px-4 md:px-6 py-8 mt-16 border-t border-slate-800">
           <div className="text-center text-slate-500 text-sm">
             <p>© 2026 Paybacker LTD. All prices exclude VAT.</p>
           </div>

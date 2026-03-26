@@ -67,3 +67,14 @@ Full marketing playbook created covering Google Ads, Meta Ads, and influencer ma
 
 ### Strategy Document
 Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)
+
+
+
+## Google Ads API Access (March 2026)
+- Access Level: Explorer (production access)
+- Developer Token: jCSfgPvX1M1zrWb92a3Zyw
+- Customer ID: 390-589-8717
+- Daily Operation Limit: 2,880 ops/day
+- Can do: Create/manage campaigns, ad groups, ads, keywords, budgets, targeting, reporting
+- Cannot do: Keyword Planner API, Audience Insights, billing management, account creation
+- Task logged for Claude Code to build integration + first search campaigns

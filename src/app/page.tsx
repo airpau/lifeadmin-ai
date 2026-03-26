@@ -134,7 +134,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="container mx-auto px-6">
+        <main className="container mx-auto px-4 md:px-6">
           {/* Founding member banner */}
           {foundingBanner && (
             <div className="max-w-4xl mx-auto pt-4">
@@ -666,9 +666,9 @@ export default function Home() {
         </main>
 
         {/* Footer */}
-        <footer className="container mx-auto px-6 py-8 border-t border-slate-800">
+        <footer className="container mx-auto px-4 md:px-6 py-8 border-t border-slate-800">
           <div className="text-center text-slate-500 text-sm space-y-3">
-            <div className="flex flex-wrap justify-center gap-6">
+            <div className="flex flex-wrap justify-center gap-4 md:gap-6">
               <Link href="/about" className="hover:text-white transition-all">About</Link>
               <Link href="/blog" className="hover:text-white transition-all">Blog</Link>
               <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy Policy</Link>

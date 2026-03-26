@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      <header className="container mx-auto px-6 py-6 border-b border-slate-800">
+      <header className="container mx-auto px-4 md:px-6 py-4 md:py-6 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
@@ -40,19 +40,19 @@ export default function AboutPage() {
           <nav className="flex items-center gap-1 md:gap-3 text-sm">
             <Link
               href="/about"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
             >
               About
             </Link>
             <Link
               href="/blog"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
             >
               Blog
             </Link>
             <Link
               href="/pricing"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
+              className="hidden md:block text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-slate-800 transition-all"
             >
               Pricing
             </Link>
@@ -66,7 +66,7 @@ export default function AboutPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-16 max-w-3xl">
+      <main className="container mx-auto px-4 md:px-6 py-10 md:py-16 max-w-3xl">
         {/* Hero */}
         <div className="mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
@@ -253,9 +253,9 @@ export default function AboutPage() {
         </section>
       </main>
 
-      <footer className="container mx-auto px-6 py-8 border-t border-slate-800 mt-16">
+      <footer className="container mx-auto px-4 md:px-6 py-8 border-t border-slate-800 mt-16">
         <div className="text-center text-slate-500 text-sm space-y-3">
-          <div className="flex flex-wrap justify-center gap-6">
+          <div className="flex flex-wrap justify-center gap-4 md:gap-6">
             <Link href="/about" className="hover:text-white transition-all">
               About
             </Link>
