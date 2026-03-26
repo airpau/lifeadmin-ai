@@ -1,45 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { categoriseTransaction as categorise, normaliseMerchantName } from '@/lib/merchant-normalise';
 
 export const runtime = 'nodejs';
 
 function getAdmin() {
   return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
-
-// MUST match the main /api/money-hub/route.ts categorisation exactly
-const DESC_CATS: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'lendinvest', 'skipton b.s'], category: 'mortgage' },
-  { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank'], category: 'loans' },
-  { keywords: ['council', 'winchester city'], category: 'council_tax' },
-  { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power'], category: 'energy' },
-  { keywords: ['thames water', 'severn trent'], category: 'water' },
-  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'vodafone broad'], category: 'broadband' },
-  { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff'], category: 'mobile' },
-  { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'youtube'], category: 'streaming' },
-  { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton'], category: 'fitness' },
-  { keywords: ['tesco', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'ocado'], category: 'groceries' },
-  { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'starbucks', 'costa', 'pret'], category: 'eating_out' },
-  { keywords: ['petrol', 'shell ', 'bp ', 'esso', 'fuel'], category: 'fuel' },
-  { keywords: ['insurance', 'admiral', 'aviva', 'direct line'], category: 'insurance' },
-  { keywords: ['dvla', 'trainline', 'tfl', 'uber', 'bolt', 'parking'], category: 'transport' },
-  { keywords: ['hmrc'], category: 'tax' },
-  { keywords: ['amazon', 'ebay', 'asos', 'next ', 'argos', 'john lewis', 'currys'], category: 'shopping' },
-];
-
-const CATEGORY_MAP: Record<string, string> = {
-  PURCHASE: 'shopping', DEBIT: 'shopping', DIRECT_DEBIT: 'bills',
-  STANDING_ORDER: 'bills', TRANSFER: 'transfers', ATM: 'cash',
-  CREDIT: 'income', FEE: 'fees',
-};
-
-function categorise(desc: string, bankCat: string): string {
-  const d = desc.toLowerCase();
-  for (const { keywords, category } of DESC_CATS) {
-    if (keywords.some(kw => d.includes(kw))) return category;
-  }
-  return CATEGORY_MAP[bankCat] || 'other';
 }
 
 function isTransfer(desc: string, bankCat: string): boolean {
@@ -100,7 +67,15 @@ export async function GET(request: NextRequest) {
 
   // Income drill-down mode
   if (incomeType) {
-    filtered = filtered.filter(t => t.amount > 0 && (t.income_type || 'other') === incomeType);
+    // Case-insensitive match, treat null/empty/unknown/uncategorised as "other"
+    const mergeAsOther = ['other', 'unknown', 'uncategorised', ''];
+    filtered = filtered.filter(t => {
+      if (t.amount <= 0) return false;
+      const type = (t.income_type || 'other').toLowerCase();
+      const target = (incomeType || 'other').toLowerCase();
+      if (target === 'other') return mergeAsOther.includes(type);
+      return type === target;
+    });
 
     const sourceTotals: Record<string, { total: number; count: number }> = {};
     for (const t of filtered) {
@@ -139,7 +114,7 @@ export async function GET(request: NextRequest) {
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
     if (t.amount >= 0) continue;
-    const merchant = t.merchant_name || (t.description || '').substring(0, 30).trim();
+    const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
     if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
     merchantTotals[merchant].total += Math.abs(t.amount);
     merchantTotals[merchant].count++;
