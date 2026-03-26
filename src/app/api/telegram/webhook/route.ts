@@ -284,6 +284,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle /agents
+    // Handle /leads
+    if (text === '/leads') {
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('name, platform, first_message, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (!leads?.length) {
+        await sendTelegram(chatId, 'No leads captured yet.');
+      } else {
+        const list = leads.map(l =>
+          `${l.platform}: ${l.name || 'Unknown'} - "${(l.first_message || '').substring(0, 40)}..." [${l.status}]`
+        ).join('\n');
+        await sendTelegram(chatId, `*Recent Leads (${leads.length})*\n\n${list}`);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     if (text === '/agents') {
       const list = Object.entries(AGENT_NAMES).map(([name, role]) => `  *${name}* - ${role}`).join('\n');
       await sendTelegram(chatId, `*AI Team*\n\n${list}\n\nUse /ask [name] [question] to talk to any agent.`);
