@@ -114,6 +114,19 @@ export async function GET(request: Request) {
       incomeByType[type] = (incomeByType[type] || 0) + parseFloat(t.amount);
     }
 
+    // Merge 'other', 'unknown', 'uncategorised', and empty income types into a single 'Other' entry
+    const mergeAsOther = ['other', 'unknown', 'uncategorised', ''];
+    let otherTotal = 0;
+    for (const key of Object.keys(incomeByType)) {
+      if (mergeAsOther.includes(key.toLowerCase())) {
+        otherTotal += incomeByType[key];
+        delete incomeByType[key];
+      }
+    }
+    if (otherTotal > 0) {
+      incomeByType['Other'] = (incomeByType['Other'] || 0) + otherTotal;
+    }
+
     // Monthly trends (last 6 months)
     const monthlyTrends: Array<{ month: string; income: number; outgoings: number }> = [];
     for (let i = 5; i >= 0; i--) {

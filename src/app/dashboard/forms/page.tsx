@@ -176,7 +176,9 @@ export default function FormsPage() {
     <div className="max-w-5xl">
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Forms & Government Letters</h1>
-        <p className="text-slate-400">Generate formal letters to HMRC, councils, DVLA, NHS, airlines, and more</p>
+        <p className="text-slate-400">Official regulatory forms and government letters. For company complaints, use the{' '}
+          <a href="/dashboard/complaints" className="text-mint-400 hover:text-mint-300 underline underline-offset-2 transition-all">Complaints section</a>.
+        </p>
       </div>
 
       {/* Tabs */}

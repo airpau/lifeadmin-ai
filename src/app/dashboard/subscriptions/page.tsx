@@ -256,10 +256,15 @@ export default function SubscriptionsPage() {
   const totalMonthly = subscriptions
     .filter((s) => s.status === 'active')
     .reduce((sum, s) => {
-      if (s.billing_cycle === 'monthly') return sum + s.amount;
-      if (s.billing_cycle === 'yearly') return sum + s.amount / 12;
-      if (s.billing_cycle === 'quarterly') return sum + s.amount / 3;
-      return sum;
+      // Exclude one-off payments from recurring total
+      if (s.billing_cycle === 'one-time') return sum;
+      let monthlyAmt = s.amount;
+      if (s.billing_cycle === 'yearly') monthlyAmt = s.amount / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = s.amount / 3;
+      // Sanity check: if a single subscription's annual cost exceeds £2,000, exclude it
+      // (likely a misclassified one-off payment or data error)
+      if (monthlyAmt * 12 > 2000) return sum;
+      return sum + monthlyAmt;
     }, 0);
 
   const handleDetectFromInbox = async () => {

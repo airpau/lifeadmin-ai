@@ -209,7 +209,7 @@ export default function PricingPage() {
       )}
 
       {/* Hero */}
-      <div className="container mx-auto px-4 md:px-6 py-12 md:py-16 text-center">
+      <div className="container mx-auto px-4 md:px-6 py-8 md:py-12 text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -240,7 +240,7 @@ export default function PricingPage() {
             </div>
           )}
 
-          <p className="text-xl text-slate-300 mb-12 max-w-2xl mx-auto">
+          <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
             Choose the plan that fits your needs. All plans include our AI agents working 24/7 to get your money back.
           </p>
         </motion.div>
@@ -250,7 +250,7 @@ export default function PricingPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15 }}
-          className="flex items-center justify-center gap-4 mb-10"
+          className="flex items-center justify-center gap-4 mb-8"
         >
           <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-white' : 'text-slate-500'}`}>
             Monthly

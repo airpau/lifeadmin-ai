@@ -164,7 +164,10 @@ export default function DashboardPage() {
         setUserTier(profile.data?.subscription_tier || 'free');
         setBankConnected((banks.count || 0) > 0);
         setComplaintsGenerated(tasks.count || 0);
-        setPendingTasks(userTasks.data || []);
+        // Filter out Paybacker's own transactions from action items
+        setPendingTasks((userTasks.data || []).filter((t: any) =>
+          !((t.provider_name || '').toLowerCase().includes('paybacker'))
+        ));
 
         // Calculate Money Recovery Score
         let saved = parseFloat(String(profile.data?.total_money_recovered || 0));

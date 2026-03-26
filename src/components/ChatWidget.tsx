@@ -35,24 +35,8 @@ export default function ChatWidget() {
   // Pages where the teaser popup should never appear
   const TEASER_EXCLUDED_PATHS = ['/pricing', '/checkout', '/auth', '/login', '/signup'];
 
-  // Auto-engage: show teaser bubble after 5 seconds on first visit only
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const dismissed = sessionStorage.getItem('pb_chat_teaser_dismissed');
-    if (dismissed) return;
-
-    // Don't show teaser on pricing, checkout, or auth pages
-    if (TEASER_EXCLUDED_PATHS.some(p => pathname?.startsWith(p))) return;
-
-    const timer = setTimeout(() => {
-      // Re-check dismissal inside the timeout in case it was dismissed while waiting
-      const dismissedNow = sessionStorage.getItem('pb_chat_teaser_dismissed');
-      if (dismissedNow) return;
-      if (!open) setShowTeaser(true);
-    }, 5000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Teaser is available but does not auto-open. The chat bubble icon is sufficient.
+  // Users can still see the teaser if triggered by explicit interaction in the future.
 
   useEffect(() => {
     const check = () => setHidden(document.body.dataset.hideChat === 'true');

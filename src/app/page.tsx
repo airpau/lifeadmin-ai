@@ -18,7 +18,6 @@ export default function Home() {
   const [error, setError] = useState('');
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
   const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
-  const [stats, setStats] = useState<{ lettersGenerated: number; subscriptionsTracked: number; usersJoined: number; dealClicks: number } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [claimingFounder, setClaimingFounder] = useState(false);
   const [claimResult, setClaimResult] = useState<string | null>(null);
@@ -41,12 +40,6 @@ export default function Home() {
     fetch('/api/founding-member')
       .then(r => r.json())
       .then(d => { if (d.active) setFoundingSpots(d.remaining); })
-      .catch(() => {});
-
-    // Fetch live stats
-    fetch('/api/stats')
-      .then(r => r.json())
-      .then(d => setStats(d))
       .catch(() => {});
 
     if (WAITLIST_MODE) {
@@ -108,7 +101,9 @@ export default function Home() {
         Limited Offer: Get Pro FREE for 30 days
       </p>
       <p className="text-slate-400 text-sm">
-        Only 25 free spaces available. Unlimited letters, bank scanning, spending intelligence, and more. No card required.
+        {foundingSpots >= 25
+          ? 'Join now - only 25 free spaces available. Unlimited letters, bank scanning, spending intelligence, and more. No card required.'
+          : `Only ${foundingSpots} free space${foundingSpots === 1 ? '' : 's'} remaining. Unlimited letters, bank scanning, spending intelligence, and more. No card required.`}
       </p>
     </div>
   ) : null;
@@ -171,7 +166,7 @@ export default function Home() {
                 </a>
               </div>
 
-              {/* Live stats row */}
+              {/* Value proposition stats */}
               <motion.div
                 variants={staggerContainer}
                 initial="hidden"
@@ -179,10 +174,10 @@ export default function Home() {
                 className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto"
               >
                 {[
-                  { value: stats ? stats.lettersGenerated.toString() : '--', label: 'Letters generated' },
-                  { value: stats ? stats.subscriptionsTracked.toString() : '--', label: 'Subscriptions tracked' },
+                  { value: 'AI-Powered', label: 'Complaint letters' },
+                  { value: '50+', label: 'UK providers covered' },
                   { value: '30 sec', label: 'To generate a letter' },
-                  { value: stats ? stats.dealClicks.toString() : '56', label: 'Cheaper deals' },
+                  { value: '9', label: 'Deal categories' },
                 ].map((stat) => (
                   <motion.div key={stat.label} variants={fadeUp} className="text-center">
                     <p className="text-2xl font-bold text-mint-400">{stat.value}</p>
@@ -517,10 +512,10 @@ export default function Home() {
               <p className="text-slate-400 text-lg">Three simple steps to start saving money</p>
             </motion.div>
 
-            <div className="max-w-4xl mx-auto">
-              <div className="grid md:grid-cols-3 gap-8 relative">
+            <div className="max-w-4xl mx-auto overflow-visible">
+              <div className="grid md:grid-cols-3 gap-8 relative overflow-visible">
                 {/* Connecting line (desktop only) */}
-                <div className="hidden md:block absolute top-12 left-[20%] right-[20%] h-0.5 bg-gradient-to-r from-mint-400/50 via-brand-400/50 to-mint-400/50" />
+                <div className="hidden md:block absolute top-12 left-[20%] right-[20%] h-0.5 bg-gradient-to-r from-mint-400/50 via-brand-400/50 to-mint-400/50 pointer-events-none" />
 
                 {[
                   { num: '1', title: 'Describe your issue', desc: 'Tell us what happened. Energy overcharge, flight delay, unfair bill - any consumer dispute.', icon: FileText },

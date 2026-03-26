@@ -416,6 +416,45 @@ export default function ProfilePage() {
         )}
       </div>
 
+      {/* Profile Completeness */}
+      {(() => {
+        const fields = [
+          { label: 'Name', filled: !!profile?.full_name },
+          { label: 'Phone', filled: !!profile?.phone },
+          { label: 'Address', filled: !!profile?.address },
+          { label: 'Postcode', filled: !!profile?.postcode },
+        ];
+        const filledCount = fields.filter(f => f.filled).length;
+        const percent = Math.round((filledCount / fields.length) * 100);
+        if (percent === 100) return null;
+        return (
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-white">Profile {percent}% complete</p>
+              <p className="text-xs text-slate-500">{filledCount}/{fields.length} fields</p>
+            </div>
+            <div className="w-full bg-navy-800 rounded-full h-2 mb-3">
+              <div
+                className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+            <p className="text-xs text-slate-400">
+              Complete your profile to auto-fill complaint letters.
+              {!profile?.full_name && ' Add your name.'}
+              {!profile?.phone && ' Add your phone number.'}
+              {!profile?.address && ' Add your address.'}
+              {!profile?.postcode && ' Add your postcode.'}
+            </p>
+            {!editing && (
+              <button onClick={startEditing} className="mt-2 text-xs text-mint-400 hover:text-mint-300 font-medium transition-all">
+                Complete profile
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Stats */}
       <div className="grid md:grid-cols-3 gap-6 mb-6">
         <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
