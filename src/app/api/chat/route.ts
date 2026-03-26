@@ -228,18 +228,37 @@ ${userTier === 'pro' ? `
 
     if (userWantsHuman && reply.includes('support@paybacker.co.uk')) {
       try {
-        // Auto-create support ticket with conversation history
-        const firstUserMsg = messages.find((m: any) => m.role === 'user');
-        const ticketSubject = firstUserMsg
-          ? firstUserMsg.content.slice(0, 100)
-          : 'Chatbot escalation';
+        // Use the LAST user message as subject (most relevant to their issue)
+        const userMessages = messages.filter((m: any) => m.role === 'user');
+        const lastUserMsg = userMessages[userMessages.length - 1];
+        const ticketSubject = lastUserMsg
+          ? lastUserMsg.content.slice(0, 100)
+          : 'Support request from chatbot';
+
+        // Build description from full conversation
+        const conversationSummary = userMessages
+          .map((m: any) => m.content)
+          .join('\n\n');
+
+        // Priority based on user tier
+        const priority = userTier === 'pro' ? 'urgent'
+          : userTier === 'essential' ? 'high'
+          : 'medium';
+
+        // Categorise based on keywords
+        const allText = conversationSummary.toLowerCase();
+        const category = allText.includes('bank') || allText.includes('truelayer') || allText.includes('sync') ? 'technical'
+          : allText.includes('billing') || allText.includes('payment') || allText.includes('charge') || allText.includes('refund') ? 'billing'
+          : allText.includes('cancel') || allText.includes('subscription') ? 'billing'
+          : allText.includes('letter') || allText.includes('complaint') ? 'feature'
+          : 'general';
 
         const { data: ticket } = await admin.from('support_tickets').insert({
           user_id: userId || null,
           subject: ticketSubject,
-          description: `User escalated from chatbot. Conversation has ${messages.length} messages.`,
-          category: 'general',
-          priority: 'medium',
+          description: conversationSummary,
+          category,
+          priority,
           source: 'chatbot',
           status: 'open',
           metadata: {
