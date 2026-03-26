@@ -33,7 +33,7 @@ function buildReminderEmail(name: string, daysLeft: number, tier: string): strin
     <p style="color:#e2e8f0;font-size:16px;line-height:1.6;">Hi ${name || 'there'},</p>
 
     <p style="color:#94a3b8;font-size:14px;line-height:1.8;">
-      Your free founding member ${tier} access expires in <strong style="color:#fff;">${daysLeft} day${daysLeft !== 1 ? 's' : ''}</strong>.
+      Your free ${tier} trial expires in <strong style="color:#fff;">${daysLeft} day${daysLeft !== 1 ? 's' : ''}</strong>.
     </p>
 
     <p style="color:#94a3b8;font-size:14px;line-height:1.8;">
@@ -83,7 +83,7 @@ function buildExpiredEmail(name: string): string {
     <p style="color:#e2e8f0;font-size:16px;line-height:1.6;">Hi ${name || 'there'},</p>
 
     <p style="color:#94a3b8;font-size:14px;line-height:1.8;">
-      Your free founding member trial has ended and your account has moved to the <strong style="color:#fff;">Free plan</strong>.
+      Your free free trial trial has ended and your account has moved to the <strong style="color:#fff;">Free plan</strong>.
     </p>
 
     <div style="background:#22c55e15;border:1px solid #22c55e30;border-radius:12px;padding:20px;margin:24px 0;">
@@ -113,7 +113,7 @@ function buildExpiredEmail(name: string): string {
     </div>
 
     <p style="color:#94a3b8;font-size:14px;line-height:1.8;">
-      Thank you for being one of our founding members. We genuinely appreciate you testing the platform and hope you'll stick around.
+      Thank you for being one of our free trials. We genuinely appreciate you testing the platform and hope you'll stick around.
     </p>
 
     <p style="color:#64748b;font-size:13px;">- The Paybacker team</p>
@@ -126,9 +126,9 @@ function buildExpiredEmail(name: string): string {
 }
 
 /**
- * Daily founding member expiry cron.
+ * Daily free trial expiry cron.
  * - Sends reminder emails at 7, 3, and 1 days before expiry
- * - Downgrades expired founding members to free (data preserved)
+ * - Downgrades expired free trials to free (data preserved)
  *
  * Schedule: Daily at 8am
  */
@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2. Downgrade expired founding members
+  // 2. Downgrade expired free trials
   const now = new Date().toISOString();
   const { data: expired } = await supabase
     .from('profiles')
@@ -217,7 +217,7 @@ export async function GET(request: NextRequest) {
     // Downgrade to free - ONLY change tier, keep all data
     await supabase.from('profiles').update({
       subscription_tier: 'free',
-      founding_member: false, // Mark as expired founding member
+      founding_member: false, // Mark as expired free trial
     }).eq('id', user.id);
 
     // Send expiry notification email

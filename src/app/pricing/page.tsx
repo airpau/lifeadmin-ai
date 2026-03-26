@@ -229,9 +229,9 @@ export default function PricingPage() {
             <div className="bg-mint-400/10 border border-mint-400/30 rounded-2xl px-6 py-4 max-w-2xl mx-auto mb-8">
               <div className="flex items-center justify-center gap-2 mb-1">
                 <Gift className="h-5 w-5 text-mint-400" />
-                <p className="text-mint-400 font-bold text-lg">Get Pro FREE for 30 days</p>
+                <p className="text-mint-400 font-bold text-lg">Try Pro FREE for 14 days</p>
               </div>
-              <p className="text-slate-400 text-sm">Only 25 free spaces available. No card required. Full Pro access for 30 days.</p>
+              <p className="text-slate-400 text-sm">Full Pro access for 14 days. No card required. Cancel anytime.</p>
             </div>
           ) : (
             <div className="bg-brand-400/10 border border-brand-400/30 rounded-2xl px-6 py-4 max-w-2xl mx-auto mb-8">

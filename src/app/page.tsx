@@ -17,7 +17,7 @@ export default function Home() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
-  const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
+  const [trialActive, setTrialActive] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [claimingFounder, setClaimingFounder] = useState(false);
   const [claimResult, setClaimResult] = useState<string | null>(null);
@@ -36,10 +36,10 @@ export default function Home() {
       localStorage.setItem('pb_ref', ref);
     }
 
-    // Fetch founding member spots remaining
+    // Check if free trial is available
     fetch('/api/founding-member')
       .then(r => r.json())
-      .then(d => { if (d.active) setFoundingSpots(d.remaining); })
+      .then(d => { if (d.active) setTrialActive(true); })
       .catch(() => {});
 
     if (WAITLIST_MODE) {
@@ -91,19 +91,17 @@ export default function Home() {
     </a>
   ) : (
     <Link href="/auth/signup" className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg">
-      {foundingSpots !== null ? `Claim Your Free Pro Account` : 'Create Free Account'}
+      {trialActive ? `Start Free 14-Day Pro Trial` : 'Create Free Account'}
     </Link>
   );
 
-  const foundingBanner = foundingSpots !== null && foundingSpots > 0 ? (
-    <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/30 rounded-2xl px-6 py-4 mb-6 text-center">
-      <p className="text-green-400 font-bold text-lg mb-1">
-        Limited Offer: Get Pro FREE for 30 days
+  const foundingBanner = trialActive ? (
+    <div className="bg-gradient-to-r from-mint-400/10 to-mint-500/10 border border-mint-400/30 rounded-2xl px-6 py-4 mb-6 text-center">
+      <p className="text-mint-400 font-bold text-lg mb-1">
+        Try Pro FREE for 14 days
       </p>
       <p className="text-slate-400 text-sm">
-        {foundingSpots >= 25
-          ? 'Join now - only 25 free spaces available. Unlimited letters, bank scanning, spending intelligence, and more. No card required.'
-          : `Only ${foundingSpots} free space${foundingSpots === 1 ? '' : 's'} remaining. Unlimited letters, bank scanning, spending intelligence, and more. No card required.`}
+        Unlimited complaint letters, bank scanning, spending intelligence, renewal alerts, and more. No card required.
       </p>
     </div>
   ) : null;
@@ -142,7 +140,7 @@ export default function Home() {
             <div className="max-w-4xl mx-auto text-center">
               <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8">
                 <CheckCircle className="h-4 w-4" />
-                <span>{foundingSpots !== null ? 'Limited spaces: Pro plan FREE for 30 days' : '100% free to try - no credit card needed'}</span>
+                <span>{trialActive ? 'Free 14-day Pro trial. No card required.' : '100% free to try. No credit card needed.'}</span>
               </div>
 
               <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
@@ -159,7 +157,7 @@ export default function Home() {
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <Link href="/auth/signup" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
-                  {foundingSpots !== null ? 'Claim Your Free Pro Account' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
+                  {trialActive ? 'Start Free 14-Day Pro Trial' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
                 </Link>
                 <a href="#how-it-works" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-8 py-4 rounded-xl transition-all duration-200 text-center text-lg inline-flex items-center justify-center gap-2">
                   See How It Works
