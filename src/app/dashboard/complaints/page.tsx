@@ -662,68 +662,69 @@ function ComplaintsPageInner() {
                 <label className="block text-sm font-medium text-slate-300 mb-2">
                   Got a bill to dispute? <span className="text-slate-500 font-normal">(optional)</span>
                 </label>
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/jpeg,image/png,image/webp,image/heic,application/pdf';
+                      input.onchange = async (ev) => {
+                        const file = (ev.target as HTMLInputElement).files?.[0];
+                        if (!file) return;
+                        if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
 
-                      const fd = new FormData();
-                      fd.append('file', file);
+                        const fd = new FormData();
+                        fd.append('file', file);
 
-                      setGenerating(true);
-                      setLoadingCaption(0);
-                      const captionTimer = setInterval(() => {
-                        setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
-                      }, 3000);
-                      (window as any).__captionTimer = captionTimer;
+                        setGenerating(true);
+                        setLoadingCaption(0);
+                        const captionTimer = setInterval(() => {
+                          setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length);
+                        }, 3000);
+                        (window as any).__captionTimer = captionTimer;
 
-                      try {
-                        const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
-                        const data = await res.json();
-                        if (data.provider_name) {
-                          // Auto-detect letter type from scanned bill
-                          const prov = (data.provider_name || '').toLowerCase();
-                          let detectedType = 'complaint';
-                          if (/british gas|eon|octopus|ovo|edf|scottish power|energy|gas|electric/i.test(prov)) detectedType = 'energy_dispute';
-                          else if (/sky|virgin media|bt|broadband|vodafone|ee|three|o2|mobile/i.test(prov)) detectedType = 'broadband_complaint';
-                          else if (/hmrc|tax|revenue/i.test(prov)) detectedType = 'hmrc_tax_rebate';
-                          else if (/council/i.test(prov)) detectedType = 'council_tax_band';
-                          else if (/nhs|hospital|gp/i.test(prov)) detectedType = 'nhs_complaint';
-                          else if (/dvla/i.test(prov)) detectedType = 'dvla_vehicle';
-                          else if (/parking|pcn/i.test(prov)) detectedType = 'parking_appeal';
+                        try {
+                          const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
+                          const data = await res.json();
+                          if (data.provider_name) {
+                            const prov = (data.provider_name || '').toLowerCase();
+                            let detectedType = 'complaint';
+                            if (/british gas|eon|octopus|ovo|edf|scottish power|energy|gas|electric/i.test(prov)) detectedType = 'energy_dispute';
+                            else if (/sky|virgin media|bt|broadband|vodafone|ee|three|o2|mobile/i.test(prov)) detectedType = 'broadband_complaint';
+                            else if (/hmrc|tax|revenue/i.test(prov)) detectedType = 'hmrc_tax_rebate';
+                            else if (/council/i.test(prov)) detectedType = 'council_tax_band';
+                            else if (/nhs|hospital|gp/i.test(prov)) detectedType = 'nhs_complaint';
+                            else if (/dvla/i.test(prov)) detectedType = 'dvla_vehicle';
+                            else if (/parking|pcn/i.test(prov)) detectedType = 'parking_appeal';
 
-                          const lineItems = data.extracted_data?.line_items?.map((li: any) => `${li.description}: £${li.amount}`).join(', ') || '';
-                          const fullContext = `Scanned bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${lineItems ? `Line items: ${lineItems}.` : ''} ${data.extracted_data?.reference_number ? `Reference: ${data.extracted_data.reference_number}.` : ''}`;
+                            const lineItems = data.extracted_data?.line_items?.map((li: any) => `${li.description}: £${li.amount}`).join(', ') || '';
+                            const fullContext = `Scanned bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${lineItems ? `Line items: ${lineItems}.` : ''} ${data.extracted_data?.reference_number ? `Reference: ${data.extracted_data.reference_number}.` : ''}`;
 
-                          setFormData(prev => ({
-                            ...prev,
-                            letterType: detectedType,
-                            companyName: data.provider_name || prev.companyName || '',
-                            amount: String(data.amount || prev.amount || ''),
-                            issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
-                          }));
+                            setFormData(prev => ({
+                              ...prev,
+                              letterType: detectedType,
+                              companyName: data.provider_name || prev.companyName || '',
+                              amount: String(data.amount || prev.amount || ''),
+                              issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
+                            }));
+                          } else {
+                            alert('Could not read the document. Please type the details manually.');
+                          }
+                        } catch {
+                          alert('Upload failed. Please try again or type the details manually.');
+                        } finally {
+                          setGenerating(false);
+                          clearInterval((window as any).__captionTimer);
                         }
-                      } catch {
-                        alert('Could not scan the bill. Please try again or type the details manually.');
-                      } finally {
-                        setGenerating(false);
-                        clearInterval((window as any).__captionTimer);
-                      }
+                      };
+                      input.click();
                     }}
-                    className="hidden"
-                    id="bill-upload"
-                  />
-                  <label
-                    htmlFor="bill-upload"
-                    className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm"
+                    className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm text-left"
                   >
                     <svg className="h-5 w-5 text-mint-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Upload a photo or PDF of the bill. Our AI will read it and fill in the details for you.
-                  </label>
+                    Upload a photo or PDF of the bill. Our AI will read it and fill in the details.
+                  </button>
                 </div>
               </div>
 
