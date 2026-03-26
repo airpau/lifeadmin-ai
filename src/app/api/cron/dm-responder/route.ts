@@ -99,7 +99,7 @@ ${SOCIAL_RULES}`,
         first_message: lastMsg.message?.substring(0, 500) || '',
         status: 'new',
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'platform_user_id' }).catch(() => {});
+      }, { onConflict: 'platform_user_id' });
 
       results.push({
         to: sender.name,

@@ -154,7 +154,7 @@ Rules:
           source_post_id: media.id,
           status: 'new',
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'platform_user_id' }).catch(() => {});
+        }, { onConflict: 'platform_user_id' });
 
         results.push({ platform: 'instagram', type: 'comment_reply', comment: comment.text?.substring(0, 50), reply: replyText.text.substring(0, 50), success: !replyData.error });
       }
