@@ -559,18 +559,42 @@ Users should be able to manage their dashboards interactively via the AI chatbot
 - ~~MCP server~~ (unified cross-interface coordination)
 - ~~Action items UX~~ (intelligent routing, pre-filled forms)
 - ~~Support ticket system~~ (chatbot creates tickets, Riley responds, email notifications)
+- ~~Founding member programme re-enabled~~ (Oscar approved Awin)
+- ~~Full website redesign~~ (navy/mint design system)
+- ~~Interactive chatbot Phase 1~~ (5 subscription tools)
+- ~~Interactive chatbot Phase 2~~ (6 Money Hub tools: spending, budgets, transactions)
+- ~~Interactive chatbot Phase 3~~ (4 cross-tab tools: deals, complaints, scanner, contracts)
+- ~~Money Recovery Score widget~~ (auto-calculate, confirm/amend/reject)
+- ~~Profile page address/postcode edit~~ (for auto-filling letters)
+- ~~Admin Leads tab~~ (filter, status, notes, conversion tracking)
+- ~~5 SEO landing pages~~ (energy, flights, gym, council tax, debt)
+- ~~Weekly acquisition report~~ (/cac Telegram command)
+- ~~Weekly Money Digest email~~ (Monday 7am, mint/navy branding)
+- ~~Energy Tariff Monitor~~ (daily Perplexity research + email alerts)
+- ~~Welcome email sequence~~ (5 emails rewritten, mint/navy)
+- ~~Casey branding update~~ (mint/navy, no gold)
+- ~~Meta Custom Audiences~~ (4 segments, weekly sync)
+- ~~Ticket resolution knowledge base~~ (Riley self-improving)
+- ~~Leo CLO daily compliance~~ (enhanced prompt, 12 laws monitored)
+- ~~Auto-close tickets from email replies~~ (thank you detection)
+- ~~Churn prevention automation~~ (7d/14d inactive + pre-renewal emails)
+- ~~Homepage comparison table~~ (17 features, CTA per tier)
+- ~~Unified merchant normalisation~~ (120+ patterns, shared library)
+- ~~PublicNavbar with mobile hamburger~~ (all 7 public pages)
+- ~~All Desktop review bug fixes~~ (pointer-events, sidebar, pricing, deals, auth)
+- ~~Vercel GitHub integration~~ (reconnected after disconnection)
 
 ### STILL OUTSTANDING
-1. Re-enable founding member programme (after Oscar Awin sign-off)
-2. Legal compliance monitoring (Leo CLO)
-3. CJ Affiliate setup (British Gas)
-4. Auto-close tickets from user email replies
-5. Meta App Review for webhook real-time responses
-6. Casey Railway rebuild for autonomous posting
+1. Google Ads search campaigns (3 campaigns, waiting for Desktop strategy)
+2. Meta Ads conversion campaigns (2 campaigns, waiting for Desktop strategy)
+3. Referral system upgrade (dual-sided reward, waiting for Desktop strategy)
+4. Google Ads weekly optimisation cron
+5. 4 SEO blog articles (1500+ words each)
+6. Nightly merchant cleanup/standardisation job
+7. ElevenLabs video content integration
+8. Influencer strategy + MoneySavingExpert promotion (Desktop to plan)
 
 ### AWAITING EXTERNAL
-1. **Oscar Awin sign-off** - testing and verifying tracking
-2. **Google OAuth verification** - submitted 24 March 2026
-3. **Google Ads developer token basic access**
-4. **Lebara campaign parameters from Michael**
-5. **Meta App Review** - needed for real-time webhooks and Instagram DMs
+1. **Google OAuth verification** - submitted 24 March 2026
+2. **Meta App Review** - needed for real-time webhooks and Instagram DMs
+3. **Desktop strategy** - influencer/MSE promotion plan, ad campaign specs
