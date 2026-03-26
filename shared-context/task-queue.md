@@ -36,6 +36,159 @@
 - [ ] Build Google Ads API Integration & Create First Search Campaigns - Build a Google Ads API integration for Paybacker to programmatically create and manage ad campaigns.
 - [ ] Full Website Redesign — Calm & Trustworthy Design System - Complete visual redesign of paybacker.co.uk — landing page, all public pages, and full dashboard. Direction: "Calm & Trustworthy" fintech aesthetic inspired by Monzo, Revolut, and Linear. Must feel fresh, modern, premium, and desirable.
 - [ ] Implement Welcome Email Sequence via Resend - Build a 5-email welcome/onboarding sequence triggered on new user signup. Full email copy and templates are in paybacker-marketing-pack.docx and MCP memory. Use Resend (already integrated). Emails should be behaviour-triggered with conditional content based on user state (bank_connected, letters_generated, plan tier). Sequence: Welcome (immediate), First Value (day 2), Social Proof (day 4), Feature Discovery (day 7), Upgrade Nudge (day 10, free users only). Also implement the Weekly Money Digest email (Monday 7am cron) that pulls user spending data from Supabase. (@Claude Code)
+- [ ] ElevenLabs + HeyGen Integration — Video Ads Pipeline & Voice Features - Integrate ElevenLabs API (and optionally HeyGen API) for automated video ad creation and product voice features.
+
+## ACCOUNTS NEEDED (Paul to set up)
+- ElevenLabs: Creator plan ($22/mo) for voice cloning + sound effects + music. Upgrade to Pro ($99/mo) later for higher volume.
+- HeyGen: Creator plan ($29/mo) for avatar video generation via API.
+- Total: ~$51/mo for both
+
+## PART 1: AUTOMATED VIDEO AD PIPELINE
+
+### Architecture
+Create a new agent (or extend Casey CCO) that generates video ads automatically:
+
+1. Script Generation (Claude API — already available)
+   - Input: Ad campaign type, target audience, key message
+   - Output: 30-second ad script with visual directions
+   - Use the marketing pack copy as templates
+
+2. Voiceover Generation (ElevenLabs API)
+   - POST /v1/text-to-speech/{voice_id}
+   - Use a cloned voice (Paul's) or a premium stock voice
+   - Model: eleven_multilingual_v2 for quality, eleven_turbo_v2_5 for speed
+   - Output: MP3/WAV audio file
+   - Store in Supabase Storage
+
+3. Avatar Video Generation (HeyGen API)
+   - POST /v2/video/generate
+   - Input: Avatar ID + audio file from step 2
+   - Avatar IV model gives realistic lip sync + gestures
+   - Output: MP4 video (720x1280 for social, 1920x1080 for YouTube)
+   - Store in Supabase Storage
+
+4. Background Music (ElevenLabs Music API)
+   - POST /v1/music/compose
+   - Generate subtle background music matching the ad tone
+   - Mix with voiceover at lower volume
+
+5. Social Posting (existing Casey agent)
+   - Upload generated video to Facebook/Instagram via Meta Graph API
+   - Casey already handles daily posting — extend to include video posts
+
+### API Routes to Create
+- POST /api/video-ads/generate — Trigger full pipeline (script → voice → avatar → video)
+- GET /api/video-ads — List generated ads
+- POST /api/video-ads/[id]/publish — Push to social media
+
+### Ad Types to Automate
+1. "Problem-Solution" ads: "Tired of unfair bills? Meet Paybacker." (30s)
+2. "How It Works" ads: 3-step walkthrough with avatar demo (45s)
+3. "Testimonial-style" ads: Avatar reading user success stories (30s)
+4. "Feature Spotlight" ads: One feature deep-dive per ad (15-30s)
+5. "Seasonal" ads: Energy price changes, holiday spending, tax year reminders (30s)
+
+### Environment Variables
+ELEVENLABS_API_KEY=<from ElevenLabs dashboard>
+HEYGEN_API_KEY=<from HeyGen dashboard>
+ELEVENLABS_VOICE_ID=<Paul's cloned voice or chosen stock voice>
+HEYGEN_AVATAR_ID=<chosen avatar>
+
+## PART 2: PRODUCT VOICE FEATURES
+
+### A. Voice-Enabled Chatbot (ElevenLabs Conversational AI)
+Upgrade the existing text chatbot to support voice interaction.
+
+- ElevenLabs Conversational AI SDK handles:
+  - Real-time speech-to-text (user speaks)
+  - AI processing (Claude via existing /api/chat)
+  - Text-to-speech response (ElevenLabs voice)
+  - WebSocket-based for low latency
+
+- Implementation:
+  - Install @11labs/client npm package
+  - Create /api/voice-chat/route.ts endpoint
+  - Upgrade ChatWidget.tsx with a microphone button
+  - When user clicks mic: stream audio → ElevenLabs STT → Claude processes → ElevenLabs TTS → play audio response
+  - Keep text chat as fallback
+  - This is a MASSIVE differentiator — no UK consumer finance app has voice AI
+
+### B. Audio Complaint Letters
+After generating a complaint letter, offer "Listen to your letter" button.
+- POST to ElevenLabs TTS with the letter text
+- Play audio in-browser so user can review before sending
+- Also useful for accessibility (visually impaired users)
+
+### C. Personalised Audio Notifications
+Instead of just push/email notifications, offer optional audio digests:
+- "Good morning Paul. You have 2 subscriptions renewing this week totalling £26.98. Your energy bill looks 15% higher than last month — would you like me to generate a complaint letter?"
+- Generate via ElevenLabs TTS, deliver via browser notification or in-app player
+- Weekly audio digest as alternative to email digest
+
+### D. Multilingual Support (Future)
+ElevenLabs supports 70+ languages with dubbing API.
+- Could auto-translate complaint letters and read them in user's preferred language
+- Expands Paybacker beyond UK English speakers
+
+## PART 3: SOUND EFFECTS & BRANDING
+
+### A. Paybacker Audio Brand
+- Generate custom notification sounds via Sound Effects API
+- "Money saved" celebration sound when user recovers money
+- Subtle UI sounds for key actions (letter sent, scan complete, deal found)
+- Creates a distinctive audio identity
+
+### B. Background Music for Content
+- Generate royalty-free background music for:
+  - Social media video posts
+  - Tutorial/explainer videos
+  - Podcast-style weekly digest (if you go that route)
+
+## IMPLEMENTATION ORDER
+1. Set up ElevenLabs account + API key (Paul)
+2. Create voice cloning (Paul records 2-min sample)
+3. Build TTS endpoint /api/tts — basic text-to-speech
+4. Add "Listen to letter" button on complaint letters
+5. Build voice chatbot (mic button on ChatWidget)
+6. Set up HeyGen account + API key (Paul)
+7. Build video ad generation pipeline
+8. Connect to Casey agent for automated posting
+9. Add audio notifications (optional)
+10. Audio branding sounds (optional)
+
+## COST ESTIMATES
+- ElevenLabs Creator: $22/mo (~100 mins TTS — enough for hundreds of letter readings + chatbot sessions)
+- HeyGen Creator: $29/mo (~enough for 15-20 short video ads/month)
+- Total: ~$51/mo
+- At scale (Pro plans): ~$178/mo for heavy usage
+
+## ELEVENLABS API QUICK REFERENCE
+
+### Text to Speech
+```
+POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}
+Headers: xi-api-key: {API_KEY}, Content-Type: application/json
+Body: { "text": "...", "model_id": "eleven_multilingual_v2", "voice_settings": { "stability": 0.5, "similarity_boost": 0.75 } }
+Response: audio/mpeg stream
+```
+
+### Sound Effects
+```
+POST https://api.elevenlabs.io/v1/sound-generation
+Body: { "text": "celebratory chime, digital money sound", "duration_seconds": 2.0 }
+```
+
+### Music
+```
+POST https://api.elevenlabs.io/v1/music/compose
+Body: { "prompt": "upbeat corporate background music, modern fintech feel", "duration_seconds": 30 }
+```
+
+### Voice Cloning
+```
+POST https://api.elevenlabs.io/v1/voices/add
+Body: FormData with audio files + name + description
+``` (@Claude Code)
 
 ## APPROACH: v0 by Vercel + Claude Code
 

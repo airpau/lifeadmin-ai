@@ -18,6 +18,8 @@ export default function SignupPage() {
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [postcode, setPostcode] = useState('');
+  const [address, setAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verifyMode, setVerifyMode] = useState(false);
@@ -88,6 +90,8 @@ export default function SignupPage() {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           mobile_number: mobile.trim() || null,
+          postcode: postcode.trim() || null,
+          address: address.trim() || null,
           onboarded_at: new Date().toISOString(),
           ...utmUpdate,
         }).eq('id', data.user!.id);
@@ -150,7 +154,7 @@ export default function SignupPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
-            <Image src="/logo.png" alt="Paybacker" width={36} height={36} />
+            <Image src="/logo.png" alt="Paybacker" width={36} height={36} className="rounded-lg" />
             <span className="text-2xl font-bold text-white">
               Pay<span className="text-mint-400">backer</span>
             </span>
@@ -236,6 +240,35 @@ export default function SignupPage() {
                   placeholder="+44 7700 900000"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Postcode
+                <span className="text-slate-500 font-normal ml-1">(for local deals)</span>
+              </label>
+              <input
+                type="text"
+                value={postcode}
+                onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+                className="w-full px-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                placeholder="e.g. SW1A 1AA"
+                maxLength={8}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Address
+                <span className="text-slate-500 font-normal ml-1">(for complaint letters)</span>
+              </label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-4 py-3 bg-navy-950 border border-navy-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                placeholder="123 High Street, London"
+              />
             </div>
 
             <div>

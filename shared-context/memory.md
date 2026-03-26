@@ -102,3 +102,35 @@ Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)
 - Weekly Money Digest email template
 - All saved in paybacker-marketing-pack.docx
 - Implementation notes for Claude Code: use Resend for emails, Casey agent for social, Google Ads API for campaigns
+
+
+
+## ElevenLabs + HeyGen Integration Plan (March 2026)
+- ElevenLabs Creator plan ($22/mo): TTS, voice cloning, sound effects, music, conversational AI
+- HeyGen Creator plan ($29/mo): AI avatar video generation with ElevenLabs voice integration
+- Total: ~$51/mo
+
+### Marketing Use Cases
+- Automated video ad pipeline: script (Claude) → voiceover (ElevenLabs) → avatar video (HeyGen) → post (Casey agent)
+- A/B test dozens of ad variants cheaply
+- Social video content at scale
+
+### Product Use Cases
+- Voice-enabled chatbot (mic button, real-time speech conversation) — major differentiator
+- "Listen to your letter" audio playback on complaint letters
+- Personalised audio notifications/digests
+- Custom audio branding (notification sounds, celebration chimes)
+
+### Task logged for Claude Code with full API references and implementation order
+
+
+
+## UPDATE: ElevenLabs Now Has Native Image & Video (March 2026)
+- ElevenLabs launched Image & Video feature — NO NEED for HeyGen anymore
+- Uses Google Veo + OpenAI Sora for video, Flux/Nanobanana for images
+- Full pipeline on one platform: text → image → video → voiceover → music → lip-sync → export
+- Studio feature: visual canvas for building content pipelines
+- Flows (coming): programmatic API for automated content production at scale
+- Video generation requires paid plan (Creator $22/mo minimum)
+- This simplifies the stack to just ONE subscription (ElevenLabs) instead of ElevenLabs + HeyGen
+- Previous task in MCP should be updated: remove HeyGen references, use ElevenLabs native video instead

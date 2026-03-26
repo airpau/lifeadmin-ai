@@ -146,12 +146,12 @@ export default function ChatWidget() {
                 setShowTeaser(false);
                 sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
               }}
-              className="absolute -top-2 -right-2 bg-slate-200 hover:bg-slate-300 rounded-full w-5 h-5 flex items-center justify-center text-xs text-slate-500"
+              className="absolute -top-2 -right-2 bg-navy-700 hover:bg-navy-600 rounded-full w-5 h-5 flex items-center justify-center text-xs text-slate-400"
             >
               x
             </button>
             <p className="text-sm font-medium mb-2">Been overcharged on a bill?</p>
-            <p className="text-xs text-slate-500 mb-3">I can generate a free complaint letter citing UK law in 30 seconds. Try me.</p>
+            <p className="text-xs text-slate-400 mb-3">I can generate a free complaint letter citing UK law in 30 seconds. Try me.</p>
             <button
               onClick={() => {
                 setShowTeaser(false);
@@ -184,7 +184,7 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-slate-900 border border-navy-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
+        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-navy-800 border-b border-navy-700">
             <div className="flex items-center gap-2">
@@ -198,7 +198,7 @@ export default function ChatWidget() {
               {messages.length > 0 && (
                 <button
                   onClick={() => { setMessages([]); setEscalatedTicket(null); sessionStorage.removeItem('pb_chat_history'); }}
-                  className="text-slate-400 hover:text-white transition-all text-xs px-2 py-1 rounded hover:bg-slate-700"
+                  className="text-slate-400 hover:text-white transition-all text-xs px-2 py-1 rounded hover:bg-navy-700"
                   title="Start new chat"
                 >
                   New Chat

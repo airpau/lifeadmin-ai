@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     // Auto-fill user profile data into placeholders
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, email, phone, mobile_number')
+      .select('full_name, email, phone, mobile_number, address, postcode')
       .eq('id', user.id)
       .single();
 
@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
       const name = profile.full_name || '';
       const email = profile.email || user.email || '';
       const phone = profile.phone || profile.mobile_number || '';
+      const addr = profile.address || '';
+      const pc = profile.postcode || '';
+      const fullAddress = addr && pc ? `${addr}, ${pc}` : addr || pc || '';
 
       result.letter = result.letter
         .replace(/\[YOUR NAME\]/gi, name)
@@ -93,6 +96,8 @@ export async function POST(request: NextRequest) {
         .replace(/\[YOUR PHONE\]/gi, phone)
         .replace(/\[YOUR PHONE NUMBER\]/gi, phone)
         .replace(/\[YOUR TELEPHONE\]/gi, phone)
+        .replace(/\[YOUR ADDRESS\]/gi, fullAddress || '[Address not provided]')
+        .replace(/\[YOUR POSTCODE\]/gi, pc || '[Postcode not provided]')
         .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
     }
 
