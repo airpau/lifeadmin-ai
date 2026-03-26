@@ -6,9 +6,10 @@ export interface ChatTool {
 }
 
 import { subscriptionTools } from './subscriptions';
+import { moneyHubTools } from './money-hub';
 
 export function getAllTools(): ChatTool[] {
-  return [...subscriptionTools];
+  return [...subscriptionTools, ...moneyHubTools];
 }
 
 export function getToolDefinitions(): Array<{

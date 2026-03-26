@@ -298,8 +298,15 @@ export default function Home() {
                     <p className="text-slate-400 text-xs leading-relaxed">Dear Sir/Madam, I am writing to formally dispute my energy bill dated 15 March 2026. Under the Consumer Rights Act 2015, Section 49, services must be carried out with reasonable care...</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {['Energy', 'Broadband', 'Parking', 'Flights', 'Debt', 'HMRC'].map(cat => (
-                      <span key={cat} className="text-xs bg-mint-400/10 text-mint-400 px-2 py-1 rounded-full border border-mint-400/20">{cat}</span>
+                    {[
+                      { label: 'Energy', href: '/deals/energy' },
+                      { label: 'Broadband', href: '/deals/broadband' },
+                      { label: 'Parking', href: '/dashboard/forms' },
+                      { label: 'Flights', href: '/dashboard/forms' },
+                      { label: 'Debt', href: '/dashboard/forms' },
+                      { label: 'HMRC', href: '/dashboard/forms' },
+                    ].map(cat => (
+                      <Link key={cat.label} href={cat.href} className="text-xs bg-mint-400/10 text-mint-400 px-2 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-all">{cat.label}</Link>
                     ))}
                   </div>
                 </div>
