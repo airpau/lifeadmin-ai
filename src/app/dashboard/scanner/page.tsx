@@ -7,7 +7,17 @@ import { createClient } from '@/lib/supabase/client';
 import {
   ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
   Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus, Shield,
+  X, Lock, Eye, EyeOff,
 } from 'lucide-react';
+
+interface EmailConnection {
+  id: string;
+  email: string;
+  provider: string;
+  status: string;
+  connected_at: string;
+  last_scanned_at: string | null;
+}
 
 interface Opportunity {
   id: string;
@@ -81,6 +91,104 @@ export default function ScannerPage() {
   const [bankLoading, setBankLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
+  // Email IMAP connections
+  const [emailConns, setEmailConns] = useState<EmailConnection[]>([]);
+  const [emailLoading, setEmailLoading] = useState(true);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [connectEmail, setConnectEmail] = useState('');
+  const [connectPassword, setConnectPassword] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [scanningEmailId, setScanningEmailId] = useState<string | null>(null);
+  const [emailScanResults, setEmailScanResults] = useState<Record<string, number>>({});
+
+  const detectProvider = (email: string): { name: string; note?: string } => {
+    const domain = email.split('@')[1]?.toLowerCase();
+    const providers: Record<string, { name: string; note?: string }> = {
+      'gmail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled. Go to myaccount.google.com > Security > App Passwords.' },
+      'googlemail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled.' },
+      'outlook.com': { name: 'Outlook' },
+      'hotmail.com': { name: 'Outlook' },
+      'hotmail.co.uk': { name: 'Outlook' },
+      'live.com': { name: 'Outlook' },
+      'live.co.uk': { name: 'Outlook' },
+      'yahoo.com': { name: 'Yahoo', note: 'Requires an App Password.' },
+      'yahoo.co.uk': { name: 'Yahoo', note: 'Requires an App Password.' },
+      'icloud.com': { name: 'iCloud', note: 'Requires an App-Specific Password from appleid.apple.com.' },
+      'me.com': { name: 'iCloud', note: 'Requires an App-Specific Password.' },
+      'btinternet.com': { name: 'BT' },
+      'sky.com': { name: 'Sky' },
+      'virginmedia.com': { name: 'Virgin Media' },
+      'aol.com': { name: 'AOL' },
+      'protonmail.com': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
+      'proton.me': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
+    };
+    if (!domain) return { name: 'Email' };
+    return providers[domain] || { name: domain };
+  };
+
+  const detectedProvider = connectEmail ? detectProvider(connectEmail) : null;
+
+  const loadEmailConnections = async () => {
+    try {
+      const res = await fetch('/api/email/connections');
+      const d = await res.json();
+      setEmailConns(d.connections || []);
+    } catch {}
+    setEmailLoading(false);
+  };
+
+  const handleConnectEmail = async () => {
+    if (!connectEmail || !connectPassword) return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const res = await fetch('/api/email/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: connectEmail, password: connectPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setConnectError(data.error || 'Connection failed');
+        return;
+      }
+      setShowConnectModal(false);
+      setConnectEmail('');
+      setConnectPassword('');
+      loadEmailConnections();
+    } catch (err: any) {
+      setConnectError(err.message || 'Connection failed');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnectEmail = async (id: string) => {
+    try {
+      await fetch(`/api/email/connections?id=${id}`, { method: 'DELETE' });
+      setEmailConns((prev) => prev.filter((c) => c.id !== id));
+    } catch {}
+  };
+
+  const handleScanEmail = async (connectionId: string) => {
+    setScanningEmailId(connectionId);
+    try {
+      const res = await fetch('/api/email/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEmailScanResults((prev) => ({ ...prev, [connectionId]: data.opportunities?.length || 0 }));
+        loadEmailConnections();
+      }
+    } catch {}
+    setScanningEmailId(null);
+  };
+
   useEffect(() => {
     fetch('/api/bank/connection')
       .then(r => r.json())
@@ -90,6 +198,7 @@ export default function ScannerPage() {
       })
       .catch(() => {})
       .finally(() => setBankLoading(false));
+    loadEmailConnections();
   }, []);
 
   const handleSync = async () => {
@@ -143,14 +252,183 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* Email scanning coming soon */}
-      <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 text-center mb-6">
-        <Mail className="h-12 w-12 text-mint-400 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">Email Scanning Coming Soon</h2>
-        <p className="text-slate-400 max-w-md mx-auto mb-4">
-          Our email scanning feature is currently being verified by Google to ensure the highest security standards for your data. This will be available shortly.
-        </p>
+      {/* Email Accounts */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center">
+              <Mail className="h-5 w-5 text-mint-400" />
+            </div>
+            <div>
+              <h2 className="text-white font-semibold text-lg">Email Accounts</h2>
+              <p className="text-slate-500 text-xs">Connect any email to scan for bills, subscriptions, and savings</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setShowConnectModal(true); setConnectError(null); }}
+            className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Connect Email
+          </button>
+        </div>
+
+        {/* Connected email accounts */}
+        {!emailLoading && emailConns.length > 0 && (
+          <div className="space-y-3 mb-3">
+            {emailConns.map((conn) => (
+              <div key={conn.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-navy-950/50 rounded-xl px-4 py-3 border border-navy-700/50 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white text-sm font-medium">{conn.provider}</span>
+                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                    </div>
+                    <p className="text-slate-400 text-xs truncate">{conn.email}</p>
+                    {conn.last_scanned_at && (
+                      <p className="text-slate-500 text-xs">Last scanned: {new Date(conn.last_scanned_at).toLocaleString('en-GB')}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {emailScanResults[conn.id] !== undefined && (
+                    <span className="text-xs text-mint-400">{emailScanResults[conn.id]} opportunities found</span>
+                  )}
+                  <button
+                    onClick={() => handleScanEmail(conn.id)}
+                    disabled={scanningEmailId === conn.id}
+                    className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm"
+                  >
+                    {scanningEmailId === conn.id ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
+                    ) : (
+                      <><RefreshCw className="h-3.5 w-3.5" /> Scan Now</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleDisconnectEmail(conn.id)}
+                    className="text-slate-500 hover:text-red-400 text-xs transition-all"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!emailLoading && emailConns.length === 0 && (
+          <div className="text-center py-6 bg-navy-950/30 rounded-xl border border-navy-700/30">
+            <Mail className="h-8 w-8 text-slate-600 mx-auto mb-2" />
+            <p className="text-slate-500 text-sm">No email accounts connected yet</p>
+            <p className="text-slate-600 text-xs mt-1">Connect your email to scan for overcharges, forgotten subscriptions, and savings</p>
+          </div>
+        )}
+
+        {/* Security note */}
+        <div className="flex items-start gap-2 mt-3 bg-navy-950/30 rounded-lg px-3 py-2">
+          <Lock className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-slate-500">
+            Your credentials are encrypted and used only to scan for bills. We never send emails from your account.
+          </p>
+        </div>
       </div>
+
+      {/* Connect Email Modal */}
+      {showConnectModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+            <button
+              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center">
+                <Mail className="h-5 w-5 text-mint-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Connect Email</h3>
+                <p className="text-slate-400 text-sm">Works with Gmail, Outlook, Yahoo, iCloud, and more</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
+                <input
+                  type="email"
+                  value={connectEmail}
+                  onChange={(e) => setConnectEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                />
+                {detectedProvider && connectEmail.includes('@') && (
+                  <p className="text-xs text-mint-400 mt-1.5 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Detected: {detectedProvider.name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={connectPassword}
+                    onChange={(e) => setConnectPassword(e.target.value)}
+                    placeholder="Email password or App Password"
+                    className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 pr-10 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Provider-specific notes */}
+              {detectedProvider?.note && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                  <p className="text-xs text-amber-400">{detectedProvider.note}</p>
+                </div>
+              )}
+
+              {connectError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
+                  <p className="text-xs text-red-400">{connectError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleConnectEmail}
+                disabled={connecting || !connectEmail || !connectPassword}
+                className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+              >
+                {connecting ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
+                ) : (
+                  <><Lock className="h-4 w-4" /> Connect Securely</>
+                )}
+              </button>
+
+              <div className="flex items-start gap-2 bg-navy-950/50 rounded-lg px-3 py-2">
+                <Shield className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-slate-500">
+                  Your password is encrypted with AES-256 and stored securely. We use read-only IMAP access to scan for financial emails. We never send emails from your account.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Expired bank connections */}
       {!bankLoading && expiredBanks.length > 0 && bankConnections.length === 0 && (
