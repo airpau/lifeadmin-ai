@@ -90,11 +90,31 @@ export async function POST() {
       await saveComparisons(subId, currentPrice, comparisons);
     }
 
+    // Fetch subscription names for the response
+    const subIds = Object.keys(result.comparisons);
+    const { data: subDetails } = await supabase
+      .from('subscriptions')
+      .select('id, provider_name, category, provider_type')
+      .in('id', subIds.length > 0 ? subIds : ['none']);
+
+    const subMap = new Map((subDetails || []).map(s => [s.id, s]));
+
+    const subscriptions = subIds.map(subId => {
+      const sub = subMap.get(subId);
+      return {
+        subscriptionId: subId,
+        subscriptionName: sub?.provider_name || 'Unknown',
+        providerName: sub?.provider_name || 'Unknown',
+        category: sub?.category || sub?.provider_type || '',
+        comparisons: result.comparisons[subId] || [],
+      };
+    });
+
     return NextResponse.json({
       totalAnnualSaving: result.totalAnnualSaving,
       count: result.count,
-      subscriptionsCompared: Object.keys(result.comparisons).length,
-      comparisons: result.comparisons,
+      subscriptionsCompared: subIds.length,
+      subscriptions,
     });
   } catch (err) {
     console.error('Compare POST error:', err);

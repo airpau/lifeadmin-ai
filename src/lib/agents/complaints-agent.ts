@@ -71,6 +71,7 @@ export interface ComplaintInput {
   previousContact?: string;
   feedback?: string;
   previousLetter?: string;
+  letterType?: string;
 }
 
 export interface ComplaintOutput {
@@ -95,10 +96,27 @@ export async function generateComplaintLetter(
 
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const userPrompt = `Generate a formal complaint letter for the following situation:
+  const LETTER_TYPE_CONTEXT: Record<string, string> = {
+    complaint: 'General company complaint. Cite the Consumer Rights Act 2015 and any relevant sector-specific regulations.',
+    energy_dispute: 'Energy bill dispute. Cite Ofgem Standards of Conduct, Gas Act 1986, Electricity Act 1989, Consumer Rights Act 2015 s49. Mention the right to escalate to the Energy Ombudsman after 8 weeks.',
+    broadband_complaint: 'Broadband or mobile complaint. Cite Ofcom General Conditions, the right to exit penalty-free for undisclosed mid-contract price rises, and the Communications Act 2003.',
+    flight_compensation: 'Flight delay/cancellation compensation claim under UK261 (retained EU261). Cite specific compensation amounts: £220 (short-haul), £350 (medium-haul), £520 (long-haul). Mention the 6-year claim window and CAA escalation.',
+    parking_appeal: 'Private parking charge appeal. Cite the Protection of Freedoms Act 2012 (Schedule 4), BPA Code of Practice, and POPLA appeal rights. Challenge signage adequacy and proportionality of the charge.',
+    debt_dispute: 'Debt dispute response. Cite the Consumer Credit Act 1974 s77-79 (right to request CCA agreement), Limitation Act 1980 (6-year statute barred rule), and FCA debt collection guidelines. Request proof of the debt.',
+    refund_request: 'Formal refund request. Cite the Consumer Rights Act 2015 (30-day right to reject, 6-month repair or replace period), and Section 75 Consumer Credit Act for credit card purchases over £100.',
+    hmrc_tax_rebate: 'HMRC tax rebate claim. This is a formal letter to HMRC, not a company complaint. Cite the relevant tax legislation and include NI number/UTR reference.',
+    council_tax_band: 'Council tax band challenge. Address to the Valuation Office Agency (VOA). Cite the Local Government Finance Act 1992 and provide comparable property evidence.',
+    dvla_vehicle: 'DVLA vehicle issue letter. Formal correspondence to DVLA.',
+    nhs_complaint: 'NHS complaint. Follow NHS Complaints Procedure (The Local Authority Social Services and National Health Service Complaints Regulations 2009). Mention PALS and the Parliamentary and Health Service Ombudsman.',
+  };
 
+  const letterTypeContext = input.letterType ? LETTER_TYPE_CONTEXT[input.letterType] || '' : '';
+
+  const userPrompt = `Generate a formal ${input.letterType === 'hmrc_tax_rebate' ? 'letter' : input.letterType === 'council_tax_band' ? 'challenge letter' : 'complaint letter'} for the following situation:
+
+${letterTypeContext ? `LETTER TYPE CONTEXT: ${letterTypeContext}\n` : ''}
 Today's date (use this as the letter date): ${today}
-Company: ${input.companyName}
+${input.letterType === 'hmrc_tax_rebate' ? 'Addressed to' : 'Company'}: ${input.companyName}
 Issue: ${issueDescription}
 Desired Outcome: ${input.desiredOutcome}
 ${input.amount ? `Amount Involved: £${input.amount}` : ''}

@@ -666,7 +666,6 @@ function ComplaintsPageInner() {
                   <input
                     type="file"
                     accept="image/*,application/pdf"
-                    capture="environment"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
@@ -686,11 +685,26 @@ function ComplaintsPageInner() {
                         const res = await fetch('/api/receipts/scan', { method: 'POST', body: fd });
                         const data = await res.json();
                         if (data.provider_name) {
+                          // Auto-detect letter type from scanned bill
+                          const prov = (data.provider_name || '').toLowerCase();
+                          let detectedType = 'complaint';
+                          if (/british gas|eon|octopus|ovo|edf|scottish power|energy|gas|electric/i.test(prov)) detectedType = 'energy_dispute';
+                          else if (/sky|virgin media|bt|broadband|vodafone|ee|three|o2|mobile/i.test(prov)) detectedType = 'broadband_complaint';
+                          else if (/hmrc|tax|revenue/i.test(prov)) detectedType = 'hmrc_tax_rebate';
+                          else if (/council/i.test(prov)) detectedType = 'council_tax_band';
+                          else if (/nhs|hospital|gp/i.test(prov)) detectedType = 'nhs_complaint';
+                          else if (/dvla/i.test(prov)) detectedType = 'dvla_vehicle';
+                          else if (/parking|pcn/i.test(prov)) detectedType = 'parking_appeal';
+
+                          const lineItems = data.extracted_data?.line_items?.map((li: any) => `${li.description}: £${li.amount}`).join(', ') || '';
+                          const fullContext = `Scanned bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${lineItems ? `Line items: ${lineItems}.` : ''} ${data.extracted_data?.reference_number ? `Reference: ${data.extracted_data.reference_number}.` : ''}`;
+
                           setFormData(prev => ({
                             ...prev,
-                            companyName: prev.companyName || data.provider_name || '',
-                            amount: prev.amount || String(data.amount || ''),
-                            issueDescription: prev.issueDescription || `Bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${data.extracted_data?.line_items?.map((li: any) => li.description + ': £' + li.amount).join(', ') || ''}`,
+                            letterType: detectedType,
+                            companyName: data.provider_name || prev.companyName || '',
+                            amount: String(data.amount || prev.amount || ''),
+                            issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
                           }));
                         }
                       } catch {

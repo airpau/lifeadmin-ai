@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
+  const [comparisonDeals, setComparisonDeals] = useState<Array<{ subscriptionName: string; currentPrice: number; dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string; category: string }>>([]);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -274,6 +275,23 @@ export default function DashboardPage() {
             const compData = await compRes.json();
             setComparisonSaving(compData.totalAnnualSaving || 0);
             setComparisonCount(compData.count || 0);
+            // Extract deal details for the widget
+            const dealsList: typeof comparisonDeals = [];
+            for (const sub of (compData.subscriptions || [])) {
+              if (sub.comparisons?.length > 0) {
+                const best = sub.comparisons[0];
+                dealsList.push({
+                  subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+                  currentPrice: best.currentPrice,
+                  dealProvider: best.dealProvider,
+                  dealPrice: best.dealPrice,
+                  annualSaving: best.annualSaving,
+                  dealUrl: best.dealUrl,
+                  category: sub.category || '',
+                });
+              }
+            }
+            setComparisonDeals(dealsList);
           }
         } catch {} // Non-critical, don't block dashboard
 
@@ -503,7 +521,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Savings Opportunity Widget */}
-      <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} />
+      <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />
 
       {/* Price Increase Alerts */}
       {priceAlerts.length > 0 && (

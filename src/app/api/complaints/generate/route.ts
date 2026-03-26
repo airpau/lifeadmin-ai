@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
       previousContact: body.previousContact,
       feedback: body.feedback,
       previousLetter: body.previousLetter,
+      letterType: body.letterType,
     });
 
     // Auto-fill user profile data into placeholders
