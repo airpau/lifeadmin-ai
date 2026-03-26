@@ -357,48 +357,100 @@ export default function ScannerPage() {
             </div>
 
             <div className="space-y-4">
+              {/* Provider selector */}
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
-                <input
-                  type="email"
-                  value={connectEmail}
-                  onChange={(e) => setConnectEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
-                />
-                {detectedProvider && connectEmail.includes('@') && (
-                  <p className="text-xs text-mint-400 mt-1.5 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Detected: {detectedProvider.name}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={connectPassword}
-                    onChange={(e) => setConnectPassword(e.target.value)}
-                    placeholder="Email password or App Password"
-                    className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 pr-10 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                <label className="block text-sm font-medium text-slate-300 mb-2">Choose your email provider</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <a href="/api/gmail/auth" className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all">
+                    <span className="text-xl">📧</span>
+                    <div>
+                      <p className="text-white text-sm font-medium">Gmail</p>
+                      <p className="text-slate-500 text-[10px]">One-click connect</p>
+                    </div>
+                  </a>
+                  <a href="/api/outlook/auth" className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all">
+                    <span className="text-xl">📬</span>
+                    <div>
+                      <p className="text-white text-sm font-medium">Outlook / Hotmail</p>
+                      <p className="text-slate-500 text-[10px]">One-click connect</p>
+                    </div>
+                  </a>
+                  <button onClick={() => setConnectEmail('@yahoo.')} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                    <span className="text-xl">📨</span>
+                    <div>
+                      <p className="text-white text-sm font-medium">Yahoo Mail</p>
+                      <p className="text-slate-500 text-[10px]">App Password required</p>
+                    </div>
+                  </button>
+                  <button onClick={() => setConnectEmail('@')} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                    <span className="text-xl">✉️</span>
+                    <div>
+                      <p className="text-white text-sm font-medium">Other</p>
+                      <p className="text-slate-500 text-[10px]">iCloud, BT, Sky, etc.</p>
+                    </div>
                   </button>
                 </div>
               </div>
 
-              {/* Provider-specific notes */}
-              {detectedProvider?.note && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
-                  <p className="text-xs text-amber-400">{detectedProvider.note}</p>
-                </div>
+              {/* IMAP fields for Yahoo/Other */}
+              {connectEmail && connectEmail.includes('@') && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
+                    <input
+                      type="email"
+                      value={connectEmail === '@yahoo.' || connectEmail === '@' ? '' : connectEmail}
+                      onChange={(e) => setConnectEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                      autoFocus
+                    />
+                    {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && connectEmail !== '@yahoo.' && connectEmail !== '@' && (
+                      <p className="text-xs text-mint-400 mt-1.5 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Detected: {detectedProvider.name}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1.5">Password or App Password</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={connectPassword}
+                        onChange={(e) => setConnectPassword(e.target.value)}
+                        placeholder="Your email password"
+                        className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 pr-10 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {detectedProvider?.note && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                      <p className="text-xs text-amber-400">{detectedProvider.note}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleConnectEmail}
+                    disabled={connecting || !connectEmail || connectEmail === '@yahoo.' || connectEmail === '@' || !connectPassword}
+                    className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+                  >
+                    {connecting ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
+                    ) : (
+                      <><Lock className="h-4 w-4" /> Connect Securely</>
+                    )}
+                  </button>
+                </>
               )}
 
               {connectError && (
@@ -407,22 +459,10 @@ export default function ScannerPage() {
                 </div>
               )}
 
-              <button
-                onClick={handleConnectEmail}
-                disabled={connecting || !connectEmail || !connectPassword}
-                className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
-              >
-                {connecting ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
-                ) : (
-                  <><Lock className="h-4 w-4" /> Connect Securely</>
-                )}
-              </button>
-
               <div className="flex items-start gap-2 bg-navy-950/50 rounded-lg px-3 py-2">
                 <Shield className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-500">
-                  Your password is encrypted with AES-256 and stored securely. We use read-only IMAP access to scan for financial emails. We never send emails from your account.
+                  Gmail and Outlook use secure OAuth (no password stored). Other providers use encrypted IMAP. Read-only access. We never send emails from your account.
                 </p>
               </div>
             </div>

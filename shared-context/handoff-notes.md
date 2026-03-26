@@ -369,3 +369,240 @@ IMPORTANT: Google Ads API is Explorer access only (not Basic yet). Explorer can 
 **Completed:** Designed full UX and implementation plan for 10 founder-approved features. Priority ranking: P1 Sprint 1 (Weeks 1-3): #8 Share Your Win (S, 1-2d), #10 Credit Score Warning (S, 1d), #5 Price Increase Alerts (M, 3-4d), #1 Smart Bill Comparison (L, 5-7d). P2 Sprint 2 (Weeks 4-8): #2 One-Click Switching (M, 3-4d), #9 Receipt Scanner (M, 3-4d), #7 Savings Challenges (M, 4-5d), #3 Annual Financial Report (M, 4-5d). P3 Sprint 3 (Weeks 9-14): #6 WhatsApp Bot (L, 7-10d), #4 Household Mode (L, 10-14d). Total: 41-56 dev days. New DB tables: subscription_comparisons, price_increase_alerts, challenge_templates, user_challenges, whatsapp_links, scanned_receipts, complaint_evidence, households, household_members, household_invitations. New chatbot tools: find_cheaper_alternatives, detect_price_increases, scan_receipt, manage_challenges. Cross-cutting: shared OG image generation, unified notification system, expanded loyalty points.
 
 **Next steps:** Claude Code should start with the two P1 quick wins after current bug fixes are done: (1) Share Your Win — ShareWinModal.tsx + OG image generator + trigger wiring into complaints/subscriptions/deals cancel flows. (2) Credit Score Warning — CreditScoreWarning.tsx modal + credit-product-detector.ts + wire into cancel flow. Then move to Price Increase Alerts and Smart Bill Comparison. Apply for WhatsApp Business API in Week 1 (takes 1-4 weeks) so it's ready for Sprint 3. Full plan with UX wireframes saved as paybacker-10-features-implementation-plan.html in outputs.
+
+
+---
+
+## 2026-03-26 19:30 - Cowork (Desktop) — 10 FEATURES BUILD INSTRUCTIONS FOR CLAUDE CODE
+
+**EXECUTE IN THIS ORDER. Read business-ops.md, memory.md, and the decisions-log.md first for full context.**
+
+### PHASE 1: QUICK WINS (Do these first — 2-3 days total)
+
+#### Feature 8: Share Your Win
+After a successful complaint, subscription cancellation, or deal switch, show a share modal with pre-filled social text and the user's referral link.
+
+Build:
+- `src/components/share/ShareWinModal.tsx` — Modal with share card preview showing savings amount. Buttons: X (twitter.com/intent/tweet?text=...&url=...), Facebook (facebook.com/sharer/sharer.php?u=...), WhatsApp (wa.me/?text=...), Copy to clipboard. All URLs include user's referral link from referrals table.
+- `src/app/api/share/[id]/og.png/route.ts` — Dynamic OG image using @vercel/og (satori). Navy #0A1628 background, mint #34D399 accent, white text. Shows: "I just saved £X with @PaybackerUK" + paybacker.co.uk/?ref=USERID.
+- `src/lib/share-triggers.ts` — Trigger logic. Show modal after: complaint letter generated (if estimated refund > £10), subscription cancelled (with annual savings), deal switched. Don't show more than once per session. Award 25 loyalty points for sharing.
+- Wire into: complaints page (after letter generation), subscriptions (after cancel), and the switching flow.
+
+#### Feature 10: Credit Score Impact Warning
+When cancelling a credit product (credit card, loan, BNPL), show a warning modal about credit score impact.
+
+Build:
+- `src/lib/credit-product-detector.ts` — Function that checks subscription category and provider name. Credit categories: "Credit Card", "Loan", "Buy Now Pay Later", "Store Card". Provider patterns: Barclaycard, Amex, Capital One, HSBC Credit, Klarna, Clearpay, Vanquis, Aqua, etc. Returns { isCreditProduct, productType, warningContent }.
+- `src/components/subscriptions/CreditScoreWarning.tsx` — Warning modal. Shows product-specific impacts (credit cards: utilisation ratio + history length; loans: early repayment fees; BNPL: missed payment reporting). Includes tip: "Consider keeping unused free cards open". Includes FCA disclaimer: "This is general information, not financial advice." Buttons: [Cancel Anyway] [Keep Subscription].
+- Wire into the subscription cancel flow and the chatbot's dismiss_subscription tool. Check credit-product-detector before proceeding with cancellation.
+
+### PHASE 2: PRICE INCREASE ALERTS (3-4 days)
+
+#### Feature 5: Price Increase Alerts
+AI monitors bank transactions month-over-month. Detects silent price increases and prompts complaints.
+
+Database:
+```sql
+CREATE TABLE price_increase_alerts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  merchant_name TEXT NOT NULL,
+  merchant_normalized TEXT,
+  old_amount DECIMAL(10,2) NOT NULL,
+  new_amount DECIMAL(10,2) NOT NULL,
+  increase_pct DECIMAL(5,2),
+  annual_impact DECIMAL(10,2),
+  old_date DATE,
+  new_date DATE,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active','dismissed','actioned')),
+  complaint_id UUID REFERENCES complaints(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE price_increase_alerts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users see own alerts" ON price_increase_alerts FOR ALL USING (auth.uid() = user_id);
+```
+
+Build:
+- `src/lib/price-increase-detector.ts` — Group transactions by normalised merchant (use existing merchant normalisation lib). For merchants with 2+ months of data, compare most recent amount to previous. Flag if: same merchant, increase > 2%, both look like recurring payments (similar date each month), amount > £5. Exclude: groceries, fuel, variable amounts.
+- `src/app/api/cron/price-increases/route.ts` — Daily cron (protected by CRON_SECRET). Runs detection for all users with bank connections. Inserts new alerts. Sends Resend email notification for each new alert.
+- `src/components/alerts/PriceIncreaseCard.tsx` — Alert card showing: old amount, new amount, increase %, annual impact, relevant regulation (Ofcom for telecoms, Ofgem for energy). Buttons: [Write Complaint] (pre-fills complaint with increase details), [Find Cheaper Deal] (links to comparison), [Dismiss].
+- Add to dashboard overview as an alert banner when active alerts exist.
+- Add to scanner page as a new "Price Increases" tab.
+- Add `detect_price_increases` chatbot tool to the tool registry.
+
+### PHASE 3: SMART BILL COMPARISON (5-7 days)
+
+#### Feature 1: Smart Bill Comparison
+Match subscriptions against deals table and energy_tariffs table. Show cheaper alternatives with savings estimate.
+
+Database:
+```sql
+CREATE TABLE subscription_comparisons (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  subscription_id UUID REFERENCES subscriptions(id) ON DELETE CASCADE,
+  deal_id UUID,
+  current_price DECIMAL(10,2),
+  deal_price DECIMAL(10,2),
+  annual_saving DECIMAL(10,2),
+  deal_provider TEXT,
+  deal_name TEXT,
+  deal_url TEXT,
+  checked_at TIMESTAMPTZ DEFAULT NOW(),
+  dismissed BOOLEAN DEFAULT false
+);
+ALTER TABLE subscription_comparisons ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users see own comparisons" ON subscription_comparisons
+  FOR ALL USING (subscription_id IN (SELECT id FROM subscriptions WHERE user_id = auth.uid()));
+
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS category_normalized TEXT;
+```
+
+Build:
+- `src/lib/comparison-engine.ts` — Match subscription category_normalized against deals table WHERE deals.category matches. For energy subs, also query energy_tariffs. Calculate: (current_monthly - deal_monthly) * 12. Only show if annual saving > £24. Return top 3 deals sorted by saving.
+- `src/components/subscriptions/ComparisonCard.tsx` — Side-by-side card within each subscription. Shows: YOUR PLAN (name, price, key detail) vs BEST DEAL (name, price, key detail). Savings in large mint text. Buttons: [Compare All Deals] [Switch Now]. Also list 2 more alternatives below.
+- `src/components/dashboard/SavingsOpportunityWidget.tsx` — Overview widget: "You could save £X/year" with count of subs with cheaper alternatives. Links to subscriptions page.
+- `src/app/api/subscriptions/compare/route.ts` — On-demand comparison for a single subscription.
+- `src/app/api/cron/compare-subscriptions/route.ts` — Weekly batch comparison for all users. Cron protected by CRON_SECRET.
+- Add `find_cheaper_alternatives` chatbot tool.
+
+### PHASE 4: ONE-CLICK SWITCHING (3-4 days, after Phase 3)
+
+#### Feature 2: One-Click Switching
+After comparison, user clicks Switch Now. Pre-fill details and redirect to provider via Awin affiliate link.
+
+Build:
+- `src/components/subscriptions/SwitchingModal.tsx` — 3-step modal: (1) Confirm details — show name, email, address, postcode from profile with [Edit] buttons. Checkbox: "Also cancel old provider". (2) Redirect — copy details to clipboard, open deal URL (Awin affiliate) in new tab. Show "After signing up, come back and click below." (3) Post-switch — "Switch recorded! +50 loyalty points." If cancel box was checked, auto-trigger cancellation email for old provider.
+- `src/app/api/subscriptions/switch/route.ts` — Records the switch: creates new subscription from deal data, updates old subscription status to "Switching", awards 50 loyalty points, optionally triggers cancel email.
+- `src/lib/clipboard-prefill.ts` — Formats user profile data for clipboard copy.
+- Wire the [Switch Now] button from ComparisonCard to open SwitchingModal.
+- After switch completes, trigger Share Your Win modal (#8).
+
+### PHASE 5: RECEIPT SCANNER (3-4 days)
+
+#### Feature 9: Receipt Scanner
+Camera/upload OCR using Claude Vision. Extract provider, amount, date. Add as dispute evidence.
+
+Database:
+```sql
+CREATE TABLE scanned_receipts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  image_url TEXT NOT NULL,
+  extracted_data JSONB,
+  provider_name TEXT,
+  amount DECIMAL(10,2),
+  receipt_date DATE,
+  receipt_type TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE scanned_receipts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users see own receipts" ON scanned_receipts FOR ALL USING (auth.uid() = user_id);
+
+CREATE TABLE complaint_evidence (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  complaint_id UUID REFERENCES complaints(id) ON DELETE CASCADE,
+  receipt_id UUID REFERENCES scanned_receipts(id),
+  evidence_type TEXT DEFAULT 'receipt',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE complaint_evidence ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users see own evidence" ON complaint_evidence
+  FOR ALL USING (complaint_id IN (SELECT id FROM complaints WHERE user_id = auth.uid()));
+```
+
+Build:
+- `src/components/scanner/ReceiptScanner.tsx` — Modal with camera preview (getUserMedia) + drag-and-drop upload zone. Accept JPEG, PNG, PDF, HEIC, max 10MB. On mobile: `<input type="file" accept="image/*" capture="environment">`.
+- `src/app/api/receipts/scan/route.ts` — Upload image to Supabase Storage. Send to Claude Sonnet vision with prompt: "Extract from this receipt/bill: provider_name, total_amount, date, line_items (each with description and amount), reference_number. Return as JSON." Save to scanned_receipts table.
+- `src/components/scanner/ReceiptResults.tsx` — Shows extracted data with editable fields. Action buttons: [Add as Dispute Evidence] [Create Subscription] [Write Complaint About This Bill] [Just Save].
+- Add `scan_receipt` chatbot tool — accepts image, runs extraction, asks what to do.
+- Wire "Attach Evidence" button on complaints page to open ReceiptScanner.
+
+### PHASE 6: SAVINGS CHALLENGES (4-5 days)
+
+#### Feature 7: Savings Challenges
+Gamified micro-challenges verified by bank transactions. Awards loyalty points.
+
+Database:
+```sql
+CREATE TABLE challenge_templates (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  type TEXT CHECK (type IN ('spending','action')),
+  category TEXT,
+  duration_days INTEGER,
+  reward_points INTEGER DEFAULT 100,
+  badge_id UUID,
+  verification_rule JSONB NOT NULL,
+  icon TEXT,
+  active BOOLEAN DEFAULT true
+);
+
+CREATE TABLE user_challenges (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  template_id UUID REFERENCES challenge_templates(id),
+  status TEXT DEFAULT 'active' CHECK (status IN ('active','completed','failed','abandoned')),
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  failed_at TIMESTAMPTZ,
+  progress JSONB DEFAULT '{}'
+);
+ALTER TABLE user_challenges ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users see own challenges" ON user_challenges FOR ALL USING (auth.uid() = user_id);
+```
+
+Build:
+- `src/lib/challenge-engine.ts` — Two types: (a) Spending challenges — daily cron checks if disqualifying transactions appeared (e.g., "No Takeaways" fails if Eating Out transaction detected). (b) Action challenges — check completion state (cancelled a sub, wrote a complaint, referred a friend). Verification rules stored as JSONB in templates.
+- `src/components/rewards/ChallengesTab.tsx` — New tab on Rewards page. Shows: Active challenges with progress bars, Available challenges with [Start] buttons, Completed challenges with points earned.
+- `src/components/rewards/ChallengeCard.tsx` — Individual card: icon, name, progress bar, days remaining, reward amount, action button.
+- `src/app/api/cron/verify-challenges/route.ts` — Daily cron to check spending challenge progress.
+- Add `manage_challenges` chatbot tool (list active, start new, check progress).
+- Seed 12 challenge templates: No Takeaways (7d, 100pts), No Coffee Shops (7d, 100pts), Cancel Unused Sub (action, 150pts), Switch Energy (action, 200pts), Write Complaint (action, 50pts), Refer a Friend (action, 250pts), Stay Under Budget (30d, 300pts), Save £100 This Month (30d, 200pts), No Impulse Buys (7d, 100pts), Review All Subscriptions (action, 75pts), Set Up Budget (action, 50pts), Connect Bank (action, 50pts).
+- After challenge completes, trigger Share Your Win (#8).
+
+### PHASE 7: ANNUAL FINANCIAL REPORT (4-5 days)
+
+#### Feature 3: Annual Financial Report
+Spotify Wrapped for money. PDF + social share card.
+
+Database:
+```sql
+CREATE TABLE annual_reports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  year INTEGER NOT NULL,
+  data JSONB NOT NULL,
+  pdf_url TEXT,
+  share_image_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, year)
+);
+ALTER TABLE annual_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users see own reports" ON annual_reports FOR ALL USING (auth.uid() = user_id);
+```
+
+Build:
+- `src/lib/report-generator.ts` — Aggregate: total_money_recovered (complaints), total_subscriptions_cancelled + savings, deals_switched + savings, spending_by_category_monthly, loyalty_points_earned, challenges_completed. Generate PDF using @react-pdf/renderer with Paybacker branding.
+- `src/app/api/reports/annual/route.ts` — Generate report, save PDF to Supabase Storage, cache in annual_reports table.
+- `src/app/api/reports/annual/share-image/route.ts` — OG image: "I saved £X this year with @PaybackerUK" + stats summary. Uses @vercel/og.
+- `src/components/profile/AnnualReportCard.tsx` — Widget on profile page: stats preview + [Download PDF] + [Share on Social].
+- Available on-demand (profile page) and auto-generated in January via cron. Email notification when ready via Resend.
+
+### AFTER ALL FEATURES
+
+1. Run `npx tsc --noEmit` after each feature
+2. Test each feature end-to-end
+3. Update MCP task queue — mark features complete
+4. Log handoff notes with all new component paths
+5. Commit each feature on its own branch, merge to main
+6. Verify Vercel deployment after each merge
+
+### REMINDERS
+- Design system: navy #0A1628, mint #34D399, orange #FB923C, Plus Jakarta Sans
+- All new tables need RLS policies
+- All cron endpoints need CRON_SECRET protection
+- All new chatbot tools go in src/app/api/chat/tools/
+- GitHub: airpau/lifeadmin-ai
+- Supabase project: kcxxlesishltdmfctlmo
