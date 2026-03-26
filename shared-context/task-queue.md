@@ -1,5 +1,10 @@
 # Task Queue
 
+## Strategic (Analyse in Claude Desktop first)
+- [ ] Interactive chatbot dashboard management - users manage subscriptions, transactions, budgets, deals via chatbot with tool-use. Add company logos (Clearbit/Brandfetch). Full spec in business_log.
+- [ ] Admin dashboard Leads tab - view, filter, update lead status, retargeting
+- [ ] Meta Custom Audiences retargeting from leads table
+
 ## Critical
 - [ ] Re-enable founding member programme (blocked: waiting Oscar Awin sign-off)
 - [ ] Fix Telegram agent callback reliability (agents run but results not always returned)

@@ -485,19 +485,92 @@ Bottom nav: Home, Money Hub, Letters, Scanner, Subs (was Profile)
 
 ## Outstanding Items
 
+### STRATEGIC (Plan in Claude Desktop)
+
+#### Interactive Chatbot Dashboard Management
+Users should be able to manage their dashboards interactively via the AI chatbot, not just view static data. This applies across all tabs:
+
+**Subscriptions Tab:**
+- Recategorise subscriptions via chat ("Move Netflix to entertainment")
+- Edit contract end dates, payment dates, amounts via chat
+- Remove/dismiss subscriptions via chat
+- Add new subscriptions via chatbot prompts (chatbot asks: provider name? amount? billing cycle? end date?)
+- If email/bank scan missed data, chatbot fills gaps interactively
+- Display company logos next to subscriptions (like Emma app) using Clearbit Logo API (logo.clearbit.com/company.com) or Brandfetch API
+
+**Money Hub:**
+- Recategorise transactions via chat ("That Tesco charge was groceries not shopping")
+- Set budgets via chat ("Set my groceries budget to £400")
+- Ask questions about spending ("How much did I spend on eating out last month?")
+- Create savings goals via chat
+
+**Deals Tab:**
+- Ask chatbot to find deals for specific providers ("Find me a better broadband deal")
+- Compare current spend vs deal options via chat
+
+**Complaints/Letters:**
+- Already works: user describes issue, AI generates letter
+- Extend: "Write a complaint to BT about my broadband speed" with context from their subscription data
+
+**Scanner:**
+- Review opportunities via chat ("What did the scanner find?")
+- Take action on opportunities via chat commands
+
+**Implementation Approach:**
+- Chatbot needs tool-use capability to read/write Supabase tables (subscriptions, bank_transactions, budgets, savings_goals)
+- Need a tool-use agentic loop where chatbot calls functions based on user intent
+- Company logos: Clearbit Logo API (free, URL-based: `https://logo.clearbit.com/netflix.com`) or Brandfetch API
+- Phase 1: Subscription management via chatbot + company logos
+- Phase 2: Money Hub interactive management
+- Phase 3: Cross-tab intelligence (chatbot suggests actions based on all data)
+
+**Priority:** High. This differentiates Paybacker from all competitors and makes the product feel magical.
+
+#### Lead Capture and Retargeting
+- Admin dashboard Leads tab: view all captured leads, filter by platform/status, update status, add notes
+- Meta Custom Audiences API: sync leads table to Facebook for ad retargeting (system token has ads_management permission, ad account act_1413289257265883 active)
+- Email nurture: when DM conversations progress, chatbot asks for email, adds to Resend sequences
+- Lead scoring: based on engagement level (comment < DM < asked pricing < visited site)
+
+#### Ticket Resolution Knowledge Base
+- When tickets are resolved, log the solution to a knowledge base
+- Riley references past solutions before responding to new tickets
+- Prevents re-solving the same problems
+- Need: resolutions table with ticket_id, issue_category, solution, steps_taken
+
+#### ElevenLabs Video Content
+- Sign up for Creator plan (£11/month)
+- Text-to-speech with brand voice cloning
+- Video generation (20+ models: Sora, Veo, Kling)
+- Instagram Reels and TikTok content
+- Integration: ElevenLabs API -> Supabase Storage -> Meta API posting
+
+### DONE (completed 25-26 March)
+- ~~Referral system frontend~~ (already built on rewards page)
+- ~~Resend inbound MX~~ (mail.paybacker.co.uk configured, webhook active)
+- ~~Charlie Telegram bot~~ (live with agent triggering, /task, /note, /dev, /leads)
+- ~~Blog agent upgrade~~ (Perplexity research before writing)
+- ~~Page load speed~~ (preconnect hints, LazyImage component)
+- ~~Instagram posting~~ (system token, never expires, fully working)
+- ~~Social media auto-posting~~ (daily at 10am with Perplexity research)
+- ~~Social engagement~~ (AI replies to FB/IG comments and DMs every 1-5 mins)
+- ~~Lead capture~~ (all social interactions captured to leads table)
+- ~~Developer agent~~ (creates PRs from Telegram/Charlie)
+- ~~MCP server~~ (unified cross-interface coordination)
+- ~~Action items UX~~ (intelligent routing, pre-filled forms)
+- ~~Support ticket system~~ (chatbot creates tickets, Riley responds, email notifications)
+
 ### STILL OUTSTANDING
 1. Re-enable founding member programme (after Oscar Awin sign-off)
-2. Referral system frontend (backend built, no share UI)
-3. Resend inbound MX for email-to-ticket
-4. Charlie Telegram bot
-5. Blog agent upgrade (Casey + Perplexity research)
-6. Legal compliance monitoring (Leo CLO)
-7. Page load speed optimisation
-8. Instagram posting (pending Meta app review)
-9. CJ Affiliate setup (British Gas)
+2. Legal compliance monitoring (Leo CLO)
+3. CJ Affiliate setup (British Gas)
+4. Auto-close tickets from user email replies
+5. Meta App Review for webhook real-time responses
+6. Casey Railway rebuild for autonomous posting
 
 ### AWAITING EXTERNAL
 1. **Oscar Awin sign-off** - testing and verifying tracking
-2. **Google OAuth verification** - submitted 24 March 2026 for gmail.readonly scope. 3-5 business day review. Until approved, users see "unverified app" warning (100 user cap).
-3. **Google Ads developer token basic access** - needed for full API capabilities
-4. **Lebara campaign parameters from Michael** - for Lebara Mobile deals
+2. **Google OAuth verification** - submitted 24 March 2026
+3. **Google Ads developer token basic access**
+4. **Lebara campaign parameters from Michael**
+5. **Meta App Review** - needed for real-time webhooks and Instagram DMs
