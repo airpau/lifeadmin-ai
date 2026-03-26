@@ -142,7 +142,7 @@ export default function Home() {
 
         {/* Hero Section */}
         <section className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-400/5 via-transparent to-transparent" />
+          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-400/5 via-transparent to-transparent" />
           <div className="container mx-auto px-4 md:px-6 pt-16 md:pt-28 pb-20">
             <div className="max-w-4xl mx-auto text-center">
               <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8">
@@ -665,7 +665,7 @@ export default function Home() {
 
         {/* CTA Banner */}
         <section className="py-20 md:py-28 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-mint-400/5 via-brand-400/5 to-mint-400/5" />
+          <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-mint-400/5 via-brand-400/5 to-mint-400/5" />
           <div className="container mx-auto px-4 md:px-6 relative">
             <div className="max-w-3xl mx-auto text-center">
               <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
