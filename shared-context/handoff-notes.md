@@ -343,3 +343,22 @@ IMPORTANT: Google Ads API is Explorer access only (not Basic yet). Explorer can 
 **Completed:** Completed full end-to-end UAT & UX test of paybacker.co.uk across 18 pages/features. Found 20 bugs: 3 CRITICAL, 7 HIGH, 7 MEDIUM, 3 LOW. All 20 bugs logged to MCP task queue with detailed descriptions and fix instructions. UAT report saved as HTML. Claude Code bug-fix prompt created with all 20 bugs in priority order with specific fix guidance.
 
 **Next steps:** Claude Code should: 1) Read the MCP task queue to see all 20 BUG items. 2) Fix them in priority order (CRITICAL first: pricing page gap, chatbot auto-open, Paybacker self-dispute). 3) Key fixes: shared currency formatter with Intl.NumberFormat for BUG-08/09, shared Navbar/Footer components for BUG-06/07, merchant name cleaning for BUG-15. 4) Run tsc --noEmit after all fixes. 5) Mark each bug complete in task queue. 6) Commit and verify Vercel deploy.
+
+---
+
+## 2026-03-26 19:30 - Claude Code Session (Continued)
+**Completed:** Universal email scanner (IMAP), all 20 UAT bugs fixed, X/Twitter integration, ElevenLabs TTS, Meta Ads campaigns created (PAUSED), ad metrics + optimisation crons, 4 SEO blog articles, churn prevention, referral Stripe rewards, loading animation for complaints, UK journalist PR list, feature roadmap approved.
+
+**New feature roadmap (approved by founder, needs Desktop design review):**
+1. Smart Bill Comparison (show cheaper alternatives next to subscriptions)
+2. One-Click Switching (pre-fill switch application)
+3. Annual Financial Report (PDF, shareable)
+4. Household Mode (family sharing)
+5. Price Increase Alerts (detect silent increases)
+6. WhatsApp Bot (chatbot on WhatsApp)
+7. Savings Challenges (gamified)
+8. Share Your Win (social share after complaint)
+9. Receipt Scanner (OCR for paper bills)
+10. Credit Score Impact Warning
+
+**Next steps:** Desktop to design UX for these 10 features. Google Ads blocked on Basic API access. Meta Ads blocked on app Live mode.
