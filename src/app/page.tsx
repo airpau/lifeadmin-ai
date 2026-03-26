@@ -675,8 +675,7 @@ export default function Home() {
               <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-2 text-slate-600 text-xs">
-              <span className="inline-block w-4 h-3 bg-gradient-to-b from-blue-600 via-white to-red-600 rounded-sm" />
-              Made in the UK
+              🇬🇧 Made in the UK
             </div>
           </div>
         </div>

@@ -159,7 +159,7 @@ export default function ChatWidget() {
                 setOpen(true);
                 setInput('I want to dispute a bill');
               }}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-semibold px-4 py-2 rounded-lg transition-all w-full"
+              className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-xs font-semibold px-4 py-2 rounded-lg transition-all w-full"
             >
               Tell me more
             </button>
@@ -175,7 +175,7 @@ export default function ChatWidget() {
             sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
             setOpen(true);
           }}
-          className="fixed bottom-20 right-6 z-50 bg-amber-500 hover:bg-amber-600 text-slate-950 w-14 h-14 rounded-full shadow-lg shadow-amber-500/25 flex items-center justify-center transition-all hover:scale-105 md:bottom-6"
+          className="fixed bottom-20 right-6 z-50 bg-mint-400 hover:bg-mint-500 text-navy-950 w-14 h-14 rounded-full shadow-lg shadow-[--shadow-glow-mint] flex items-center justify-center transition-all hover:scale-105 md:bottom-6"
           aria-label="Open chat"
         >
           <MessageCircle className="h-6 w-6" />
@@ -184,9 +184,9 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
+        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-slate-900 border border-navy-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
+          <div className="flex items-center justify-between px-4 py-3 bg-navy-800 border-b border-navy-700">
             <div className="flex items-center gap-2">
               <Image src="/logo.png" alt="Paybacker" width={24} height={24} />
               <div>
@@ -225,7 +225,7 @@ export default function ChatWidget() {
                     <button
                       key={q}
                       onClick={() => { setInput(q); }}
-                      className="block w-full text-left text-sm text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg px-3 py-2 transition-all"
+                      className="block w-full text-left text-sm text-mint-400 bg-mint-400/10 hover:bg-mint-400/20 border border-mint-400/20 rounded-lg px-3 py-2 transition-all"
                     >
                       {q}
                     </button>
@@ -242,8 +242,8 @@ export default function ChatWidget() {
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                     msg.role === 'user'
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'bg-slate-800 text-slate-200'
+                      ? 'bg-mint-400 text-navy-950'
+                      : 'bg-navy-800 text-slate-200'
                   }`}
                 >
                   {msg.role === 'user' ? (
@@ -252,7 +252,7 @@ export default function ChatWidget() {
                     <div className="space-y-2">
                       {msg.content.split('\n').filter(Boolean).map((line, j) => {
                         if (line.startsWith('- ') || line.startsWith('• ')) {
-                          return <p key={j} className="pl-3 before:content-['•'] before:mr-2 before:text-amber-500">{line.replace(/^[-•]\s*/, '')}</p>;
+                          return <p key={j} className="pl-3 before:content-['•'] before:mr-2 before:text-mint-400">{line.replace(/^[-•]\s*/, '')}</p>;
                         }
                         if (line.startsWith('**') && line.endsWith('**')) {
                           return <p key={j} className="font-semibold text-white">{line.replace(/\*\*/g, '')}</p>;
@@ -267,7 +267,7 @@ export default function ChatWidget() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-slate-800 rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                <div className="bg-navy-800 rounded-2xl px-4 py-2.5 flex items-center gap-2">
                   <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
                   {loadingMessage && (
                     <span className="text-xs text-slate-400">{loadingMessage}</span>
@@ -277,7 +277,7 @@ export default function ChatWidget() {
             )}
 
             {escalatedTicket && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-400">
+              <div className="bg-mint-400/10 border border-mint-400/30 rounded-lg px-3 py-2 text-xs text-mint-400">
                 Support ticket <span className="font-semibold">{escalatedTicket}</span> created. Our team will respond via email shortly.
               </div>
             )}
@@ -317,7 +317,7 @@ export default function ChatWidget() {
                     setLoading(false);
                   }
                 }}
-                className="w-full text-xs text-slate-400 hover:text-amber-400 py-1.5 transition-all"
+                className="w-full text-xs text-slate-400 hover:text-mint-400 py-1.5 transition-all"
               >
                 Talk to a human instead
               </button>
@@ -325,7 +325,7 @@ export default function ChatWidget() {
           )}
 
           {/* Input */}
-          <div className="p-3 border-t border-slate-700">
+          <div className="p-3 border-t border-navy-700">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -333,13 +333,13 @@ export default function ChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                className="flex-1 bg-navy-800 border border-navy-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                 disabled={loading}
               />
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || loading}
-                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 w-10 h-10 rounded-xl flex items-center justify-center transition-all"
+                className="bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 w-10 h-10 rounded-xl flex items-center justify-center transition-all"
               >
                 <Send className="h-4 w-4" />
               </button>

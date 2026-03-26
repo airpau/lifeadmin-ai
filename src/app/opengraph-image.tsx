@@ -45,7 +45,7 @@ export default async function Image() {
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
             <span style={{ fontSize: '44px', fontWeight: 800, color: '#ffffff' }}>Pay</span>
-            <span style={{ fontSize: '44px', fontWeight: 800, color: '#f59e0b' }}>backer</span>
+            <span style={{ fontSize: '44px', fontWeight: 800, color: '#34D399' }}>backer</span>
           </div>
 
           {/* Headline */}
@@ -83,7 +83,7 @@ export default async function Image() {
               { value: '56', label: 'UK deals' },
             ].map((stat) => (
               <div key={stat.label} style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '28px', fontWeight: 700, color: '#f59e0b' }}>{stat.value}</span>
+                <span style={{ fontSize: '28px', fontWeight: 700, color: '#34D399' }}>{stat.value}</span>
                 <span style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>{stat.label}</span>
               </div>
             ))}
