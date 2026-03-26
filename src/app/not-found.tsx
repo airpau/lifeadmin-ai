@@ -6,7 +6,7 @@ export default function NotFound() {
     <div className="min-h-screen bg-navy-950 flex items-center justify-center">
       <div className="text-center px-6 max-w-md">
         <Link href="/" className="inline-flex items-center gap-2 mb-8">
-          <Image src="/logo.png" alt="Paybacker" width={36} height={36} />
+          <Image src="/logo.png" alt="Paybacker" width={36} height={36} className="rounded-lg" />
           <span className="text-2xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
         </Link>
 

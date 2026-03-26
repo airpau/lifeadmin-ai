@@ -70,7 +70,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const NavContent = () => (
     <>
       <Link href="/dashboard" className="flex items-center gap-2 mb-2">
-        <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
+        <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
         <span className="text-xl font-bold text-white">
           Pay<span className="text-mint-400">backer</span>
         </span>
@@ -143,7 +143,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile header */}
       <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-navy-900 border-b border-navy-700/50 sticky top-0 z-40">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <Image src="/logo.png" alt="Paybacker" width={28} height={28} />
+          <Image src="/logo.png" alt="Paybacker" width={28} height={28} className="rounded-lg" />
           <span className="text-lg font-bold text-white">
             Pay<span className="text-mint-400">backer</span>
           </span>

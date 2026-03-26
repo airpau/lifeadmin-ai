@@ -37,7 +37,7 @@ export default function EnergyBlogPost() {
       <header className="container mx-auto px-6 py-6 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
+            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
             <span className="text-xl font-bold text-white">
               Pay<span className="text-amber-500">backer</span>
             </span>

@@ -23,7 +23,7 @@ function JoinContent() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
       <div className="max-w-md mx-auto px-6 py-16 text-center">
         <Link href="/" className="inline-flex items-center gap-2 mb-8">
-          <Image src="/logo.png" alt="Paybacker" width={40} height={40} />
+          <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="rounded-lg" />
           <span className="text-2xl font-bold text-white">Pay<span className="text-amber-500">backer</span></span>
         </Link>
 

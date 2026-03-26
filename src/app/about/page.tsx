@@ -32,7 +32,7 @@ export default function AboutPage() {
       <header className="container mx-auto px-4 md:px-6 py-4 md:py-6 border-b border-navy-700/50">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
+            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
             <span className="text-xl font-bold text-white">
               Pay<span className="text-mint-400">backer</span>
             </span>

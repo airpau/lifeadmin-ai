@@ -118,7 +118,7 @@ export default function Home() {
       <header className="fixed top-0 w-full z-50 bg-navy-950/80 backdrop-blur-xl border-b border-navy-700/50">
         <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} />
+            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
             <span className="text-xl font-bold text-white">Pay<span className="text-mint-400">backer</span></span>
           </div>
           <nav className="hidden md:flex items-center gap-1">
@@ -671,7 +671,7 @@ export default function Home() {
           </div>
           <div className="border-t border-navy-700/50 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={24} height={24} />
+              <Image src="/logo.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
               <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-2 text-slate-600 text-xs">

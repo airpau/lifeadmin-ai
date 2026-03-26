@@ -188,7 +188,7 @@ export default function ChatWidget() {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-navy-800 border-b border-navy-700">
             <div className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={24} height={24} />
+              <Image src="/logo.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
               <div>
                 <p className="text-white text-sm font-semibold">Paybacker Support</p>
                 <p className="text-green-400 text-xs">Online</p>
@@ -217,7 +217,7 @@ export default function ChatWidget() {
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
               <div className="text-center py-8">
-                <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="mx-auto mb-3" />
+                <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="rounded-lg" className="mx-auto mb-3" />
                 <p className="text-white font-medium mb-1">Hi there!</p>
                 <p className="text-slate-400 text-sm mb-4">Ask me anything about Paybacker, UK consumer rights, or how to save money.</p>
                 <div className="space-y-2">

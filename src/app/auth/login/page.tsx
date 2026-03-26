@@ -74,7 +74,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
-            <Image src="/logo.png" alt="Paybacker" width={36} height={36} />
+            <Image src="/logo.png" alt="Paybacker" width={36} height={36} className="rounded-lg" />
             <span className="text-2xl font-bold text-white">
               Pay<span className="text-mint-400">backer</span>
             </span>
