@@ -34,6 +34,261 @@
 - [x] ~~Pricing page nav~~ DONE
 - [x] ~~Cancellation email status~~ DONE - no longer changes to pending_cancellation
 - [ ] Build Google Ads API Integration & Create First Search Campaigns - Build a Google Ads API integration for Paybacker to programmatically create and manage ad campaigns.
+- [ ] Full Website Redesign — Calm & Trustworthy Design System - Complete visual redesign of paybacker.co.uk — landing page, all public pages, and full dashboard. Direction: "Calm & Trustworthy" fintech aesthetic inspired by Monzo, Revolut, and Linear. Must feel fresh, modern, premium, and desirable.
+
+## APPROACH: v0 by Vercel + Claude Code
+
+The redesign workflow is:
+1. Use v0.app (Vercel's AI UI builder) to generate polished React + Tailwind + shadcn/ui components from detailed prompts
+2. Claude Code integrates the generated components into the existing Next.js codebase
+3. Paul can also generate components via v0.app directly and share the code
+
+v0 outputs Next.js-compatible React components with Tailwind CSS and shadcn/ui — the exact same stack Paybacker already uses. This means generated components can be dropped in with minimal adaptation.
+
+Paul needs to: Sign up for v0 Premium ($20/mo) at v0.app/pricing to access the Platform API and generation features.
+
+## DESIGN SYSTEM — DESIGN TOKENS
+
+Create a design tokens file at src/lib/design-tokens.ts and tailwind.config.ts overrides:
+
+### Colour Palette
+```
+// Primary
+navy-950: #0A1628        // Main background (dark sections)
+navy-900: #0F1D35        // Card backgrounds (dark mode)
+navy-800: #162544        // Sidebar, secondary surfaces
+navy-700: #1E3A5F        // Borders, dividers (dark)
+
+// Accent
+mint-400: #34D399        // Primary CTA, success states
+mint-500: #10B981        // Hover states
+mint-300: #6EE7B7        // Subtle highlights
+
+// Warm
+orange-400: #FB923C      // Secondary accent (keep Paybacker brand)
+orange-500: #F97316      // Hover state
+
+// Neutrals
+slate-50: #F8FAFC        // Light backgrounds
+slate-100: #F1F5F9       // Card backgrounds (light)
+slate-200: #E2E8F0       // Borders (light)
+slate-400: #94A3B8       // Secondary text
+slate-600: #475569       // Body text
+slate-900: #0F172A       // Headings
+
+// Semantic
+success: #10B981
+warning: #F59E0B
+error: #EF4444
+info: #3B82F6
+```
+
+### Typography
+```
+Font family: "Plus Jakarta Sans" (headings) + "Inter" (body)
+  - Install: @fontsource/plus-jakarta-sans, @fontsource/inter
+
+Heading scale:
+  h1: 3rem (48px), font-weight 800, tracking-tight, Plus Jakarta Sans
+  h2: 2.25rem (36px), font-weight 700, tracking-tight
+  h3: 1.5rem (24px), font-weight 600
+  h4: 1.25rem (20px), font-weight 600
+  
+Body scale:
+  body-lg: 1.125rem (18px), line-height 1.75, Inter
+  body: 1rem (16px), line-height 1.75
+  body-sm: 0.875rem (14px), line-height 1.5
+  caption: 0.75rem (12px), line-height 1.5
+```
+
+### Spacing & Radius
+```
+Card radius: 16px (rounded-2xl)
+Button radius: 12px (rounded-xl)
+Input radius: 10px (rounded-lg)
+Badge radius: 9999px (rounded-full)
+
+Card padding: 24px (p-6)
+Section spacing: 80px (py-20)
+Container max-width: 1280px
+```
+
+### Shadows
+```
+shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)
+shadow-card-hover: 0 10px 25px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.04)
+shadow-glow-mint: 0 0 20px rgba(52,211,153,0.15)
+shadow-glow-orange: 0 0 20px rgba(251,146,60,0.15)
+```
+
+### Animations
+```
+transition-default: all 200ms cubic-bezier(0.4, 0, 0.2, 1)
+transition-bounce: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)
+
+Add framer-motion for:
+- Page transitions (fade + slide up, 300ms)
+- Card hover lifts (translateY -2px)
+- Number count-ups on stats
+- Staggered list animations (50ms delay between items)
+- Sidebar active indicator slide
+```
+
+## PAGES TO REDESIGN (full list)
+
+### PUBLIC PAGES
+
+**1. Landing Page (/) — HIGHEST PRIORITY**
+Current: Dark background, basic hero, feature cards, trust section
+Redesign to:
+- Hero: Large heading "Take Back Control of Your Money" with animated gradient text on "Control", subtitle in slate-400, two CTAs (primary mint "Get Started Free", ghost "See How It Works"), floating dashboard preview with subtle parallax
+- Social proof bar: "Trusted by X users" + TrueLayer/FCA/Stripe logos in muted grey
+- Feature sections: 3 main sections with alternating layout (text left/image right, then swap), each with icon, heading, body, subtle card with screenshot
+  - Section 1: AI Complaint Letters
+  - Section 2: Subscription Intelligence  
+  - Section 3: Money Recovery
+- How it works: 3-step horizontal flow with connecting lines and numbered circles
+- Testimonials: Cards with quotes (even if placeholder for now)
+- CTA banner: Full-width gradient (navy → mint subtle) with heading and signup button
+- Footer: Clean 4-column layout with links, social icons, legal, "Made in the UK" badge
+
+**2. Pricing Page (/pricing)**
+- Add PublicNavbar (currently missing — Bug #3)
+- 3-tier card layout, centre card (Essential) elevated and highlighted with mint border
+- Feature comparison list with checkmarks
+- FAQ accordion below
+- "All plans include" strip at the top
+
+**3. About Page (/about)**
+- Fix Finexer → TrueLayer reference
+- Story section, mission statement, team/founder section
+- Tech stack trust badges (TrueLayer, Stripe, Supabase)
+- Clean timeline of milestones
+
+**4. Blog (/blog)**
+- Card grid (2 or 3 columns) with featured image, date, category tag, title, excerpt
+- Category filter chips at top
+
+**5. Solutions Pages (/solutions/*)**
+- Template layout: hero with problem statement, how Paybacker helps, CTA to sign up
+- Specific pages: energy, broadband, mobile, insurance
+
+**6. SEO Landing Pages**
+- /dispute-energy-bill, /flight-delay-claim, etc.
+- Problem → Solution → CTA template with trust signals
+
+### DASHBOARD PAGES
+
+**7. Sidebar**
+- Redesign: Slim (260px), dark navy-900 background, rounded active indicator with mint-400 left border and subtle mint background tint
+- User avatar + name at top, plan badge
+- Icon + label for each nav item, smooth hover transitions
+- Collapse to icon-only on mobile (bottom tab bar on small screens)
+
+**8. Overview (/dashboard)**
+- Welcome card with user name and "Money Recovery Score" widget
+- Stats row: 4 cards (Total Saved, Active Subscriptions, Open Complaints, Scan Results)
+- Recent activity feed
+- Action items with priority badges
+- Quick action buttons (Write Complaint, Add Subscription, Connect Bank)
+
+**9. Money Hub (/dashboard/money-hub)**
+- Income/spending summary cards with trend arrows
+- Spending breakdown donut chart (recharts, soft colours)
+- Transaction list with merchant logos, category pills, amounts
+- Budget progress bars with colour coding (green → amber → red)
+
+**10. Complaints (/dashboard/complaints)**
+- Letter list with status badges (Draft, Sent, Resolved)
+- Letter editor with clean preview pane
+- Company search with logos
+- ADD "Send via Email" button (mailto: link) — Bug #17
+
+**11. Subscriptions (/dashboard/subscriptions)**
+- Card grid view (not just table) with merchant logo, name, amount, next billing date, status badge
+- Quick actions: cancel, edit, mark as paid
+- Filters: Active, Cancelled, Bank-detected
+- TrueLayer connection banner (redesigned, less intrusive)
+
+**12. Deals (/dashboard/deals)**
+- Category tabs/pills at top
+- Deal cards with provider logo, savings amount, "View Deal" CTA
+- Exclusive badge for member-only deals
+
+**13. Spending (/dashboard/spending)**
+- Category breakdown with horizontal bars
+- Merchant-level drill down
+- Month-over-month comparison
+
+**14. Scanner (/dashboard/scanner)**
+- Opportunity cards with estimated savings, confidence level, action button
+- Categories: overcharges, flight delays, forgotten subs, contract renewals
+
+**15. Forms (/dashboard/forms)**
+- Clean form list with icons and descriptions
+- Form wizard with progress steps
+
+**16. Rewards (/dashboard/rewards)**
+- Tier progress visualisation (Bronze → Platinum)
+- Points balance card
+- Activity list showing how points were earned
+- Badge showcase grid
+
+**17. Profile (/dashboard/profile)**
+- Edit profile form (name, address, phone, postcode) — Bug #33
+- Connected accounts section (bank, email)
+- Subscription plan and billing info
+- Data export / delete account
+
+### SHARED COMPONENTS
+
+**18. PublicNavbar**
+- Sticky, glass-morphism background on scroll (backdrop-blur-lg)
+- Logo left, nav links centre, "Get Started" CTA right
+- Mobile: hamburger → slide-out menu
+
+**19. ChatWidget**
+- Redesigned floating button (smaller, less intrusive)
+- Chat window with modern card UI
+- Remove proactive popup (or limit to once per session) — Bug #7
+
+**20. Footer**
+- 4-column grid: Product, Resources, Legal, Company
+- Social links, "Made with ❤️ in the UK"
+- FCA/TrueLayer/Stripe trust badges
+
+## IMPLEMENTATION ORDER FOR CLAUDE CODE
+
+1. **Design tokens & Tailwind config** — Set up the foundation first
+2. **Install fonts** — Plus Jakarta Sans + Inter via @fontsource
+3. **Install framer-motion** — For animations
+4. **Shared components** — PublicNavbar, Footer, Sidebar, ChatWidget, Card, Button, Badge
+5. **Landing page** — Highest conversion impact
+6. **Pricing, About, Blog** — Public pages
+7. **Dashboard Overview** — First thing users see after login
+8. **Money Hub, Subscriptions, Complaints** — Core features
+9. **Deals, Scanner, Spending, Forms, Rewards, Profile** — Secondary pages
+10. **Mobile responsive pass** — All pages
+
+## v0 PROMPTS FOR PAUL
+
+Paul can use these prompts in v0.app to generate components, then share the code with Claude Code:
+
+**Landing page hero:**
+"Create a modern fintech landing page hero section for 'Paybacker' — a UK consumer finance AI platform that helps people fight unfair bills, track subscriptions, and recover money. Use a dark navy (#0A1628) background, mint (#34D399) accent for the CTA, Plus Jakarta Sans for headings, Inter for body text. Include an animated gradient on the key word, a subtitle, two buttons (primary filled and ghost outline), and a floating dashboard preview mockup on the right side. Make it feel like Monzo meets Linear. Use Tailwind CSS and shadcn/ui."
+
+**Dashboard sidebar:**
+"Create a modern dashboard sidebar for a fintech app. Dark navy (#0F1D35) background, 260px wide. Navigation items: Overview, Money Hub, Complaints, Subscriptions, Deals, Spending, Scanner, Forms, Rewards, Profile. Active state has a mint (#34D399) left border and subtle mint background tint. User avatar and name at top with plan badge. Smooth hover transitions. Collapsible. Use Tailwind CSS, shadcn/ui, and lucide-react icons."
+
+**Subscription card:**
+"Create a subscription card component for a fintech dashboard. Shows: company logo (32x32, with initial circle fallback), subscription name, amount with billing cycle, next billing date, status badge (Active/Cancelled/Paused). Has quick action buttons for edit/cancel. Rounded-2xl, soft shadow, hover lift effect. Use Plus Jakarta Sans headings, Inter body, mint and navy colour scheme, Tailwind CSS, shadcn/ui."
+
+## NOTES
+- Keep all existing functionality — this is a VISUAL redesign, not a feature rewrite
+- Preserve all API routes, data fetching, and business logic
+- The dark theme (navy) works well for the dashboard, use lighter theme for public/marketing pages
+- Ensure all existing shadcn/ui components get the updated design tokens
+- Test on mobile (390px iPhone) and desktop (1440px) at minimum (@Claude Code)
 
 ## Credentials
 - Access Level: Explorer (production access, 2,880 ops/day limit)

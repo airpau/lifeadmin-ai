@@ -78,3 +78,15 @@ Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)
 - Can do: Create/manage campaigns, ad groups, ads, keywords, budgets, targeting, reporting
 - Cannot do: Keyword Planner API, Audience Insights, billing management, account creation
 - Task logged for Claude Code to build integration + first search campaigns
+
+
+
+## Website Redesign Plan (March 2026)
+- Direction: Calm & Trustworthy (Monzo/Revolut/Linear inspired)
+- Scope: Full site — landing page, all public pages, full dashboard
+- Tooling: v0 by Vercel (Premium $20/mo) for component generation + Claude Code for integration
+- Fonts: Plus Jakarta Sans (headings) + Inter (body)
+- Palette: Navy-950 #0A1628 base, mint-400 #34D399 accent, orange-400 #FB923C secondary, slate neutrals
+- Key principles: Emotional predictability, generous whitespace, rounded cards (16px), soft shadows, framer-motion animations
+- Task logged with full design tokens, colour palette, typography scale, every page specification, and v0 prompts
+- Paul approved flexible budget

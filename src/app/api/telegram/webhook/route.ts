@@ -284,6 +284,39 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle /agents
+    // Handle /ads
+    if (text === '/ads') {
+      try {
+        const CRON = process.env.CRON_SECRET;
+        const res = await fetch('https://paybacker.co.uk/api/google-ads?action=performance&days=7', {
+          headers: { 'Authorization': `Bearer ${CRON}` },
+        });
+        const data = await res.json();
+        if (data.error) {
+          await sendTelegram(chatId, `Google Ads error: ${data.error}`);
+        } else {
+          const rows = data.data?.[0]?.results || [];
+          if (rows.length === 0) {
+            await sendTelegram(chatId, 'No Google Ads data for the last 7 days.');
+          } else {
+            let totalClicks = 0, totalImpressions = 0, totalCost = 0, totalConversions = 0;
+            for (const r of rows) {
+              totalClicks += parseInt(r.metrics?.clicks || '0');
+              totalImpressions += parseInt(r.metrics?.impressions || '0');
+              totalCost += parseInt(r.metrics?.costMicros || '0');
+              totalConversions += parseFloat(r.metrics?.conversions || '0');
+            }
+            const costGBP = (totalCost / 1000000).toFixed(2);
+            const cpc = totalClicks > 0 ? (totalCost / totalClicks / 1000000).toFixed(2) : '0';
+            await sendTelegram(chatId, `*Google Ads (Last 7 Days)*\n\nImpressions: ${totalImpressions}\nClicks: ${totalClicks}\nCost: £${costGBP}\nConversions: ${totalConversions}\nAvg CPC: £${cpc}`);
+          }
+        }
+      } catch (err: any) {
+        await sendTelegram(chatId, `Ads check failed: ${err.message}`);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     // Handle /leads
     if (text === '/leads') {
       const { data: leads } = await supabase
