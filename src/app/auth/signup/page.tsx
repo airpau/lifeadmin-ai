@@ -103,12 +103,11 @@ export default function SignupPage() {
           localStorage.removeItem('pb_ref');
         }
 
-        // Founding member auto-upgrade disabled until Awin testing complete
-        // TODO: Re-enable after Oscar signs off
-        // fetch('/api/founding-member', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        // }).catch(() => {});
+        // Founding member: first 25 signups get Pro free for 30 days
+        fetch('/api/founding-member', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => {});
 
         // Fire Awin S2S lead tracking — must be awaited before navigation
         const awinRes = await fetch('/api/awin/signup', {
