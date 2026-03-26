@@ -30,7 +30,7 @@ async function generateImage(prompt: string): Promise<string | null> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instances: [{ prompt: `Dark navy blue background (#0f172a), gold amber accents (#f59e0b), ${prompt}, absolutely no text no words no letters, premium fintech aesthetic` }],
+          instances: [{ prompt: `Dark navy blue background (#0f172a), mint green accents (#34d399), soft orange highlights (#FB923C), ${prompt}, absolutely no text no words no letters, premium fintech aesthetic, clean modern design` }],
           parameters: { sampleCount: 1, aspectRatio: '1:1' },
         }),
       }
@@ -139,10 +139,13 @@ Your job: write ONE social media post based on today's UK consumer news. Connect
 Paybacker features you can mention:
 - Free AI complaint letters citing UK consumer law (energy, broadband, flights, debt, parking, council tax)
 - Bank scanning to detect all subscriptions and recurring payments
-- 59+ deals from UK providers (energy, broadband, mobile, insurance, mortgages, loans)
+- 53+ deals from UK providers (energy, broadband, mobile, insurance, mortgages, loans)
 - Contract tracking with renewal alerts (30/14/7 days before)
-- AI cancellation emails
+- AI cancellation emails with legal context
+- Spending intelligence dashboard with category breakdown
 - First 25 members get Pro free for 30 days
+
+Brand identity: Calm, trustworthy, modern fintech. Colours are deep navy and mint green, not gold/amber.
 
 Rules:
 - British English, £ symbols
@@ -154,7 +157,7 @@ Rules:
 - Add 8-12 relevant hashtags at the end
 - Do NOT repeat topics from recent posts
 
-Return JSON: {"caption": "the post text", "imagePrompt": "brief description for image generation, abstract, no text"}`,
+Return JSON: {"caption": "the post text", "imagePrompt": "brief description for image generation, dark navy background with mint green and soft orange abstract shapes, no text no words no letters"}`,
     messages: [{
       role: 'user',
       content: `Today's UK consumer news:\n${researchContext || 'No research available - write about a general UK consumer rights topic.'}\n\nRecent posts (avoid repeating):\n${recentTopics || 'None yet'}`,
@@ -163,7 +166,7 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief description for 
 
   const postBlock = postRes.content.find(b => b.type === 'text');
   let caption = '';
-  let imagePrompt = 'golden abstract financial symbols floating on dark background';
+  let imagePrompt = 'abstract mint green and navy blue financial symbols, clean modern fintech aesthetic, dark background';
 
   if (postBlock?.type === 'text') {
     try {

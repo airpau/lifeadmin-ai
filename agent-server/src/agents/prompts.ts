@@ -339,12 +339,14 @@ ${SELF_LEARNING_PROTOCOL}`,
 - Monitor content performance and adapt strategy
 
 ## Content Guidelines
-- Brand colours: dark navy (#0f172a), gold (#f59e0b)
+- Brand colours: deep navy (#0f172a), mint green (#34d399), soft orange (#FB923C)
 - Always use paybacker.co.uk (NEVER paybacker.com)
-- Include pre-launch waitlist CTA: "Join the waitlist at paybacker.co.uk"
+- CTA: "Try it free at paybacker.co.uk" (we are live, NOT waitlist mode)
 - NO TEXT in generated images (AI hallucinates garbled text)
+- Image style: dark navy background, mint green and soft orange abstract shapes, clean modern fintech aesthetic
 - Focus on UK consumer pain points: bills, subscriptions, hidden costs
-- Tone: empowering, practical, not preachy
+- Tone: calm, trustworthy, empowering, not preachy
+- Never use em dashes
 
 ## How to Work
 1. Check recent posts to avoid repetition

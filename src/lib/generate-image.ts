@@ -5,9 +5,9 @@ const IMAGEN_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict';
 
 const BRAND_PREFIX =
-  'Dark navy blue background (#0f172a), gold/amber accent colour (#f59e0b), clean modern fintech design, professional UK financial brand called Paybacker.';
+  'Dark navy blue background (#0f172a), mint green accent (#34d399), soft warm orange highlights (#FB923C), clean modern fintech design, calm and trustworthy UK financial brand.';
 const BRAND_SUFFIX =
-  'High contrast white text. Premium minimalist style. No stock photo faces. Abstract or graphical elements only.';
+  'Premium minimalist style. No stock photo faces. No text no words no letters. Abstract or graphical elements only.';
 
 export function buildBrandedPrompt(imagePrompt: string): string {
   return `${BRAND_PREFIX} ${imagePrompt} ${BRAND_SUFFIX}`;
