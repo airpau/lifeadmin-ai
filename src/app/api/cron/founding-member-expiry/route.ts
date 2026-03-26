@@ -217,7 +217,9 @@ export async function GET(request: NextRequest) {
     // Downgrade to free - ONLY change tier, keep all data
     await supabase.from('profiles').update({
       subscription_tier: 'free',
-      founding_member: false, // Mark as expired free trial
+      subscription_status: 'expired',
+      founding_member: false,
+      trial_expired_at: new Date().toISOString(),
     }).eq('id', user.id);
 
     // Send expiry notification email

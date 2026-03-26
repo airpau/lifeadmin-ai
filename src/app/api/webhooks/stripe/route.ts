@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
             subscription_status: 'active',
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
+            trial_converted_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', userId)

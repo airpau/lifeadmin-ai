@@ -60,8 +60,9 @@ export async function POST(request: NextRequest) {
     await admin.from('profiles').update({
       subscription_tier: FREE_TRIAL_TIER,
       subscription_status: 'trialing',
-      founding_member: true, // reuse this flag to track "trial used"
+      founding_member: true,
       founding_member_expires: expiresAt.toISOString(),
+      trial_started_at: new Date().toISOString(),
     }).eq('id', user.id);
 
     return NextResponse.json({

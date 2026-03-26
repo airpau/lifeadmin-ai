@@ -23,6 +23,8 @@ export default function DashboardPage() {
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const [moneySaved, setMoneySaved] = useState(0);
   const [potentialSavings, setPotentialSavings] = useState(0);
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
+  const [trialExpired, setTrialExpired] = useState(false);
   const [unconfirmedSavings, setUnconfirmedSavings] = useState<{ id: string; provider_name: string; money_saved: number }[]>([]);
   const [editingSavingId, setEditingSavingId] = useState<string | null>(null);
   const [editingSavingAmount, setEditingSavingAmount] = useState('');
@@ -145,7 +147,7 @@ export default function DashboardPage() {
         if (!user) return;
 
         const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
-          supabase.from('profiles').select('subscription_tier, total_money_recovered').eq('id', user.id).single(),
+          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).single(),
           supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('tasks').select('id', { count: 'exact', head: true })
@@ -163,6 +165,17 @@ export default function DashboardPage() {
 
         setUserTier(profile.data?.subscription_tier || 'free');
         setBankConnected((banks.count || 0) > 0);
+
+        // Check trial status
+        if (profile.data?.founding_member && profile.data?.founding_member_expires && !profile.data?.stripe_subscription_id) {
+          const expiresAt = new Date(profile.data.founding_member_expires);
+          const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+          if (daysLeft > 0) {
+            setTrialDaysLeft(daysLeft);
+          } else {
+            setTrialExpired(true);
+          }
+        }
         setComplaintsGenerated(tasks.count || 0);
         // Filter out Paybacker's own transactions from action items
         setPendingTasks((userTasks.data || []).filter((t: any) =>
@@ -290,6 +303,33 @@ export default function DashboardPage() {
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
           <CheckCircle className="h-4 w-4" />
           {syncMessage}
+        </div>
+      )}
+
+      {/* Trial expiry banner */}
+      {trialExpired && (
+        <div className="mb-6 bg-brand-400/10 border border-brand-400/30 rounded-xl p-5 flex items-center justify-between">
+          <div>
+            <p className="text-white font-semibold text-sm">Your free Pro trial has ended</p>
+            <p className="text-slate-400 text-xs mt-1">Upgrade to keep unlimited letters, daily bank sync, spending intelligence, and all Pro features. All your data is safe.</p>
+          </div>
+          <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all text-sm whitespace-nowrap ml-4">
+            Upgrade Now
+          </Link>
+        </div>
+      )}
+
+      {trialDaysLeft !== null && trialDaysLeft <= 7 && (
+        <div className="mb-6 bg-mint-400/10 border border-mint-400/30 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-mint-400" />
+            <p className="text-white text-sm">
+              Pro trial ends in <span className="text-mint-400 font-semibold">{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</span>. Upgrade to keep all features.
+            </p>
+          </div>
+          <Link href="/pricing" className="text-mint-400 hover:text-mint-300 text-sm font-medium whitespace-nowrap ml-4">
+            View Plans
+          </Link>
         </div>
       )}
 

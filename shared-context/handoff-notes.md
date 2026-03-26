@@ -362,3 +362,10 @@ IMPORTANT: Google Ads API is Explorer access only (not Basic yet). Explorer can 
 10. Credit Score Impact Warning
 
 **Next steps:** Desktop to design UX for these 10 features. Google Ads blocked on Basic API access. Meta Ads blocked on app Live mode.
+
+---
+
+## 2026-03-26 19:30:11 - Cowork (Desktop App)
+**Completed:** Designed full UX and implementation plan for 10 founder-approved features. Priority ranking: P1 Sprint 1 (Weeks 1-3): #8 Share Your Win (S, 1-2d), #10 Credit Score Warning (S, 1d), #5 Price Increase Alerts (M, 3-4d), #1 Smart Bill Comparison (L, 5-7d). P2 Sprint 2 (Weeks 4-8): #2 One-Click Switching (M, 3-4d), #9 Receipt Scanner (M, 3-4d), #7 Savings Challenges (M, 4-5d), #3 Annual Financial Report (M, 4-5d). P3 Sprint 3 (Weeks 9-14): #6 WhatsApp Bot (L, 7-10d), #4 Household Mode (L, 10-14d). Total: 41-56 dev days. New DB tables: subscription_comparisons, price_increase_alerts, challenge_templates, user_challenges, whatsapp_links, scanned_receipts, complaint_evidence, households, household_members, household_invitations. New chatbot tools: find_cheaper_alternatives, detect_price_increases, scan_receipt, manage_challenges. Cross-cutting: shared OG image generation, unified notification system, expanded loyalty points.
+
+**Next steps:** Claude Code should start with the two P1 quick wins after current bug fixes are done: (1) Share Your Win — ShareWinModal.tsx + OG image generator + trigger wiring into complaints/subscriptions/deals cancel flows. (2) Credit Score Warning — CreditScoreWarning.tsx modal + credit-product-detector.ts + wire into cancel flow. Then move to Price Increase Alerts and Smart Bill Comparison. Apply for WhatsApp Business API in Week 1 (takes 1-4 weeks) so it's ready for Sprint 3. Full plan with UX wireframes saved as paybacker-10-features-implementation-plan.html in outputs.
