@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
       feedback: body.feedback,
       previousLetter: body.previousLetter,
       letterType: body.letterType,
+      billContext: body.billContext,
     });
 
     // Auto-fill user profile data into placeholders

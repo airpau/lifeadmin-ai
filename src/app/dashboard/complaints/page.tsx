@@ -285,6 +285,8 @@ function ComplaintsPageInner() {
     incidentDate: '',
     previousContact: '',
   });
+  const [uploadedBillContext, setUploadedBillContext] = useState<string | null>(null);
+  const [uploadedBillName, setUploadedBillName] = useState<string | null>(null);
 
   const [generating, setGenerating] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -354,7 +356,11 @@ function ComplaintsPageInner() {
       const res = await fetch('/api/complaints/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          // Include scanned bill context as additional info for the AI
+          ...(uploadedBillContext ? { billContext: uploadedBillContext } : {}),
+        }),
       });
 
       const data = await res.json();
@@ -700,12 +706,16 @@ function ComplaintsPageInner() {
                           const lineItems = data.extracted_data?.line_items?.map((li: any) => `${li.description}: £${li.amount}`).join(', ') || '';
                           const fullContext = `Scanned bill from ${data.provider_name || 'provider'} for £${data.amount || '?'} dated ${data.receipt_date || 'unknown'}. ${lineItems ? `Line items: ${lineItems}.` : ''} ${data.extracted_data?.reference_number ? `Reference: ${data.extracted_data.reference_number}.` : ''}`;
 
+                          // Store bill context separately (not in the description field)
+                          setUploadedBillContext(fullContext);
+                          setUploadedBillName(file.name);
+
+                          // Only auto-fill company name and amount (not the description)
                           setFormData(prev => ({
                             ...prev,
                             letterType: detectedType,
                             companyName: data.provider_name || prev.companyName || '',
                             amount: String(data.amount || prev.amount || ''),
-                            issueDescription: prev.issueDescription ? `${prev.issueDescription}\n\n${fullContext}` : fullContext,
                           }));
                         } else if (data.error) {
                           alert('Scan error: ' + data.error);
@@ -723,6 +733,25 @@ function ComplaintsPageInner() {
                     }}
                   />
                 </label>
+
+                {uploadedBillContext && (
+                  <div className="mt-2 flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-mint-400 flex-shrink-0" />
+                      <div>
+                        <p className="text-mint-400 text-xs font-medium">Bill uploaded and scanned</p>
+                        <p className="text-slate-500 text-[10px]">{uploadedBillName || 'Document'} - details extracted. File not stored.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUploadedBillContext(null); setUploadedBillName(null); }}
+                      className="text-slate-500 hover:text-white text-xs ml-2"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>

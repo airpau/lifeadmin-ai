@@ -59,39 +59,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
 
-    // Determine file extension
-    const extMap: Record<string, string> = {
-      'image/jpeg': 'jpg',
-      'image/png': 'png',
-      'image/webp': 'webp',
-      'application/pdf': 'pdf',
-    };
-    const ext = extMap[fileType] || 'jpg';
-    const timestamp = Date.now();
-    const storagePath = `receipts/${user.id}/${timestamp}.${ext}`;
-
-    // Upload to Supabase Storage (optional - don't block scan if it fails)
+    // File is NOT stored permanently - only used for AI extraction then discarded
     const admin = getAdmin();
-    let imageUrl = '';
-    try {
-      const { error: uploadError } = await admin.storage
-        .from('media')
-        .upload(storagePath, buffer, {
-          contentType: fileType,
-          upsert: true,
-        });
-
-      if (!uploadError) {
-        const { data: urlData } = admin.storage
-          .from('media')
-          .getPublicUrl(storagePath);
-        imageUrl = urlData.publicUrl;
-      } else {
-        console.error('Storage upload error (non-blocking):', uploadError.message);
-      }
-    } catch (storageErr: any) {
-      console.error('Storage error (non-blocking):', storageErr.message);
-    }
 
     // Send to Claude Vision for extraction
     const anthropic = new Anthropic({
@@ -160,7 +129,7 @@ export async function POST(request: NextRequest) {
         .from('scanned_receipts')
         .insert({
           user_id: user.id,
-          image_url: imageUrl || 'pending',
+          image_url: 'not_stored',
           extracted_data: extractedData,
           provider_name: extractedData.provider_name || null,
           amount: extractedData.total_amount ? parseFloat(extractedData.total_amount) : null,
@@ -177,7 +146,7 @@ export async function POST(request: NextRequest) {
     // Always return the extracted data regardless of storage/DB success
     return NextResponse.json({
       id: receiptId,
-      image_url: imageUrl || null,
+      image_url: null,
       provider_name: extractedData.provider_name,
       amount: extractedData.total_amount,
       receipt_date: extractedData.date,

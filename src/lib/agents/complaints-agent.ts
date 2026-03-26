@@ -72,6 +72,7 @@ export interface ComplaintInput {
   feedback?: string;
   previousLetter?: string;
   letterType?: string;
+  billContext?: string;
 }
 
 export interface ComplaintOutput {
@@ -123,6 +124,7 @@ ${input.amount ? `Amount Involved: £${input.amount}` : ''}
 ${input.accountNumber ? `Account Number: ${input.accountNumber}` : ''}
 ${input.incidentDate ? `Incident Date: ${input.incidentDate}` : ''}
 ${previousContact ? `Previous Contact: ${previousContact}` : ''}
+${input.billContext ? `\nUPLOADED BILL CONTEXT (use this as evidence in the letter): ${input.billContext}` : ''}
 ${input.feedback ? `\nUser has requested these changes to the letter: ${input.feedback}\nIMPORTANT: Apply these changes AND replace any remaining [PLACEHOLDER] text with the real details the user has now provided. Remove all square bracket placeholders where real information is available.` : ''}
 ${input.previousLetter ? `\nPrevious letter to revise (apply the changes above to this letter):\n${input.previousLetter}` : ''}
 
