@@ -148,20 +148,33 @@ Rules:
 
   // === FACEBOOK PAGE MESSAGES (DMs) ===
   try {
-    const convsRes = await fetch(`${API}/${PAGE_ID}/conversations?fields=id,messages{message,from,created_time}&limit=5&access_token=${pageToken}`);
+    // Get conversations with participants to find PSIDs
+    const convsRes = await fetch(`${API}/me/conversations?fields=participants,updated_time&platform=messenger&limit=5&access_token=${pageToken}`);
     const convsData = await convsRes.json();
 
     for (const conv of convsData.data || []) {
-      const messages = conv.messages?.data || [];
+      // Check if conversation was updated recently (within 1 hour)
+      const convAge = Date.now() - new Date(conv.updated_time).getTime();
+      if (convAge > 60 * 60 * 1000) continue;
+
+      // Get the sender's PSID (not the page)
+      const participants = conv.participants?.data || [];
+      const sender = participants.find((p: any) => p.id !== PAGE_ID);
+      if (!sender) continue;
+
+      // Get messages in this conversation
+      const msgsRes = await fetch(`${API}/${conv.id}/messages?fields=message,from,created_time&limit=3&access_token=${pageToken}`);
+      const msgsData = await msgsRes.json();
+      const messages = msgsData.data || [];
       if (messages.length === 0) continue;
 
       const lastMsg = messages[0];
       // Skip if last message is from us
       if (lastMsg.from?.id === PAGE_ID) continue;
 
-      // Check if message is recent (within 2 hours)
+      // Check if message is recent (within 1 hour)
       const msgAge = Date.now() - new Date(lastMsg.created_time).getTime();
-      if (msgAge > 2 * 60 * 60 * 1000) continue;
+      if (msgAge > 60 * 60 * 1000) continue;
 
       // Generate AI reply
       const aiRes = await anthropic.messages.create({
@@ -186,12 +199,14 @@ Rules:
       const replyText = aiRes.content.find(b => b.type === 'text');
       if (!replyText || replyText.type !== 'text') continue;
 
-      // Send DM reply
-      const replyRes = await fetch(`${API}/${conv.id}/messages`, {
+      // Send DM reply using PSID
+      const replyRes = await fetch(`${API}/me/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: replyText.text,
+          recipient: { id: sender.id },
+          message: { text: replyText.text },
+          messaging_type: 'RESPONSE',
           access_token: pageToken,
         }),
       });
