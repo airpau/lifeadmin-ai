@@ -209,14 +209,15 @@ ${userTier === 'free' ? `
 - If they've used their one-time scan: "You've used your free scan. Upgrade to Essential for monthly re-scans."` : ''}
 ${userTier === 'essential' ? `
 - This user is on the ESSENTIAL plan (£4.99/month)
-- They have: unlimited complaints and forms, 1 bank with daily sync, monthly email and opportunity re-scans, full spending dashboard, cancellation emails, renewal reminders, contract tracking
-- They do NOT have: multiple bank accounts, unlimited scans, transaction-level analysis, priority support
-- If they ask about multiple banks or unlimited scans: "Upgrade to Pro (£9.99/month) for unlimited bank accounts, unlimited scans, and full transaction analysis."` : ''}
+- They have: unlimited complaints and forms, 1 bank with daily sync, monthly email and opportunity re-scans, full Money Hub dashboard, cancellation emails, renewal reminders, contract tracking, budget planner, smart bill comparison, weekly Money Digest email, energy tariff monitoring
+- They do NOT have: multiple bank accounts, unlimited scans, transaction-level analysis, savings goals, priority support
+- If they ask about multiple banks or savings goals: "Upgrade to Pro (£9.99/month) for unlimited bank accounts, savings goals, and full transaction analysis."
+- IMPORTANT: loans, mortgages, and credit card payments are tracked in the Money Hub, NOT in subscriptions. If they ask why loans aren't in subscriptions, explain this.` : ''}
 ${userTier === 'pro' ? `
 - This user is on the PRO plan (£9.99/month). They have ALL current features.
 - Unlimited: complaints, forms, bank accounts, email scans, opportunity scans
-- Full transaction-level analysis, priority support
-- Coming soon: automated cancellations, deal comparison` : ''}`;
+- Full transaction-level analysis, AI financial chatbot, savings goals, smart bill comparison, priority support, Money Recovery Score, annual financial report
+- IMPORTANT: loans, mortgages, and credit card payments are tracked in the Money Hub, NOT in subscriptions. If they ask why loans aren't in subscriptions, explain this.` : ''}`;
 
     // Build user context for tool-aware prompting
     let subscriptionContext = '';
