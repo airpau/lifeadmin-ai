@@ -23,6 +23,9 @@ export default function DashboardPage() {
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const [moneySaved, setMoneySaved] = useState(0);
   const [potentialSavings, setPotentialSavings] = useState(0);
+  const [unconfirmedSavings, setUnconfirmedSavings] = useState<{ id: string; provider_name: string; money_saved: number }[]>([]);
+  const [editingSavingId, setEditingSavingId] = useState<string | null>(null);
+  const [editingSavingAmount, setEditingSavingAmount] = useState('');
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -152,7 +155,7 @@ export default function DashboardPage() {
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(20),
-          supabase.from('subscriptions').select('amount, billing_cycle, money_saved, cancelled_at')
+          supabase.from('subscriptions').select('id, provider_name, amount, billing_cycle, money_saved, cancelled_at, notes')
             .eq('user_id', user.id).eq('status', 'cancelled'),
           supabase.from('tasks').select('money_recovered')
             .eq('user_id', user.id).eq('status', 'resolved'),
@@ -191,6 +194,16 @@ export default function DashboardPage() {
           }
         }
         setMoneySaved(saved);
+
+        // Find cancelled subs where user hasn't confirmed the saving yet
+        const unconfirmed = (cancelledSubs.data || [])
+          .filter(s => s.money_saved && s.money_saved > 0 && s.notes !== 'savings_confirmed')
+          .map(s => ({
+            id: s.id,
+            provider_name: s.provider_name,
+            money_saved: parseFloat(String(s.money_saved)),
+          }));
+        setUnconfirmedSavings(unconfirmed);
 
         // Potential savings: estimate from active subscriptions (assume 15% could be saved by switching)
         const activeSubs = subs.data || [];
@@ -232,6 +245,33 @@ export default function DashboardPage() {
     };
     fetchData();
   }, [supabase]);
+
+  const handleSavingAction = async (subId: string, action: 'confirm' | 'reject' | 'amend', newAmount?: number) => {
+    const updates: Record<string, any> = { notes: 'savings_confirmed' };
+    if (action === 'reject') {
+      updates.money_saved = 0;
+    } else if (action === 'amend' && newAmount !== undefined) {
+      updates.money_saved = newAmount;
+    }
+
+    await fetch(`/api/subscriptions/${subId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    setUnconfirmedSavings(prev => prev.filter(s => s.id !== subId));
+    setEditingSavingId(null);
+
+    // Recalculate total
+    if (action === 'reject') {
+      const sub = unconfirmedSavings.find(s => s.id === subId);
+      if (sub) setMoneySaved(prev => prev - sub.money_saved);
+    } else if (action === 'amend' && newAmount !== undefined) {
+      const sub = unconfirmedSavings.find(s => s.id === subId);
+      if (sub) setMoneySaved(prev => prev - sub.money_saved + newAmount);
+    }
+  };
 
   if (loading) {
     return (
@@ -309,6 +349,76 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        {/* Unconfirmed savings to review */}
+        {unconfirmedSavings.length > 0 && (
+          <div className="mt-4 border-t border-navy-700/50 pt-4">
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Review your savings</p>
+            <div className="space-y-2">
+              {unconfirmedSavings.map(sub => (
+                <div key={sub.id} className="flex items-center justify-between bg-navy-900/50 rounded-lg px-4 py-3">
+                  <div>
+                    <p className="text-sm text-white font-medium">{sub.provider_name}</p>
+                    <p className="text-xs text-slate-400">
+                      {editingSavingId === sub.id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span>&pound;</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editingSavingAmount}
+                            onChange={(e) => setEditingSavingAmount(e.target.value)}
+                            className="w-20 bg-navy-800 border border-navy-700 rounded px-2 py-0.5 text-white text-xs focus:outline-none focus:border-mint-400"
+                            autoFocus
+                          />
+                          <span>/month</span>
+                        </span>
+                      ) : (
+                        <span>Estimated saving: {formatGBP(sub.money_saved)}/month</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {editingSavingId === sub.id ? (
+                      <button
+                        onClick={() => handleSavingAction(sub.id, 'amend', parseFloat(editingSavingAmount) || 0)}
+                        className="text-xs bg-mint-400 text-navy-950 px-3 py-1.5 rounded-lg font-medium"
+                      >
+                        Save
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleSavingAction(sub.id, 'confirm')}
+                          className="text-xs bg-mint-400/10 text-mint-400 px-3 py-1.5 rounded-lg hover:bg-mint-400/20 transition-all"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingSavingId(sub.id);
+                            setEditingSavingAmount(String(sub.money_saved));
+                          }}
+                          className="text-xs bg-navy-800 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-navy-700 transition-all"
+                        >
+                          Amend
+                        </button>
+                        <button
+                          onClick={() => handleSavingAction(sub.id, 'reject')}
+                          className="text-xs text-slate-500 hover:text-red-400 px-2 py-1.5 transition-all"
+                          title="Not a real saving"
+                        >
+                          &times;
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {moneySaved > 0 && potentialSavings > 0 && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-500 mb-1">
