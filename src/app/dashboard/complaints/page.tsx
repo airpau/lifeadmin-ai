@@ -97,9 +97,9 @@ function LetterModal({ task, onClose }: LetterModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         {/* Modal header */}
-        <div className="flex items-start justify-between p-6 border-b border-slate-800 flex-shrink-0">
+        <div className="flex items-start justify-between p-6 border-b border-navy-700/50 flex-shrink-0">
           <div>
             <h2 className="text-xl font-bold text-white">{task.title}</h2>
             <div className="flex items-center gap-3 mt-1">
@@ -107,7 +107,7 @@ function LetterModal({ task, onClose }: LetterModalProps) {
                 <span className="text-slate-400 text-sm">{task.provider_name}</span>
               )}
               {task.disputed_amount && (
-                <span className="text-amber-500 text-sm font-semibold">£{task.disputed_amount}</span>
+                <span className="text-mint-400 text-sm font-semibold">£{task.disputed_amount}</span>
               )}
               <span className="text-slate-500 text-xs flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -145,7 +145,7 @@ function LetterModal({ task, onClose }: LetterModalProps) {
         <div className="flex-1 overflow-y-auto p-6">
           {letterContent ? (
             <>
-              <div className="bg-slate-950 rounded-xl p-6 border border-slate-800 mb-4">
+              <div className="bg-navy-950 rounded-xl p-6 border border-navy-700/50 mb-4">
                 {isEditing ? (
                   <textarea
                     value={editText}
@@ -167,7 +167,7 @@ function LetterModal({ task, onClose }: LetterModalProps) {
               )}
 
               {!isEditing && legalRefs.length > 0 && (
-                <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Legal References</h3>
                   <ul className="text-xs text-slate-400 space-y-1">
                     {legalRefs.map((ref: string, i: number) => (
@@ -183,19 +183,19 @@ function LetterModal({ task, onClose }: LetterModalProps) {
         </div>
 
         {/* Modal actions */}
-        <div className="flex gap-3 p-6 border-t border-slate-800 flex-shrink-0">
+        <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
           {isEditing ? (
             <>
               <button
                 onClick={handleCancelEdit}
-                className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all font-medium"
+                className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-lg transition-all font-semibold disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 py-3 rounded-lg transition-all font-semibold disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
@@ -204,14 +204,14 @@ function LetterModal({ task, onClose }: LetterModalProps) {
             <>
               <button
                 onClick={handleCopy}
-                className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all font-medium"
+                className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium"
               >
                 {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                 {copied ? 'Copied!' : 'Copy Letter'}
               </button>
               <button
                 onClick={handlePDF}
-                className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-lg transition-all font-semibold"
+                className="flex-1 flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 py-3 rounded-lg transition-all font-semibold"
               >
                 <Download className="h-4 w-4" />
                 Download PDF
@@ -374,13 +374,13 @@ function ComplaintsPageInner() {
 
   const getStatusBadge = (status: string) => {
     const map: Record<string, { label: string; className: string }> = {
-      pending_review: { label: 'Pending', className: 'bg-amber-500/10 text-amber-500' },
+      pending_review: { label: 'Pending', className: 'bg-mint-400/10 text-mint-400' },
       in_progress: { label: 'In Progress', className: 'bg-blue-500/10 text-blue-400' },
       awaiting_response: { label: 'Awaiting Response', className: 'bg-purple-500/10 text-purple-400' },
       resolved_success: { label: 'Resolved', className: 'bg-green-500/10 text-green-500' },
       resolved_failed: { label: 'Failed', className: 'bg-red-500/10 text-red-400' },
     };
-    const config = map[status] || { label: status, className: 'bg-slate-500/10 text-slate-400' };
+    const config = map[status] || { label: status, className: 'bg-navy-500/10 text-slate-400' };
     return (
       <span className={`text-xs px-2 py-1 rounded font-medium ${config.className}`}>
         {config.label}
@@ -405,24 +405,24 @@ function ComplaintsPageInner() {
 
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Complaints</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Complaints</h1>
         <p className="text-slate-400">AI-powered complaint letters citing UK consumer law</p>
       </div>
 
       {/* How it works / trust signal */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5 mb-6">
-        <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-3">How it works</p>
+      <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-5 mb-6">
+        <p className="text-xs font-semibold text-mint-400 uppercase tracking-wide mb-3">How it works</p>
         <div className="grid sm:grid-cols-3 gap-4">
           <div className="flex items-start gap-3">
-            <span className="bg-amber-500 text-slate-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+            <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
             <p className="text-slate-300 text-sm">Tell us what happened — in plain English, no legal knowledge needed</p>
           </div>
           <div className="flex items-start gap-3">
-            <span className="bg-amber-500 text-slate-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+            <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
             <p className="text-slate-300 text-sm">Our AI (trained on UK consumer law) drafts your formal complaint letter</p>
           </div>
           <div className="flex items-start gap-3">
-            <span className="bg-amber-500 text-slate-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+            <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
             <p className="text-slate-300 text-sm">Every letter cites specific legislation: Consumer Rights Act 2015, Ofcom, FCA rules — making companies take it seriously</p>
           </div>
         </div>
@@ -433,7 +433,7 @@ function ComplaintsPageInner() {
         <button
           onClick={() => setActiveTab('generate')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'generate' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
+            activeTab === 'generate' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'
           }`}
         >
           <Sparkles className="h-4 w-4" />
@@ -442,7 +442,7 @@ function ComplaintsPageInner() {
         <button
           onClick={() => setActiveTab('history')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === 'history' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
+            activeTab === 'history' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'
           }`}
         >
           <History className="h-4 w-4" />
@@ -454,7 +454,7 @@ function ComplaintsPageInner() {
       {activeTab === 'history' && (
         <div className="space-y-3">
           {tasks.length === 0 ? (
-            <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-12 text-center">
+            <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-12 text-center">
               <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400">No complaints generated yet</p>
             </div>
@@ -466,10 +466,10 @@ function ComplaintsPageInner() {
                   key={task.id}
                   onClick={() => hasLetter && setSelectedTask(task)}
                   disabled={!hasLetter}
-                  className={`w-full text-left bg-slate-900/50 backdrop-blur-sm border rounded-2xl p-6 transition-all ${
+                  className={`w-full text-left bg-navy-900 backdrop-blur-sm border rounded-2xl p-6 transition-all ${
                     hasLetter
-                      ? 'border-slate-800 hover:border-amber-500/50 hover:bg-slate-900/80 cursor-pointer'
-                      : 'border-slate-800 opacity-60 cursor-default'
+                      ? 'border-navy-700/50 hover:border-mint-400/50 hover:bg-navy-900 cursor-pointer'
+                      : 'border-navy-700/50 opacity-60 cursor-default'
                   }`}
                 >
                   <div className="flex items-start justify-between">
@@ -489,7 +489,7 @@ function ComplaintsPageInner() {
                     </div>
                     <div className="flex items-center gap-3 ml-4 flex-shrink-0">
                       {task.disputed_amount && (
-                        <span className="text-amber-500 font-semibold">£{task.disputed_amount}</span>
+                        <span className="text-mint-400 font-semibold">£{task.disputed_amount}</span>
                       )}
                       {getStatusBadge(task.status)}
                       {hasLetter && (
@@ -511,9 +511,9 @@ function ComplaintsPageInner() {
       {activeTab === 'generate' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Form */}
-          <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <FileText className="h-5 w-5 text-amber-500" />
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+              <FileText className="h-5 w-5 text-mint-400" />
               Complaint Details
             </h2>
 
@@ -525,7 +525,7 @@ function ComplaintsPageInner() {
                   required
                   value={formData.companyName}
                   onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                   placeholder="e.g. British Gas, Sky, Virgin Media"
                 />
               </div>
@@ -537,7 +537,7 @@ function ComplaintsPageInner() {
                   rows={4}
                   value={formData.issueDescription}
                   onChange={(e) => setFormData({ ...formData, issueDescription: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                   placeholder="Explain what went wrong, when it happened, and any impact on you. You can paste email content here too. Examples: debt recovery letters, billing disputes, service complaints, unfair charges..."
                 />
               </div>
@@ -549,7 +549,7 @@ function ComplaintsPageInner() {
                   required
                   value={formData.desiredOutcome}
                   onChange={(e) => setFormData({ ...formData, desiredOutcome: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                   placeholder="e.g. Full refund, £200 compensation, contract cancellation"
                 />
               </div>
@@ -561,7 +561,7 @@ function ComplaintsPageInner() {
                     type="text"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                     placeholder="150.00"
                   />
                 </div>
@@ -571,7 +571,7 @@ function ComplaintsPageInner() {
                     type="text"
                     value={formData.accountNumber}
                     onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                     placeholder="12345678"
                   />
                 </div>
@@ -583,7 +583,7 @@ function ComplaintsPageInner() {
                   type="date"
                   value={formData.incidentDate}
                   onChange={(e) => setFormData({ ...formData, incidentDate: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                 />
               </div>
 
@@ -591,7 +591,7 @@ function ComplaintsPageInner() {
                 <button
                   type="button"
                   onClick={clearForm}
-                  className="flex items-center gap-2 px-4 py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-all"
+                  className="flex items-center gap-2 px-4 py-4 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg transition-all"
                 >
                   <RotateCcw className="h-4 w-4" />
                   Clear
@@ -599,7 +599,7 @@ function ComplaintsPageInner() {
                 <button
                   type="submit"
                   disabled={generating}
-                  className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {generating ? (
                     <>Generating with AI...</>
@@ -616,7 +616,7 @@ function ComplaintsPageInner() {
                 <p className="text-xs text-slate-500 text-right">
                   {usageInfo.used} of {usageInfo.limit} letters used this month
                   {usageInfo.used >= usageInfo.limit && (
-                    <span className="text-amber-500 ml-1">— upgrade for unlimited</span>
+                    <span className="text-mint-400 ml-1">— upgrade for unlimited</span>
                   )}
                 </p>
               )}
@@ -624,8 +624,8 @@ function ComplaintsPageInner() {
           </div>
 
           {/* Result panel */}
-          <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-6">
-            <h2 className="text-xl font-bold text-white mb-6">Generated Letter</h2>
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6 font-[family-name:var(--font-heading)]">Generated Letter</h2>
 
             {!result ? (
               <div className="text-center py-12">
@@ -635,12 +635,12 @@ function ComplaintsPageInner() {
             ) : (
               <div className="space-y-4">
                 {/* Success Rate */}
-                <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-slate-400">Estimated Success Rate</span>
                     <span className="text-2xl font-bold text-green-500">{result.estimatedSuccess}%</span>
                   </div>
-                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-navy-800 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-green-500 to-green-400"
                       style={{ width: `${result.estimatedSuccess}%` }}
@@ -649,7 +649,7 @@ function ComplaintsPageInner() {
                 </div>
 
                 {/* Letter */}
-                <div className="bg-slate-950 rounded-lg p-6 border border-slate-800 max-h-80 overflow-y-auto">
+                <div className="bg-navy-950 rounded-lg p-6 border border-navy-700/50 max-h-80 overflow-y-auto">
                   <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
                     {result.letter}
                   </pre>
@@ -659,14 +659,14 @@ function ComplaintsPageInner() {
                 <div className="flex gap-3">
                   <button
                     onClick={handleCopy}
-                    className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-lg transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all"
                   >
                     {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                   <button
                     onClick={handlePDF}
-                    className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-3 rounded-lg transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all"
                   >
                     <Download className="h-4 w-4" />
                     Download PDF
@@ -675,7 +675,7 @@ function ComplaintsPageInner() {
 
                 {/* Satisfaction prompt */}
                 {!showFeedback ? (
-                  <div className="border border-slate-800 rounded-xl p-4">
+                  <div className="border border-navy-700/50 rounded-xl p-4">
                     {letterApproved ? (
                       <div className="flex items-center gap-2 text-green-400 text-sm font-medium py-1">
                         <CheckCircle className="h-4 w-4" />
@@ -699,7 +699,7 @@ function ComplaintsPageInner() {
                           </button>
                           <button
                             onClick={() => setShowFeedback(true)}
-                            className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-lg transition-all text-sm font-medium"
+                            className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-slate-300 py-2.5 rounded-lg transition-all text-sm font-medium"
                           >
                             <Pencil className="h-4 w-4" />
                             Request changes
@@ -709,7 +709,7 @@ function ComplaintsPageInner() {
                     )}
                   </div>
                 ) : (
-                  <div className="border border-slate-700 rounded-xl p-4 space-y-3">
+                  <div className="border border-navy-700/50 rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-slate-300 font-medium">What would you like changed?</p>
                       <button
@@ -724,13 +724,13 @@ function ComplaintsPageInner() {
                       value={feedback}
                       onChange={(e) => setFeedback(e.target.value)}
                       placeholder="e.g. Make it more formal, add more urgency about the billing error, mention the 8-week Ombudsman deadline..."
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                      className="w-full px-3 py-2 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
                     />
                     <p className="text-xs text-slate-500">Note: regenerating counts as 1 letter from your monthly quota.</p>
                     <button
                       onClick={handleRegenerate}
                       disabled={regenerating || !feedback.trim()}
-                      className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold py-2.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                      className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-2.5 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
                       <RefreshCw className={`h-4 w-4 ${regenerating ? 'animate-spin' : ''}`} />
                       {regenerating ? 'Regenerating...' : 'Regenerate with Changes'}
@@ -740,7 +740,7 @@ function ComplaintsPageInner() {
 
                 {/* Legal References */}
                 {result.legalReferences?.length > 0 && (
-                  <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                  <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
                     <h3 className="text-sm font-semibold text-white mb-2">Legal References</h3>
                     <ul className="text-xs text-slate-400 space-y-1">
                       {result.legalReferences.map((ref: string, i: number) => (
@@ -752,7 +752,7 @@ function ComplaintsPageInner() {
 
                 {/* Next Steps */}
                 {result.nextSteps?.length > 0 && (
-                  <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                  <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
                     <h3 className="text-sm font-semibold text-white mb-2">Next Steps</h3>
                     <ul className="text-xs text-slate-400 space-y-1">
                       {result.nextSteps.map((step: string, i: number) => (

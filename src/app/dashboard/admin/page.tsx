@@ -168,7 +168,7 @@ export default function AdminPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
       </div>
     );
   }
@@ -187,15 +187,15 @@ export default function AdminPage() {
 
   const tierColor = (tier: string) => {
     if (tier === 'pro') return 'text-purple-400 bg-purple-500/10';
-    if (tier === 'essential') return 'text-amber-400 bg-amber-500/10';
-    return 'text-slate-400 bg-slate-500/10';
+    if (tier === 'essential') return 'text-mint-400 bg-mint-400/10';
+    return 'text-slate-400 bg-navy-500/10';
   };
 
   return (
     <div className="max-w-7xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">
+          <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
             <ShieldAlert className="h-10 w-10 text-red-500" />
             Admin Dashboard
           </h1>
@@ -203,7 +203,7 @@ export default function AdminPage() {
         </div>
         <button
           onClick={() => setMeetingOpen(true)}
-          className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
+          className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
         >
           <Users className="h-4 w-4" />
           Call a Meeting
@@ -215,19 +215,19 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex gap-2 mb-6">
         <button onClick={() => { setTab('overview'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
           Overview
         </button>
         <button onClick={() => { setTab('members'); loadMembers(); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
           Members
         </button>
         <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
           <Ticket className="h-4 w-4" /> Tickets
         </button>
         <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
           <Brain className="h-4 w-4" /> AI Team
         </button>
       </div>
@@ -237,22 +237,22 @@ export default function AdminPage() {
         <>
           {/* Revenue Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-slate-900/50 border border-green-500/30 rounded-2xl p-5">
+            <div className="bg-navy-900 border border-green-500/30 rounded-2xl p-5">
               <Banknote className="h-6 w-6 text-green-500 mb-2" />
               <p className="text-3xl font-bold text-white">£{metrics.revenue.mrr}</p>
               <p className="text-slate-400 text-sm">MRR</p>
             </div>
-            <div className="bg-slate-900/50 border border-green-500/30 rounded-2xl p-5">
+            <div className="bg-navy-900 border border-green-500/30 rounded-2xl p-5">
               <TrendingUp className="h-6 w-6 text-green-500 mb-2" />
               <p className="text-3xl font-bold text-white">£{metrics.revenue.arr}</p>
               <p className="text-slate-400 text-sm">ARR</p>
             </div>
-            <div className="bg-slate-900/50 border border-amber-500/30 rounded-2xl p-5">
-              <CreditCard className="h-6 w-6 text-amber-500 mb-2" />
+            <div className="bg-navy-900 border border-mint-400/30 rounded-2xl p-5">
+              <CreditCard className="h-6 w-6 text-mint-400 mb-2" />
               <p className="text-3xl font-bold text-white">{metrics.revenue.paying_customers}</p>
               <p className="text-slate-400 text-sm">Paying customers</p>
             </div>
-            <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-5">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
               <Users className="h-6 w-6 text-slate-400 mb-2" />
               <p className="text-3xl font-bold text-white">{metrics.revenue.free_users}</p>
               <p className="text-slate-400 text-sm">Free users</p>
@@ -260,7 +260,7 @@ export default function AdminPage() {
           </div>
 
           {/* Tier Breakdown */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 mb-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
             <h3 className="text-white font-semibold mb-3">Plan Distribution</h3>
             <div className="flex gap-4">
               {Object.entries(metrics.tier_breakdown).map(([tier, count]) => (
@@ -276,7 +276,7 @@ export default function AdminPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[
               { label: 'Total Users', value: metrics.overview.total_users, icon: Users, color: 'text-blue-500' },
-              { label: 'Waitlist', value: metrics.overview.waitlist_signups, icon: Mail, color: 'text-amber-500' },
+              { label: 'Waitlist', value: metrics.overview.waitlist_signups, icon: Mail, color: 'text-mint-400' },
               { label: 'Subscriptions Tracked', value: metrics.overview.active_subscriptions, icon: CreditCard, color: 'text-green-500' },
               { label: 'Bank Connections', value: metrics.overview.bank_connections, icon: Building2, color: 'text-purple-500' },
               { label: 'Bank Transactions', value: metrics.overview.bank_transactions, icon: Database, color: 'text-cyan-500' },
@@ -284,7 +284,7 @@ export default function AdminPage() {
               { label: 'AI Agent Runs', value: metrics.overview.agent_runs, icon: Bot, color: 'text-pink-500' },
               { label: 'Merchant Rules', value: metrics.overview.merchant_rules, icon: BarChart3, color: 'text-emerald-500' },
             ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+              <div key={label} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
                 <Icon className={`h-5 w-5 ${color} mb-2`} />
                 <p className="text-2xl font-bold text-white">{value.toLocaleString()}</p>
                 <p className="text-slate-500 text-xs">{label}</p>
@@ -293,11 +293,11 @@ export default function AdminPage() {
           </div>
 
           {/* Recent Signups */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
             <h3 className="text-white font-semibold mb-4">Recent Signups</h3>
             <div className="space-y-2">
               {metrics.recent_signups.map((u) => (
-                <div key={u.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-2 border border-slate-800">
+                <div key={u.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50">
                   <div className="flex items-center gap-3">
                     <div>
                       <p className="text-white text-sm font-medium">{u.name || u.email}</p>
@@ -317,14 +317,14 @@ export default function AdminPage() {
 
       {/* MEMBERS TAB */}
       {tab === 'members' && !selectedMember && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <h3 className="text-white font-semibold mb-4">All Members ({members.length})</h3>
           <div className="space-y-2">
             {members.map((m) => (
               <button
                 key={m.id}
                 onClick={() => loadMemberDetail(m.id)}
-                className="w-full flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800 hover:border-amber-500/50 transition-all text-left"
+                className="w-full flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50 hover:border-mint-400/50 transition-all text-left"
               >
                 <div>
                   <p className="text-white text-sm font-medium">{m.full_name || m.email}</p>
@@ -334,7 +334,7 @@ export default function AdminPage() {
                   {m.opportunity_score > 0 && (
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                       m.opportunity_score >= 100 ? 'bg-red-500/20 text-red-400' :
-                      m.opportunity_score >= 50 ? 'bg-amber-500/20 text-amber-400' :
+                      m.opportunity_score >= 50 ? 'bg-mint-400/20 text-mint-400' :
                       'bg-blue-500/20 text-blue-400'
                     }`}>
                       Score: {m.opportunity_score}
@@ -358,7 +358,7 @@ export default function AdminPage() {
           </button>
 
           {/* Profile Header */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white">{selectedMember.profile?.full_name || selectedMember.profile?.email}</h2>
@@ -376,19 +376,19 @@ export default function AdminPage() {
 
           {/* Member Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
               <p className="text-2xl font-bold text-white">£{selectedMember.stats.monthly_spend}</p>
               <p className="text-slate-500 text-xs">Monthly spend tracked</p>
             </div>
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
               <p className="text-2xl font-bold text-white">{selectedMember.stats.total_subscriptions}</p>
               <p className="text-slate-500 text-xs">Subscriptions</p>
             </div>
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
               <p className="text-2xl font-bold text-white">{selectedMember.stats.total_agent_runs}</p>
               <p className="text-slate-500 text-xs">AI agent runs</p>
             </div>
-            <div className="bg-slate-900/50 border border-red-500/30 rounded-xl p-4">
+            <div className="bg-navy-900 border border-red-500/30 rounded-xl p-4">
               <p className="text-2xl font-bold text-white">£{selectedMember.stats.estimated_api_cost}</p>
               <p className="text-slate-500 text-xs">Estimated API cost</p>
             </div>
@@ -396,10 +396,10 @@ export default function AdminPage() {
 
           {/* Bank Connections */}
           {selectedMember.bank_connections.length > 0 && (
-            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 mb-6">
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
               <h3 className="text-white font-semibold mb-3">Bank Connections</h3>
               {selectedMember.bank_connections.map((b: any) => (
-                <div key={b.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-2 border border-slate-800">
+                <div key={b.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50">
                   <span className="text-white text-sm">{b.bank_name || 'Unknown Bank'}</span>
                   <div className="flex items-center gap-3">
                     <span className={`text-xs ${b.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{b.status}</span>
@@ -411,14 +411,14 @@ export default function AdminPage() {
           )}
 
           {/* Subscriptions */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 mb-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
             <h3 className="text-white font-semibold mb-3">Subscriptions ({selectedMember.subscriptions.length})</h3>
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {selectedMember.subscriptions.map((s, i) => (
-                <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-2 border border-slate-800 text-sm">
+                <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50 text-sm">
                   <div className="flex items-center gap-3">
                     <span className="text-white">{s.provider}</span>
-                    {s.category && <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded">{s.category}</span>}
+                    {s.category && <span className="text-xs text-slate-500 bg-navy-800 px-2 py-0.5 rounded">{s.category}</span>}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-white font-medium">£{parseFloat(String(s.amount)).toFixed(2)}</span>
@@ -431,17 +431,17 @@ export default function AdminPage() {
           </div>
 
           {/* Task History */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
             <h3 className="text-white font-semibold mb-3">Task History ({selectedMember.tasks.length})</h3>
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {selectedMember.tasks.map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-2 border border-slate-800 text-sm">
+                <div key={t.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50 text-sm">
                   <div>
                     <span className="text-white">{t.title}</span>
                     <span className="text-slate-500 text-xs ml-2">{t.type}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs ${t.status === 'completed' ? 'text-green-400' : 'text-amber-400'}`}>{t.status}</span>
+                    <span className={`text-xs ${t.status === 'completed' ? 'text-green-400' : 'text-mint-400'}`}>{t.status}</span>
                     <span className="text-slate-500 text-xs">{new Date(t.created_at).toLocaleDateString('en-GB')}</span>
                   </div>
                 </div>

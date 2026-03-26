@@ -126,11 +126,11 @@ const TOUR_STEPS: TourStep[] = [
 
 function LockedSection({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
-      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 relative overflow-hidden">
+      <div className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
         <Lock className="h-8 w-8 text-slate-500 mb-3" />
         <p className="text-white font-semibold text-sm mb-1">Upgrade to unlock {title}</p>
-        <Link href="/pricing" className="text-amber-400 text-xs hover:text-amber-300">View plans</Link>
+        <Link href="/pricing" className="text-mint-400 text-xs hover:text-mint-300">View plans</Link>
       </div>
       <div className="opacity-30">{children || <div className="h-32" />}</div>
     </div>
@@ -174,7 +174,7 @@ function BarChartWidget({ data }: { data: Array<{ label: string; value: number; 
             <span className="text-slate-300">{d.label}</span>
             <span className="text-white font-medium">£{fmt(d.value)}</span>
           </div>
-          <div className="w-full bg-slate-700 rounded-full h-2">
+          <div className="w-full bg-navy-700 rounded-full h-2">
             <div className="h-2 rounded-full" style={{ width: `${(d.value / maxVal) * 100}%`, backgroundColor: d.color }} />
           </div>
         </div>
@@ -647,7 +647,7 @@ export default function MoneyHubPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
       </div>
     );
   }
@@ -656,9 +656,9 @@ export default function MoneyHubPage() {
     return (
       <div className="max-w-7xl text-center py-16">
         <Wallet className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2">Connect your bank to get started</h2>
+        <h2 className="text-2xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Connect your bank to get started</h2>
         <p className="text-slate-400 mb-6">The Money Hub analyses your bank transactions to give you a complete financial picture.</p>
-        <Link href="/dashboard/subscriptions" className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-6 py-3 rounded-lg">
+        <Link href="/dashboard/subscriptions" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-lg">
           Connect Bank Account
         </Link>
       </div>
@@ -689,9 +689,9 @@ export default function MoneyHubPage() {
       {tourStep !== null && (
         <div className="fixed inset-0 z-[60] pointer-events-none">
           <div className="fixed inset-0 bg-black/50 pointer-events-auto" onClick={skipTour} />
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] bg-slate-900 border border-amber-500/40 rounded-2xl p-6 w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl pointer-events-auto">
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[70] bg-navy-900 border border-mint-400/40 rounded-2xl p-6 w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl pointer-events-auto">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-amber-400 text-xs font-semibold">Step {tourStep + 1} of {TOUR_STEPS.length}</span>
+              <span className="text-mint-400 text-xs font-semibold">Step {tourStep + 1} of {TOUR_STEPS.length}</span>
               <button onClick={skipTour} className="text-slate-500 hover:text-white text-xs">Skip tour</button>
             </div>
             <h3 className="text-white font-bold text-lg mb-2">{TOUR_STEPS[tourStep].title}</h3>
@@ -706,7 +706,7 @@ export default function MoneyHubPage() {
               </button>
               <button
                 onClick={nextTourStep}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-5 py-2 rounded-lg text-sm"
+                className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2 rounded-lg text-sm"
               >
                 {tourStep >= TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}
               </button>
@@ -727,8 +727,8 @@ export default function MoneyHubPage() {
       {/* ═══ HEADER ═══ */}
       <div id="tour-header" className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white flex items-center gap-3">
-            <Wallet className="h-9 w-9 text-amber-500" />
+          <h1 className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-heading)] flex items-center gap-3">
+            <Wallet className="h-9 w-9 text-mint-400" />
             Money Hub
           </h1>
           <p className="text-slate-400 mt-1">Your complete financial intelligence centre</p>
@@ -736,7 +736,7 @@ export default function MoneyHubPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={startTour}
-            className="text-slate-500 hover:text-amber-400 transition-colors"
+            className="text-slate-500 hover:text-mint-400 transition-colors"
             title="Restart tour"
           >
             <HelpCircle className="h-5 w-5" />
@@ -747,7 +747,7 @@ export default function MoneyHubPage() {
               setSelectedMonth(e.target.value);
               refreshData(e.target.value);
             }}
-            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+            className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
           >
             <option value="">This month</option>
             {Array.from({ length: 6 }, (_, i) => {
@@ -761,13 +761,13 @@ export default function MoneyHubPage() {
           <button
             onClick={syncMoneyHub}
             disabled={syncing}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-all"
+            className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-all"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Syncing...' : 'Sync'}
           </button>
           <div className="text-right">
-            <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+            <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-mint-400' : 'text-red-400'}`}>
               {data.score}
             </div>
             <p className="text-slate-500 text-xs">Financial Health Score</p>
@@ -777,35 +777,35 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 1: Financial Overview ═══ */}
       <div id="tour-overview" className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <TrendingUp className="h-5 w-5 text-green-400 mb-2" />
           <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyIncome)}</p>
           <p className="text-slate-400 text-xs">Income this month</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <TrendingDown className="h-5 w-5 text-red-400 mb-2" />
           <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyOutgoings)}</p>
           <p className="text-slate-400 text-xs">Spent this month</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
           <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {data.overview.netPosition >= 0 ? '+' : ''}£{fmt(data.overview.netPosition)}
           </p>
           <p className="text-slate-400 text-xs">Net position</p>
         </div>
-        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <Calendar className="h-5 w-5 text-blue-400 mb-2" />
-          <div className="w-full bg-slate-700 rounded-full h-2 mb-2">
-            <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${data.overview.monthProgress}%` }} />
+          <div className="w-full bg-navy-700 rounded-full h-2 mb-2">
+            <div className="bg-mint-400 h-2 rounded-full" style={{ width: `${data.overview.monthProgress}%` }} />
           </div>
           <p className="text-slate-400 text-xs">Day {data.overview.dayOfMonth} of {data.overview.daysInMonth}</p>
         </div>
       </div>
 
       {/* ═══ SECTION 1b: Income Breakdown ═══ */}
-      <div id="tour-income" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+      <div id="tour-income" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
           <TrendingUp className="h-5 w-5 text-green-400" /> Income Breakdown
           {isPaid && <span className="text-slate-500 text-xs font-normal ml-2">Click a category to see details</span>}
         </h2>
@@ -820,7 +820,7 @@ export default function MoneyHubPage() {
                   <button
                     key={type}
                     onClick={() => isPaid ? loadIncomeDrillDown(type) : undefined}
-                    className={`flex items-center gap-3 w-full text-left ${isPaid ? 'hover:bg-slate-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
+                    className={`flex items-center gap-3 w-full text-left ${isPaid ? 'hover:bg-navy-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
                   >
                     <span className="text-lg w-7">{info.icon}</span>
                     <div className="flex-1">
@@ -831,14 +831,14 @@ export default function MoneyHubPage() {
                           <span className="text-green-400 text-xs font-bold">£{fmt(amount)}</span>
                         </div>
                       </div>
-                      <div className="w-full bg-slate-700 rounded-full h-1.5">
+                      <div className="w-full bg-navy-700 rounded-full h-1.5">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: info.color }} />
                       </div>
                     </div>
                   </button>
                 );
               })}
-            <div className="pt-2 border-t border-slate-800 flex justify-between">
+            <div className="pt-2 border-t border-navy-700/50 flex justify-between">
               <span className="text-slate-400 text-sm">Total income</span>
               <span className="text-green-400 font-bold text-sm">£{fmt(totalIncome)}</span>
             </div>
@@ -849,13 +849,13 @@ export default function MoneyHubPage() {
       </div>
 
       {/* ═══ SECTION 2: Bank Accounts ═══ */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
             <Building2 className="h-5 w-5 text-purple-400" /> Bank Accounts
           </h2>
           {isPro && (
-            <Link href="/dashboard/subscriptions" className="text-amber-400 text-xs flex items-center gap-1">
+            <Link href="/dashboard/subscriptions" className="text-mint-400 text-xs flex items-center gap-1">
               <Plus className="h-3 w-3" /> Connect another
             </Link>
           )}
@@ -863,12 +863,12 @@ export default function MoneyHubPage() {
         {data.accounts.length === 0 ? (
           <div className="text-center py-6">
             <p className="text-slate-400 text-sm mb-3">No bank accounts connected</p>
-            <Link href="/dashboard/subscriptions" className="text-amber-400 text-sm">Connect bank account</Link>
+            <Link href="/dashboard/subscriptions" className="text-mint-400 text-sm">Connect bank account</Link>
           </div>
         ) : (
           <div className="space-y-2">
             {data.accounts.map(acc => (
-              <div key={acc.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+              <div key={acc.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
                 <div className="flex items-center gap-3">
                   <Building2 className="h-4 w-4 text-green-400" />
                   <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
@@ -888,8 +888,8 @@ export default function MoneyHubPage() {
       </div>
 
       {/* ═══ SECTION 3: Spending Intelligence ═══ */}
-      <div id="tour-spending" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+      <div id="tour-spending" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
           <BarChart3 className="h-5 w-5 text-sky-400" /> Spending Breakdown
         </h2>
         <div className="grid md:grid-cols-2 gap-6">
@@ -904,7 +904,7 @@ export default function MoneyHubPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => isPaid ? loadDrillDown(cat.category) : undefined}
-                      className={`flex items-center gap-3 flex-1 text-left ${isPaid ? 'hover:bg-slate-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
+                      className={`flex items-center gap-3 flex-1 text-left ${isPaid ? 'hover:bg-navy-800/50 rounded-lg p-1 -m-1 cursor-pointer' : ''}`}
                     >
                       <span className="text-lg w-7">{info.icon}</span>
                       <div className="flex-1">
@@ -912,7 +912,7 @@ export default function MoneyHubPage() {
                           <span className="text-white text-xs font-medium">{info.label}</span>
                           <div className="flex items-center gap-2">
                             {budget && (
-                              <span className={`text-[10px] ${budgetPct > 100 ? 'text-red-400' : budgetPct > 80 ? 'text-amber-400' : 'text-green-400'}`}>
+                              <span className={`text-[10px] ${budgetPct > 100 ? 'text-red-400' : budgetPct > 80 ? 'text-mint-400' : 'text-green-400'}`}>
                                 {budgetPct.toFixed(0)}% of £{fmt(budget.monthly_limit)}
                               </span>
                             )}
@@ -920,7 +920,7 @@ export default function MoneyHubPage() {
                             <span className="text-white text-xs font-bold">£{fmt(cat.total)}</span>
                           </div>
                         </div>
-                        <div className="w-full bg-slate-700 rounded-full h-1.5">
+                        <div className="w-full bg-navy-700 rounded-full h-1.5">
                           <div className="h-1.5 rounded-full" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: info.color }} />
                         </div>
                       </div>
@@ -929,7 +929,7 @@ export default function MoneyHubPage() {
                     {isPaid && (
                       <button
                         onClick={() => loadDrillDown(cat.category)}
-                        className="text-slate-600 hover:text-amber-400 p-1"
+                        className="text-slate-600 hover:text-mint-400 p-1"
                         title="View transactions and recategorise"
                       >
                         <ArrowRight className="h-3 w-3" />
@@ -941,7 +941,7 @@ export default function MoneyHubPage() {
             })}
             {!isPaid && data.spending.categories.length >= 5 && (
               <div className="text-center pt-2">
-                <Link href="/pricing" className="text-amber-400 text-xs">Upgrade to see all categories</Link>
+                <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all categories</Link>
               </div>
             )}
           </div>
@@ -965,8 +965,8 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 4: Monthly Trends ═══ */}
       {isPaid && trends.length > 0 ? (
-        <div id="tour-trends" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+        <div id="tour-trends" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
             <TrendingUp className="h-5 w-5 text-green-400" /> Monthly Trends
           </h2>
           <div ref={trendsRef} className="relative">
@@ -997,7 +997,7 @@ export default function MoneyHubPage() {
 
                     {/* Hover tooltip */}
                     {hoveredMonth === idx && (
-                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 -translate-y-full z-20 bg-slate-800 border border-slate-600 rounded-xl p-3 shadow-xl w-52 text-left pointer-events-none">
+                      <div className="absolute -top-4 left-1/2 -translate-x-1/2 -translate-y-full z-20 bg-navy-800 border border-navy-600 rounded-xl p-3 shadow-xl w-52 text-left pointer-events-none">
                         <p className="text-white font-semibold text-xs mb-2">{monthName}</p>
                         <div className="space-y-1 text-[11px]">
                           <div className="flex justify-between">
@@ -1008,14 +1008,14 @@ export default function MoneyHubPage() {
                             <span className="text-red-400">Outgoings</span>
                             <span className="text-white font-medium">£{fmt(m.outgoings)}</span>
                           </div>
-                          <div className="flex justify-between border-t border-slate-700 pt-1">
+                          <div className="flex justify-between border-t border-navy-700/50 pt-1">
                             <span className={net >= 0 ? 'text-green-400' : 'text-red-400'}>Net</span>
                             <span className={`font-medium ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                               {net >= 0 ? '+' : ''}£{fmt(net)}
                             </span>
                           </div>
                           {prevMonth && (
-                            <div className="border-t border-slate-700 pt-1 text-slate-400">
+                            <div className="border-t border-navy-700/50 pt-1 text-slate-400">
                               <p>vs previous month:</p>
                               {vsIncome !== null && (
                                 <p className={vsIncome >= 0 ? 'text-green-400' : 'text-red-400'}>
@@ -1042,7 +1042,7 @@ export default function MoneyHubPage() {
             <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500 rounded-full" /> Outgoings</span>
           </div>
           {/* Averages summary */}
-          <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 gap-4">
+          <div className="mt-3 pt-3 border-t border-navy-700/50 grid grid-cols-2 gap-4">
             <div className="text-center">
               <p className="text-slate-500 text-xs">Avg monthly income</p>
               <p className="text-green-400 font-bold text-sm">£{fmt(avgIncome)}</p>
@@ -1059,19 +1059,19 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 5: Smart Alerts ═══ */}
       {data.alerts.length > 0 && (
-        <div className="bg-slate-900/50 border border-amber-500/20 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
-            <AlertTriangle className="h-5 w-5 text-amber-400" /> Smart Alerts
+        <div className="bg-navy-900 border border-mint-400/20 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
+            <AlertTriangle className="h-5 w-5 text-mint-400" /> Smart Alerts
           </h2>
           <div className="space-y-2">
             {data.alerts.map((alert: any) => (
-              <div key={alert.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+              <div key={alert.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
                 <div className="flex-1">
                   <p className="text-white text-sm font-medium">{alert.title}</p>
                   <p className="text-slate-500 text-xs">{alert.description?.substring(0, 80)}</p>
                 </div>
                 {alert.value_gbp > 0 && (
-                  <span className="text-amber-400 font-bold text-sm ml-3">£{alert.value_gbp}</span>
+                  <span className="text-mint-400 font-bold text-sm ml-3">£{alert.value_gbp}</span>
                 )}
               </div>
             ))}
@@ -1080,12 +1080,12 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ SECTION 6: Subscriptions Summary ═══ */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-amber-400" /> Subscriptions
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-mint-400" /> Subscriptions
           </h2>
-          <Link href="/dashboard/subscriptions" className="text-amber-400 text-xs flex items-center gap-1">
+          <Link href="/dashboard/subscriptions" className="text-mint-400 text-xs flex items-center gap-1">
             Manage <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
@@ -1107,18 +1107,18 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 7: Contracts Expiring ═══ */}
       {data.contracts.expiring.length > 0 && (
-        <div className="bg-slate-900/50 border border-red-500/20 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+        <div className="bg-navy-900 border border-red-500/20 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
             <Clock className="h-5 w-5 text-red-400" /> Contracts Expiring
           </h2>
           <div className="space-y-2">
             {data.contracts.expiring.map((c, i) => (
-              <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+              <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
                 <div>
                   <p className="text-white text-sm font-medium">{c.provider}</p>
                   <p className="text-slate-500 text-xs">£{c.monthlyCost}/month</p>
                 </div>
-                <span className={`text-sm font-semibold ${c.daysLeft <= 7 ? 'text-red-400' : c.daysLeft <= 30 ? 'text-amber-400' : 'text-blue-400'}`}>
+                <span className={`text-sm font-semibold ${c.daysLeft <= 7 ? 'text-red-400' : c.daysLeft <= 30 ? 'text-mint-400' : 'text-blue-400'}`}>
                   {c.daysLeft} days left
                 </span>
               </div>
@@ -1129,8 +1129,8 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 8: Net Worth Tracker ═══ */}
       {isPaid ? (
-        <div id="tour-networth" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+        <div id="tour-networth" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
             <Shield className="h-5 w-5 text-emerald-400" /> Net Worth
           </h2>
 
@@ -1166,7 +1166,7 @@ export default function MoneyHubPage() {
             {expandAssets && (
               <div className="space-y-2 ml-6">
                 {(data.netWorth.assetsList || []).map((a: any) => (
-                  <div key={a.id} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
+                  <div key={a.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-3 py-2 border border-navy-700/50">
                     <div>
                       <span className="text-white text-sm">{a.asset_name}</span>
                       <span className="text-slate-500 text-xs ml-2 capitalize">{a.asset_type?.replace('_', ' ')}</span>
@@ -1181,11 +1181,11 @@ export default function MoneyHubPage() {
                 ))}
 
                 {showAssetForm ? (
-                  <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 space-y-2">
+                  <div className="bg-navy-950/50 rounded-lg p-3 border border-navy-700/50 space-y-2">
                     <select
                       value={assetForm.type}
                       onChange={e => setAssetForm({ ...assetForm, type: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-mint-400"
                     >
                       {ASSET_TYPES.map(t => (
                         <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
@@ -1196,14 +1196,14 @@ export default function MoneyHubPage() {
                       placeholder="Asset name"
                       value={assetForm.name}
                       onChange={e => setAssetForm({ ...assetForm, name: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                     />
                     <input
                       type="number"
                       placeholder={assetForm.type === 'property' ? 'Property value (£)' : 'Value (£)'}
                       value={assetForm.value}
                       onChange={e => setAssetForm({ ...assetForm, value: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                     />
                     {assetForm.type === 'property' && (
                       <>
@@ -1213,7 +1213,7 @@ export default function MoneyHubPage() {
                           placeholder="Mortgage balance outstanding (£, leave blank if none)"
                           value={assetForm.mortgage_balance}
                           onChange={e => setAssetForm({ ...assetForm, mortgage_balance: e.target.value })}
-                          className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                          className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                         />
                         {assetForm.mortgage_balance && (
                           <>
@@ -1222,7 +1222,7 @@ export default function MoneyHubPage() {
                               placeholder="Monthly mortgage payment (£)"
                               value={assetForm.mortgage_payment}
                               onChange={e => setAssetForm({ ...assetForm, mortgage_payment: e.target.value })}
-                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                              className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                             />
                             <input
                               type="number"
@@ -1230,7 +1230,7 @@ export default function MoneyHubPage() {
                               placeholder="Interest rate (%, e.g. 4.5)"
                               value={assetForm.mortgage_rate}
                               onChange={e => setAssetForm({ ...assetForm, mortgage_rate: e.target.value })}
-                              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                              className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                             />
                             <p className="text-emerald-400 text-[10px]">
                               Equity: £{fmt((parseFloat(assetForm.value) || 0) - (parseFloat(assetForm.mortgage_balance) || 0))}
@@ -1247,7 +1247,7 @@ export default function MoneyHubPage() {
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setShowAssetForm(true)} className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300">
+                  <button onClick={() => setShowAssetForm(true)} className="flex items-center gap-1 text-mint-400 text-xs hover:text-mint-300">
                     <Plus className="h-3 w-3" /> Add Asset
                   </button>
                 )}
@@ -1269,11 +1269,11 @@ export default function MoneyHubPage() {
             {expandLiabilities && (
               <div className="space-y-2 ml-6">
                 {(data.netWorth.liabilitiesList || []).map((l: any) => (
-                  <div key={l.id} className="bg-slate-950/50 rounded-lg px-4 py-3 border border-slate-800">
+                  <div key={l.id} className="bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
                         <span className="text-white text-sm font-medium">{l.liability_name}</span>
-                        <span className="text-xs px-1.5 py-0.5 bg-slate-800 rounded text-slate-400 capitalize">{l.liability_type?.replace('_', ' ')}</span>
+                        <span className="text-xs px-1.5 py-0.5 bg-navy-800 rounded text-slate-400 capitalize">{l.liability_type?.replace('_', ' ')}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-red-400 font-bold text-sm">£{fmt(parseFloat(String(l.outstanding_balance)) || 0)}</span>
@@ -1293,11 +1293,11 @@ export default function MoneyHubPage() {
                 ))}
 
                 {showLiabilityForm ? (
-                  <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 space-y-2">
+                  <div className="bg-navy-950/50 rounded-lg p-3 border border-navy-700/50 space-y-2">
                     <select
                       value={liabilityForm.type}
                       onChange={e => setLiabilityForm({ ...liabilityForm, type: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-mint-400"
                     >
                       {LIABILITY_TYPES.map(t => (
                         <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace('_', ' ')}</option>
@@ -1308,28 +1308,28 @@ export default function MoneyHubPage() {
                       placeholder="Liability name"
                       value={liabilityForm.name}
                       onChange={e => setLiabilityForm({ ...liabilityForm, name: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                     />
                     <input
                       type="number"
                       placeholder="Outstanding balance (£)"
                       value={liabilityForm.balance}
                       onChange={e => setLiabilityForm({ ...liabilityForm, balance: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                     />
                     <input
                       type="number"
                       placeholder="Monthly payment (£, optional)"
                       value={liabilityForm.monthly_payment}
                       onChange={e => setLiabilityForm({ ...liabilityForm, monthly_payment: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                     />
                     <input
                       type="number"
                       placeholder="Interest rate (%, optional)"
                       value={liabilityForm.interest_rate}
                       onChange={e => setLiabilityForm({ ...liabilityForm, interest_rate: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
                     />
                     <div className="flex gap-2">
                       <button onClick={addLiability} disabled={nwSaving} className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded font-medium disabled:opacity-50">
@@ -1339,7 +1339,7 @@ export default function MoneyHubPage() {
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setShowLiabilityForm(true)} className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300">
+                  <button onClick={() => setShowLiabilityForm(true)} className="flex items-center gap-1 text-mint-400 text-xs hover:text-mint-300">
                     <Plus className="h-3 w-3" /> Add Liability
                   </button>
                 )}
@@ -1353,14 +1353,14 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 9: Budget Planner ═══ */}
       {isPaid ? (
-        <div id="tour-budgets" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div id="tour-budgets" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
               <Target className="h-5 w-5 text-purple-400" /> Budget Planner
             </h2>
             <button
               onClick={() => { setShowBudgetForm(true); setEditBudgetId(null); setBudgetAmount(''); setBudgetCategory('groceries'); }}
-              className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300"
+              className="flex items-center gap-1 text-mint-400 text-xs hover:text-mint-300"
             >
               <Plus className="h-3 w-3" /> Add Budget
             </button>
@@ -1375,13 +1375,13 @@ export default function MoneyHubPage() {
 
           {/* Add/edit budget form */}
           {showBudgetForm && (
-            <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800 mb-4 space-y-2">
+            <div className="bg-navy-950/50 rounded-lg p-3 border border-navy-700/50 mb-4 space-y-2">
               <div className="flex gap-2">
                 <select
                   value={budgetCategory}
                   onChange={e => setBudgetCategory(e.target.value)}
                   disabled={!!editBudgetId}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                  className="flex-1 bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-mint-400 disabled:opacity-50"
                 >
                   {Object.entries(CATEGORY_LABELS).map(([key, val]) => (
                     <option key={key} value={key}>{val.icon} {val.label}</option>
@@ -1394,7 +1394,7 @@ export default function MoneyHubPage() {
                     placeholder="Monthly limit"
                     value={budgetAmount}
                     onChange={e => setBudgetAmount(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white w-28 focus:outline-none focus:border-amber-500"
+                    className="bg-navy-800 border border-navy-700/50 rounded px-2 py-1.5 text-xs text-white w-28 focus:outline-none focus:border-mint-400"
                   />
                 </div>
               </div>
@@ -1430,12 +1430,12 @@ export default function MoneyHubPage() {
                         )}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-slate-400'}>
+                        <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-mint-400' : 'text-slate-400'}>
                           £{fmt(spent)} / £{fmt(b.monthly_limit)}
                         </span>
                         <button
                           onClick={() => { setEditBudgetId(b.id); setBudgetCategory(b.category); setBudgetAmount(b.monthly_limit.toString()); setShowBudgetForm(true); }}
-                          className="text-slate-600 hover:text-amber-400"
+                          className="text-slate-600 hover:text-mint-400"
                         >
                           <Edit3 className="h-3 w-3" />
                         </button>
@@ -1444,14 +1444,14 @@ export default function MoneyHubPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="w-full bg-slate-700 rounded-full h-2">
+                    <div className="w-full bg-navy-700 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full transition-all ${pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : pct > 60 ? 'bg-amber-400' : 'bg-green-500'}`}
                         style={{ width: `${Math.min(pct, 100)}%` }}
                       />
                     </div>
                     <div className="flex justify-end mt-0.5">
-                      <span className={`text-[10px] ${pct > 100 ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-slate-500'}`}>
+                      <span className={`text-[10px] ${pct > 100 ? 'text-red-400' : pct > 80 ? 'text-mint-400' : 'text-slate-500'}`}>
                         {pct.toFixed(0)}%
                       </span>
                     </div>
@@ -1466,23 +1466,23 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ SECTION 10: Financial Action Centre ═══ */}
-      <div id="tour-actions" className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-5">
+      <div id="tour-actions" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-amber-400 flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-mint-400 font-[family-name:var(--font-heading)] flex items-center gap-2">
             <Zap className="h-5 w-5" /> Financial Action Centre
           </h2>
           <div className="flex items-center gap-3">
             <button
               onClick={scanInbox}
               disabled={scanning}
-              className="flex items-center gap-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
+              className="flex items-center gap-1.5 bg-mint-400/20 hover:bg-mint-400/30 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
             >
               {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
               {scanning ? 'Scanning inbox...' : 'Scan Inbox'}
             </button>
             {totalOpportunityValue > 0 && (
               <div className="text-right">
-                <p className="text-2xl font-bold text-amber-400">£{fmt(totalOpportunityValue)}</p>
+                <p className="text-2xl font-bold text-mint-400">£{fmt(totalOpportunityValue)}</p>
                 <p className="text-slate-500 text-xs">potential savings</p>
               </div>
             )}
@@ -1515,10 +1515,10 @@ export default function MoneyHubPage() {
                 overcharge: { color: 'bg-red-500/20 text-red-400', label: 'Overcharge' },
                 refund: { color: 'bg-green-500/20 text-green-400', label: 'Refund' },
               };
-              const badge = typeBadge[oppType] || { color: 'bg-amber-500/20 text-amber-400', label: oppType.replace('_', ' ') || 'Opportunity' };
+              const badge = typeBadge[oppType] || { color: 'bg-mint-400/20 text-mint-400', label: oppType.replace('_', ' ') || 'Opportunity' };
 
               return (
-                <div key={opp.id} className="bg-slate-900/50 rounded-lg px-4 py-3 border border-slate-800">
+                <div key={opp.id} className="bg-navy-900 rounded-lg px-4 py-3 border border-navy-700/50">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
@@ -1529,7 +1529,7 @@ export default function MoneyHubPage() {
                       </div>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                         {providerName && <span>{providerName}</span>}
-                        {opp.amount > 0 && <span className="text-amber-400 font-medium">£{opp.amount}</span>}
+                        {opp.amount > 0 && <span className="text-mint-400 font-medium">£{opp.amount}</span>}
                         {opp.confidence && <span>({opp.confidence}% confidence)</span>}
                       </div>
                       {opp.description_text && (
@@ -1537,10 +1537,10 @@ export default function MoneyHubPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-800/50">
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-navy-700/50/50">
                     {/* Smart action buttons based on type */}
                     {(suggestedAction === 'switch_deal' || oppCategory === 'broadband' || oppCategory === 'energy' || oppCategory === 'mobile' || oppCategory === 'insurance') && (
-                      <Link href="/dashboard/deals" className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Compare Deals
                       </Link>
                     )}
@@ -1600,22 +1600,22 @@ export default function MoneyHubPage() {
           </div>
         )}
         {!isPaid && data.opportunities.length >= 3 && (
-          <div className="text-center pt-3 border-t border-amber-500/20 mt-3">
-            <Link href="/pricing" className="text-amber-400 text-xs">Upgrade to see all actions</Link>
+          <div className="text-center pt-3 border-t border-mint-400/20 mt-3">
+            <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all actions</Link>
           </div>
         )}
       </div>
 
       {/* ═══ SECTION 11: Savings Goals ═══ */}
       {isPaid ? (
-        <div id="tour-goals" className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div id="tour-goals" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
               <PiggyBank className="h-5 w-5 text-pink-400" /> Savings Goals
             </h2>
             <button
               onClick={() => { setShowGoalForm(true); setEditGoalId(null); setGoalForm({ name: '', emoji: '🎯', target_amount: '', target_date: '', current_amount: '0' }); }}
-              className="flex items-center gap-1 text-amber-400 text-xs hover:text-amber-300"
+              className="flex items-center gap-1 text-mint-400 text-xs hover:text-mint-300"
             >
               <Plus className="h-3 w-3" /> Add Goal
             </button>
@@ -1633,7 +1633,7 @@ export default function MoneyHubPage() {
 
           {/* Add/edit goal form */}
           {showGoalForm && (
-            <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800 mb-4 space-y-3">
+            <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50 mb-4 space-y-3">
               <div>
                 <label className="text-slate-400 text-xs mb-1 block">Emoji</label>
                 <div className="flex flex-wrap gap-1.5">
@@ -1648,7 +1648,7 @@ export default function MoneyHubPage() {
                           ...(suggestedName && !goalForm.name ? { name: suggestedName } : {}),
                         });
                       }}
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all ${goalForm.emoji === e ? 'bg-pink-500/30 ring-1 ring-pink-400' : 'bg-slate-800 hover:bg-slate-700'}`}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-all ${goalForm.emoji === e ? 'bg-pink-500/30 ring-1 ring-pink-400' : 'bg-navy-800 hover:bg-navy-700'}`}
                     >
                       {e}
                     </button>
@@ -1660,7 +1660,7 @@ export default function MoneyHubPage() {
                 placeholder="Goal name (e.g. Holiday fund)"
                 value={goalForm.name}
                 onChange={e => setGoalForm({ ...goalForm, name: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                className="w-full bg-navy-800 border border-navy-700/50 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -1668,14 +1668,14 @@ export default function MoneyHubPage() {
                   placeholder="Target amount (£)"
                   value={goalForm.target_amount}
                   onChange={e => setGoalForm({ ...goalForm, target_amount: e.target.value })}
-                  className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                  className="bg-navy-800 border border-navy-700/50 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
                 />
                 <input
                   type="date"
                   placeholder="Target date"
                   value={goalForm.target_date}
                   onChange={e => setGoalForm({ ...goalForm, target_date: e.target.value })}
-                  className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                  className="bg-navy-800 border border-navy-700/50 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
                 />
               </div>
               <input
@@ -1683,7 +1683,7 @@ export default function MoneyHubPage() {
                 placeholder="Initial amount (£, optional)"
                 value={goalForm.current_amount}
                 onChange={e => setGoalForm({ ...goalForm, current_amount: e.target.value })}
-                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
+                className="w-full bg-navy-800 border border-navy-700/50 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-pink-500"
               />
               <div className="flex gap-2">
                 <button onClick={saveGoal} disabled={savingGoal} className="bg-pink-500 hover:bg-pink-600 text-white text-xs px-4 py-2 rounded-lg font-medium disabled:opacity-50">
@@ -1710,7 +1710,7 @@ export default function MoneyHubPage() {
                 const monthlySavingNeeded = monthsLeft && monthsLeft > 0 ? remaining / monthsLeft : null;
 
                 return (
-                  <div key={g.id} className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
+                  <div key={g.id} className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
                     <div className="flex justify-between mb-2">
                       <span className="text-white font-medium text-sm">{g.emoji || '🎯'} {g.goal_name}</span>
                       <div className="flex items-center gap-2">
@@ -1729,7 +1729,7 @@ export default function MoneyHubPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="w-full bg-slate-700 rounded-full h-2 mb-1">
+                    <div className="w-full bg-navy-700 rounded-full h-2 mb-1">
                       <div className="bg-pink-500 h-2 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
                     </div>
                     <div className="flex justify-between text-xs text-slate-500">
@@ -1744,14 +1744,14 @@ export default function MoneyHubPage() {
 
                     {/* Add money inline form */}
                     {addMoneyGoalId === g.id && (
-                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-navy-700/50">
                         <span className="text-slate-400 text-xs">£</span>
                         <input
                           type="number"
                           value={addMoneyAmount}
                           onChange={e => setAddMoneyAmount(e.target.value)}
                           placeholder="Amount to add"
-                          className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white w-28 focus:outline-none focus:border-pink-500"
+                          className="bg-navy-800 border border-navy-700/50 rounded px-2 py-1 text-xs text-white w-28 focus:outline-none focus:border-pink-500"
                         />
                         <button
                           onClick={() => addMoneyToGoal(g.id)}
@@ -1777,7 +1777,7 @@ export default function MoneyHubPage() {
       {!isPaid && (
         <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/5 border border-blue-500/20 rounded-2xl p-6 text-center">
           <Mail className="h-10 w-10 text-blue-400 mx-auto mb-3" />
-          <h2 className="text-xl font-bold text-white mb-2">Email Financial Intelligence</h2>
+          <h2 className="text-xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Email Financial Intelligence</h2>
           <p className="text-slate-400 text-sm mb-4 max-w-lg mx-auto">
             Upgrade to scan your email inbox for overcharges, price increases, compensation opportunities, and forgotten subscriptions. This is something no other finance app offers.
           </p>
@@ -1790,12 +1790,12 @@ export default function MoneyHubPage() {
       {/* ═══ Custom Widgets (Pro AI) ═══ */}
       {customWidgets.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
             <Eye className="h-5 w-5 text-purple-400" /> Custom Views
           </h2>
           <div className="grid md:grid-cols-2 gap-4">
             {customWidgets.map(widget => (
-              <div key={widget.id} className="bg-slate-900/50 border border-purple-500/20 rounded-2xl p-4">
+              <div key={widget.id} className="bg-navy-900 border border-purple-500/20 rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-white text-sm font-semibold">{widget.title}</h3>
                   <button onClick={() => removeWidget(widget.id)} className="text-slate-600 hover:text-red-400">
@@ -1814,8 +1814,8 @@ export default function MoneyHubPage() {
       {/* ═══ Category Drill-Down Modal ═══ */}
       {drillCategory && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-slate-700">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-navy-800 border-b border-navy-700/50">
               <div className="flex items-center gap-2">
                 <button onClick={() => { setDrillCategory(null); setDrillData(null); }} className="text-slate-400 hover:text-white">
                   <ArrowLeft className="h-4 w-4" />
@@ -1824,11 +1824,11 @@ export default function MoneyHubPage() {
                   {(CATEGORY_LABELS[drillCategory] || CATEGORY_LABELS.other).icon} {(CATEGORY_LABELS[drillCategory] || CATEGORY_LABELS.other).label}
                 </h2>
               </div>
-              {drillData && <span className="text-amber-400 font-bold">{formatGBP(drillData.totalSpent)}</span>}
+              {drillData && <span className="text-mint-400 font-bold">{formatGBP(drillData.totalSpent)}</span>}
             </div>
             <div className="flex-1 overflow-y-auto p-6">
               {drillLoading ? (
-                <div className="text-center py-8"><Loader2 className="h-6 w-6 text-amber-500 animate-spin mx-auto" /></div>
+                <div className="text-center py-8"><Loader2 className="h-6 w-6 text-mint-400 animate-spin mx-auto" /></div>
               ) : drillData ? (
                 <div className="space-y-6">
                   {drillData.merchants.length > 0 && (
@@ -1836,7 +1836,7 @@ export default function MoneyHubPage() {
                       <h3 className="text-white text-sm font-semibold mb-3">Merchants</h3>
                       <div className="space-y-2">
                         {drillData.merchants.map((m: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800">
+                          <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-3 py-2 border border-navy-700/50">
                             <div>
                               <span className="text-white text-sm">{m.merchant}</span>
                               <span className="text-slate-500 text-xs ml-2">{m.count} transactions</span>
@@ -1848,7 +1848,7 @@ export default function MoneyHubPage() {
                                 onChange={async (e) => {
                                   await recategorise(m.merchant, e.target.value);
                                 }}
-                                className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
+                                className="bg-navy-800 border border-navy-700/50 rounded text-[10px] text-slate-400 px-1 py-0.5"
                               >
                                 {Object.keys(CATEGORY_LABELS).map(c => (
                                   <option key={c} value={c}>{CATEGORY_LABELS[c].label}</option>
@@ -1864,7 +1864,7 @@ export default function MoneyHubPage() {
                     <h3 className="text-white text-sm font-semibold mb-3">Transactions ({drillData.transactions.length})</h3>
                     <div className="space-y-1 max-h-64 overflow-y-auto">
                       {drillData.transactions.map((t: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-slate-800/50">
+                        <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-navy-700/50/50">
                           <div className="flex-1 min-w-0">
                             <span className="text-slate-300 truncate block">{t.description?.substring(0, 40)}</span>
                             <span className="text-slate-500 text-xs">{t.date}</span>
@@ -1886,8 +1886,8 @@ export default function MoneyHubPage() {
       {/* ═══ Income Drill-Down Modal ═══ */}
       {drillIncomeType && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-slate-700">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-navy-800 border-b border-navy-700/50">
               <div className="flex items-center gap-2">
                 <button onClick={() => { setDrillIncomeType(null); setDrillIncomeData(null); }} className="text-slate-400 hover:text-white">
                   <ArrowLeft className="h-4 w-4" />
@@ -1917,7 +1917,7 @@ export default function MoneyHubPage() {
                             <div key={i}>
                               <button
                                 onClick={() => setExpandedIncomeSource(isExpanded ? null : m.merchant)}
-                                className="flex items-center justify-between w-full bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-800 hover:bg-slate-800/50 transition-colors text-left"
+                                className="flex items-center justify-between w-full bg-navy-950/50 rounded-lg px-3 py-2 border border-navy-700/50 hover:bg-navy-800/50 transition-colors text-left"
                               >
                                 <div className="flex items-center gap-2">
                                   {isExpanded ? <ChevronUp className="h-3 w-3 text-slate-500" /> : <ChevronDown className="h-3 w-3 text-slate-500" />}
@@ -1932,7 +1932,7 @@ export default function MoneyHubPage() {
                                     onChange={async (e) => {
                                       await recategoriseIncome(m.merchant, e.target.value);
                                     }}
-                                    className="bg-slate-800 border border-slate-700 rounded text-[10px] text-slate-400 px-1 py-0.5"
+                                    className="bg-navy-800 border border-navy-700/50 rounded text-[10px] text-slate-400 px-1 py-0.5"
                                   >
                                     {Object.keys(INCOME_LABELS).map(c => (
                                       <option key={c} value={c}>{INCOME_LABELS[c].label}</option>
@@ -1941,7 +1941,7 @@ export default function MoneyHubPage() {
                                 </div>
                               </button>
                               {isExpanded && (
-                                <div className="ml-5 mt-1 space-y-1 border-l-2 border-slate-800 pl-3">
+                                <div className="ml-5 mt-1 space-y-1 border-l-2 border-navy-700/50 pl-3">
                                   {sourceTxns.length > 0 ? sourceTxns.map((t: any, j: number) => (
                                     <div key={j} className="flex items-center justify-between text-sm py-1.5">
                                       <div className="flex-1 min-w-0">
@@ -1965,7 +1965,7 @@ export default function MoneyHubPage() {
                     <h3 className="text-white text-sm font-semibold mb-3">All Transactions ({drillIncomeData.transactions.length})</h3>
                     <div className="space-y-1 max-h-64 overflow-y-auto">
                       {drillIncomeData.transactions.map((t: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-slate-800/50">
+                        <div key={i} className="flex items-center justify-between text-sm py-1 border-b border-navy-700/50/50">
                           <div className="flex-1 min-w-0">
                             <span className="text-slate-300 truncate block">{t.description?.substring(0, 50)}</span>
                             <span className="text-slate-500 text-xs">{t.date}</span>
@@ -1996,8 +1996,8 @@ export default function MoneyHubPage() {
               </button>
             )}
             {chatOpen && (
-              <div className="fixed bottom-20 left-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] bg-slate-900 border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden lg:bottom-6 lg:left-6">
-                <div className="flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700">
+              <div className="fixed bottom-20 left-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] bg-navy-900 border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden lg:bottom-6 lg:left-6">
+                <div className="flex items-center justify-between px-4 py-3 bg-navy-800 border-b border-navy-700/50">
                   <div className="flex items-center gap-2">
                     <MessageCircle className="h-4 w-4 text-purple-400" />
                     <div>
@@ -2028,7 +2028,7 @@ export default function MoneyHubPage() {
                   )}
                   {chatMessages.map((msg, i) => (
                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-200'}`}>
+                      <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-purple-500 text-white' : 'bg-navy-800 text-slate-200'}`}>
                         {/* Strip widget commands from display */}
                         {msg.content.replace(/\[WIDGET:[\s\S]*?\]/g, '').trim() || 'Done! Check your custom views above.'}
                       </div>
@@ -2036,14 +2036,14 @@ export default function MoneyHubPage() {
                   ))}
                   {chatLoading && (
                     <div className="flex justify-start">
-                      <div className="bg-slate-800 rounded-2xl px-3 py-2">
+                      <div className="bg-navy-800 rounded-2xl px-3 py-2">
                         <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
                       </div>
                     </div>
                   )}
                   <div ref={chatEndRef} />
                 </div>
-                <div className="p-3 border-t border-slate-700">
+                <div className="p-3 border-t border-navy-700/50">
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -2051,7 +2051,7 @@ export default function MoneyHubPage() {
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
                       placeholder="Ask about your finances..."
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      className="flex-1 bg-navy-800 border border-navy-700/50 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
                       disabled={chatLoading}
                     />
                     <button onClick={sendChatMessage} disabled={!chatInput.trim() || chatLoading} className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white w-9 h-9 rounded-xl flex items-center justify-center">
