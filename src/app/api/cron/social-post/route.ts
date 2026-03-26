@@ -78,6 +78,20 @@ export async function GET(request: NextRequest) {
   const supabase = getAdmin();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  // Deduplication: skip if we already posted to Facebook today
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const { count: todayPosts } = await supabase
+    .from('content_drafts')
+    .select('id', { count: 'exact', head: true })
+    .eq('platform', 'facebook')
+    .eq('status', 'posted')
+    .gte('posted_at', todayStart.toISOString());
+
+  if ((todayPosts || 0) > 0) {
+    return NextResponse.json({ skipped: true, reason: 'Already posted to Facebook today' });
+  }
+
   // Step 1: Research trending UK consumer topics via Perplexity
   let researchContext = '';
   const perplexityKey = process.env.PERPLEXITY_API_KEY;
@@ -176,14 +190,25 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief description for 
   // Post to Facebook
   try {
     const pageToken = await getPageToken(systemToken);
-    const params = new URLSearchParams({
-      message: caption,
-      link: 'https://paybacker.co.uk',
-      access_token: pageToken,
-    });
-    const res = await fetch(`${API}/${PAGE_ID}/feed`, { method: 'POST', body: params });
-    const data = await res.json();
-    results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
+    if (imageUrl) {
+      // Photo post via /photos endpoint (proper image, no link preview)
+      const params = new URLSearchParams({
+        message: caption,
+        url: imageUrl,
+        access_token: pageToken,
+      });
+      const res = await fetch(`${API}/${PAGE_ID}/photos`, { method: 'POST', body: params });
+      const data = await res.json();
+      results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
+    } else {
+      const params = new URLSearchParams({
+        message: caption,
+        access_token: pageToken,
+      });
+      const res = await fetch(`${API}/${PAGE_ID}/feed`, { method: 'POST', body: params });
+      const data = await res.json();
+      results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
+    }
   } catch (err: any) {
     results.facebook = { error: err.message };
   }

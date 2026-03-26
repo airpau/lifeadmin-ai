@@ -271,7 +271,7 @@ export async function POST(request: NextRequest) {
 
     // Handle /start
     if (text === '/start') {
-      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/dev [task] - Developer agent creates a PR\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
+      await sendTelegram(chatId, `Hi ${firstName}! I'm Charlie, your Executive Assistant.\n\nI have full access to business data and can trigger any agent to run immediately.\n\n*Commands:*\n/status - Business snapshot\n/tickets - Open support tickets\n/reports - Latest agent reports\n/users - User stats\n/revenue - Revenue overview\n/agents - List all agents\n/ask [agent] [question] - Run an agent and ask a question\n/run [agent] - Trigger a full agent run\n/dev [task] - Developer agent creates a PR\n/cac [days] - Signup sources & CAC report (default 7 days)\n/clear - Clear conversation history\n\nOr just chat naturally. I remember our conversation.`);
       console.log(`[telegram] SETUP: chat_id ${chatId}`);
       return NextResponse.json({ ok: true });
     }
@@ -313,6 +313,33 @@ export async function POST(request: NextRequest) {
         }
       } catch (err: any) {
         await sendTelegram(chatId, `Ads check failed: ${err.message}`);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Handle /cac - acquisition report
+    if (text === '/cac' || text.startsWith('/cac ')) {
+      const daysMatch = text.match(/\/cac\s+(\d+)/);
+      const days = daysMatch ? parseInt(daysMatch[1]) : 7;
+      await sendTelegram(chatId, `_Generating ${days}-day acquisition report..._`);
+
+      try {
+        const res = await fetch('https://paybacker.co.uk/api/cron/weekly-acquisition-report', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ days }),
+        });
+        const data = await res.json();
+        if (data.formatted) {
+          await sendTelegram(chatId, data.formatted);
+        } else {
+          await sendTelegram(chatId, `Report generated but no signups in the last ${days} days.`);
+        }
+      } catch (err: any) {
+        await sendTelegram(chatId, `Report failed: ${err.message}`);
       }
       return NextResponse.json({ ok: true });
     }

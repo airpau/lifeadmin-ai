@@ -36,19 +36,18 @@ export async function POST(request: NextRequest) {
       const pageToken = await getPageToken(systemToken);
 
       if (image_url) {
-        // Photo post via feed with attached image
+        // Photo post via /photos endpoint (proper image upload, no link preview)
         const params = new URLSearchParams({
           message,
-          link: image_url,
+          url: image_url,
           access_token: pageToken,
         });
-        const res = await fetch(`${API}/${PAGE_ID}/feed`, { method: 'POST', body: params });
+        const res = await fetch(`${API}/${PAGE_ID}/photos`, { method: 'POST', body: params });
         const data = await res.json();
         results.facebook = data.error ? { error: data.error.message } : { ok: true, postId: data.id };
       } else {
         const params = new URLSearchParams({
           message,
-          link: 'https://paybacker.co.uk',
           access_token: pageToken,
         });
         const res = await fetch(`${API}/${PAGE_ID}/feed`, { method: 'POST', body: params });
