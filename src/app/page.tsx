@@ -8,6 +8,7 @@ import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
 import PublicNavbar from '@/components/PublicNavbar';
+import { createClient } from '@/lib/supabase/client';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -18,8 +19,15 @@ export default function Home() {
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
   const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
   const [stats, setStats] = useState<{ lettersGenerated: number; subscriptionsTracked: number; usersJoined: number; dealClicks: number } | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
+    // Check if user is logged in
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setIsLoggedIn(true);
+    });
+
     // Capture referral code from URL and persist
     const params = new URLSearchParams(window.location.search);
     const ref = params.get('ref');
@@ -178,8 +186,8 @@ export default function Home() {
                     Get Started Free <ArrowRight className="h-5 w-5" />
                   </a>
                 ) : (
-                  <Link href="/auth/signup" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
-                    {foundingSpots !== null ? 'Claim Your Free Pro Account' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
+                  <Link href={isLoggedIn ? '/dashboard' : '/auth/signup'} className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
+                    {isLoggedIn ? 'Go to Dashboard' : (foundingSpots !== null ? 'Claim Your Free Pro Account' : 'Get Started Free')} <ArrowRight className="h-5 w-5" />
                   </Link>
                 )}
                 <a href="#how-it-works" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-8 py-4 rounded-xl transition-all duration-200 text-center text-lg">
@@ -609,8 +617,8 @@ export default function Home() {
                   Get Started Free <ArrowRight className="h-5 w-5" />
                 </a>
               ) : (
-                <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-lg inline-flex items-center gap-2">
-                  Get Started Free <ArrowRight className="h-5 w-5" />
+                <Link href={isLoggedIn ? '/dashboard' : '/auth/signup'} className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-lg inline-flex items-center gap-2">
+                  {isLoggedIn ? 'Go to Dashboard' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
                 </Link>
               )}
             </motion.div>

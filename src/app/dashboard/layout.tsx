@@ -47,17 +47,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    const loadUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
       setUserEmail(user?.email || null);
       if (user) {
-        supabase.from('profiles').select('first_name, full_name, subscription_tier').eq('id', user.id).single().then(({ data }) => {
-          const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
-          setFirstName(name);
-          setUserTier(data?.subscription_tier || 'free');
-        });
+        const { data } = await supabase.from('profiles').select('first_name, full_name, subscription_tier').eq('id', user.id).single();
+        const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
+        setFirstName(name);
+        setUserTier(data?.subscription_tier || 'free');
       }
-    });
-  }, [supabase]);
+    };
+    loadUser();
+
+    // Also sync from Stripe to ensure tier is current
+    fetch('/api/stripe/sync', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => { if (d.tier) setUserTier(d.tier); })
+      .catch(() => {});
+  }, []);
 
   // Close sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
