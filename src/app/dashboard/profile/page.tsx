@@ -4,8 +4,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
+import FinancialReport from '@/components/reports/FinancialReport';
+import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {
   email: string;
@@ -44,6 +46,12 @@ export default function ProfilePage() {
   const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
   const [renewalDate, setRenewalDate] = useState<string | null>(null);
   const [billingMessage, setBillingMessage] = useState<string | null>(null);
+  const [reportData, setReportData] = useState<AnnualReportData | OnDemandReportData | null>(null);
+  const [reportType, setReportType] = useState<'annual' | 'on_demand' | 'sample'>('sample');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
+  const [showReport, setShowReport] = useState(false);
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -187,6 +195,51 @@ export default function ProfilePage() {
       setDeleting(false);
     }
   };
+
+  const fetchSavedReports = async () => {
+    try {
+      const res = await fetch('/api/reports');
+      const data = await res.json();
+      if (data.reports) setSavedReports(data.reports);
+    } catch {
+      // Silently fail
+    }
+  };
+
+  const handleGenerateReport = async (type: 'annual' | 'on_demand') => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const res = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, year: new Date().getFullYear() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setReportError(data.error || 'Failed to generate report');
+        return;
+      }
+      setReportData(data.data);
+      setReportType(type);
+      setShowReport(true);
+      if (type === 'annual') fetchSavedReports();
+    } catch {
+      setReportError('Failed to generate report');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  // Fetch saved reports for Pro users
+  useEffect(() => {
+    const isPro = profile?.subscription_tier &&
+      profile.subscription_tier === 'pro' &&
+      ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+    if (profile && isPro) {
+      fetchSavedReports();
+    }
+  }, [profile]);
 
   if (loading) {
     return (
@@ -529,6 +582,98 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Financial Reports */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-mint-400" />
+          Financial Reports
+        </h2>
+
+        {effectiveTier === 'pro' ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => handleGenerateReport('annual')}
+                disabled={reportLoading}
+                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+              >
+                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                {reportLoading ? 'Generating...' : 'Generate Annual Report'}
+              </button>
+              <button
+                onClick={() => handleGenerateReport('on_demand')}
+                disabled={reportLoading}
+                className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+              >
+                Quick Summary
+              </button>
+            </div>
+
+            {reportError && (
+              <p className="text-sm text-red-400">{reportError}</p>
+            )}
+
+            {/* Saved reports list */}
+            {savedReports.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-300 mb-2">Saved Reports</h3>
+                <div className="space-y-2">
+                  {savedReports.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-4 w-4 text-mint-400" />
+                        <div>
+                          <p className="text-white text-sm font-medium capitalize">
+                            {r.report_type === 'annual' ? `${r.year} Annual Report` : 'Summary Report'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(r.created_at).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Report display */}
+            {showReport && reportData && (
+              <div className="mt-4 pt-4 border-t border-navy-700/50">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-white">
+                    {reportType === 'annual' ? 'Annual Report' : 'Financial Summary'}
+                  </h3>
+                  <button
+                    onClick={() => setShowReport(false)}
+                    className="text-sm text-slate-400 hover:text-white transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
+                <FinancialReport data={reportData} type={reportType} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p className="text-slate-400 text-sm mb-4">
+              {effectiveTier === 'essential'
+                ? 'Upgrade to Pro to unlock personalised annual financial reports with PDF download.'
+                : 'Pro users get personalised annual financial reports with spending analysis, savings tracking, and PDF download.'}
+            </p>
+            <FinancialReport type="sample" />
+          </div>
+        )}
       </div>
 
       {/* Legal links */}
