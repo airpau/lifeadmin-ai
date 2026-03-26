@@ -10,8 +10,9 @@
 const MERCHANT_MAP: Record<string, string> = {
   // Energy
   'british gas': 'British Gas',
-  'eon': 'E.ON',
   'eon next': 'E.ON Next',
+  'e.on': 'E.ON',
+  'eon energy': 'E.ON',
   'octopus energy': 'Octopus Energy',
   'ovo energy': 'OVO Energy',
   'ovo ': 'OVO Energy',
@@ -61,6 +62,9 @@ const MERCHANT_MAP: Record<string, string> = {
   'dazn': 'DAZN',
   'paramount': 'Paramount+',
   'audible': 'Audible',
+  'patreon': 'Patreon',
+  'plex': 'Plex',
+  'plex.tv': 'Plex',
 
   // Fitness
   'puregym': 'PureGym',
@@ -141,8 +145,27 @@ const MERCHANT_MAP: Record<string, string> = {
 
   // Council/Government
   'council': 'Council Tax',
+  'testvalley': 'Test Valley Council Tax',
+  'winchester city': 'Winchester City Council Tax',
+  'lbh': 'LB Hounslow Council Tax',
   'hmrc': 'HMRC',
   'dvla': 'DVLA',
+
+  // Bank fees and charges
+  'interest': 'Bank Interest',
+  'a/c interest': 'Account Interest',
+  'arranged o/d': 'Overdraft Fee',
+  'overdraft': 'Overdraft Fee',
+  'bank charge': 'Bank Charges',
+  'unpaid item': 'Unpaid Item Fee',
+
+  // Services
+  'smartrack': 'Smartrack (Vehicle Tracking)',
+  'keynest': 'KeyNest',
+  'experian': 'Experian',
+  'myhousemaid': 'MyHousemaid',
+  'quickbooks': 'QuickBooks',
+  'intuit': 'QuickBooks',
 
   // Water
   'thames water': 'Thames Water',
@@ -153,8 +176,8 @@ const MERCHANT_MAP: Record<string, string> = {
 };
 
 // Suffixes to strip before matching
-const STRIP_SUFFIXES = /\s+(pymts?|payments?|subs?|subscriptions?|ltd|plc|uk|gbr|direct debit|dd|monthly|annual|online|internet|mobile|broadband)\s*$/gi;
-const STRIP_PREFIXES = /^(paypal \*|paypal\*|amzn mktp|amzn |sqr\*|google \*|apple\.com\/bill|izettle\*)/i;
+const STRIP_SUFFIXES = /\s+(pymts?|payments?|subs?|subscriptions?|ltd|plc|uk|gbr|direct debit|dd|monthly|annual|online|internet|mobile|broadband|membership|membershippat)\s*$/gi;
+const STRIP_PREFIXES = /^(paypal \*|paypal\*|patreon\*\s*|amzn mktp|amzn |sqr\*|google \*|apple\.com\/bill|izettle\*|www\.|http[s]?:\/\/)/i;
 
 /**
  * Normalise a raw bank transaction description to a clean display name.
@@ -165,11 +188,32 @@ export function normaliseMerchantName(raw: string): string {
 
   let cleaned = raw.trim();
 
+  // Remove leading card number prefix (e.g. "9384 ", "4239 ")
+  cleaned = cleaned.replace(/^\d{4}\s+/, '');
+
+  // Remove date stamps (e.g. "19MAR26", "17/03/26")
+  cleaned = cleaned.replace(/\d{2}[A-Z]{3}\d{2}\s*/g, '');
+  cleaned = cleaned.replace(/\d{2}\/\d{2}\/\d{2}\s*/g, '');
+
+  // Remove debit indicator "D " at start
+  cleaned = cleaned.replace(/^D\s+/, '');
+
   // Remove prefixes like "PAYPAL *", "AMZN MKTP"
   cleaned = cleaned.replace(STRIP_PREFIXES, '');
 
   // Remove trailing reference numbers (e.g. "2691337 35314369001")
   cleaned = cleaned.replace(/\s+\d{4,}[\s\d]*$/, '');
+
+  // Remove concatenated reference numbers (e.g. "DISNEYPLUS35314369001")
+  cleaned = cleaned.replace(/\d{7,}$/, '');
+
+  // Remove phone numbers (e.g. "08442411653", "03444810800")
+  cleaned = cleaned.replace(/\s*0\d{9,10}\s*$/, '');
+
+  // Remove tracking/reference suffixes (e.g. "-A15EYP", "T-A", "PA")
+  cleaned = cleaned.replace(/\s+PA\s*$/, '');
+  cleaned = cleaned.replace(/\s+T-A\s*$/, '');
+  cleaned = cleaned.replace(/-[A-Z0-9]{4,}$/, '');
 
   // Remove suffixes
   cleaned = cleaned.replace(STRIP_SUFFIXES, '');
@@ -224,6 +268,7 @@ export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: strin
   { keywords: ['nursery', 'childcare', 'school'], category: 'childcare' },
   { keywords: ['experian', 'adobe', 'microsoft', 'google', 'openai', 'anthropic', 'github', 'notion', 'slack', 'zoom'], category: 'software' },
   { keywords: ['hmrc'], category: 'tax' },
+  { keywords: ['interest', 'a/c interest', 'arranged o/d', 'overdraft', 'bank charge', 'bank fee', 'unpaid item'], category: 'fees' },
   { keywords: ['solicitor', 'accountant', 'dentist', 'optician'], category: 'professional' },
 ];
 

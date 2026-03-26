@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { categoriseTransaction } from '@/lib/merchant-normalise';
+import { categoriseTransaction, normaliseMerchantName } from '@/lib/merchant-normalise';
 
 export const runtime = 'nodejs';
 
@@ -159,15 +159,14 @@ export async function GET() {
     const monthCount = Math.max(Object.keys(monthlySpend).length, 1);
 
     // Group transactions by category for drill-down
-    // Show unique merchants per category with their monthly average
+    // Use normalised merchant names for clean display
     const categoryTransactions: Record<string, Array<{ description: string; total: number; count: number; monthly_avg: number }>> = {};
     for (const tx of debits) {
       const cat = tx.spending_category;
       if (!categoryTransactions[cat]) categoryTransactions[cat] = [];
 
-      const desc = tx.description || 'Unknown';
-      // Group by normalised description (first meaningful words)
-      const key = desc.replace(/\d{2}\/\d{2}\/\d{2}.*/, '').replace(/\d{2}[A-Z]{3}\d{2}.*/, '').replace(/FP \d.*/, '').trim().substring(0, 40);
+      // Use normalised merchant name for grouping
+      const key = normaliseMerchantName(tx.description || 'Unknown');
 
       const existing = categoryTransactions[cat].find(t => t.description === key);
       if (existing) {
