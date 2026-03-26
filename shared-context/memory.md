@@ -146,3 +146,18 @@ Full document: paybacker-gtm-strategy-and-roadmap.docx (generated 26 March 2026)
 - **MSE Forum:** DO NOT USE for promotion — high ban risk (Paul confirmed). Use editorial/press pitch route instead.
 - **PR drafts in Gmail:** MSE, Guardian (Patrick Collinson), BBC Money Box, Which? — all ready, DO NOT SEND until product is live and tested
 - **Social media posting:** Continues through pre-launch (Casey agent, brand awareness only)
+
+
+## Social Media Accounts (All Platforms)
+- **Facebook:** https://www.facebook.com/profile.php?id=61579563073310 (Page ID: 1056645287525328)
+- **Instagram:** https://www.instagram.com/paybacker.co.uk/ (Business Account ID: 17841440175351137)
+- **X (Twitter):** https://x.com/PaybackerUK — @PaybackerUK
+- **TikTok:** https://www.tiktok.com/@paybacker.co.uk
+- **LinkedIn:** https://www.linkedin.com/company/112575954/ (Company ID: 112575954 — NO vanity URL set yet, needs configuring to linkedin.com/company/paybacker)
+
+### Notes for Claude Code / Agents:
+- Casey (CCO) posts to Facebook + Instagram via Meta API (system user token in env)
+- X/Twitter: No API integration yet — manual or Claude in Chrome
+- TikTok: No API integration yet — manual posting or future TikTok Business API
+- LinkedIn: No API integration yet — manual or Claude in Chrome
+- TODO: Set LinkedIn vanity URL to linkedin.com/company/paybacker via admin panel

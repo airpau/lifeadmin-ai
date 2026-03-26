@@ -246,6 +246,24 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief description for 
     results.instagram = { skipped: 'No image generated' };
   }
 
+  // Post to X/Twitter (truncate to 280 chars)
+  try {
+    const { postTweet } = await import('@/lib/twitter');
+    // Strip hashtags if needed to fit 280 chars, keep the core message
+    let tweetText = caption;
+    if (tweetText.length > 280) {
+      // Try removing hashtags first
+      tweetText = tweetText.replace(/#\w+/g, '').trim();
+      if (tweetText.length > 280) {
+        tweetText = tweetText.substring(0, 277) + '...';
+      }
+    }
+    const tweet = await postTweet(tweetText);
+    results.twitter = tweet ? { ok: true, tweetId: tweet.id } : { error: 'Post failed' };
+  } catch (err: any) {
+    results.twitter = { error: err.message };
+  }
+
   // Log to content_drafts
   await supabase.from('content_drafts').insert({
     platform: 'facebook',
@@ -260,7 +278,7 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief description for 
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
   const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (telegramToken && founderChatId) {
-    const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\n\nCaption: ${caption.substring(0, 150)}...`;
+    const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\nX: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\nCaption: ${caption.substring(0, 150)}...`;
     await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

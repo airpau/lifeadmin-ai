@@ -93,6 +93,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Post to X/Twitter (unless platform excludes it)
+    if (!platform || platform === 'twitter' || platform === 'all') {
+      try {
+        const { postTweet } = await import('@/lib/twitter');
+        let tweetText = message;
+        if (tweetText.length > 280) {
+          tweetText = tweetText.replace(/#\w+/g, '').trim();
+          if (tweetText.length > 280) tweetText = tweetText.substring(0, 277) + '...';
+        }
+        const tweet = await postTweet(tweetText);
+        results.twitter = tweet ? { ok: true, tweetId: tweet.id } : { error: 'Post failed' };
+      } catch (err: any) {
+        results.twitter = { error: err.message };
+      }
+    }
+
     return NextResponse.json({ ok: true, ...results });
   } catch (err: any) {
     return NextResponse.json({ error: err.message, ...results }, { status: 500 });
