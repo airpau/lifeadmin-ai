@@ -261,6 +261,30 @@ ${userTier === 'pro' ? `
             message: messages.map((m: any) => `[${m.role}]: ${m.content}`).join('\n\n'),
           });
 
+          // Email the user to confirm their ticket was created
+          if (userId) {
+            const { data: profile } = await admin.from('profiles').select('email, full_name').eq('id', userId).single();
+            if (profile?.email) {
+              const { Resend } = await import('resend');
+              const resend = new Resend(process.env.RESEND_API_KEY);
+              await resend.emails.send({
+                from: 'Paybacker Support <noreply@paybacker.co.uk>',
+                replyTo: 'support@mail.paybacker.co.uk',
+                to: profile.email,
+                subject: `Your support ticket ${ticketNumber} has been created`,
+                html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:32px;border-radius:16px;">
+                  <div style="border-bottom:2px solid #f59e0b;padding-bottom:16px;margin-bottom:24px;">
+                    <h1 style="color:#f59e0b;font-size:22px;margin:0;">Paybacker Support</h1>
+                  </div>
+                  <p>Hi ${profile.full_name?.split(' ')[0] || 'there'},</p>
+                  <p>Your support ticket <strong>${ticketNumber}</strong> has been created. Our team will get back to you shortly.</p>
+                  <p style="color:#94a3b8;font-size:13px;">You can reply to this email to add more details to your ticket.</p>
+                  <p style="color:#64748b;font-size:12px;margin-top:24px;">Paybacker LTD - paybacker.co.uk</p>
+                </div>`,
+              }).catch(() => {});
+            }
+          }
+
           console.log(`[chat] Escalation ticket created: ${ticketNumber}`);
         }
       } catch (escErr) {

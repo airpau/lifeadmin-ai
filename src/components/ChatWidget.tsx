@@ -14,7 +14,8 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState<Message[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('pb_chat_history');
+        // Use sessionStorage so chat clears on new browser session
+        const saved = sessionStorage.getItem('pb_chat_history');
         if (saved) return JSON.parse(saved);
       } catch {}
     }
@@ -52,7 +53,7 @@ export default function ChatWidget() {
   useEffect(() => {
     if (typeof window !== 'undefined' && messages.length > 0) {
       try {
-        localStorage.setItem('pb_chat_history', JSON.stringify(messages));
+        sessionStorage.setItem('pb_chat_history', JSON.stringify(messages));
       } catch {}
     }
   }, [messages]);
@@ -172,12 +173,23 @@ export default function ChatWidget() {
                 <p className="text-green-400 text-xs">Online</p>
               </div>
             </div>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-slate-400 hover:text-white transition-all p-1"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {messages.length > 0 && (
+                <button
+                  onClick={() => { setMessages([]); setEscalatedTicket(null); sessionStorage.removeItem('pb_chat_history'); }}
+                  className="text-slate-400 hover:text-white transition-all text-xs px-2 py-1 rounded hover:bg-slate-700"
+                  title="Start new chat"
+                >
+                  New Chat
+                </button>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                className="text-slate-400 hover:text-white transition-all p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
