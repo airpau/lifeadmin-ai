@@ -303,4 +303,91 @@ const updateTicketStatus: ToolDef = {
   },
 };
 
-export const supportTools: ToolDef[] = [listTickets, getTicket, respondToTicket, escalateTicket, updateTicketStatus];
+const searchResolutions: ToolDef = {
+  name: 'search_resolutions',
+  description: 'Search the knowledge base for past ticket resolutions. Use this BEFORE responding to a ticket to see if a similar issue has been solved before. Search by category or keywords.',
+  schema: {
+    type: 'object',
+    properties: {
+      category: { type: 'string', description: 'Ticket category: billing, technical, complaint, general, account' },
+      keywords: { type: 'string', description: 'Keywords to search for in issue summaries and solutions' },
+      limit: { type: 'number', maximum: 10, default: 5 },
+    },
+  },
+  handler: async (args) => {
+    const sb = getSupabase();
+    let query = sb.from('ticket_resolutions')
+      .select('category, issue_summary, solution, steps_taken, outcome, tags, useful_count, created_at')
+      .order('useful_count', { ascending: false })
+      .limit(args.limit || 5);
+
+    if (args.category) {
+      query = query.eq('category', args.category);
+    }
+
+    const { data, error } = await query;
+    if (error) return `Error searching resolutions: ${error.message}`;
+    if (!data || data.length === 0) return 'No past resolutions found for this type of issue. Respond based on your knowledge.';
+
+    // If keywords provided, filter client-side for relevance
+    let results = data;
+    if (args.keywords) {
+      const kw = args.keywords.toLowerCase();
+      results = data.filter(r =>
+        r.issue_summary.toLowerCase().includes(kw) ||
+        r.solution.toLowerCase().includes(kw) ||
+        (r.tags || []).some((t: string) => t.toLowerCase().includes(kw))
+      );
+      if (results.length === 0) results = data; // Fall back to category results
+    }
+
+    return JSON.stringify({
+      past_resolutions: results.map(r => ({
+        issue: r.issue_summary,
+        solution: r.solution,
+        steps: r.steps_taken,
+        outcome: r.outcome,
+        category: r.category,
+        times_useful: r.useful_count,
+      })),
+      count: results.length,
+      instruction: 'Use these past solutions as reference when crafting your response. Adapt the solution to the specific ticket context.',
+    });
+  },
+};
+
+const logResolution: ToolDef = {
+  name: 'log_resolution',
+  description: 'Log a ticket resolution to the knowledge base after a ticket is resolved. This helps future tickets with similar issues get faster, better responses.',
+  schema: {
+    type: 'object',
+    properties: {
+      ticket_id: { type: 'string', description: 'The ticket UUID' },
+      category: { type: 'string', description: 'Issue category: billing, technical, complaint, general, account' },
+      issue_summary: { type: 'string', description: 'Brief summary of the issue (1-2 sentences)' },
+      solution: { type: 'string', description: 'What resolved the issue (1-3 sentences)' },
+      steps_taken: { type: 'string', description: 'Steps taken to resolve (optional)' },
+      outcome: { type: 'string', description: 'resolved, partial, escalated', default: 'resolved' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Relevant tags for searchability (e.g. energy, refund, billing_error)' },
+    },
+    required: ['category', 'issue_summary', 'solution'],
+  },
+  handler: async (args) => {
+    const sb = getSupabase();
+
+    const { error } = await sb.from('ticket_resolutions').insert({
+      ticket_id: args.ticket_id || null,
+      category: args.category,
+      issue_summary: args.issue_summary,
+      solution: args.solution,
+      steps_taken: args.steps_taken || null,
+      outcome: args.outcome || 'resolved',
+      tags: args.tags || [],
+    });
+
+    if (error) return `Error logging resolution: ${error.message}`;
+    return 'Resolution logged to knowledge base. This will help resolve similar issues faster in the future.';
+  },
+};
+
+export const supportTools: ToolDef[] = [listTickets, getTicket, respondToTicket, escalateTicket, updateTicketStatus, searchResolutions, logResolution];

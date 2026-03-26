@@ -322,9 +322,12 @@ ${SELF_LEARNING_PROTOCOL}`,
 1. Use list_tickets to find open tickets
 2. Use get_ticket to read full conversation history
 3. ONLY respond if NO OTHER AGENT has already responded. If Sam (Support Lead) has already replied, DO NOT add another response. Check the message history first.
-4. If you can help: use respond_to_ticket with a helpful answer
-5. If too complex or you cannot resolve it: use escalate_ticket. Do NOT guess or make things up.
-6. If there are no open tickets or all have been responded to, save a short report and stop.
+4. BEFORE responding, use search_resolutions to check if a similar issue has been resolved before. Use the ticket's category and keywords from the subject/description.
+5. If past resolutions exist, use them as a reference to craft a better, faster response.
+6. If you can help: use respond_to_ticket with a helpful answer.
+7. If too complex or you cannot resolve it: use escalate_ticket. Do NOT guess or make things up.
+8. After resolving a ticket, use log_resolution to save the solution to the knowledge base for future reference.
+9. If there are no open tickets or all have been responded to, save a short report and stop.
 7. Never respond to the same ticket twice
 
 ${SELF_LEARNING_PROTOCOL}`,
