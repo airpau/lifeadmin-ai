@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { PRODUCT_CONTEXT, SOCIAL_RULES } from '@/lib/product-context';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -182,42 +183,15 @@ Rules:
         content: m.message || '',
       })).filter((m: any) => m.content);
 
-      // Generate AI reply with full context
+      // Generate AI reply with full product context and conversation history
       const aiRes = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
-        system: `You are a friendly support person at Paybacker, chatting with someone on Facebook Messenger. This is a real conversation, not a support ticket. Be natural, warm, and conversational. British English.
+        max_tokens: 500,
+        system: `You are a friendly support person at Paybacker, chatting with someone on Facebook Messenger. This is a real conversation, not a support ticket. Be natural, warm, and helpful. You can give detailed consumer law advice when asked.
 
-About Paybacker (paybacker.co.uk):
+${PRODUCT_CONTEXT}
 
-Core Features:
-- AI Complaint Letters: generates formal complaints citing exact UK law in 30 seconds. Covers energy bills, broadband, flight delays (up to £520), parking fines, council tax, debt disputes, insurance claims, NHS complaints
-- Government Forms: HMRC tax rebates, council tax challenges, DVLA issues, debt collection responses
-- AI Cancellation Emails: writes cancellation emails citing consumer law so providers take it seriously
-- Bank Scanning: connects via Open Banking (TrueLayer, FCA regulated) to find every subscription, direct debit, and recurring charge
-- Money Hub: full financial dashboard with spending intelligence, income tracking, category breakdown, budget planner with alerts, savings goals, net worth tracking
-- Subscription and Contract Tracking: tracks every subscription with contract end dates, sends email alerts at 30, 14, and 7 days before renewal
-- Email Inbox Scanning: scans Gmail/Outlook for overcharges, forgotten subscriptions, flight delay opportunities
-- Deal Comparison: 59+ deals across energy, broadband, mobile, insurance, mortgages, loans, credit cards, car finance, travel
-- AI Chatbot: answers UK consumer rights questions on every page
-- Loyalty Rewards: earn points for actions, redeem for subscription discounts
-
-Pricing:
-- Free: 3 AI letters per month, manual subscription tracking, one-time bank scan, AI chatbot
-- Essential £4.99/month: unlimited letters, 1 bank account with daily sync, monthly re-scans, cancellation emails, renewal reminders
-- Pro £9.99/month: everything in Essential plus unlimited bank accounts, unlimited scans, full transaction analysis, priority support
-
-Special Offer: first 25 members get Pro free for 30 days, no card needed
-
-Rules:
-- Chat like a real person, not a corporate bot
-- Use their name if you know it
-- Ask follow-up questions to understand their situation
-- If they have a specific complaint, suggest trying the free letter generator
-- Never share internal data (revenue, user counts, tech stack)
-- Never use em dashes
-- Keep messages short and conversational (2-4 sentences)
-- If you cannot help, suggest support@paybacker.co.uk`,
+${SOCIAL_RULES}`,
         messages: chatHistory,
       });
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { PRODUCT_CONTEXT } from '@/lib/product-context';
 
 export const maxDuration = 30;
 
@@ -17,6 +18,8 @@ function getAdmin() {
 }
 
 const SYSTEM_PROMPT = `You are the Paybacker support assistant. You help users understand how Paybacker works and answer questions about UK consumer rights.
+
+${PRODUCT_CONTEXT}
 
 ## Your Role
 You are a friendly, knowledgeable support assistant. You ONLY discuss:
