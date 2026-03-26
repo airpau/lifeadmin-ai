@@ -82,16 +82,17 @@ Users can add subscriptions manually from the Subscriptions page, or connect the
 - The deals page IS live with 59 deals across 9 categories (Energy, Broadband, Mobile, Insurance, Mortgages, Loans, Credit Cards, Car Finance, Travel). Users can browse deals for free.
 - Email inbox scanning is pending Google verification. If anyone asks, say "Email scanning is coming very soon. We are completing security verification with Google. In the meantime, you can connect your bank account to detect subscriptions automatically."
 
-## HUMAN ESCALATION
-- If the user seems frustrated, confused, or asks to speak to a human, offer to escalate
-- Say: "I understand you would like to speak to someone directly. You can reach our support team at support@paybacker.co.uk and we will get back to you as soon as possible."
-- If they have a billing issue, account problem, or anything you cannot resolve, always offer support@paybacker.co.uk
-- If they ask for a phone number, say: "We currently offer email support at support@paybacker.co.uk. Our team typically responds within a few hours."
+## SUPPORT AND TROUBLESHOOTING
+- FIRST try to help the user solve their problem directly in the chat. Give clear steps, troubleshooting advice, and solutions.
+- If the user says your solution did not work, or you cannot resolve the issue, THEN offer to create a support ticket.
+- Say: "I am sorry I could not fix that for you. Would you like me to create a support ticket? Our team will look into it and get back to you within 30 minutes."
+- If the user says yes, or asks you to create a ticket, say: "I have created a support ticket for you. Our team will look into this and you will receive an email confirmation shortly."
+- If the user asks to speak to a human directly, create the ticket immediately.
+- IMPORTANT: Only include the phrase "I have created a support ticket" when the user has agreed to create one. This triggers the ticket system.
 
 ## FEATURE REQUESTS AND FEEDBACK
-- If a user suggests a feature, has an idea, or wants to improve something, encourage them warmly
-- Say: "That is a great idea! We are always looking to improve Paybacker based on what our users need. Please email your suggestion to features@paybacker.co.uk and our team will review it. We genuinely read every feature request."
-- If they describe a bug or something broken, say: "Thank you for letting us know. Please email the details to support@paybacker.co.uk so our team can look into it. If you can include a screenshot, that helps a lot."
+- If a user suggests a feature or has an idea, say: "Great idea! I have logged this as a feature request and our product team will review it. Thank you for the feedback."
+- Include the phrase "feature request" in your response so the system can detect and log it.
 - Always make the user feel heard and valued when giving feedback
 
 ## Response Format
@@ -222,11 +223,11 @@ ${userTier === 'pro' ? `
     let ticketNumber: string | null = null;
     const reply = text.text;
 
-    // Only escalate if the USER asked to speak to someone (not when bot mentions support in passing)
-    const lastUserMsg = messages.filter((m: any) => m.role === 'user').pop()?.content?.toLowerCase() || '';
-    const userWantsHuman = lastUserMsg.includes('speak to') || lastUserMsg.includes('talk to') || lastUserMsg.includes('human') || lastUserMsg.includes('real person') || lastUserMsg.includes('complaint') && lastUserMsg.includes('not help');
+    // Create ticket when chatbot says it has created one, or when user reports a problem
+    const botCreatedTicket = reply.toLowerCase().includes('created a support ticket') || reply.toLowerCase().includes('created a ticket');
+    const botLoggedFeature = reply.toLowerCase().includes('feature request');
 
-    if (userWantsHuman && reply.includes('support@paybacker.co.uk')) {
+    if (botCreatedTicket) {
       try {
         // Use the LAST user message as subject (most relevant to their issue)
         const userMessages = messages.filter((m: any) => m.role === 'user');
