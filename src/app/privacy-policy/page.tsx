@@ -118,7 +118,7 @@ export default function PrivacyPolicyPage() {
             </h3>
             <p className="text-slate-300 text-sm leading-relaxed">
               Read-only access to your bank transactions via Open Banking
-              (powered by Finexer) to identify recurring payments and spending
+              (powered by TrueLayer) to identify recurring payments and spending
               patterns. We can never move your money or make payments on your
               behalf.
             </p>
@@ -190,7 +190,7 @@ export default function PrivacyPolicyPage() {
               processing (we never see or store your full card details)
             </li>
             <li>
-              <strong className="text-white">Finexer</strong> — Open Banking
+              <strong className="text-white">TrueLayer</strong> — Open Banking
               data access (read-only bank transactions)
             </li>
             <li>

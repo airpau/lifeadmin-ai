@@ -322,7 +322,7 @@ export default function Home() {
                 ))}
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href="/dashboard/deals" className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-green-500/25 text-center text-lg">
+                <Link href="/deals" className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-green-500/25 text-center text-lg">
                   Browse Deals Free - No Signup Needed
                 </Link>
               </div>
