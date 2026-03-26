@@ -4,7 +4,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw, X, ThumbsUp, Pencil } from 'lucide-react';
+import { FileText, Sparkles, Download, Copy, CheckCircle, Clock, History, RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2 } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import UpgradeModal from '@/components/UpgradeModal';
 
@@ -28,6 +28,44 @@ function LetterModal({ task, onClose }: LetterModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [letterContent, setLetterContent] = useState(task.agent_runs?.[0]?.output_data?.letter || '');
   const [editText, setEditText] = useState(letterContent);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+
+  const handleListen = async () => {
+    if (audioPlaying && audioRef) {
+      audioRef.pause();
+      setAudioPlaying(false);
+      return;
+    }
+
+    setAudioLoading(true);
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: letterContent }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Could not generate audio');
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => { setAudioPlaying(false); URL.revokeObjectURL(url); };
+      setAudioRef(audio);
+      audio.play();
+      setAudioPlaying(true);
+    } catch {
+      alert('Audio generation failed. Please try again.');
+    } finally {
+      setAudioLoading(false);
+    }
+  };
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
   const legalRefs = task.agent_runs?.[0]?.output_data?.legalReferences || [];
@@ -203,6 +241,14 @@ function LetterModal({ task, onClose }: LetterModalProps) {
             </>
           ) : (
             <>
+              <button
+                onClick={handleListen}
+                disabled={audioLoading || !letterContent}
+                className="flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 px-4 rounded-lg transition-all font-medium disabled:opacity-50"
+                title="Listen to your letter"
+              >
+                {audioLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Volume2 className={`h-4 w-4 ${audioPlaying ? 'text-mint-400' : ''}`} />}
+              </button>
               <button
                 onClick={handleCopy}
                 className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium"

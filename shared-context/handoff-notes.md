@@ -283,3 +283,30 @@ Budget allocations per channel per month are in the 'Budget Calendar' sheet.
 5. 4 SEO blog articles (1500+ words each)
 6. Nightly merchant cleanup job
 7. Full end-to-end testing of all features built today
+
+---
+
+## 2026-03-26 16:04:01 - Claude Desktop (Cowork)
+**Completed:** Set up complete automation system: 7 scheduled tasks running (daily briefing 8:30am, daily social 10am, midday ad monitor 12pm, weekly performance Monday 9am, influencer/PR pipeline Wednesday 2pm, monthly P&L 1st of month). Gmail connected to hello@paybacker.co.uk — Cowork can now draft outreach emails directly. 3 PR email drafts already in Gmail: Which? pitch, Meaningful Money podcast pitch, MSE Deals submission.
+
+**Next steps:** Claude Code needs to build the following for the automation system to work end-to-end:
+
+1. DAILY AD PERFORMANCE LOGGING: Create a cron job (or Railway scheduled function) that runs at 7am daily:
+   - Pull Google Ads metrics via API (impressions, clicks, conversions, spend, CPA per campaign)
+   - Pull Meta Ads metrics via API (same)
+   - Write results to Supabase table: daily_ad_metrics (date, platform, campaign_name, impressions, clicks, conversions, spend, cpa)
+   - Also write a summary to Paybacker MCP via append_context(file='business-ops.md')
+   - This data is what the Cowork morning briefing reads each day
+
+2. WEEKLY AUTO-OPTIMISATION (Monday 6am, before Cowork reports at 9am):
+   - Google Ads: CPA < £6 → +20% budget. CPA £10-15 → -30%. CPA > £15 → pause. Add negative keywords from search terms.
+   - Meta Ads: CPA < £6 → +20% budget. CPA > £12 → pause. CTR < 0.8% → flag creative.
+   - Log all changes to MCP.
+
+3. SIGNUP ATTRIBUTION TRACKING: On every new signup, log utm_source/medium/campaign to user profile AND to business_log table. This lets Cowork track which creators/channels are performing.
+
+4. REFERRAL SYSTEM: Build as previously specified — this is critical for the viral growth coefficient.
+
+5. CHURN PREVENTION: Automated emails for inactive users (7-day, 14-day triggers).
+
+All of this feeds into the automated morning briefing that Cowork generates for Paul at 8:30am daily.

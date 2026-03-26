@@ -84,3 +84,27 @@ Paybacker is live at paybacker.co.uk in waitlist mode. Core product is built and
 - Waitlist: active collection
 - Social posts: daily automated
 - Agent runs: 100+ daily across all agents
+
+## Automation System
+## Active Scheduled Tasks (Cowork)
+1. **Daily Morning Briefing** — 8:30am — Tells Paul his tasks, reports metrics, drafts outreach emails
+2. **Daily Social Media** — 10am — Auto-posts to Facebook + Instagram via MCP
+3. **Midday Ad Monitor** — 12pm — Checks ad performance, flags issues, coordinates with Claude Code
+4. **Weekly Performance Review** — Monday 9am — Full channel analysis, budget recommendations
+5. **Influencer/PR Pipeline** — Wednesday 2pm — Tracks creator ROI, manages PR outreach, drafts follow-ups
+6. **Monthly P&L** — 1st of month 10am — Full profit & loss, actuals vs forecast
+
+## Gmail Integration
+- Connected: hello@paybacker.co.uk
+- Capability: Read incoming mail, create drafts for Paul to review/send
+- Active drafts: Which? pitch, Meaningful Money podcast pitch, MSE Deals submission
+
+## Claude Code Requirements (pending build)
+- Daily ad metrics logging to Supabase + MCP (7am cron)
+- Weekly auto-optimisation of Google Ads + Meta Ads (Monday 6am)
+- Signup attribution tracking (utm params → user profile + business_log)
+- Referral system
+- Churn prevention emails
+
+## Data Flow
+Claude Code (6-7am: pull ad data, optimise) → MCP (data store) → Cowork (8:30am: read data, brief Paul, draft emails) → Paul (acts on briefing) → Gmail (outreach) → Cowork (monitors replies)
