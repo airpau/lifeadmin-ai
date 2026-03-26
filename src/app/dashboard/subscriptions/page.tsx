@@ -348,6 +348,35 @@ export default function SubscriptionsPage() {
   const [cancelFeedback, setCancelFeedback] = useState('');
   const [showCancelFeedback, setShowCancelFeedback] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [confirmCancelSub, setConfirmCancelSub] = useState<Subscription | null>(null);
+  const [savingsAmount, setSavingsAmount] = useState('');
+  const [savingsSubmitting, setSavingsSubmitting] = useState(false);
+
+  const handleConfirmCancelled = async (sub: Subscription, savings: string) => {
+    setSavingsSubmitting(true);
+    try {
+      const monthlyAmt = parseFloat(String(sub.amount)) || 0;
+      const savingsNum = parseFloat(savings) || monthlyAmt;
+
+      await fetch(`/api/subscriptions/${sub.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          money_saved: savingsNum,
+        }),
+      });
+
+      setConfirmCancelSub(null);
+      setSavingsAmount('');
+      await fetchSubscriptions();
+    } catch (err) {
+      console.error('Failed to confirm cancellation:', err);
+    } finally {
+      setSavingsSubmitting(false);
+    }
+  };
 
   const handleCancelRequest = async (subscription: Subscription, feedback?: string, previousEmail?: string) => {
     setSelectedSub(subscription);
@@ -920,6 +949,17 @@ export default function SubscriptionsPage() {
                       <Mail className="h-4 w-4" />
                       Generate Cancellation Email
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmCancelSub(sub);
+                        setSavingsAmount(String(parseFloat(String(sub.amount)) || ''));
+                      }}
+                      className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg transition-all text-sm border border-red-500/20"
+                    >
+                      <X className="h-4 w-4" />
+                      Mark as Cancelled
+                    </button>
                     {sub.provider_type && ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan'].includes(sub.provider_type) && (
                       <a
                         href={`/deals/${sub.provider_type === 'mortgage' ? 'mortgages' : sub.provider_type === 'loan' ? 'loans' : sub.provider_type}`}
@@ -1453,6 +1493,54 @@ export default function SubscriptionsPage() {
                 )}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Confirm Cancellation Modal */}
+      {confirmCancelSub && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6" onClick={() => setConfirmCancelSub(null)}>
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-xl font-bold text-white mb-2">Confirm Cancellation</h2>
+            <p className="text-slate-400 text-sm mb-6">
+              Mark <span className="text-white font-medium">{confirmCancelSub.provider_name}</span> as cancelled and log your savings.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                How much were you paying per month?
+              </label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">&pound;</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={savingsAmount}
+                  onChange={(e) => setSavingsAmount(e.target.value)}
+                  className="w-full pl-8 pr-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
+                  placeholder={String(parseFloat(String(confirmCancelSub.amount)) || '0')}
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                This is your monthly saving. We&apos;ll track it on your Money Recovery Score.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmCancelSub(null)}
+                className="flex-1 px-4 py-3 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleConfirmCancelled(confirmCancelSub, savingsAmount)}
+                disabled={savingsSubmitting}
+                className="flex-1 px-4 py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
+              >
+                {savingsSubmitting ? 'Saving...' : 'Confirm Cancelled'}
+              </button>
+            </div>
           </div>
         </div>
       )}
