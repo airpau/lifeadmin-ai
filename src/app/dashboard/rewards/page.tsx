@@ -3,9 +3,10 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   Gift, Star, Trophy, Crown, Loader2, Check, Clock, Copy, Share2,
-  Lock, ChevronDown, ChevronUp, ArrowRight, Flame, Heart,
+  Lock, ChevronDown, ChevronUp, ArrowRight, Flame, Heart, Target,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import ChallengeCard from '@/components/rewards/ChallengeCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,13 +104,26 @@ const EARN_ACTIONS = [
 export default function RewardsPage() {
   const [data, setData] = useState<LoyaltyData | null>(null);
   const [referrals, setReferrals] = useState<ReferralData | null>(null);
+  const [challenges, setChallenges] = useState<{
+    available: any[];
+    active: any[];
+    completed: any[];
+    failed: any[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [codeCopied, setCodeCopied] = useState(false);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [showFaq, setShowFaq] = useState(false);
+  const [showAllAvailable, setShowAllAvailable] = useState(false);
   const confettiFired = useRef(false);
+
+  const loadChallenges = () => {
+    fetch('/api/challenges').then(r => r.json()).then(d => {
+      if (!d.error) setChallenges(d);
+    }).catch(() => {});
+  };
 
   const loadData = () => {
     Promise.all([
@@ -119,6 +133,7 @@ export default function RewardsPage() {
       if (!loyaltyData.error) setData(loyaltyData);
       if (!refData.error) setReferrals(refData);
     }).catch(() => {}).finally(() => setLoading(false));
+    loadChallenges();
   };
 
   useEffect(() => { loadData(); }, []);
@@ -359,6 +374,111 @@ export default function RewardsPage() {
           })}
         </div>
       </div>
+
+      {/* ═══ SECTION 4B: Savings Challenges ═══ */}
+      {challenges && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Target className="h-5 w-5 text-mint-400" /> Savings Challenges
+            </h2>
+            {challenges.completed.length > 0 && (
+              <span className="text-slate-500 text-sm">{challenges.completed.length} completed</span>
+            )}
+          </div>
+
+          {/* Active challenges */}
+          {challenges.active.length > 0 && (
+            <div className="mb-5">
+              <h3 className="text-sm font-semibold text-slate-400 mb-3">Active</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {challenges.active.map((uc: any) => (
+                  <ChallengeCard
+                    key={uc.id}
+                    challenge={{
+                      id: uc.id,
+                      name: uc.template?.name || 'Challenge',
+                      description: uc.template?.description || null,
+                      icon: uc.template?.icon || null,
+                      type: uc.template?.type || 'action',
+                      duration_days: uc.template?.duration_days || null,
+                      reward_points: uc.template?.reward_points || 0,
+                      difficulty: uc.template?.difficulty,
+                      status: uc.status,
+                      started_at: uc.started_at,
+                      progressInfo: uc.progressInfo,
+                    }}
+                    mode="active"
+                    onAbandon={async (challengeId) => {
+                      await fetch('/api/challenges', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ challengeId, action: 'abandon' }),
+                      });
+                      loadChallenges();
+                    }}
+                    onComplete={async (challengeId) => {
+                      await fetch('/api/challenges', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ challengeId, action: 'complete' }),
+                      });
+                      confetti({ particleCount: 60, spread: 80, origin: { y: 0.5 }, colors: ['#34d399', '#f59e0b', '#fbbf24'] });
+                      loadChallenges();
+                      loadData();
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Available challenges */}
+          {challenges.available.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-400 mb-3">Available</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {(showAllAvailable ? challenges.available : challenges.available.slice(0, 4)).map((t: any) => (
+                  <ChallengeCard
+                    key={t.id}
+                    challenge={{
+                      id: t.id,
+                      name: t.name,
+                      description: t.description,
+                      icon: t.icon,
+                      type: t.type,
+                      duration_days: t.duration_days,
+                      reward_points: t.reward_points,
+                      difficulty: t.difficulty,
+                    }}
+                    mode="available"
+                    onStart={async (templateId) => {
+                      await fetch('/api/challenges', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ templateId }),
+                      });
+                      loadChallenges();
+                    }}
+                  />
+                ))}
+              </div>
+              {challenges.available.length > 4 && (
+                <button
+                  onClick={() => setShowAllAvailable(!showAllAvailable)}
+                  className="text-mint-400 text-sm mt-3 flex items-center gap-1 hover:text-mint-300 transition-all"
+                >
+                  {showAllAvailable ? <><ChevronUp className="h-4 w-4" /> Show fewer</> : <><ChevronDown className="h-4 w-4" /> Show all {challenges.available.length} challenges</>}
+                </button>
+              )}
+            </div>
+          )}
+
+          {challenges.active.length === 0 && challenges.available.length === 0 && (
+            <p className="text-slate-500 text-sm text-center py-4">You have completed all available challenges. Check back soon for new ones!</p>
+          )}
+        </div>
+      )}
 
       {/* ═══ SECTION 5: Streak Tracker ═══ */}
       <div id="streaks" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">

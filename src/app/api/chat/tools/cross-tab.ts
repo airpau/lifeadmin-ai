@@ -410,10 +410,89 @@ const detectPriceIncreases: ChatTool = {
   },
 };
 
+const manageChallenges: ChatTool = {
+  name: 'manage_challenges',
+  description:
+    'List active savings challenges, check progress, or see available challenges. Use when the user asks "what challenges do I have?", "how are my challenges going?", "any challenges I can start?", "check my challenge progress".',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      action: {
+        type: 'string',
+        description: 'What to do: "list" (show active + available), "progress" (check active challenge progress)',
+      },
+    },
+    required: [],
+  },
+  handler: async (args: { action?: string }, userId: string) => {
+    const admin = getAdmin();
+
+    // Get user's active challenges with template data
+    const { data: userChallenges } = await admin
+      .from('user_challenges')
+      .select('id, status, started_at, completed_at, template:challenge_templates(name, description, type, duration_days, reward_points, icon)')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    const active = (userChallenges || []).filter(uc => uc.status === 'active');
+    const completed = (userChallenges || []).filter(uc => uc.status === 'completed');
+
+    // Get available templates
+    const usedIds = new Set((userChallenges || []).filter(uc => uc.status === 'active' || uc.status === 'completed').map(uc => (uc as any).template_id));
+    const { data: templates } = await admin
+      .from('challenge_templates')
+      .select('id, name, description, type, duration_days, reward_points, icon')
+      .eq('active', true);
+
+    const available = (templates || []).filter(t => !usedIds.has(t.id));
+
+    const result: any = {
+      active_challenges: active.map(uc => {
+        const t = uc.template as any;
+        const startedAt = new Date(uc.started_at);
+        const now = new Date();
+        const daysElapsed = Math.floor((now.getTime() - startedAt.getTime()) / (24 * 60 * 60 * 1000));
+        return {
+          id: uc.id,
+          name: t?.name,
+          type: t?.type,
+          icon: t?.icon,
+          reward_points: t?.reward_points,
+          days_elapsed: daysElapsed,
+          duration_days: t?.duration_days,
+          days_remaining: t?.duration_days ? Math.max(0, t.duration_days - daysElapsed) : null,
+        };
+      }),
+      completed_count: completed.length,
+      total_points_from_challenges: completed.reduce((sum, uc) => sum + ((uc.template as any)?.reward_points || 0), 0),
+      available_count: available.length,
+      available_challenges: available.slice(0, 5).map(t => ({
+        name: t.name,
+        icon: t.icon,
+        type: t.type,
+        reward_points: t.reward_points,
+        duration: t.duration_days ? `${t.duration_days} days` : 'One-time action',
+      })),
+      challenges_url: 'https://paybacker.co.uk/dashboard/rewards',
+    };
+
+    if (active.length > 0) {
+      result.message = `You have ${active.length} active challenge${active.length !== 1 ? 's' : ''}. ${available.length} more available to start.`;
+    } else if (available.length > 0) {
+      result.message = `No active challenges. ${available.length} challenges available to start. Visit your Rewards page to begin.`;
+    } else {
+      result.message = 'You have completed all available challenges. Check back soon for new ones!';
+    }
+
+    return result;
+  },
+};
+
 export const crossTabTools: ChatTool[] = [
   findDeals,
   generateComplaintWithContext,
   getScannerOpportunities,
   getContractAlerts,
   detectPriceIncreases,
+  manageChallenges,
 ];
