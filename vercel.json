@@ -79,6 +79,14 @@
     {
       "path": "/api/cron/twitter-engagement",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/ad-metrics",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/ad-optimise",
+      "schedule": "0 6 * * 1"
     }
   ]
 }

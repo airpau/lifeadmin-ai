@@ -96,8 +96,22 @@ export default function SignupPage() {
           ...utmUpdate,
         }).eq('id', data.user!.id);
 
-        // Process referral if ref code present
+        // Log signup attribution snapshot
         const refCode = searchParams.get('ref') || localStorage.getItem('pb_ref');
+        await supabase.from('signup_attribution').insert({
+          user_id: data.user!.id,
+          utm_source: utmData.utm_source || null,
+          utm_medium: utmData.utm_medium || null,
+          utm_campaign: utmData.utm_campaign || null,
+          utm_content: utmData.utm_content || null,
+          utm_term: utmData.utm_term || null,
+          gclid: utmData.gclid || null,
+          fbclid: utmData.fbclid || null,
+          ref_code: refCode || null,
+          landing_page: window.location.pathname,
+        }).then(() => {});
+
+        // Process referral if ref code present
         if (refCode && data.user) {
           fetch('/api/referrals/process', {
             method: 'POST',

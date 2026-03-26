@@ -329,3 +329,10 @@ All of this feeds into the automated morning briefing that Cowork generates for 
 THINGS THAT CAN GO LIVE IMMEDIATELY: SEO articles, bug fixes from UX review, chatbot improvements, referral backend. Social posting already running via Casey agent.
 
 IMPORTANT: Google Ads API is Explorer access only (not Basic yet). Explorer can still create campaigns but has 2880 ops/day limit. All campaigns must be created in PAUSED state regardless.
+
+---
+
+## 2026-03-26 17:43:31 - Cowork (Desktop)
+**Completed:** Finalised definitive marketing strategy (v2) in business-ops.md — single source of truth replacing all previous playbook fragments. Covers: budget model (£5K start, 80% reinvest, £18K cap), Google Ads (3 campaigns with full RSA copy), Meta Ads (2 campaigns with creative specs), influencer strategy (40% budget), SEO (4 articles), social media (5 platforms), referral upgrade (dual-sided £5), PR/media (4 Gmail drafts), email automation, and attribution tracking. Also cleaned up memory.md to remove old fragmented marketing sections and point to business-ops.md as the authority. Created claude-code-marketing-prompt.md with exact execution instructions.
+
+**Next steps:** Claude Code: Run the 7-task marketing build prompt from claude-code-marketing-prompt.md (also available in outputs folder). Priority order: (1) Google Ads 3 campaigns PAUSED, (2) Meta Ads 2 campaigns PAUSED, (3) Daily metrics cron, (4) Weekly optimisation cron, (5) Signup attribution, (6) Referral upgrade, (7) 4 SEO articles. ALL AD CAMPAIGNS MUST BE CREATED IN PAUSED STATE. Full ad copy, keywords, targeting, and creative specs are in business-ops.md Section 2-3. After completion, log all IDs to MCP and update task queue.
