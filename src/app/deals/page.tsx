@@ -1,18 +1,18 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
+import PublicNavbar from '@/components/PublicNavbar';
 
 export const metadata: Metadata = {
   title: 'Compare UK Deals - Energy, Broadband, Mobile, Insurance | Paybacker',
-  description: 'Compare 59+ deals from verified UK providers. Energy, broadband, mobile, insurance, mortgages, loans, and more. Find cheaper alternatives and switch.',
+  description: 'Compare 53+ deals from verified UK providers. Energy, broadband, mobile, insurance, mortgages, loans, and more. Find cheaper alternatives and switch.',
 };
 
 const categories = [
-  { slug: 'energy', name: 'Energy', count: 5, color: 'from-amber-500 to-orange-500', desc: 'Compare gas and electricity tariffs' },
+  { slug: 'energy', name: 'Energy', count: 4, color: 'from-amber-500 to-orange-500', desc: 'Compare gas and electricity tariffs' },
   { slug: 'broadband', name: 'Broadband', count: 10, color: 'from-blue-500 to-cyan-500', desc: 'Find faster, cheaper broadband' },
-  { slug: 'mobile', name: 'Mobile', count: 13, color: 'from-green-500 to-emerald-500', desc: 'SIM-only and contract deals' },
+  { slug: 'mobile', name: 'Mobile', count: 12, color: 'from-green-500 to-emerald-500', desc: 'SIM-only and contract deals' },
   { slug: 'insurance', name: 'Insurance', count: 6, color: 'from-purple-500 to-violet-500', desc: 'Home, car, and life insurance' },
-  { slug: 'mortgages', name: 'Mortgages', count: 5, color: 'from-red-500 to-rose-500', desc: 'Compare mortgage rates' },
+  { slug: 'mortgages', name: 'Mortgages', count: 4, color: 'from-red-500 to-rose-500', desc: 'Compare mortgage rates' },
   { slug: 'loans', name: 'Loans', count: 5, color: 'from-sky-500 to-blue-500', desc: 'Personal and business loans' },
   { slug: 'credit-cards', name: 'Credit Cards', count: 4, color: 'from-indigo-500 to-purple-500', desc: 'Balance transfer and rewards' },
   { slug: 'car-finance', name: 'Car Finance', count: 2, color: 'from-slate-500 to-zinc-500', desc: 'PCP, HP, and lease deals' },
@@ -22,22 +22,12 @@ const categories = [
 export default function PublicDealsPage() {
   return (
     <div className="min-h-screen bg-navy-950">
-      <header className="container mx-auto px-6 py-6">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-            <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/auth/login" className="text-slate-400 hover:text-white text-sm">Sign In</Link>
-            <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
-          </div>
-        </div>
-      </header>
+      <PublicNavbar />
+      <div className="h-16" />
 
       <main className="container mx-auto px-6 py-12 max-w-5xl">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Compare 59+ UK Deals</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Compare 53+ UK Deals</h1>
           <p className="text-lg text-slate-300">Find cheaper alternatives to what you are paying now. Free to browse, no signup needed.</p>
         </div>
 

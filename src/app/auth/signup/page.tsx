@@ -30,6 +30,10 @@ export default function SignupPage() {
       router.replace('/');
       return;
     }
+    // Redirect to dashboard if already logged in
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) router.replace('/dashboard');
+    });
     if (searchParams.get('verify') === 'true') setVerifyMode(true);
   }, [searchParams, router]);
 

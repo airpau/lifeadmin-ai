@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Metadata } from 'next';
+import PublicNavbar from '@/components/PublicNavbar';
 
 // Force dynamic rendering so new blog posts are available immediately
 export const dynamic = 'force-dynamic';
@@ -71,18 +71,8 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
   return (
     <div className="min-h-screen bg-navy-950">
       <div className="relative">
-        <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-              <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
-            </Link>
-            <div className="flex items-center gap-3">
-              <Link href="/blog" className="text-slate-400 hover:text-white text-sm">Blog</Link>
-              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
-            </div>
-          </div>
-        </header>
+        <PublicNavbar />
+        <div className="h-16" />
 
         <main className="container mx-auto px-6 py-12">
           <article className="max-w-3xl mx-auto">

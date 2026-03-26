@@ -1,8 +1,8 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { CheckCircle, ArrowRight, Shield, Clock, Zap, TrendingDown, BarChart3 } from 'lucide-react';
+import PublicNavbar from '@/components/PublicNavbar';
 
 interface Deal {
   id: string;
@@ -253,18 +253,8 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
 
       <div className="relative">
         {/* Header */}
-        <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-              <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
-            </Link>
-            <div className="flex items-center gap-3">
-              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all">Sign In</Link>
-              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
-            </div>
-          </div>
-        </header>
+        <PublicNavbar />
+        <div className="h-16" />
 
         <main className="container mx-auto px-6 py-12">
           {/* Breadcrumb */}

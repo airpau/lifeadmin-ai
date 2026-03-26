@@ -8,6 +8,7 @@ import { PRICE_IDS } from '@/lib/stripe';
 import Image from 'next/image';
 import { Check, Sparkles, TrendingUp, Zap, Users, Gift } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
+import PublicNavbar from '@/components/PublicNavbar';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
 
@@ -191,35 +192,7 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-navy-950">
-      {/* Fixed Navbar matching landing page */}
-      <header className="fixed top-0 w-full z-50 bg-navy-950/80 backdrop-blur-xl border-b border-navy-700/50">
-        <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-            <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-1">
-            <Link href="/about" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">About</Link>
-            <Link href="/blog" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">Blog</Link>
-            <Link href="/deals" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">Deals</Link>
-            <Link href="/pricing" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">Pricing</Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link href="/auth/login" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-4 py-2 rounded-xl transition-all duration-200 text-sm">
-              Sign In
-            </Link>
-            {WAITLIST_MODE ? (
-              <Link href="/#waitlist" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-xl transition-all duration-200 text-sm">
-                Get Started
-              </Link>
-            ) : (
-              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-xl transition-all duration-200 text-sm">
-                Get Started
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
+      <PublicNavbar />
 
       {/* Spacer for fixed navbar */}
       <div className="h-16" />
@@ -236,7 +209,7 @@ export default function PricingPage() {
       )}
 
       {/* Hero */}
-      <div className="container mx-auto px-4 md:px-6 py-16 md:py-24 text-center">
+      <div className="container mx-auto px-4 md:px-6 py-12 md:py-16 text-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -267,7 +240,7 @@ export default function PricingPage() {
             </div>
           )}
 
-          <p className="text-xl text-slate-400 mb-12 max-w-2xl mx-auto">
+          <p className="text-xl text-slate-300 mb-12 max-w-2xl mx-auto">
             Choose the plan that fits your needs. All plans include our AI agents working 24/7 to get your money back.
           </p>
         </motion.div>
@@ -277,7 +250,7 @@ export default function PricingPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15 }}
-          className="flex items-center justify-center gap-4 mb-16"
+          className="flex items-center justify-center gap-4 mb-10"
         >
           <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-white' : 'text-slate-500'}`}>
             Monthly
@@ -339,7 +312,7 @@ export default function PricingPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-slate-400 text-sm mb-4">{plan.description}</p>
+                  <p className="text-slate-300 text-sm mb-4">{plan.description}</p>
 
                   <div className="flex items-baseline gap-1 mb-1">
                     <span className="text-3xl md:text-5xl font-bold text-white">&pound;{price}</span>
@@ -351,7 +324,7 @@ export default function PricingPage() {
                   </div>
 
                   {billingCycle === 'yearly' && price > 0 && (
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-400">
                       &pound;{(price / 12).toFixed(2)}/month billed annually
                       <span className="ml-2 inline-block bg-mint-400/10 text-mint-400 text-xs font-semibold px-2 py-0.5 rounded-full border border-mint-400/20">Best Value</span>
                     </p>

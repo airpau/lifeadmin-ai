@@ -228,3 +228,10 @@ Then P2-High bugs:
 13. BUG-19/BUG-20: CLEAN UP BANK DATA — Strip phone numbers from names, consolidate duplicate 'Other' categories.
 14. BUG-21: HUMAN-READABLE SYNC TIMES — Use formatDistanceToNow() for bank sync timestamps.
 15. BUG-01: MAKE CATEGORY TAGS CLICKABLE — Wrap landing page tags in Link components.
+
+---
+
+## 2026-03-26 10:44:07 - Cowork (Desktop)
+**Completed:** Completed full website test of every page on paybacker.co.uk after the redesign. Tested: landing page, about, blog (listing + articles), pricing, deals (index + categories), sign in/sign up auth flow, dashboard overview, Money Hub, Scanner, Complaints/AI Letters, Subscriptions, Forms, Spending Insights, Rewards, Profile, Chatbot, and mobile responsiveness. Found 9 bugs ranging from critical to low priority, all logged as individual tasks in the MCP task queue under "Bug Fixes (from Desktop review)".
+
+**Next steps:** Fix all 9 bugs from the "Bug Fixes (from Desktop review)" section in the task queue. Start with the 2 CRITICAL bugs first: (1) Hero text invisible on landing + pricing pages — change heading colour to white #FFFFFF, subtitle to slate-300 minimum; (2) Public pages navbar not responsive on mobile — add hamburger menu at max-width 768px. Then fix 3 HIGH bugs: inconsistent navbar across public pages, Sign In redirect for logged-in users should go to /dashboard, pricing page excessive empty space. Then 4 MEDIUM/LOW: pricing card contrast, plan status mismatch sidebar vs profile, chatbot popup should be once per session, missing billing toggle on pricing, deals count mismatch. Full fix instructions are in each task description.

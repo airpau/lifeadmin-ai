@@ -7,6 +7,7 @@ import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, 
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
+import PublicNavbar from '@/components/PublicNavbar';
 
 export default function Home() {
   const [name, setName] = useState('');
@@ -114,35 +115,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-navy-950">
-      {/* Navbar */}
-      <header className="fixed top-0 w-full z-50 bg-navy-950/80 backdrop-blur-xl border-b border-navy-700/50">
-        <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-            <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
-          </div>
-          <nav className="hidden md:flex items-center gap-1">
-            <Link href="/about" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">About</Link>
-            <Link href="/blog" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">Blog</Link>
-            <Link href="/deals" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">Deals</Link>
-            <Link href="/pricing" className="text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-800 transition-all">Pricing</Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link href="/auth/login" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-4 py-2 rounded-xl transition-all duration-200 text-sm">
-              Sign In
-            </Link>
-            {WAITLIST_MODE ? (
-              <a href="#waitlist" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-xl transition-all duration-200 text-sm shadow-[--shadow-glow-mint]">
-                Get Started
-              </a>
-            ) : (
-              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-xl transition-all duration-200 text-sm shadow-[--shadow-glow-mint]">
-                Get Started
-              </Link>
-            )}
-          </div>
-        </div>
-      </header>
+      <PublicNavbar />
 
       {/* Spacer for fixed navbar */}
       <div className="h-16" />
@@ -189,7 +162,7 @@ export default function Home() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.2 }}
-                className="text-slate-400 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10"
+                className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10"
               >
                 AI-powered complaint letters citing exact UK law. Track every subscription. Find cheaper deals. All in one platform, built for UK consumers.
               </motion.p>

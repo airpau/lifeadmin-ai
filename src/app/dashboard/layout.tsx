@@ -43,16 +43,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const supabase = createClient();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
+  const [userTier, setUserTier] = useState<string>('free');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUserEmail(user?.email || null);
-      // Try profile first, fall back to auth metadata
       if (user) {
-        supabase.from('profiles').select('first_name, full_name').eq('id', user.id).single().then(({ data }) => {
+        supabase.from('profiles').select('first_name, full_name, subscription_tier').eq('id', user.id).single().then(({ data }) => {
           const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
           setFirstName(name);
+          setUserTier(data?.subscription_tier || 'free');
         });
       }
     });
@@ -82,8 +83,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="text-sm font-medium text-white">{firstName}</p>
         )}
         <p className="text-xs text-slate-500 truncate">{userEmail}</p>
-        <span className="inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider text-mint-400 bg-mint-400/10 px-2 py-0.5 rounded-full">
-          Free Plan
+        <span className={`inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full ${
+          userTier === 'pro' ? 'text-brand-400 bg-brand-400/10' :
+          userTier === 'essential' ? 'text-mint-400 bg-mint-400/10' :
+          'text-slate-400 bg-slate-400/10'
+        }`}>
+          {userTier === 'pro' ? 'Pro Plan' : userTier === 'essential' ? 'Essential Plan' : 'Free Plan'}
         </span>
       </div>
 

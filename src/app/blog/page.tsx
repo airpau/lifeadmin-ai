@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import PublicNavbar from '@/components/PublicNavbar';
 
 export const metadata: Metadata = {
   title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
@@ -83,42 +83,8 @@ export default async function BlogIndexPage() {
   ];
   return (
     <div className="min-h-screen bg-navy-950">
-      <header className="container mx-auto px-6 py-6 border-b border-navy-700/50">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-            <span className="text-xl font-bold text-white">
-              Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
-            </span>
-          </Link>
-          <nav className="flex items-center gap-1 md:gap-3 text-sm">
-            <Link
-              href="/about"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
-            >
-              About
-            </Link>
-            <Link
-              href="/blog"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
-            >
-              Blog
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-slate-400 hover:text-white px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/auth/login"
-              className="text-slate-300 hover:text-white font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all"
-            >
-              Sign In
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <PublicNavbar />
+      <div className="h-16" />
 
       <main className="container mx-auto px-6 py-16 max-w-5xl">
         <div className="mb-12">
