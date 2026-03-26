@@ -606,3 +606,20 @@ Build:
 - All new chatbot tools go in src/app/api/chat/tools/
 - GitHub: airpau/lifeadmin-ai
 - Supabase project: kcxxlesishltdmfctlmo
+
+---
+
+## 2026-03-26 22:30 - Claude Code Session (End of Day)
+**Completed:** 70+ features, fixes, and improvements. Highlights: 8 of 10 roadmap features built (Share Your Win, Credit Score Warning, Price Increase Alerts, Smart Bill Comparison, Receipt Scanner in AI Letters, Savings Challenges, Annual Financial Report, AI Self-Learning). Plus: universal email scanning (IMAP), X/Twitter integration, ElevenLabs TTS, 14-day Pro trial, referral Stripe rewards, churn prevention, energy tariff monitor, 20 UAT bugs fixed, unified merchant normalisation, 18 chatbot tools, Meta Ads campaigns, 4 SEO blog articles, UK journalist PR list.
+
+**AI Self-Learning System:** Every user correction feeds merchant_rules with confidence scoring. Confidence 1 = suggestion, 2+ = overrides hardcoded, 3+ = applied retroactively. Nightly 2am cron applies trusted rules to all users. Wired into spending, Money Hub, and transactions APIs.
+
+**Skipped:** WhatsApp Bot (not worth the cost/complexity), Household Mode (data protection concerns, too complex for v1).
+
+**Blockers:**
+1. Microsoft Azure app (Outlook OAuth) - Paul needs to register at portal.azure.com
+2. Google Ads Basic API access - applied, waiting for Google
+3. Google OAuth verification - submitted 24 March
+4. Meta App Review - needed for ad creatives
+
+**Next steps:** Claude Desktop to run full end-to-end UAT test. Paul to set up Microsoft Azure app + Trustpilot page. Launch target ~2 April.
