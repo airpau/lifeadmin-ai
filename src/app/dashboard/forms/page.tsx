@@ -174,6 +174,18 @@ export default function FormsPage() {
 
   return (
     <div className="max-w-5xl">
+      {/* Redirect banner */}
+      <div className="mb-6 bg-mint-400/10 border border-mint-400/30 rounded-xl p-4 flex items-center gap-3">
+        <Sparkles className="h-5 w-5 text-mint-400 shrink-0" />
+        <div>
+          <p className="text-white font-semibold text-sm">These forms are now available in AI Letters</p>
+          <p className="text-slate-400 text-xs mt-0.5">
+            All form types have been merged into the AI Letters section for a simpler experience.{' '}
+            <a href="/dashboard/complaints" className="text-mint-400 hover:text-mint-300 underline underline-offset-2 transition-all">Go to AI Letters</a>
+          </p>
+        </div>
+      </div>
+
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Forms & Government Letters</h1>
         <p className="text-slate-400">Official regulatory forms and government letters. For company complaints, use the{' '}

@@ -26,6 +26,148 @@ interface Profile {
   created_at: string;
 }
 
+function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: ReturnType<typeof createClient>; fallbackRecovered: number }) {
+  const [lettersWritten, setLettersWritten] = useState(0);
+  const [moneyRecovered, setMoneyRecovered] = useState(fallbackRecovered);
+  const [activeDisputes, setActiveDisputes] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoaded(true); return; }
+      const [letters, resolved, disputes] = await Promise.all([
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('type', 'complaint_letter'),
+        supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).in('status', ['pending_review', 'in_progress']),
+      ]);
+      setLettersWritten(letters.count || 0);
+      const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
+      setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
+      setActiveDisputes(disputes.count || 0);
+      setLoaded(true);
+    };
+    load();
+  }, [supabase, fallbackRecovered]);
+
+  return (
+    <div className="grid md:grid-cols-3 gap-6 mb-6">
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+        <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <TrendingUp className="h-6 w-6 text-green-500" />
+        </div>
+        <h3 className="text-3xl font-bold text-white mb-1">
+          {formatGBP(moneyRecovered)}
+        </h3>
+        <p className="text-slate-400 text-sm">Money recovered</p>
+      </div>
+
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+        <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <CheckCircle2 className="h-6 w-6 text-blue-500" />
+        </div>
+        <h3 className="text-3xl font-bold text-white mb-1">
+          {lettersWritten}
+        </h3>
+        <p className="text-slate-400 text-sm">Letters written</p>
+      </div>
+
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+        <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
+          <Clock className="h-6 w-6 text-purple-500" />
+        </div>
+        <h3 className="text-3xl font-bold text-white mb-1">
+          {activeDisputes}
+        </h3>
+        <p className="text-slate-400 text-sm">Active disputes</p>
+      </div>
+    </div>
+  );
+}
+
+function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string }>>([]);
+  const [emailConns, setEmailConns] = useState<Array<{ id: string; email: string; provider: string; status: string }>>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoaded(true); return; }
+      const [banks, emails] = await Promise.all([
+        supabase.from('bank_connections').select('id, bank_name, status, connected_at').eq('user_id', user.id),
+        supabase.from('email_connections').select('id, email, provider, status').eq('user_id', user.id),
+      ]);
+      setBankConns(banks.data || []);
+      setEmailConns(emails.data || []);
+      setLoaded(true);
+    };
+    load();
+  }, [supabase]);
+
+  const activeBanks = bankConns.filter(b => b.status === 'active');
+  const activeEmails = emailConns.filter(e => e.status === 'active');
+
+  return (
+    <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+      <h2 className="text-xl font-bold text-white mb-6">Connected Accounts</h2>
+      <div className="space-y-4">
+        {/* Email */}
+        <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
+              <Mail className="h-6 w-6 text-red-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-semibold">Email</h3>
+              <p className="text-sm text-slate-400">
+                {activeEmails.length > 0 ? activeEmails.map(e => e.email).join(', ') : 'Scan emails for bills and subscriptions'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {activeEmails.length > 0 ? (
+              <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+              </span>
+            ) : (
+              <a href="/dashboard/scanner" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+                Connect
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Bank */}
+        <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+              <CreditCard className="h-6 w-6 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-semibold">Bank Account</h3>
+              <p className="text-sm text-slate-400">
+                {activeBanks.length > 0 ? activeBanks.map(b => b.bank_name || 'Bank Account').join(', ') : 'Automatic transaction categorisation'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {activeBanks.length > 0 ? (
+              <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Connected ({activeBanks.length})
+              </span>
+            ) : (
+              <a href="/dashboard/subscriptions" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+                Connect
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -509,80 +651,10 @@ export default function ProfilePage() {
       })()}
 
       {/* Stats */}
-      <div className="grid md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <TrendingUp className="h-6 w-6 text-green-500" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {formatGBP(profile?.total_money_recovered || 0)}
-          </h3>
-          <p className="text-slate-400 text-sm">Money recovered</p>
-        </div>
-
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle2 className="h-6 w-6 text-blue-500" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {profile?.total_tasks_completed || 0}
-          </h3>
-          <p className="text-slate-400 text-sm">Tasks completed</p>
-        </div>
-
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-          <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-            <Clock className="h-6 w-6 text-purple-500" />
-          </div>
-          <h3 className="text-3xl font-bold text-white mb-1">
-            {profile?.total_agents_run || 0}
-          </h3>
-          <p className="text-slate-400 text-sm">AI agents run</p>
-        </div>
-      </div>
+      <ProfileStatsSection supabase={supabase} fallbackRecovered={profile?.total_money_recovered || 0} />
 
       {/* Connected Accounts */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-white mb-6">Connected Accounts</h2>
-        
-        <div className="space-y-4">
-          {/* Gmail - Coming Soon */}
-          <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
-                <Mail className="h-6 w-6 text-red-400" />
-              </div>
-              <div>
-                <h3 className="text-white font-semibold">Gmail</h3>
-                <p className="text-sm text-slate-400">Scan emails for bills and subscriptions</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30">
-                Coming Soon
-              </span>
-            </div>
-          </div>
-
-          {/* Bank - Coming Soon */}
-          <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                <CreditCard className="h-6 w-6 text-blue-400" />
-              </div>
-              <div>
-                <h3 className="text-white font-semibold">Bank Account</h3>
-                <p className="text-sm text-slate-400">Automatic transaction categorization</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30">
-                Coming Soon
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ConnectedAccountsSection supabase={supabase} />
 
       {/* Financial Reports */}
       <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">

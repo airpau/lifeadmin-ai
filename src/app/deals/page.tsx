@@ -49,6 +49,19 @@ export default function PublicDealsPage() {
           <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-3 rounded-xl transition-all">Sign Up Free</Link>
         </div>
       </main>
+
+      <footer className="border-t border-navy-700/50 bg-navy-950 mt-16">
+        <div className="container mx-auto px-6 py-12 max-w-5xl">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
+            <div className="flex items-center gap-6 text-sm">
+              <Link href="/privacy-policy" className="text-slate-500 hover:text-white transition-all">Privacy Policy</Link>
+              <Link href="/legal/terms" className="text-slate-500 hover:text-white transition-all">Terms of Service</Link>
+              <a href="mailto:hello@paybacker.co.uk" className="text-slate-500 hover:text-white transition-all">Contact</a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

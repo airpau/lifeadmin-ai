@@ -268,38 +268,37 @@ export default function DashboardPage() {
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
 
-        // Fetch subscription comparison data
-        try {
-          const compRes = await fetch('/api/subscriptions/compare', { method: 'POST' });
-          if (compRes.ok) {
-            const compData = await compRes.json();
-            setComparisonSaving(compData.totalAnnualSaving || 0);
-            setComparisonCount(compData.count || 0);
-            // Extract deal details for the widget
-            const dealsList: typeof comparisonDeals = [];
-            for (const sub of (compData.subscriptions || [])) {
-              if (sub.comparisons?.length > 0) {
-                const best = sub.comparisons[0];
-                dealsList.push({
-                  subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
-                  currentPrice: best.currentPrice,
-                  dealProvider: best.dealProvider,
-                  dealPrice: best.dealPrice,
-                  annualSaving: best.annualSaving,
-                  dealUrl: best.dealUrl,
-                  category: sub.category || '',
-                });
-              }
-            }
-            setComparisonDeals(dealsList);
-          }
-        } catch {} // Non-critical, don't block dashboard
-
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
         setLoading(false);
       }
+
+      // Fetch subscription comparison data (non-blocking, runs after dashboard loads)
+      try {
+        const compRes = await fetch('/api/subscriptions/compare', { method: 'POST' });
+        if (compRes.ok) {
+          const compData = await compRes.json();
+          setComparisonSaving(compData.totalAnnualSaving || 0);
+          setComparisonCount(compData.count || 0);
+          const dealsList: typeof comparisonDeals = [];
+          for (const sub of (compData.subscriptions || [])) {
+            if (sub.comparisons?.length > 0) {
+              const best = sub.comparisons[0];
+              dealsList.push({
+                subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+                currentPrice: best.currentPrice,
+                dealProvider: best.dealProvider,
+                dealPrice: best.dealPrice,
+                annualSaving: best.annualSaving,
+                dealUrl: best.dealUrl,
+                category: sub.category || '',
+              });
+            }
+          }
+          setComparisonDeals(dealsList);
+        }
+      } catch {} // Non-critical
     };
     fetchData();
   }, [supabase]);

@@ -623,3 +623,84 @@ Build:
 4. Meta App Review - needed for ad creatives
 
 **Next steps:** Claude Desktop to run full end-to-end UAT test. Paul to set up Microsoft Azure app + Trustpilot page. Launch target ~2 April.
+
+
+
+---
+
+# UAT v2 BUG FIX INSTRUCTIONS FOR CLAUDE CODE (26 March 2026)
+
+Read the task queue for all 17 bugs (BUG-V2-01 through BUG-V2-17). Fix them in priority order: CRITICAL → HIGH → MEDIUM → LOW.
+
+**3 REGRESSIONS from UAT v1** — these were supposedly fixed but came back. Ensure fixes go in SHARED UTILITIES not component-local code:
+- BUG-V2-02: Sync time "187m ago" (was v1 BUG-04)
+- BUG-V2-03: Duplicate "Other" categories (was v1 BUG-05)
+- BUG-V2-04: Negative currency £-amount (was v1 BUG-09)
+
+## CRITICAL (1 bug)
+
+**BUG-V2-01: Raw merchant names in dashboard comparison widget**
+Raw bank names like "BRITISH GAS", "SKY SUBSCRIPTION 08442411653", "PAYPAL *LEBARA 2691337 35314369001". Expand merchant name cleaning utility with UK merchant mappings. Strip reference codes, processor prefixes, phone numbers. Apply to ALL transaction displays.
+
+## HIGH (7 bugs)
+
+**BUG-V2-02: Sync "187m ago" not human-readable (REGRESSION)**
+Replace raw minutes with relative time: <60min → "X min ago", <24h → "X hours ago", <7d → "X days ago". Use formatDistanceToNow() if date-fns available. Fix must be in shared utility.
+
+**BUG-V2-03: Duplicate "Other" categories (REGRESSION)**
+Income 2x "Other", spending 3x "Other". Consolidate before rendering: merge all "Other"/"Uncategorised"/empty/null into single summed row.
+
+**BUG-V2-04: Negative currency £-4,857.65 (REGRESSION)**
+Use Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2, maximumFractionDigits: 2 }). Create shared formatCurrency() used everywhere.
+
+**BUG-V2-05: Raw merchant names in subscriptions**
+"Patreon* Membershippat Internet", "LBH", "Dvla-a15eyp", "Communityfibre", "Testvalley" → clean names. Use same utility as BUG-V2-01.
+
+**BUG-V2-06: Profile Connected Accounts shows "Coming Soon"**
+Gmail and Bank connected but showing "Coming Soon". Query bank_connections and email_connections tables for actual status.
+
+**BUG-V2-07: Profile stats all £0/0/0**
+13 letters generated but stats show 0. Query complaints table for COUNT, SUM(estimated_savings), and active disputes count.
+
+**BUG-V2-08: Cancel options on uncancellable services**
+Council tax, water, DVLA showing cancel buttons. Create blocklist, hide cancel or show "Statutory charge" label.
+
+## MEDIUM (7 bugs)
+
+**BUG-V2-09: Footer inconsistency** — All public pages must use same shared 4-column Footer. Deals page has NO footer at all.
+
+**BUG-V2-10: "56 deals" vs 53 actual** — Make homepage count dynamic or update static number.
+
+**BUG-V2-11: No 14-day trial on pricing** — Add "Start with 14-day free trial" badge, change CTA to "Start Free Trial".
+
+**BUG-V2-12: Scanner missing connection sections** — Bank connection CTA and email provider tiles not rendering. Check component.
+
+**BUG-V2-13: Duplicate council tax entries** — LBH + L.B. Hounslow as separate entries. Deduplicate after name cleaning.
+
+**BUG-V2-14: Forms page empty** — /dashboard/forms renders no content. Check component for errors.
+
+**BUG-V2-15: No Forms vs Letters distinction** — Add descriptions and cross-links on each page.
+
+## LOW (2 bugs)
+
+**BUG-V2-16: Dashboard 5+ second load** — Use Promise.all() for parallel fetching, add skeleton loaders.
+
+**BUG-V2-17: Bottom tab bar obscures content** — Add pb-20 to main content wrapper, lg:pb-6 for desktop reset.
+
+## AFTER FIXES
+1. `npx tsc --noEmit` for TypeScript errors
+2. Test each fix visually
+3. Extra attention on 3 regressions — shared utilities not component-local
+4. Test currency with positive, negative, zero, large values
+5. Mark bugs done in task queue
+6. Commit with clear message
+7. Verify Vercel deployment
+
+Design system: navy #0A1628, mint #34D399, orange #FB923C | GitHub: airpau/lifeadmin-ai | Supabase: kcxxlesishltdmfctlmo
+
+---
+
+## 2026-03-26 23:08:29 - Cowork (UAT Tester)
+**Completed:** Completed comprehensive end-to-end UAT v2 test of paybacker.co.uk on 26 March 2026. Tested: Homepage, About, Blog, Deals, Pricing, SEO pages, Auth flow, Dashboard Overview, Money Hub, Subscriptions, AI Letters, Scanner, Deals (dashboard), Rewards, Profile, Chatbot, Forms, and mobile responsiveness. Found 17 bugs: 1 CRITICAL, 7 HIGH, 7 MEDIUM, 2 LOW. 3 bugs are REGRESSIONS from UAT v1 (sync time format, duplicate Other categories, negative currency format). All bugs logged to MCP task queue with fix instructions. Full HTML report saved. Fix prompt saved to handoff-notes.md.
+
+**Next steps:** 1. Fix all 17 bugs in priority order (CRITICAL → HIGH → MEDIUM → LOW) using the instructions in handoff-notes.md under "UAT v2 BUG FIX INSTRUCTIONS". 2. Pay special attention to the 3 regressions (BUG-V2-02, 03, 04) — ensure fixes go in shared utilities so they don't regress again. 3. The merchant name cleaning (BUG-V2-01, V2-05) is a cross-cutting concern — build one robust utility and apply it everywhere. 4. After fixing, run TypeScript checks, test visually, mark tasks done in queue. 5. After bug fixes are deployed, run UAT v3 to verify all fixes and check for new regressions. 6. Then proceed to building the 10 new features (instructions already in handoff-notes.md from earlier today).

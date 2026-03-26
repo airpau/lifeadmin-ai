@@ -162,6 +162,13 @@ function normaliseProviderName(raw: string): string {
 
   return raw;
 }
+const STATUTORY_KEYWORDS = ['council', 'testvalley', 'winchester', 'lbh', 'l.b.hounslow', 'dvla', 'thames water', 'severn trent', 'hmrc', 'southern water', 'anglian water', 'united utilities'];
+
+function isStatutoryService(name: string): boolean {
+  const lower = name.toLowerCase();
+  return STATUTORY_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 const CONTRACT_TYPES = ['subscription', 'fixed_contract', 'mortgage', 'loan', 'insurance', 'lease', 'membership', 'utility', 'other'];
 const PROVIDER_TYPES = ['energy', 'broadband', 'mobile', 'tv', 'insurance', 'mortgage', 'loan', 'credit_card', 'streaming', 'software', 'fitness', 'council_tax', 'water', 'other'];
 
@@ -287,7 +294,17 @@ export default function SubscriptionsPage() {
   };
 
   // Subscriptions = everything except loans, mortgages, credit cards
-  const displaySubscriptions = subscriptions.filter(s => !isFinancePayment(s.provider_name));
+  // Also deduplicate by normalised name (e.g. "LBH" and "L.B.Hounslow" are the same)
+  const displaySubscriptions = (() => {
+    const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name));
+    const seen = new Map<string, boolean>();
+    return filtered.filter(s => {
+      const normName = normaliseProviderName(s.provider_name).toLowerCase();
+      if (seen.has(normName)) return false;
+      seen.set(normName, true);
+      return true;
+    });
+  })();
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
 
   const totalMonthly = displaySubscriptions
@@ -822,7 +839,7 @@ export default function SubscriptionsPage() {
             {detectedSubs.map((s) => (
               <div key={s.provider_name} className="flex items-center justify-between bg-navy-900 rounded-xl px-4 py-3">
                 <div>
-                  <p className="text-white font-medium">{s.provider_name}</p>
+                  <p className="text-white font-medium">{normaliseProviderName(s.provider_name)}</p>
                   <p className="text-slate-400 text-sm capitalize">
                     {s.category} · {s.amount > 0 ? formatGBP(s.amount) : '£?'}/{s.billing_cycle}
                   </p>
@@ -1014,26 +1031,35 @@ export default function SubscriptionsPage() {
 
                 {sub.status === 'active' && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCancelRequest(sub);
-                      }}
-                      className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white px-4 py-2 rounded-lg transition-all text-sm"
-                    >
-                      <Mail className="h-4 w-4" />
-                      Generate Cancellation Email
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        attemptMarkCancelled(sub);
-                      }}
-                      className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg transition-all text-sm border border-red-500/20"
-                    >
-                      <X className="h-4 w-4" />
-                      Mark as Cancelled
-                    </button>
+                    {isStatutoryService(sub.provider_name) ? (
+                      <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">
+                        <AlertTriangle className="h-4 w-4" />
+                        Statutory charge
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelRequest(sub);
+                          }}
+                          className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white px-4 py-2 rounded-lg transition-all text-sm"
+                        >
+                          <Mail className="h-4 w-4" />
+                          Generate Cancellation Email
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            attemptMarkCancelled(sub);
+                          }}
+                          className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg transition-all text-sm border border-red-500/20"
+                        >
+                          <X className="h-4 w-4" />
+                          Mark as Cancelled
+                        </button>
+                      </>
+                    )}
                     {sub.provider_type && ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan'].includes(sub.provider_type) && !subComparisons[sub.id] && (
                       <a
                         href={`/deals/${sub.provider_type === 'mortgage' ? 'mortgages' : sub.provider_type === 'loan' ? 'loans' : sub.provider_type}`}

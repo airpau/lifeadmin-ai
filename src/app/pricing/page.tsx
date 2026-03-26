@@ -82,7 +82,7 @@ const plans = [
     cta: 'Subscribe to Pro',
     waitlistCta: 'Join Waitlist - Pro',
     highlighted: false,
-    trial: false,
+    trial: true,
     planKey: 'pro' as const,
     priceIds: {
       monthly: PRICE_IDS.pro_monthly,
@@ -319,7 +319,7 @@ export default function PricingPage() {
                     <h3 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-white">{plan.name}</h3>
                     {plan.trial && !WAITLIST_MODE && (
                       <span className="bg-mint-400/10 text-mint-400 text-xs font-medium px-2 py-0.5 rounded-full border border-mint-400/20">
-                        7-day free trial
+                        14-day free trial
                       </span>
                     )}
                   </div>

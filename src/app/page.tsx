@@ -376,7 +376,7 @@ export default function Home() {
                 </p>
                 <ul className="space-y-3 mb-8">
                   {[
-                    '56 deals across 9 categories from top UK providers',
+                    '53 deals across 9 categories from top UK providers',
                     'Personalised recommendations based on your real spending',
                     'Alerts before contracts renew so you never overpay',
                   ].map((item) => (

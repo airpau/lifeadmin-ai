@@ -685,8 +685,24 @@ export default function MoneyHubPage() {
   const totalOpportunityValue = data.alerts.reduce((s, a: any) => s + (a.value_gbp || 0), 0) +
     data.opportunities.reduce((s, o: any) => s + (o.amount || 0), 0);
 
-  const incomeBreakdown = data.overview.incomeBreakdown || {};
+  // Deduplicate income breakdown entries (merge duplicates by key)
+  const rawIncomeBreakdown = data.overview.incomeBreakdown || {};
+  const incomeBreakdown: Record<string, number> = {};
+  for (const [type, amount] of Object.entries(rawIncomeBreakdown)) {
+    const key = type.toLowerCase().trim();
+    incomeBreakdown[key] = (incomeBreakdown[key] || 0) + amount;
+  }
   const totalIncome = Object.values(incomeBreakdown).reduce((s, v) => s + v, 0);
+
+  // Deduplicate spending categories (merge entries with same category)
+  const deduplicatedSpending = (() => {
+    const map = new Map<string, number>();
+    for (const cat of data.spending.categories) {
+      const key = cat.category.toLowerCase().trim();
+      map.set(key, (map.get(key) || 0) + cat.total);
+    }
+    return Array.from(map.entries()).map(([category, total]) => ({ category, total }));
+  })();
 
   // Monthly trends averages
   const trends = data.spending.monthlyTrends || [];
@@ -803,7 +819,7 @@ export default function MoneyHubPage() {
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
           <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {data.overview.netPosition >= 0 ? '+' : ''}£{fmt(data.overview.netPosition)}
+            {data.overview.netPosition >= 0 ? '+' : '-'}£{fmt(Math.abs(data.overview.netPosition))}
           </p>
           <p className="text-slate-400 text-xs">Net position</p>
         </div>
@@ -890,7 +906,15 @@ export default function MoneyHubPage() {
                   <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{acc.status}</span>
                   {acc.last_synced_at && (
                     <span className="text-slate-500 text-xs">
-                      Synced {Math.round((Date.now() - new Date(acc.last_synced_at).getTime()) / 60000)}m ago
+                      Synced {(() => {
+                        const mins = Math.round((Date.now() - new Date(acc.last_synced_at).getTime()) / 60000);
+                        if (mins < 1) return 'just now';
+                        if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+                        const hrs = Math.floor(mins / 60);
+                        if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+                        const days = Math.floor(hrs / 24);
+                        return `${days} day${days === 1 ? '' : 's'} ago`;
+                      })()}
                     </span>
                   )}
                 </div>
@@ -907,7 +931,7 @@ export default function MoneyHubPage() {
         </h2>
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            {data.spending.categories.map(cat => {
+            {deduplicatedSpending.map(cat => {
               const info = CATEGORY_LABELS[cat.category] || CATEGORY_LABELS.other;
               const pct = data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0;
               const budget = data.budgets.find((b: any) => b.category === cat.category);
@@ -952,7 +976,7 @@ export default function MoneyHubPage() {
                 </div>
               );
             })}
-            {!isPaid && data.spending.categories.length >= 5 && (
+            {!isPaid && deduplicatedSpending.length >= 5 && (
               <div className="text-center pt-2">
                 <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all categories</Link>
               </div>
@@ -1428,7 +1452,7 @@ export default function MoneyHubPage() {
           ) : (
             <div className="space-y-3">
               {data.budgets.map((b: any) => {
-                const spent = data.spending.categories.find(c => c.category === b.category)?.total || 0;
+                const spent = deduplicatedSpending.find(c => c.category === b.category)?.total || 0;
                 const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
                 const info = CATEGORY_LABELS[b.category] || CATEGORY_LABELS.other;
                 return (
