@@ -395,9 +395,9 @@ export default function RewardsPage() {
       {referrals && (
         <div id="referrals" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
           <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-            <Share2 className="h-5 w-5 text-mint-400" /> Earn 200 points for every friend who upgrades
+            <Share2 className="h-5 w-5 text-mint-400" /> Invite friends, both get 1 free month
           </h2>
-          <p className="text-slate-400 text-sm mb-4">They get a free start. You get 100 points when they join, plus 200 more when they upgrade.</p>
+          <p className="text-slate-400 text-sm mb-4">Share your link. When a friend signs up and subscribes, you both get 1 free month applied to your next bill automatically via Stripe. Plus 100 loyalty points when they join and 200 more when they upgrade.</p>
 
           <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50 mb-4">
             <p className="text-slate-500 text-xs mb-2">Your referral link</p>
@@ -429,7 +429,7 @@ export default function RewardsPage() {
 
           {referrals.pendingUpgrades > 0 && (
             <div className="bg-mint-400/10 border border-mint-400/20 rounded-lg p-3 text-mint-400 text-sm">
-              {referrals.pendingUpgrades} friend{referrals.pendingUpgrades > 1 ? 's have' : ' has'} signed up but not upgraded yet. You will earn 200 points for each one that upgrades.
+              {referrals.pendingUpgrades} friend{referrals.pendingUpgrades > 1 ? 's have' : ' has'} signed up but not upgraded yet. When they subscribe, you both get 1 free month + 200 bonus points for you.
             </div>
           )}
 

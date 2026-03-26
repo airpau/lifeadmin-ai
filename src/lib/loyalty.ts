@@ -37,12 +37,9 @@ export const POINT_VALUES: Record<string, { points: number; description: string;
   // FUTURE - needs Awin postback endpoint (/api/deals/conversion)
   deal_switched: { points: 50, description: 'Switched to a better deal via Paybacker', trackable: false },
 
-  // SOCIAL SHARING
-  social_share: { points: 25, description: 'Shared a savings win on social media', trackable: true },
-
-  // REFERRALS
-  referral_signup: { points: 100, description: 'Referred a friend who signed up', trackable: true },
-  referral_paid: { points: 200, description: 'Referred a friend who subscribed', trackable: true },
+  // REFERRALS (points awarded when someone signs up/subscribes via your link)
+  referral_signup: { points: 100, description: 'Friend signed up via your referral link', trackable: true },
+  referral_paid: { points: 200, description: 'Friend subscribed via your referral link + 1 free month for both', trackable: true },
 };
 
 // Hybrid tier thresholds: requires BOTH time AND points

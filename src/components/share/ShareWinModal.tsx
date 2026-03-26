@@ -38,17 +38,6 @@ export default function ShareWinModal({
   const text = shareTexts[type];
 
   const handleShare = async (platform: string) => {
-    // Award loyalty points
-    try {
-      await fetch('/api/loyalty/award', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventType: 'social_share' }),
-      });
-    } catch {
-      // Non-blocking -- don't prevent sharing if the award call fails
-    }
-
     markShared();
     setShared(true);
 
@@ -150,11 +139,9 @@ export default function ShareWinModal({
             </button>
           </div>
 
-          {shared && (
-            <p className="text-center text-mint-400 text-sm mt-4 font-medium">
-              +25 loyalty points earned
-            </p>
-          )}
+          <p className="text-center text-slate-500 text-xs mt-4">
+            When someone signs up using your link, you both get 1 free month.
+          </p>
         </div>
       </div>
     </div>
