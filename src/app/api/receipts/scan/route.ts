@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
-    const extractionPrompt = 'Extract from this receipt/bill: provider_name, total_amount (number only, no currency symbol), date (YYYY-MM-DD), receipt_type (bill/receipt/invoice/statement), line_items (array of {description, amount}), reference_number. Return ONLY valid JSON, no other text.';
+    const extractionPrompt = 'Extract from this receipt/bill: provider_name, total_amount (number only, no currency symbol), date (YYYY-MM-DD), receipt_type (bill/receipt/invoice/statement), line_items (array of {description, amount}), reference_number, customer_name (the name of the person the bill is addressed to, if visible), customer_address (the full postal address on the bill if visible, as a single string), account_number (any account or customer reference number). Return ONLY valid JSON, no other text.';
 
     // Build content blocks - PDFs use document type, images use image type
     const contentBlocks: Anthropic.MessageCreateParams['messages'][0]['content'] = [];
@@ -152,7 +152,9 @@ export async function POST(request: NextRequest) {
       receipt_date: extractedData.date,
       receipt_type: extractedData.receipt_type,
       line_items: extractedData.line_items,
-      reference_number: extractedData.reference_number,
+      reference_number: extractedData.reference_number || extractedData.account_number,
+      customer_name: extractedData.customer_name || null,
+      customer_address: extractedData.customer_address || null,
       extracted_data: extractedData,
     });
   } catch (error: unknown) {

@@ -719,9 +719,36 @@ function ComplaintsPageInner() {
                             letterType: detectedType,
                             companyName: data.provider_name || prev.companyName || '',
                             amount: String(data.amount || prev.amount || ''),
-                            accountNumber: data.extracted_data?.reference_number || prev.accountNumber || '',
+                            accountNumber: data.reference_number || data.extracted_data?.account_number || prev.accountNumber || '',
                             incidentDate: data.receipt_date || prev.incidentDate || '',
                           }));
+
+                          // If bill has customer address, save to profile (if profile fields are empty)
+                          if (data.customer_address || data.customer_name) {
+                            try {
+                              const profileRes = await fetch('/api/profile');
+                              const profile = await profileRes.json();
+                              const updates: Record<string, string> = {};
+                              if (data.customer_name && !profile.full_name) updates.full_name = data.customer_name;
+                              if (data.customer_address && !profile.address) {
+                                // Try to split address and postcode
+                                const addrParts = data.customer_address.match(/^(.*?)([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$/i);
+                                if (addrParts) {
+                                  if (!profile.address) updates.address = addrParts[1].replace(/,\s*$/, '').trim();
+                                  if (!profile.postcode) updates.postcode = addrParts[2].trim().toUpperCase();
+                                } else {
+                                  updates.address = data.customer_address;
+                                }
+                              }
+                              if (Object.keys(updates).length > 0) {
+                                await fetch('/api/profile', {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(updates),
+                                });
+                              }
+                            } catch {} // Non-blocking
+                          }
                         } else if (data.error) {
                           alert('Scan error: ' + data.error);
                         } else {
