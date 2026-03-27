@@ -106,8 +106,14 @@ async function processEmail(
         // Non-closure reply on resolved ticket: reopen
         update.status = 'open';
         update.resolved_at = null;
+      } else if (ticket?.status === 'awaiting_reply' || ticket?.status === 'in_progress') {
+        // User replied to an agent response: set back to open so agents pick it up
+        update.status = 'open';
       }
       await supabase.from('support_tickets').update(update).eq('id', existingTicket.id);
+
+      // Notify support agents about the reply so Riley picks it up quickly
+      notifyAgents('ticket_reply', `Reply on ${ticketNumber}`, `User replied to ${ticketNumber}: ${text.substring(0, 200)}`, 'email').catch(() => {});
 
       return { action: 'message_added', ticket_id: existingTicket.id, ticket_number: ticketNumber };
     }
