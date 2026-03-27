@@ -169,14 +169,23 @@ export async function POST(request: NextRequest) {
 
       const recipientEmail = Array.isArray(to) ? to[0] : to;
 
-      // Fetch full email content from Resend API
-      let emailText = `Email received from ${senderEmail} (content being fetched)`;
-      const content = await fetchEmailContent(email_id);
-      if (content?.text) {
-        emailText = content.text;
-      } else if (content?.html) {
-        // Strip HTML tags as fallback
-        emailText = content.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      // Get email content: try webhook payload first, then fetch from Resend API
+      let emailText = '';
+      if (body.data.text) {
+        emailText = body.data.text;
+      } else if (body.data.html) {
+        emailText = body.data.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      } else {
+        // Fetch from Resend API as fallback
+        const content = await fetchEmailContent(email_id);
+        if (content?.text) {
+          emailText = content.text;
+        } else if (content?.html) {
+          emailText = content.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        }
+      }
+      if (!emailText) {
+        emailText = `Email received from ${senderEmail} (no content available)`;
       }
 
       const result = await processEmail(
