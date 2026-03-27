@@ -601,15 +601,27 @@ export default function ScannerPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: gmail }, { data: outlookOAuth }, { data: emailConns }] = await Promise.all([
-      supabase.from('gmail_tokens').select('email').eq('user_id', user.id).maybeSingle(),
-      supabase.from('email_connections').select('email_address').eq('user_id', user.id).eq('provider_type', 'outlook').eq('auth_method', 'oauth').eq('status', 'active').maybeSingle(),
-      supabase.from('email_connections').select('email_address, provider_type').eq('user_id', user.id).eq('auth_method', 'imap').eq('status', 'active'),
-    ]);
+    // Check Gmail (legacy table)
+    const { data: gmail } = await supabase.from('gmail_tokens').select('email').eq('user_id', user.id).maybeSingle();
+
+    // Check all email connections (Outlook OAuth + IMAP)
+    const { data: allEmailConns, error: emailErr } = await supabase
+      .from('email_connections')
+      .select('email_address, provider_type, auth_method, status')
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+
+    console.log('[scanner] email_connections query:', { allEmailConns, emailErr, userId: user.id });
 
     const accounts: ConnectedAccount[] = [];
     if (gmail) accounts.push({ provider: 'gmail', email: gmail.email });
-    if (outlookOAuth) accounts.push({ provider: 'outlook', email: outlookOAuth.email_address });
+
+    // Add OAuth connections (Outlook)
+    for (const conn of (allEmailConns || [])) {
+      if (conn.provider_type === 'outlook' && conn.auth_method === 'oauth') {
+        accounts.push({ provider: 'outlook', email: conn.email_address });
+      }
+    }
     setConnectedAccounts(accounts);
 
     // Load saved opportunities from database
@@ -794,7 +806,7 @@ export default function ScannerPage() {
           <div className="flex flex-wrap gap-3">
             {!connectedAccounts.find((a) => a.provider === 'gmail') && (
               <button
-                onClick={() => { window.location.href = '/api/auth/google'; }}
+                onClick={() => { window.location.href = '/api/gmail/auth'; }}
                 className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
               >
                 <GoogleIcon />
@@ -803,7 +815,7 @@ export default function ScannerPage() {
             )}
             {!connectedAccounts.find((a) => a.provider === 'outlook') && (
               <button
-                onClick={() => { window.location.href = '/api/auth/microsoft'; }}
+                onClick={() => { window.location.href = '/api/outlook/auth'; }}
                 className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006cbd] text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
               >
                 <OutlookIcon />
