@@ -758,8 +758,8 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     account_number: '',
   });
   const [saving, setSaving] = useState(false);
-  const [generateFirst, setGenerateFirst] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [contractFile, setContractFile] = useState<File | null>(null);
   const [incidentDate, setIncidentDate] = useState('');
   const [previousContact, setPreviousContact] = useState('');
   const [uploadedBillContext, setUploadedBillContext] = useState<string | null>(null);
@@ -807,40 +807,49 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
       if (!disputeRes.ok) throw new Error('Failed to create dispute');
       const dispute = await disputeRes.json();
 
-      // 2. Generate first letter if checkbox is ticked
-      if (generateFirst) {
-        setGenerating(true);
-        setLoadingCaption(0);
-        const captionTimer = setInterval(() => setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length), 3000);
-
+      // 2. Upload contract if provided (non-blocking)
+      if (contractFile) {
         try {
-          const genRes = await fetch('/api/complaints/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              companyName: formData.provider_name,
-              issueDescription: formData.issue_summary,
-              desiredOutcome: formData.desired_outcome,
-              amount: formData.disputed_amount,
-              accountNumber: formData.account_number,
-              incidentDate,
-              previousContact,
-              letterType: formData.issue_type,
-              disputeId: dispute.id,
-              ...(uploadedBillContext ? { billContext: uploadedBillContext } : {}),
-            }),
-          });
-          const genData = await genRes.json();
-          if (genRes.status === 403 && genData.upgradeRequired) {
-            setUpgradeModal({ open: true, used: genData.used, limit: genData.limit, tier: genData.tier });
-            // Still navigate to dispute even if letter failed
-          }
+          const cfd = new FormData();
+          cfd.append('file', contractFile);
+          cfd.append('disputeId', dispute.id);
+          await fetch('/api/contracts/analyse', { method: 'POST', body: cfd });
         } catch {
-          // Non-blocking: dispute still created
-        } finally {
-          clearInterval(captionTimer);
-          setGenerating(false);
+          // Non-blocking
         }
+      }
+
+      // 3. Generate first letter
+      setGenerating(true);
+      setLoadingCaption(0);
+      const captionTimer = setInterval(() => setLoadingCaption(prev => (prev + 1) % LOADING_CAPTIONS.length), 3000);
+
+      try {
+        const genRes = await fetch('/api/complaints/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            companyName: formData.provider_name,
+            issueDescription: formData.issue_summary,
+            desiredOutcome: formData.desired_outcome,
+            amount: formData.disputed_amount,
+            accountNumber: formData.account_number,
+            incidentDate,
+            previousContact,
+            letterType: formData.issue_type,
+            disputeId: dispute.id,
+            ...(uploadedBillContext ? { billContext: uploadedBillContext } : {}),
+          }),
+        });
+        const genData = await genRes.json();
+        if (genRes.status === 403 && genData.upgradeRequired) {
+          setUpgradeModal({ open: true, used: genData.used, limit: genData.limit, tier: genData.tier });
+        }
+      } catch {
+        // Non-blocking: dispute still created
+      } finally {
+        clearInterval(captionTimer);
+        setGenerating(false);
       }
 
       capture('dispute_created', { company: formData.provider_name, type: formData.issue_type });
@@ -1046,20 +1055,42 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
             />
           </div>
 
-          {/* Generate first letter toggle */}
-          <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={generateFirst}
-                onChange={(e) => setGenerateFirst(e.target.checked)}
-                className="w-4 h-4 rounded border-navy-700 text-mint-400 focus:ring-mint-400 bg-navy-950"
-              />
-              <div>
-                <span className="text-sm text-white font-medium">Write my first letter straight away</span>
-                <p className="text-xs text-slate-500">Our AI will draft your complaint citing UK consumer law</p>
-              </div>
+          {/* Contract upload */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">
+              Got a copy of your contract? <span className="text-slate-500 font-normal">(optional)</span>
             </label>
+            <p className="text-[11px] text-slate-600 mb-2">We&apos;ll find the clauses that strengthen your case</p>
+            {contractFile ? (
+              <div className="flex items-center justify-between bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-purple-400" />
+                  <div>
+                    <p className="text-purple-400 text-xs font-medium">Contract attached</p>
+                    <p className="text-slate-500 text-[10px]">{contractFile.name}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setContractFile(null)} className="text-slate-500 hover:text-white text-xs ml-2">Remove</button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-purple-500/30 rounded-lg text-slate-500 hover:border-purple-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
+                <Shield className="h-5 w-5 text-purple-400 flex-shrink-0" />
+                <span>Upload contract (PDF or photo)</span>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.heic,.heif"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+                      setContractFile(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
           </div>
 
           {usageInfo && usageInfo.limit !== null && (
