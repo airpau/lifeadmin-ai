@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
         // Global daily email rate limit
         const rateCheck = await canSendEmail(supabase, userId, 'price_increase_alert');
         if (rateCheck.allowed) {
-          const sent = await sendPriceIncreaseAlert(profile.email, userName, newIncreases);
+          const sent = await sendPriceIncreaseAlert(profile.email, userName, newIncreases as any);
           if (sent) totalEmailsSent++;
         }
       }
