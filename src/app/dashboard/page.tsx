@@ -682,7 +682,7 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {isFlightDelay && (
-                      <Link href={`/dashboard/forms?type=flight_delay${provider ? `&airline=${encodeURIComponent(provider)}` : ''}`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href={`/dashboard/complaints?type=flight_compensation${provider ? `&company=${encodeURIComponent(provider)}` : ''}&new=1`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Claim £520 Compensation
                       </Link>
                     )}
@@ -764,24 +764,24 @@ export default function DashboardPage() {
         </Link>
 
         <Link
-          href="/dashboard/forms"
+          href="/dashboard/complaints?new=1"
           className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <Building2 className="h-8 w-8 text-purple-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Generate Legal Forms</h3>
-          <p className="text-slate-400 text-sm">HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
-          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Browse forms <ArrowRight className="h-3 w-3" /></span>
+          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">AI Letters</h3>
+          <p className="text-slate-400 text-sm">Complaints, HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
+          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Start a dispute <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         {userTier !== 'free' && (
           <Link
-            href="/dashboard/spending"
+            href="/dashboard/money-hub"
             className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
           >
             <BarChart3 className="h-8 w-8 text-sky-500 mb-3" />
-            <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Spending Insights</h3>
+            <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Money Hub</h3>
             <p className="text-slate-400 text-sm">See where every pound goes. Category breakdown, monthly trends, and smart savings suggestions.</p>
-            <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">View insights <ArrowRight className="h-3 w-3" /></span>
+            <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">View Money Hub <ArrowRight className="h-3 w-3" /></span>
           </Link>
         )}
 

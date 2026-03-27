@@ -278,10 +278,10 @@ export default function Home() {
                     {[
                       { label: 'Energy', href: '/deals/energy' },
                       { label: 'Broadband', href: '/deals/broadband' },
-                      { label: 'Parking', href: '/dashboard/forms' },
-                      { label: 'Flights', href: '/dashboard/forms' },
-                      { label: 'Debt', href: '/dashboard/forms' },
-                      { label: 'HMRC', href: '/dashboard/forms' },
+                      { label: 'Parking', href: '/dashboard/complaints?type=parking_appeal&new=1' },
+                      { label: 'Flights', href: '/dashboard/complaints?type=flight_compensation&new=1' },
+                      { label: 'Debt', href: '/dashboard/complaints?type=debt_dispute&new=1' },
+                      { label: 'HMRC', href: '/dashboard/complaints?type=hmrc_tax_rebate&new=1' },
                     ].map(cat => (
                       <Link key={cat.label} href={cat.href} className="text-xs bg-mint-400/10 text-mint-400 px-2 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-all">{cat.label}</Link>
                     ))}

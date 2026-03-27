@@ -188,8 +188,8 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     </div>
 
     <div style="${box}">
-      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Government Forms</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">HMRC tax rebates, council tax challenges, DVLA issues, NHS complaints, parking appeals. Paybacker writes these too. <a href="https://paybacker.co.uk/dashboard/forms" style="color:#34d399;">View forms</a></p>
+      <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">AI Letters for Everything</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">HMRC tax rebates, council tax challenges, DVLA issues, NHS complaints, parking appeals. Paybacker writes these too. <a href="https://paybacker.co.uk/dashboard/complaints" style="color:#34d399;">Start a dispute</a></p>
     </div>
 
     <div style="${box}">

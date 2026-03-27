@@ -1587,7 +1587,7 @@ export default function MoneyHubPage() {
                       </Link>
                     )}
                     {oppType === 'flight_delay' && (
-                      <Link href="/dashboard/forms?type=flight_delay" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href="/dashboard/complaints?type=flight_compensation&new=1" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Claim Compensation
                       </Link>
                     )}
@@ -2042,7 +2042,18 @@ export default function MoneyHubPage() {
                       <p className="text-purple-400 text-[10px]">Your AI financial assistant (replaces standard chat)</p>
                     </div>
                   </div>
-                  <button onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+                  <div className="flex items-center gap-2">
+                    {chatMessages.length > 0 && (
+                      <button
+                        onClick={() => { setChatMessages([]); localStorage.removeItem('pb_moneyhub_chat_history'); }}
+                        className="text-slate-400 hover:text-white transition-all text-xs px-2 py-1 rounded hover:bg-navy-700"
+                        title="Start new chat"
+                      >
+                        New Chat
+                      </button>
+                    )}
+                    <button onClick={() => setChatOpen(false)} className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {chatMessages.length === 0 && (

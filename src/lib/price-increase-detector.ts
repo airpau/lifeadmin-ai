@@ -23,6 +23,18 @@ export interface PriceIncrease {
 const VARIABLE_CATEGORIES = new Set([
   'groceries', 'fuel', 'eating_out', 'shopping', 'cash', 'transfers',
   'income', 'other', 'transport', 'gambling',
+  // TrueLayer categories that are one-off purchases, not recurring bills
+  'PURCHASE', 'ATM', 'TRANSFER', 'FEE_CHARGE', 'CASH',
+  'CREDIT', 'INTEREST', 'OTHER',
+]);
+
+// Only these TrueLayer categories can be recurring bills
+const RECURRING_CATEGORIES = new Set([
+  'DIRECT_DEBIT', 'STANDING_ORDER',
+  // Mapped internal categories
+  'energy', 'broadband', 'mobile', 'streaming', 'insurance',
+  'mortgage', 'loans', 'credit', 'council_tax', 'water',
+  'fitness', 'software', 'bills',
 ]);
 
 /**
@@ -58,12 +70,17 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
   }>>();
 
   for (const tx of transactions) {
-    const amount = Math.abs(parseFloat(String(tx.amount)));
-    if (amount <= 0) continue;
+    const rawAmount = parseFloat(String(tx.amount));
+    // Only look at outgoing payments (negative amounts = debits)
+    // Skip incoming payments (positive amounts = credits/income)
+    if (rawAmount >= 0) continue;
+    const amount = Math.abs(rawAmount);
 
     // Use user_category if set, otherwise category
     const cat = tx.user_category || tx.category || '';
     if (VARIABLE_CATEGORIES.has(cat)) continue;
+    // Only track categories that represent recurring bills
+    if (!RECURRING_CATEGORIES.has(cat)) continue;
 
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;

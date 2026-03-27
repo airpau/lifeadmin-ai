@@ -1081,7 +1081,7 @@ export default function ScannerPage() {
                           {/* Tax rebate - for HMRC related */}
                           {opp.type === 'tax_rebate' && (
                             <button
-                              onClick={() => router.push('/dashboard/forms')}
+                              onClick={() => router.push('/dashboard/complaints?type=hmrc_tax_rebate&new=1')}
                               className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                             >
                               Generate HMRC Letter
