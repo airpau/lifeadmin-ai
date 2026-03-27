@@ -11,10 +11,10 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('email_connections')
-      .select('id, email, provider, status, connected_at, last_scanned_at')
+      .select('id, email_address, provider_type, auth_method, status, last_scanned_at, created_at')
       .eq('user_id', user.id)
       .eq('status', 'active')
-      .order('connected_at', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('[email/connections] DB error:', error);
