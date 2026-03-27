@@ -35,13 +35,39 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    
+
     // Validate required fields
     if (!body.companyName || !body.issueDescription || !body.desiredOutcome) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
+    }
+
+    // If this letter is part of an existing dispute, load the full thread
+    let threadContext = '';
+    if (body.disputeId) {
+      const { data: correspondence } = await supabase
+        .from('correspondence')
+        .select('entry_type, title, content, entry_date')
+        .eq('dispute_id', body.disputeId)
+        .order('entry_date', { ascending: true });
+
+      if (correspondence && correspondence.length > 0) {
+        const entries = correspondence.map((c: any) => {
+          const date = new Date(c.entry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+          const typeLabel: Record<string, string> = {
+            ai_letter: 'Our letter sent',
+            company_email: 'Email from company',
+            company_letter: 'Letter from company',
+            phone_call: 'Phone call summary',
+            user_note: 'Note',
+            company_response: 'Company response',
+          };
+          return `[${date}] ${typeLabel[c.entry_type] || c.entry_type}${c.title ? ` — ${c.title}` : ''}:\n${c.content}`;
+        });
+        threadContext = `\n\nPREVIOUS CORRESPONDENCE (this is an ongoing dispute — reference earlier letters and responses):\n${entries.join('\n\n---\n\n')}`;
+      }
     }
 
     // Check Claude rate limit
@@ -73,6 +99,7 @@ export async function POST(request: NextRequest) {
       previousLetter: body.previousLetter,
       letterType: body.letterType,
       billContext: body.billContext,
+      threadContext,
     });
 
     // Auto-fill user profile data into placeholders
@@ -115,6 +142,7 @@ export async function POST(request: NextRequest) {
         disputed_amount: body.amount ? parseFloat(body.amount) : null,
         account_number: body.accountNumber,
         status: 'pending_review',
+        dispute_id: body.disputeId || null,
       })
       .select()
       .single();
@@ -139,6 +167,24 @@ export async function POST(request: NextRequest) {
         estimated_cost: parseFloat((inputCost + outputCost).toFixed(6)),
         completed_at: new Date().toISOString(),
       });
+    }
+
+    // If part of a dispute, add to correspondence thread
+    if (body.disputeId && task) {
+      await supabase.from('correspondence').insert({
+        dispute_id: body.disputeId,
+        user_id: user.id,
+        entry_type: 'ai_letter',
+        title: `Complaint to ${body.companyName}`,
+        content: result.letter,
+        task_id: task.id,
+        entry_date: new Date().toISOString(),
+      });
+      // Update dispute timestamp
+      await supabase
+        .from('disputes')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', body.disputeId);
     }
 
     // Record Claude call for rate limiting and increment plan usage

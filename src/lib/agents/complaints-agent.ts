@@ -73,6 +73,7 @@ export interface ComplaintInput {
   previousLetter?: string;
   letterType?: string;
   billContext?: string;
+  threadContext?: string; // full correspondence thread for ongoing disputes
 }
 
 export interface ComplaintOutput {
@@ -127,6 +128,9 @@ ${previousContact ? `Previous Contact: ${previousContact}` : ''}
 ${input.billContext ? `\nUPLOADED BILL CONTEXT (use this as evidence in the letter): ${input.billContext}` : ''}
 ${input.feedback ? `\nUser has requested these changes to the letter: ${input.feedback}\nIMPORTANT: Apply these changes AND replace any remaining [PLACEHOLDER] text with the real details the user has now provided. Remove all square bracket placeholders where real information is available.` : ''}
 ${input.previousLetter ? `\nPrevious letter to revise (apply the changes above to this letter):\n${input.previousLetter}` : ''}
+${input.threadContext || ''}
+
+${input.threadContext ? 'IMPORTANT: This is a follow-up letter in an ongoing dispute. Reference the previous correspondence dates and key points. Open with "Further to my letter dated..." or "Following our correspondence regarding..." as appropriate. Build on the previous arguments and escalate the tone appropriately.' : ''}
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 

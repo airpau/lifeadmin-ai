@@ -1,5 +1,58 @@
 # Handoff Notes
 
+## 2026-03-27 -- Claude Code Session (Two Tasks for Desktop)
+
+### TASK 1: Architect AI Letters Intelligence Upgrade
+
+Transform AI Letters into the UK's smartest AI complaints and compensation tool. It remembers every conversation with a company, reads the actual contract you signed, knows the company's own T&Cs, and cites the exact law that protects you - so every response is perfect.
+
+**IMPORTANT: This is a consumer product, NOT a legal/case management tool. All language, UX, and copy must be friendly and accessible. No legal jargon. Position as: "You tell us what happened. We write the perfect response."**
+
+Key phases:
+
+1. **Legal Knowledge Base** - Curated UK consumer law reference database (Consumer Rights Act 2015, Consumer Credit Act 1974, UK261, Ofcom/Ofgem/FCA codes, GDPR, etc.) stored as structured docs injected into AI prompts. Version-dated for currency. The user never sees this - the AI just knows the law.
+2. **Conversation Tracking** - Change flat letter list to a dispute thread per company. Each dispute: provider, issue type, status, timeline. Users add emails, photos of letters, phone call summaries. AI reads the full thread so each response references what came before. "Further to my letter dated..."
+3. **Contract & T&C Analysis** - Users upload contracts (PDF/photo). Claude Vision extracts key terms (notice periods, cancellation clauses, price increase terms). AI cross-references automatically when writing the next response.
+4. **Provider T&C Database** - Curated T&Cs for major UK providers (energy, broadband, mobile, streaming, insurance, gym). Key clauses: cancellation, price increase, complaint escalation, ombudsman. Falls back to these if user hasn't uploaded their own contract.
+5. **Homepage Reframe** - Consumer-friendly positioning: "We read your contract, know their T&Cs, and cite the exact law that protects you." No "case management" language. Make it feel like having a brilliant friend who knows every consumer right.
+
+**Differentiator:** Nobody else cross-references contracts + T&Cs + current law to write the perfect personalised response. This is the AI that fights your corner.
+
+### TASK 2: Restructure Email System (URGENT - User Receiving 11+ Emails/Day)
+
+**Problem:** Paul received 11 emails in one morning. Current system has 11 independent email triggers with no global rate limiting.
+
+**Current email triggers (all independent, no cross-cron coordination):**
+
+| # | Type | Schedule | Rate Limit |
+|---|------|----------|------------|
+| 1 | Waitlist Sequence | Daily 9am | 1/user/day, 7 emails over 28d |
+| 2 | Onboarding Sequence | Daily 10am | 1/user/day, 5 emails over 10d |
+| 3 | Renewal Reminders | Daily 8am | 1 per window (30/14/7d) |
+| 4 | Price Increase Alerts | Daily 8am | 1/merchant deduplicated |
+| 5 | Deal Alerts | Monday 9am | 1/week |
+| 6 | Targeted Deals | Wed+Fri 9am | Cooldown 2-7d by score |
+| 7 | Weekly Money Digest | Monday 7am | 1/week |
+| 8 | Churn Prevention | Daily 11am | 1 per type/week |
+| 9 | Founding Member Expiry | Daily 8am | 1 per window (7/3/1d) |
+| 10 | Welcome Email | On signup | One-time |
+| 11 | Agent emails (Riley, Drew) | Variable | None |
+
+**Key files:**
+- Cron routes: `src/app/api/cron/*/route.ts` (9 cron triggers)
+- Email templates: `src/lib/email/*.ts`
+- Agent email tools: `agent-server/src/tools/email-tools.ts`
+- Cron config: `vercel.json`
+
+**Required changes:**
+1. Global email rate limiter - max 2 emails per user per day (excluding transactional like password reset)
+2. Consolidate deal alerts + targeted deals + price increases into a single daily digest
+3. Add user email preferences table (frequency: daily digest / weekly / off)
+4. Stagger cron times so they don't all fire in same morning window
+5. Agent emails must check the global limiter before sending
+
+---
+
 ## 2026-03-26 01:30 -- Browser Extension Session
 **Interface:** Chrome Extension
 **Completed:**
@@ -719,3 +772,54 @@ Design system: navy #0A1628, mint #34D399, orange #FB923C | GitHub: airpau/lifea
 4. Wait for: Google Ads Basic access, Google OAuth verification
 5. Fix any bugs found in testing
 6. Launch preparation (~2 April target)
+
+
+
+---
+
+# AI LETTERS INTELLIGENCE UPGRADE — ARCHITECTURE BLUEPRINT (27 March 2026)
+
+## Overview
+Transform AI Letters from one-shot letter generator into threaded dispute companion. Consumer product — NO legal jargon anywhere in the UI. The user experience: "You tell us what happened. We write the perfect response."
+
+## Architecture Decision: Legal Knowledge Base
+**Structured reference docs, NOT RAG or vector DB.** UK consumer law is a bounded, stable corpus (~15-20 statutes cover 95% of disputes). Store in `legal_references` table, look up by category/subcategory, inject into Claude prompt. Cost: ~2K extra tokens per request ($0.006). No vector DB hosting needed.
+
+## 5 New Tables + 1 FK Addition
+
+### 1. legal_references — Powers the AI (invisible to users)
+~80-120 rows covering all UK consumer dispute categories. Fields: category, subcategory, law_name, section, summary, full_text, applies_to (text array), strength ('strong'/'supporting'/'escalation'), escalation_body.
+
+### 2. disputes — One thread per company issue
+Fields: user_id FK, provider_name, provider_type, issue_type, title, description, status (open/waiting_response/escalated/resolved_won/resolved_partial/resolved_lost/closed), disputed_amount, recovered_amount, escalation_level (company/deadlock/ombudsman/court), escalation_body, deadlock_date, resolved_at. RLS enabled.
+
+### 3. correspondence — Every message in the thread
+Fields: dispute_id FK, user_id FK, direction (outbound/inbound), method (letter/email/phone_call/live_chat/uploaded_document), subject, body, body_html, attachments jsonb, legal_refs_used jsonb, ai_generated bool, ai_confidence numeric, sent_at. RLS enabled.
+
+### 4. contract_extractions — What Claude Vision found in contracts
+Fields: user_id FK, dispute_id FK, provider_name, file_url, file_type, raw_extracted_text, contract_start, contract_end, minimum_term_months, notice_period_days, monthly_cost, annual_cost, cancellation_fee, price_increase_terms, early_exit_fee, key_clauses jsonb, auto_renewal, cooling_off_days, ai_summary. RLS enabled.
+
+### 5. provider_terms — Company T&Cs we know about (shared, no RLS)
+Fields: provider_name, provider_type, cancellation_policy, cancellation_notice_days, cancellation_fee, price_increase_terms, minimum_term_months, complaint_email, complaint_phone, complaint_address, complaint_escalation, ombudsman_name, ombudsman_url, deadlock_weeks (default 8), auto_renewal, cooling_off_days (default 14), tc_url, last_verified, notes.
+
+### 6. Add dispute_id FK to existing tasks table
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS dispute_id UUID REFERENCES disputes(id);
+
+## 5 Delivery Phases (each ships independently)
+
+**Phase 1 (3-4 days): Dispute Threads + Correspondence Tracking** — disputes table, correspondence table, dispute detail page with timeline, upload, phone logging, thread-aware letter generation. Migrate existing letters into threads.
+
+**Phase 2 (2 days): Legal Intelligence** — legal_references table, seed ~80 rows, inject into prompt by category, show "Laws cited" on letters, confidence indicator.
+
+**Phase 3 (3 days): Contract Intelligence** — contract_extractions table, Claude Vision upload+extraction, "Here's what we found" results card, contract terms fed into letter generation prompt.
+
+**Phase 4 (2-3 days): Provider Knowledge** — provider_terms table, seed top 30 UK providers, auto-populate complaint addresses, show "Their T&Cs say..." in dispute detail, ombudsman escalation CTA.
+
+**Phase 5 (2-3 days): Escalation Automation** — deadlock timer (8-week rule), smart nudges, ombudsman narrative generation, resolution tracking, "You've saved £X" dashboard.
+
+## AI Prompt Architecture
+The generate endpoint assembles: system prompt (consumer rights expert persona) + dispute context + full correspondence thread (oldest first) + contract terms (if uploaded) + provider T&Cs (if in database) + relevant legal references (by category). Output as JSON: { letter, confidence, confidence_reasoning, laws_cited, next_step_suggestion }. Cost per generation: ~$0.015-0.030 with Sonnet.
+
+## Consumer Language Rules
+NEVER show in UI: "case", "evidence", "legal database", "escalation level", "thread", "case management"
+ALWAYS use: "dispute", "what happened", "your rights", "next step", "their response", "your contract says"

@@ -1,10 +1,23 @@
-# Task Queue (Updated 26 Mar 2026 - End of Day FINAL)
+# Task Queue (Updated 27 Mar 2026)
 
-## Outstanding for Tomorrow (27 Mar)
+## URGENT - Email Spam Fix
+- [ ] Implement global email rate limiter (max 2 emails per user per day)
+- [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
+- [ ] Add user email preference settings (daily digest / weekly / off)
+- [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
+
+## Architecture Task - AI Letters Intelligence Upgrade (Consumer-Friendly)
+- [ ] Claude Desktop to architect the full AI Letters upgrade (see shared-context/handoff-notes.md for brief)
+- [ ] Phase 1: Legal knowledge base - structured reference docs (invisible to user, powers the AI)
+- [ ] Phase 2: Dispute conversation tracking - thread per company with uploads
+- [ ] Phase 3: Contract upload and T&C analysis via Claude Vision
+- [ ] Phase 4: Provider T&C database for major UK companies
+- [ ] NOTE: Consumer product - no legal jargon, no "case management" language anywhere
+
+## Outstanding
 
 ### Paul to do:
-- [ ] Register Microsoft Azure app at portal.azure.com for Outlook OAuth
-- [ ] Manual feature testing of all 80+ features built today
+- [ ] Manual feature testing of all 80+ features
 - [ ] Set up Trustpilot business page
 - [ ] Set LinkedIn vanity URL to linkedin.com/company/paybacker
 
@@ -12,12 +25,13 @@
 - [ ] Google Ads Basic API access (applied, waiting for approval)
 - [ ] Google OAuth verification (submitted 24 March)
 - [ ] Meta App Review (needed for ad creatives - app in dev mode)
+- [ ] TrueLayer production approval
+- [ ] Microsoft Azure app verification
 
 ### Claude Code (when blockers clear):
 - [ ] Create 3 Google Ads search campaigns PAUSED (when Basic access approved)
 - [ ] Create Meta ad creatives (when app switched to Live mode)
 - [ ] Fix any bugs from Paul's manual testing
-- [ ] Fix any bugs from Desktop UAT v3
 
 ## Completed 26 Mar (80+ items)
 
