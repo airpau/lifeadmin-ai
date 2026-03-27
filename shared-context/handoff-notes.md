@@ -1,5 +1,32 @@
 # Handoff Notes
 
+## 2026-03-27 22:00 -- Claude Code Session (Major Build)
+**Interface:** Claude Code
+**Completed:**
+- Dispute threads + correspondence tracking (Phase 1 of AI Letters upgrade)
+  - disputes + correspondence tables with RLS, 13 existing letters migrated
+  - Full dispute detail page with timeline, status management, letter generation
+  - Correspondence uploads (email, phone call, notes, file attachments)
+  - Contract upload with Claude Vision analysis (extracts terms, flags unfair clauses)
+  - Contract terms auto-injected into letter generation prompts
+  - First-time guided tour with Framer Motion spotlight effect
+  - Contract upload on both new dispute form AND dispute detail page
+- Global email rate limiter (max 2 marketing emails per user per day) across all 7 cron jobs
+- Fixed price increase detector (was detecting incoming payments as alerts, now debits only)
+- Fixed all /dashboard/forms dead links -> /dashboard/complaints
+- Fixed pro chatbot missing "New Chat" button
+- Fixed OG image Vercel build error (fs/path -> fetch)
+- Provider name normalisation + provider_type auto-detection
+- Dismissed all bad price increase alerts
+
+**Still needed:**
+- Email digest consolidation (rate limiter is in, but deals/targeted/price alerts still send as separate emails rather than one digest)
+- "Better Deals" section on overview is slow + "View All" just goes to subscriptions page
+- Phase 2: Legal knowledge base (structured UK consumer law reference docs for AI prompts)
+- Phase 3: Provider T&C database for major UK companies
+
+---
+
 ## 2026-03-27 -- Claude Code Session (Two Tasks for Desktop)
 
 ### TASK 1: Architect AI Letters Intelligence Upgrade
