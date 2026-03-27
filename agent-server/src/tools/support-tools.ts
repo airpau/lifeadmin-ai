@@ -223,7 +223,7 @@ const escalateTicket: ToolDef = {
     const sb = getSupabase();
 
     // Get ticket details
-    const { data: ticket } = await sb.from('support_tickets').select('ticket_number, subject, user_id').eq('id', args.ticket_id).single();
+    const { data: ticket } = await sb.from('support_tickets').select('ticket_number, subject, user_id, first_response_at').eq('id', args.ticket_id).single();
     const ticketRef = ticket?.ticket_number || 'Unknown';
 
     // Determine if this is a feature request or a bug
@@ -237,12 +237,61 @@ const escalateTicket: ToolDef = {
       status: 'in_progress',
     }).eq('id', args.ticket_id);
 
+    // Internal escalation note
     await sb.from('ticket_messages').insert({
       ticket_id: args.ticket_id,
       sender_type: 'system',
       sender_name: agentRole === 'support_agent' ? 'Riley' : 'Sam',
       message: `Escalated: ${args.reason}`,
     });
+
+    // Send user-facing acknowledgement so they know their ticket was seen
+    // Only send if no agent has replied yet
+    const { data: existingAgentReplies } = await sb.from('ticket_messages')
+      .select('id')
+      .eq('ticket_id', args.ticket_id)
+      .eq('sender_type', 'agent');
+
+    if (!existingAgentReplies || existingAgentReplies.length === 0) {
+      await sb.from('ticket_messages').insert({
+        ticket_id: args.ticket_id,
+        sender_type: 'agent',
+        sender_name: 'Paybacker Support',
+        message: `Hi there,\n\nThanks for getting in touch. We've received your message and our team is looking into it.\n\nYour issue has been escalated to a specialist who will get back to you as soon as possible. You can reply to this email to add any further details.\n\nThanks for your patience,\nPaybacker Support Team`,
+      });
+
+      // Update first_response_at
+      if (ticket && !ticket.first_response_at) {
+        await sb.from('support_tickets').update({ first_response_at: new Date().toISOString() }).eq('id', args.ticket_id);
+      }
+
+      // Email the user
+      if (ticket?.user_id) {
+        const { data: profile } = await sb.from('profiles').select('email').eq('id', ticket.user_id).single();
+        if (profile?.email) {
+          try {
+            const resend = new Resend(config.RESEND_API_KEY);
+            await resend.emails.send({
+              from: 'Paybacker Support <noreply@paybacker.co.uk>',
+              to: profile.email,
+              replyTo: 'support@mail.paybacker.co.uk',
+              subject: `Re: Your support request (${ticketRef})`,
+              html: `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;">
+  <div style="background:#0f172a;padding:20px 32px;"><span style="font-size:20px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></span></div>
+  <div style="padding:32px;color:#334155;font-size:14px;line-height:1.7;">
+    <p>Hi there,</p>
+    <p>Thanks for getting in touch. We've received your message and our team is looking into it.</p>
+    <p>Your issue has been escalated to a specialist who will get back to you as soon as possible. You can reply to this email to add any further details.</p>
+    <p>Thanks for your patience,<br>Paybacker Support Team</p>
+  </div>
+  <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">Reply to this email to respond &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;">paybacker.co.uk</a></div>
+</div></body></html>`,
+            });
+          } catch {}
+        }
+      }
+    }
 
     // Log to business_log so Claude Code picks it up
     const category = isFeatureRequest ? 'decision' : isBug ? 'blocker' : 'context';

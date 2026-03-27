@@ -123,16 +123,28 @@ export default function AITeamPanel() {
     await loadAgents();
   };
 
+  const [triggerResult, setTriggerResult] = useState<string | null>(null);
+
   const triggerRun = async (agent: Agent) => {
     setRunningAgent(agent.id);
+    setTriggerResult(null);
     try {
-      await fetch(`/api/admin/agents/${agent.id}`, {
+      const res = await fetch(`/api/admin/agents/${agent.id}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${CRON_SECRET}` },
       });
-    } catch {}
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTriggerResult(`${agent.name} completed. Cost: $${data.cost?.toFixed(4) || '0'}`);
+      } else {
+        setTriggerResult(`${agent.name} failed: ${data.error || res.statusText}`);
+      }
+    } catch (err: any) {
+      setTriggerResult(`${agent.name} request failed: ${err.message}`);
+    }
     setRunningAgent(null);
     await loadAgents();
+    setTimeout(() => setTriggerResult(null), 10000);
   };
 
   useEffect(() => {
@@ -166,6 +178,13 @@ export default function AITeamPanel() {
 
   return (
     <div>
+      {/* Trigger result toast */}
+      {triggerResult && (
+        <div className={`rounded-xl px-4 py-3 mb-4 text-sm font-medium ${triggerResult.includes('failed') ? 'bg-red-500/10 border border-red-500/30 text-red-400' : 'bg-green-500/10 border border-green-500/30 text-green-400'}`}>
+          {triggerResult}
+        </div>
+      )}
+
       {/* Railway Server Status */}
       <div className={`rounded-2xl border p-4 mb-4 ${
         railwayStatus?.status === 'healthy'
