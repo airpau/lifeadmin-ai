@@ -16,8 +16,8 @@ interface EmailConnection {
   id: string;
   email: string;
   provider: string;
+  authMethod: string;
   status: string;
-  connected_at: string;
   last_scanned_at: string | null;
 }
 
@@ -149,8 +149,19 @@ export default function ScannerPage() {
   const loadEmailConnections = async () => {
     try {
       const res = await fetch('/api/email/connections');
-      const d = await res.json();
-      setEmailConns(d.connections || []);
+      if (res.ok) {
+        const d = await res.json();
+        // Map API field names to our interface
+        const mapped = (d.connections || []).map((c: any) => ({
+          id: c.id,
+          email: c.email_address || c.email || '',
+          provider: c.provider_type || c.provider || 'email',
+          authMethod: c.auth_method || 'imap',
+          status: c.status || 'active',
+          last_scanned_at: c.last_scanned_at,
+        }));
+        setEmailConns(mapped);
+      }
     } catch {}
     setEmailLoading(false);
   };
@@ -299,8 +310,8 @@ export default function ScannerPage() {
                   <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium">{conn.provider}</span>
-                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                      <span className="text-white text-sm font-medium capitalize">{conn.provider === 'outlook' ? 'Outlook' : conn.provider === 'gmail' ? 'Gmail' : conn.provider}</span>
+                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Connected</span>
                     </div>
                     <p className="text-slate-400 text-xs truncate">{conn.email}</p>
                     {conn.last_scanned_at && (
