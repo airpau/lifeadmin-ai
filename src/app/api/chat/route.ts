@@ -145,14 +145,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { messages, tier, distinctId } = body;
 
-    // Try to get logged-in user (may be null for anonymous visitors)
+    // Get logged-in user from auth cookies
     let userId: string | null = null;
     try {
       const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        console.warn('[chat] Auth error (user may not be logged in):', authError.message);
+      }
       userId = user?.id || null;
-    } catch {
-      // Anonymous user -- that's fine
+      if (!userId) {
+        console.warn('[chat] No userId from auth - user appears not logged in');
+      }
+    } catch (authErr: any) {
+      console.error('[chat] Auth threw exception:', authErr.message);
     }
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
