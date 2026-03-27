@@ -429,26 +429,58 @@ ${userTier === 'pro' ? `
           });
 
           // Email the user to confirm their ticket was created
+          // AND notify admin so tickets don't go unseen
           if (userId) {
             const { data: profile } = await admin.from('profiles').select('email, full_name').eq('id', userId).single();
+            const { Resend } = await import('resend');
+            const resend = new Resend(process.env.RESEND_API_KEY);
+
+            // 1. Confirmation email to user
             if (profile?.email) {
-              const { Resend } = await import('resend');
-              const resend = new Resend(process.env.RESEND_API_KEY);
+              try {
+                await resend.emails.send({
+                  from: 'Paybacker Support <noreply@paybacker.co.uk>',
+                  replyTo: 'support@mail.paybacker.co.uk',
+                  to: profile.email,
+                  subject: `Your support ticket ${ticketNumber} has been created`,
+                  html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:32px;border-radius:16px;">
+                    <div style="border-bottom:2px solid #f59e0b;padding-bottom:16px;margin-bottom:24px;">
+                      <h1 style="color:#f59e0b;font-size:22px;margin:0;">Paybacker Support</h1>
+                    </div>
+                    <p>Hi ${profile.full_name?.split(' ')[0] || 'there'},</p>
+                    <p>Your support ticket <strong>${ticketNumber}</strong> has been created. Our team will get back to you shortly.</p>
+                    <p style="color:#94a3b8;font-size:13px;">You can reply to this email to add more details to your ticket.</p>
+                    <p style="color:#64748b;font-size:12px;margin-top:24px;">Paybacker LTD - paybacker.co.uk</p>
+                  </div>`,
+                });
+                console.log(`[chat] Ticket confirmation email sent to ${profile.email}`);
+              } catch (emailErr: any) {
+                console.error(`[chat] Failed to send ticket confirmation to ${profile.email}:`, emailErr.message);
+              }
+            }
+
+            // 2. Admin notification
+            try {
               await resend.emails.send({
                 from: 'Paybacker Support <noreply@paybacker.co.uk>',
-                replyTo: 'support@mail.paybacker.co.uk',
-                to: profile.email,
-                subject: `Your support ticket ${ticketNumber} has been created`,
+                to: 'hello@paybacker.co.uk',
+                subject: `New support ticket ${ticketNumber}: ${ticketSubject}`,
                 html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:32px;border-radius:16px;">
                   <div style="border-bottom:2px solid #f59e0b;padding-bottom:16px;margin-bottom:24px;">
-                    <h1 style="color:#f59e0b;font-size:22px;margin:0;">Paybacker Support</h1>
+                    <h1 style="color:#f59e0b;font-size:22px;margin:0;">New Support Ticket</h1>
                   </div>
-                  <p>Hi ${profile.full_name?.split(' ')[0] || 'there'},</p>
-                  <p>Your support ticket <strong>${ticketNumber}</strong> has been created. Our team will get back to you shortly.</p>
-                  <p style="color:#94a3b8;font-size:13px;">You can reply to this email to add more details to your ticket.</p>
-                  <p style="color:#64748b;font-size:12px;margin-top:24px;">Paybacker LTD - paybacker.co.uk</p>
+                  <p><strong>Ticket:</strong> ${ticketNumber}</p>
+                  <p><strong>From:</strong> ${profile?.full_name || 'Unknown'} (${profile?.email || 'no email'})</p>
+                  <p><strong>Subject:</strong> ${ticketSubject}</p>
+                  <p><strong>Priority:</strong> ${priority}</p>
+                  <p><strong>Source:</strong> Chatbot escalation</p>
+                  <p style="margin-top:16px;padding:12px;background:#1e293b;border-radius:8px;font-size:13px;color:#94a3b8;">${conversationSummary.slice(0, 500)}</p>
+                  <p style="color:#64748b;font-size:12px;margin-top:24px;">View in admin: paybacker.co.uk/dashboard/admin</p>
                 </div>`,
-              }).catch(() => {});
+              });
+              console.log(`[chat] Admin notification sent for ${ticketNumber}`);
+            } catch (adminErr: any) {
+              console.error(`[chat] Failed to send admin notification:`, adminErr.message);
             }
           }
 

@@ -202,31 +202,44 @@ export async function detectRecurring(
 
     const displayName = txs[0].extracted_name;
 
-    // Check if subscription already exists (active or dismissed)
-    // Match by exact provider_name OR by normalised name contained in provider_name
-    const { data: existingExact } = await supabase
-      .from('subscriptions')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('provider_name', displayName)
-      .maybeSingle();
-
-    if (existingExact) continue;
-
-    // Also check by normalised partial match (handles slight naming variations)
+    // Check if subscription already exists (any status)
     const { data: allUserSubs } = await supabase
       .from('subscriptions')
-      .select('id, provider_name')
+      .select('id, provider_name, status, cancelled_at, dismissed_at')
       .eq('user_id', userId);
 
-    const alreadyExists = (allUserSubs || []).some((sub) => {
+    const matchingSub = (allUserSubs || []).find((sub) => {
       const subNormalised = normaliseMerchant(sub.provider_name);
-      return subNormalised === normalisedName ||
+      return sub.provider_name === displayName ||
+             subNormalised === normalisedName ||
              subNormalised.includes(normalisedName) ||
              normalisedName.includes(subNormalised);
     });
 
-    if (alreadyExists) continue;
+    if (matchingSub) {
+      // Active or pending - skip, already tracked
+      if (matchingSub.status === 'active' || matchingSub.status === 'pending_cancellation') continue;
+
+      // Cancelled or dismissed - check if it's a re-subscription (>90 days since cancelled)
+      const cancelDate = matchingSub.cancelled_at || matchingSub.dismissed_at;
+      if (cancelDate) {
+        const daysSinceCancelled = (Date.now() - new Date(cancelDate).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceCancelled < 90) {
+          // Recently cancelled - don't re-add
+          continue;
+        }
+        // >90 days: new payments detected after cancellation = re-subscription
+        // Check that recent transactions exist (within last 60 days)
+        const recentTxs = sorted.filter(tx => {
+          const txAge = (Date.now() - new Date(tx.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+          return txAge < 60;
+        });
+        if (recentTxs.length < 2) continue; // Not enough recent evidence
+        console.log(`Re-subscription detected: ${displayName} (cancelled ${Math.round(daysSinceCancelled)} days ago, ${recentTxs.length} recent payments)`);
+      } else {
+        continue;
+      }
+    }
 
     const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
     const bankDesc = txs[0].description || null;

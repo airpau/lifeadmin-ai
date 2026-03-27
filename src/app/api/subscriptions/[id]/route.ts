@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { awardPoints } from '@/lib/loyalty';
 
 export async function PATCH(
   request: NextRequest,
@@ -34,6 +35,39 @@ export async function PATCH(
 
     if (error) throw error;
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // Award loyalty points and track savings when subscription is cancelled
+    if (body.status === 'cancelled' && original) {
+      // Award 15 loyalty points
+      awardPoints(user.id, 'subscription_cancelled', {
+        provider: data.provider_name,
+        amount: data.amount,
+      }).catch(err => console.error('Failed to award cancel points:', err));
+
+      // Calculate annual saving and add to total_money_recovered on profile
+      const monthlySaving = body.money_saved || (
+        data.billing_cycle === 'yearly' ? data.amount / 12
+        : data.billing_cycle === 'quarterly' ? data.amount / 3
+        : data.amount
+      );
+      if (monthlySaving > 0) {
+        const annualSaving = monthlySaving * 12;
+        supabase.from('profiles')
+          .select('total_money_recovered')
+          .eq('id', user.id)
+          .single()
+          .then(({ data: profile }) => {
+            const current = parseFloat(profile?.total_money_recovered || '0');
+            supabase.from('profiles')
+              .update({ total_money_recovered: current + annualSaving })
+              .eq('id', user.id)
+              .then(({ error: saveErr }) => {
+                if (saveErr) console.error('Failed to update money recovered:', saveErr);
+                else console.log(`Money recovered updated: +${annualSaving.toFixed(2)}/yr for ${data.provider_name}`);
+              });
+          });
+      }
+    }
 
     // Self-learning: if user changed provider_name or category, create a merchant rule
     if (original && (body.provider_name || body.category)) {
