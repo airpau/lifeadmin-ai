@@ -589,8 +589,9 @@ export default function ScannerPage() {
         missing_params: 'OAuth callback missing required parameters. Please try connecting again.',
         invalid_state: 'Security check failed. Please try connecting again.',
       };
-      setError(messages[errParam] || `Connection failed: ${errParam}. Please try again.`);
-      window.history.replaceState({}, '', '/dashboard/scanner');
+      setError(messages[errParam] || decodeURIComponent(errParam));
+      // Don't clear URL immediately so user can see the error
+      setTimeout(() => window.history.replaceState({}, '', '/dashboard/scanner'), 5000);
     }
     checkConnections();
   }, []);
