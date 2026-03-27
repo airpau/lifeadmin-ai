@@ -99,6 +99,8 @@ export default function ChatWidget() {
       setMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
       if (data.escalated && data.ticketNumber) {
         setEscalatedTicket(data.ticketNumber);
+        // Clear chat history after ticket is created so next conversation starts fresh
+        sessionStorage.removeItem('pb_chat_history');
       }
     } catch {
       setMessages([

@@ -380,16 +380,19 @@ ${userTier === 'pro' ? `
 
     if (botCreatedTicket) {
       try {
-        // Use the LAST user message as subject (most relevant to their issue)
         const userMessages = messages.filter((m: any) => m.role === 'user');
-        const lastUserMsg = userMessages[userMessages.length - 1];
-        const ticketSubject = lastUserMsg
-          ? lastUserMsg.content.slice(0, 100)
+
+        // Use the FIRST substantive user message as subject (their original issue)
+        // Skip generic openers like "hi", "hello", "help", "please raise a ticket"
+        const genericPhrases = /^(hi|hello|hey|help|please raise|raise a ticket|create a ticket|i need help|support)/i;
+        const substantiveMsg = userMessages.find((m: any) => !genericPhrases.test(m.content.trim())) || userMessages[0];
+        const ticketSubject = substantiveMsg
+          ? substantiveMsg.content.slice(0, 100)
           : 'Support request from chatbot';
 
-        // Build description from full conversation
-        const conversationSummary = userMessages
-          .map((m: any) => m.content)
+        // Build description from full conversation (both user AND assistant messages for context)
+        const conversationSummary = messages
+          .map((m: any) => `[${m.role}]: ${m.content}`)
           .join('\n\n');
 
         // Priority based on user tier
@@ -424,9 +427,10 @@ ${userTier === 'pro' ? `
           ticketNumber = ticket.ticket_number;
           escalated = true;
 
-          // Store just the user's issue, not the full chat transcript
-          // The full conversation is in ticket metadata for reference
-          const userIssue = userMessages.map((m: any) => m.content).join('\n\n');
+          // Store the full conversation so support agents have context
+          const userIssue = messages
+            .map((m: any) => `[${m.role === 'user' ? 'User' : 'Chatbot'}]: ${m.content}`)
+            .join('\n\n');
           await admin.from('ticket_messages').insert({
             ticket_id: ticket.id,
             sender_type: 'user',
