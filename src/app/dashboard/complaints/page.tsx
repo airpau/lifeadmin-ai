@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   FileText, Sparkles, Download, Copy, CheckCircle, Clock, History,
   RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2,
   Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
-  AlertCircle, MoreVertical, StickyNote,
+  AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { capture } from '@/lib/posthog';
 import UpgradeModal from '@/components/UpgradeModal';
 import ShareWinModal from '@/components/share/ShareWinModal';
@@ -34,6 +35,24 @@ interface Dispute {
   message_count: number;
   last_activity: string;
   correspondence?: Correspondence[];
+  contract_extractions?: ContractExtraction[];
+}
+
+interface ContractExtraction {
+  id: string;
+  file_url: string | null;
+  file_name: string | null;
+  provider_name: string | null;
+  minimum_term: string | null;
+  notice_period: string | null;
+  cancellation_fee: string | null;
+  early_exit_fee: string | null;
+  price_increase_clause: string | null;
+  auto_renewal: string | null;
+  cooling_off_period: string | null;
+  unfair_clauses: string[];
+  raw_summary: string | null;
+  created_at: string;
 }
 
 interface Correspondence {
@@ -181,6 +200,8 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   const [content, setContent] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const typeOptions = [
     { value: 'company_email', label: 'Email from the company', icon: Mail },
@@ -195,6 +216,20 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
     if (!content.trim()) return;
     setSaving(true);
     try {
+      // Upload file first if attached
+      let attachments: any[] = [];
+      if (attachedFile) {
+        setUploading(true);
+        const fd = new FormData();
+        fd.append('file', attachedFile);
+        const uploadRes = await fetch(`/api/disputes/${disputeId}/upload`, { method: 'POST', body: fd });
+        if (uploadRes.ok) {
+          const fileData = await uploadRes.json();
+          attachments = [{ url: fileData.url, filename: fileData.filename, type: fileData.type, size: fileData.size }];
+        }
+        setUploading(false);
+      }
+
       const res = await fetch(`/api/disputes/${disputeId}/correspondence`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -202,6 +237,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           entry_type: entryType,
           title: title || null,
           content,
+          attachments,
           entry_date: new Date(entryDate).toISOString(),
         }),
       });
@@ -281,6 +317,40 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
             />
           </div>
 
+          {/* File attachment */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Attach a file <span className="text-slate-500 font-normal">(optional - screenshot, scan, or photo)</span>
+            </label>
+            {attachedFile ? (
+              <div className="flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="h-4 w-4 text-mint-400" />
+                  <span className="text-mint-400 text-xs font-medium truncate max-w-[200px]">{attachedFile.name}</span>
+                </div>
+                <button type="button" onClick={() => setAttachedFile(null)} className="text-slate-500 hover:text-white text-xs">Remove</button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
+                <Paperclip className="h-4 w-4 text-mint-400" />
+                <span>Upload a screenshot, scan or photo</span>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.heic,.heif"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+                      setAttachedFile(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">When did this happen?</label>
             <input
@@ -293,10 +363,10 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
 
           <button
             type="submit"
-            disabled={saving || !content.trim()}
+            disabled={saving || uploading || !content.trim()}
             className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Add to dispute'}
+            {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
         </form>
       </div>
@@ -315,6 +385,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [showGenerate, setShowGenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [statusDropdown, setStatusDropdown] = useState(false);
+  const [contractUploading, setContractUploading] = useState(false);
 
   const fetchDispute = async () => {
     try {
@@ -561,6 +632,101 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Contract Upload Section */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Shield className="h-5 w-5 text-purple-400" />
+          <h2 className="text-lg font-bold text-white">Your contract</h2>
+        </div>
+
+        {dispute.contract_extractions && dispute.contract_extractions.length > 0 ? (
+          <div>
+            <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 mb-3">
+              <p className="text-sm text-white font-medium mb-2">Here&apos;s what we found in your contract</p>
+              <p className="text-xs text-slate-400 mb-3">{dispute.contract_extractions[0].raw_summary}</p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {[
+                  { label: 'Minimum term', value: dispute.contract_extractions[0].minimum_term },
+                  { label: 'Notice period', value: dispute.contract_extractions[0].notice_period },
+                  { label: 'Cancellation fee', value: dispute.contract_extractions[0].cancellation_fee },
+                  { label: 'Early exit fee', value: dispute.contract_extractions[0].early_exit_fee },
+                  { label: 'Price increases', value: dispute.contract_extractions[0].price_increase_clause },
+                  { label: 'Auto-renewal', value: dispute.contract_extractions[0].auto_renewal },
+                  { label: 'Cooling-off period', value: dispute.contract_extractions[0].cooling_off_period },
+                ].filter(t => t.value).map((term) => (
+                  <div key={term.label} className="bg-navy-950 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">{term.label}</p>
+                    <p className="text-xs text-slate-300">{term.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {dispute.contract_extractions[0].unfair_clauses && dispute.contract_extractions[0].unfair_clauses.length > 0 && (
+              <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 mb-3">
+                <p className="text-sm text-red-400 font-medium mb-2">Potentially unfair clauses found</p>
+                <ul className="text-xs text-slate-400 space-y-1">
+                  {dispute.contract_extractions[0].unfair_clauses.map((clause: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <AlertCircle className="h-3 w-3 text-red-400 mt-0.5 flex-shrink-0" />
+                      {clause}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-500">
+              <CheckCircle className="h-3 w-3 text-mint-400 inline mr-1" />
+              These terms will be used to strengthen your next letter
+            </p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-slate-400 mb-3">
+              Got a copy of your contract? Upload it and we&apos;ll find the clauses that help your case.
+            </p>
+            <label className={`flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-purple-500/30 rounded-lg text-slate-400 hover:border-purple-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm ${contractUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {contractUploading ? (
+                <Loader2 className="h-5 w-5 text-purple-400 animate-spin flex-shrink-0" />
+              ) : (
+                <Upload className="h-5 w-5 text-purple-400 flex-shrink-0" />
+              )}
+              <span>{contractUploading ? 'Analysing your contract...' : 'Upload contract (PDF or photo)'}</span>
+              <input
+                type="file"
+                accept="image/*,.pdf,.heic,.heif"
+                className="sr-only"
+                disabled={contractUploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+                  setContractUploading(true);
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('disputeId', disputeId);
+                    const res = await fetch('/api/contracts/analyse', { method: 'POST', body: fd });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({}));
+                      throw new Error(err.error || 'Analysis failed');
+                    }
+                    fetchDispute();
+                  } catch (err: any) {
+                    alert(err.message || 'Failed to analyse contract. Please try again.');
+                  } finally {
+                    setContractUploading(false);
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </label>
+            <p className="text-[11px] text-slate-600 mt-2">We scan the contract, extract key terms, and flag anything unfair. The file is stored securely.</p>
           </div>
         )}
       </div>
@@ -923,11 +1089,102 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
 }
 
 // ============================================================
+// Guided Tour
+// ============================================================
+const TOUR_STEPS = [
+  { target: 'tour-new-btn', title: 'Start here', text: "Tell us about any company that's treating you unfairly" },
+  { target: 'tour-list', title: 'Track every dispute', text: 'Each dispute tracks your whole conversation with a company' },
+  { target: 'tour-how', title: 'AI-powered responses', text: 'Our AI writes responses that cite the exact law that protects you' },
+  { target: 'tour-card', title: 'Build your argument', text: "Add their replies and we'll write even stronger follow-ups" },
+];
+
+function GuidedTour({ onComplete }: { onComplete: () => void }) {
+  const [step, setStep] = useState(0);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    const el = document.getElementById(TOUR_STEPS[step].target);
+    if (el) {
+      setRect(el.getBoundingClientRect());
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      // If target doesn't exist (e.g. no disputes yet for card), skip
+      if (step < TOUR_STEPS.length - 1) setStep(step + 1);
+      else onComplete();
+    }
+  }, [step]);
+
+  const handleNext = () => {
+    if (step < TOUR_STEPS.length - 1) setStep(step + 1);
+    else onComplete();
+  };
+
+  if (!rect) return null;
+
+  const padding = 8;
+
+  return (
+    <div className="fixed inset-0 z-[100]">
+      {/* Dark backdrop with spotlight cutout */}
+      <svg className="absolute inset-0 w-full h-full">
+        <defs>
+          <mask id="tour-mask">
+            <rect width="100%" height="100%" fill="white" />
+            <rect
+              x={rect.left - padding}
+              y={rect.top - padding}
+              width={rect.width + padding * 2}
+              height={rect.height + padding * 2}
+              rx="12"
+              fill="black"
+            />
+          </mask>
+        </defs>
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.75)" mask="url(#tour-mask)" />
+      </svg>
+
+      {/* Tooltip */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+          className="absolute z-[101] bg-navy-800 border border-mint-400/30 rounded-xl p-4 shadow-2xl max-w-[280px]"
+          style={{
+            top: rect.bottom + 12,
+            left: Math.min(Math.max(rect.left, 16), window.innerWidth - 296),
+          }}
+        >
+          <p className="text-mint-400 text-sm font-semibold mb-1">{TOUR_STEPS[step].title}</p>
+          <p className="text-slate-300 text-sm mb-3">{TOUR_STEPS[step].text}</p>
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1">
+              {TOUR_STEPS.map((_, i) => (
+                <div key={i} className={`w-2 h-2 rounded-full ${i <= step ? 'bg-mint-400' : 'bg-navy-600'}`} />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={onComplete} className="text-slate-500 hover:text-slate-300 text-xs transition-all">Skip</button>
+              <button onClick={handleNext} className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
+                {step === TOUR_STEPS.length - 1 ? 'Got it' : 'Next'}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ============================================================
 // Disputes List — main view
 // ============================================================
 function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onNew: () => void }) {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showTour, setShowTour] = useState(false);
 
   useEffect(() => {
     fetch('/api/disputes')
@@ -937,14 +1194,45 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       .finally(() => setLoading(false));
   }, []);
 
+  // Check if user has seen the tour
+  useEffect(() => {
+    if (loading) return;
+    const checkTour = async () => {
+      try {
+        const res = await fetch('/api/profile');
+        if (res.ok) {
+          const profile = await res.json();
+          if (!profile.has_seen_disputes_tour) {
+            setShowTour(true);
+          }
+        }
+      } catch {}
+    };
+    checkTour();
+  }, [loading]);
+
+  const completeTour = async () => {
+    setShowTour(false);
+    try {
+      await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ has_seen_disputes_tour: true }),
+      });
+    } catch {}
+  };
+
   return (
     <div className="max-w-5xl">
+      {showTour && <GuidedTour onComplete={completeTour} />}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">AI Letters</h1>
           <p className="text-slate-400 mt-1">Your complaints and compensation disputes</p>
         </div>
         <button
+          id="tour-new-btn"
           onClick={onNew}
           className="flex items-center gap-2 px-4 py-2.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg transition-all"
         >
@@ -954,7 +1242,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       </div>
 
       {/* How it works */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-5 mb-6">
+      <div id="tour-how" className="bg-navy-900 border border-navy-700/50 rounded-xl p-5 mb-6">
         <p className="text-xs font-semibold text-mint-400 uppercase tracking-wide mb-3">How it works</p>
         <div className="grid sm:grid-cols-3 gap-4">
           <div className="flex items-start gap-3">
@@ -977,7 +1265,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           <Loader2 className="h-8 w-8 animate-spin text-mint-400" />
         </div>
       ) : disputes.length === 0 ? (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
+        <div id="tour-list" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
           <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-400 mb-2">No disputes yet</p>
           <p className="text-slate-500 text-sm mb-6">Start your first dispute and we will write the perfect complaint letter</p>
@@ -989,12 +1277,13 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
-          {disputes.map((d) => {
+        <div id="tour-list" className="space-y-3">
+          {disputes.map((d, idx) => {
             const statusConf = STATUS_CONFIG[d.status] || { label: d.status, className: 'bg-slate-500/10 text-slate-400' };
             return (
               <button
                 key={d.id}
+                id={idx === 0 ? 'tour-card' : undefined}
                 onClick={() => onSelect(d.id)}
                 className="w-full text-left bg-navy-900 border border-navy-700/50 rounded-2xl p-6 hover:border-mint-400/30 transition-all"
               >

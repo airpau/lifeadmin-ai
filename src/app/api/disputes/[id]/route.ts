@@ -17,6 +17,11 @@ export async function GET(
       *,
       correspondence(
         id, entry_type, title, content, summary, attachments, task_id, entry_date, created_at
+      ),
+      contract_extractions(
+        id, file_url, file_name, provider_name, contract_start_date, contract_end_date,
+        minimum_term, notice_period, cancellation_fee, early_exit_fee, price_increase_clause,
+        auto_renewal, cooling_off_period, unfair_clauses, raw_summary, created_at
       )
     `)
     .eq('id', id)

@@ -68,6 +68,34 @@ export async function POST(request: NextRequest) {
         });
         threadContext = `\n\nPREVIOUS CORRESPONDENCE (this is an ongoing dispute — reference earlier letters and responses):\n${entries.join('\n\n---\n\n')}`;
       }
+
+      // Load contract extractions for this dispute
+      const { data: contracts } = await supabase
+        .from('contract_extractions')
+        .select('*')
+        .eq('dispute_id', body.disputeId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (contracts && contracts.length > 0) {
+        const c = contracts[0];
+        const terms = [
+          c.minimum_term && `Minimum term: ${c.minimum_term}`,
+          c.notice_period && `Notice period: ${c.notice_period}`,
+          c.cancellation_fee && `Cancellation fee: ${c.cancellation_fee}`,
+          c.early_exit_fee && `Early exit fee: ${c.early_exit_fee}`,
+          c.price_increase_clause && `Price increase clause: ${c.price_increase_clause}`,
+          c.auto_renewal && `Auto-renewal: ${c.auto_renewal}`,
+          c.cooling_off_period && `Cooling-off period: ${c.cooling_off_period}`,
+        ].filter(Boolean).join('\n');
+
+        const unfairClauses = (c.unfair_clauses || []).map((uc: string) => `- ${uc}`).join('\n');
+
+        threadContext += `\n\nUSER'S CONTRACT TERMS (use these to strengthen the argument — cite their own contract against them):\n${terms}`;
+        if (unfairClauses) {
+          threadContext += `\n\nPOTENTIALLY UNFAIR CLAUSES IN THEIR CONTRACT:\n${unfairClauses}`;
+        }
+      }
     }
 
     // Check Claude rate limit
