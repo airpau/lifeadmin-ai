@@ -8,29 +8,38 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code');
   const state = searchParams.get('state');
   const error = searchParams.get('error');
+  const errorDesc = searchParams.get('error_description');
+
+  const baseUrl = 'https://paybacker.co.uk';
 
   if (error) {
+    console.error('[outlook-callback] OAuth error:', error, errorDesc);
     return NextResponse.redirect(
-      new URL(`/dashboard/scanner?error=${encodeURIComponent(error)}`, request.url)
+      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent(errorDesc || error)}`
     );
   }
 
-  if (!code || !state) {
-    return NextResponse.redirect(new URL('/dashboard/scanner?error=missing_params', request.url));
+  if (!code) {
+    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=no_code`);
   }
 
-  let userId: string;
-  try {
-    userId = Buffer.from(state, 'base64').toString('utf-8').split(':')[0];
-    if (!userId) throw new Error('Invalid state');
-  } catch {
-    return NextResponse.redirect(new URL('/dashboard/scanner?error=invalid_state', request.url));
-  }
-
+  // Verify user is logged in
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user || user.id !== userId) {
-    return NextResponse.redirect(new URL('/auth/login', request.url));
+  if (!user) {
+    return NextResponse.redirect(`${baseUrl}/auth/login?redirect=/dashboard/scanner`);
+  }
+
+  // If state was passed, verify it matches the user
+  if (state) {
+    try {
+      const stateUserId = Buffer.from(state, 'base64').toString('utf-8');
+      if (stateUserId !== user.id) {
+        return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=state_mismatch`);
+      }
+    } catch {
+      // State decoding failed - continue anyway if user is authenticated
+    }
   }
 
   try {
@@ -42,20 +51,24 @@ export async function GET(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    await admin.from('outlook_tokens').upsert({
+    // Save to email_connections table (unified email storage)
+    await admin.from('email_connections').upsert({
       user_id: user.id,
-      email: tokens.email,
+      email_address: tokens.email,
+      provider_type: 'outlook',
+      auth_method: 'oauth',
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       token_expiry: expiry,
+      status: 'active',
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' });
+    }, { onConflict: 'user_id,email_address' });
 
-    return NextResponse.redirect(new URL('/dashboard/scanner?outlook_connected=true', request.url));
+    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?outlook_connected=true`);
   } catch (err: any) {
-    console.error('Microsoft OAuth callback error:', err);
+    console.error('[outlook-callback] Token exchange error:', err.message);
     return NextResponse.redirect(
-      new URL('/dashboard/scanner?error=outlook_connection_failed', request.url)
+      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent(err.message || 'Connection failed')}`
     );
   }
 }

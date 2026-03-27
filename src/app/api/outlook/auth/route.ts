@@ -11,7 +11,8 @@ export async function GET() {
       return NextResponse.redirect(new URL('/auth/login?redirect=/dashboard/scanner', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));
     }
 
-    const authUrl = getMicrosoftAuthUrl(user.id);
+    const state = Buffer.from(user.id).toString('base64');
+    const authUrl = getMicrosoftAuthUrl(state);
     return NextResponse.redirect(authUrl);
   } catch {
     return NextResponse.redirect(new URL('/dashboard/scanner?error=outlook_auth_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));

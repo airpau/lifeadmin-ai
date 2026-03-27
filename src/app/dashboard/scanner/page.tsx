@@ -600,14 +600,15 @@ export default function ScannerPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: gmail }, { data: outlook }] = await Promise.all([
+    const [{ data: gmail }, { data: outlookOAuth }, { data: emailConns }] = await Promise.all([
       supabase.from('gmail_tokens').select('email').eq('user_id', user.id).single(),
-      supabase.from('outlook_tokens').select('email').eq('user_id', user.id).single(),
+      supabase.from('email_connections').select('email_address').eq('user_id', user.id).eq('provider_type', 'outlook').eq('auth_method', 'oauth').eq('status', 'active').single(),
+      supabase.from('email_connections').select('email_address, provider_type').eq('user_id', user.id).eq('auth_method', 'imap').eq('status', 'active'),
     ]);
 
     const accounts: ConnectedAccount[] = [];
     if (gmail) accounts.push({ provider: 'gmail', email: gmail.email });
-    if (outlook) accounts.push({ provider: 'outlook', email: outlook.email });
+    if (outlookOAuth) accounts.push({ provider: 'outlook', email: outlookOAuth.email_address });
     setConnectedAccounts(accounts);
 
     // Load saved opportunities from database
@@ -649,8 +650,11 @@ export default function ScannerPage() {
   const handleDisconnect = async (provider: 'gmail' | 'outlook') => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const table = provider === 'gmail' ? 'gmail_tokens' : 'outlook_tokens';
-    await supabase.from(table).delete().eq('user_id', user.id);
+    if (provider === 'gmail') {
+      await supabase.from('gmail_tokens').delete().eq('user_id', user.id);
+    } else {
+      await supabase.from('email_connections').delete().eq('user_id', user.id).eq('provider_type', 'outlook').eq('auth_method', 'oauth');
+    }
     setConnectedAccounts((prev) => prev.filter((a) => a.provider !== provider));
     setOpportunities([]);
   };
