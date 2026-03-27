@@ -1,15 +1,14 @@
 import { ImageResponse } from 'next/og';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 
-export const runtime = 'nodejs';
 export const alt = 'Paybacker - AI-Powered Money Recovery for UK Consumers';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 export default async function Image() {
-  const bgBytes = readFileSync(join(process.cwd(), 'public', 'og-background.png'));
-  const bgBase64 = bgBytes.toString('base64');
+  // Use fetch instead of fs to work in both Node and Edge runtimes
+  const bgRes = await fetch(new URL('/og-background.png', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));
+  const bgBuffer = await bgRes.arrayBuffer();
+  const bgBase64 = Buffer.from(bgBuffer).toString('base64');
   const bgSrc = `data:image/png;base64,${bgBase64}`;
 
   return new ImageResponse(
