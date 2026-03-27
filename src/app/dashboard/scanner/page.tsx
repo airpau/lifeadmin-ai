@@ -602,8 +602,8 @@ export default function ScannerPage() {
     if (!user) return;
 
     const [{ data: gmail }, { data: outlookOAuth }, { data: emailConns }] = await Promise.all([
-      supabase.from('gmail_tokens').select('email').eq('user_id', user.id).single(),
-      supabase.from('email_connections').select('email_address').eq('user_id', user.id).eq('provider_type', 'outlook').eq('auth_method', 'oauth').eq('status', 'active').single(),
+      supabase.from('gmail_tokens').select('email').eq('user_id', user.id).maybeSingle(),
+      supabase.from('email_connections').select('email_address').eq('user_id', user.id).eq('provider_type', 'outlook').eq('auth_method', 'oauth').eq('status', 'active').maybeSingle(),
       supabase.from('email_connections').select('email_address, provider_type').eq('user_id', user.id).eq('auth_method', 'imap').eq('status', 'active'),
     ]);
 
