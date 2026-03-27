@@ -165,13 +165,18 @@ function LetterModal({ content, title, legalRefs, onClose }: {
             <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">{content}</pre>
           </div>
           {legalRefs.length > 0 && (
-            <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Laws cited in your favour</h3>
-              <ul className="text-xs text-slate-400 space-y-1">
-                {legalRefs.map((ref, i) => <li key={i}>• {ref}</li>)}
-              </ul>
+            <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50 mb-3">
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Your rights used in this letter</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {legalRefs.map((ref, i) => (
+                  <span key={i} className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20">
+                    {ref}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
+          <p className="text-[10px] text-slate-600 text-center">This letter was drafted with AI assistance using verified UK consumer law references. We recommend reviewing before sending.</p>
         </div>
         <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
           <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium">
@@ -616,15 +621,35 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                       <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed line-clamp-6">
                         {entry.content}
                       </pre>
-                      <div className="flex items-center gap-4 mt-3">
-                        {entry.estimated_success && (
-                          <span className="text-xs text-green-400 font-medium">{entry.estimated_success}% estimated success</span>
-                        )}
-                        {entry.legal_references && entry.legal_references.length > 0 && (
-                          <span className="text-xs text-slate-500">{entry.legal_references.length} laws cited</span>
+                      {/* Confidence indicator */}
+                      <div className="flex items-center gap-4 mt-3 flex-wrap">
+                        {entry.estimated_success != null && (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            entry.estimated_success >= 80 ? 'bg-green-500/10 text-green-400' :
+                            entry.estimated_success >= 50 ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-red-500/10 text-red-400'
+                          }`}>
+                            {entry.estimated_success >= 80 ? 'Strong case' :
+                             entry.estimated_success >= 50 ? 'Good case' :
+                             'Worth trying'} ({entry.estimated_success}%)
+                          </span>
                         )}
                         <span className="text-xs text-mint-400 ml-auto">Click to view full letter</span>
                       </div>
+                      {/* Your rights pills */}
+                      {entry.legal_references && entry.legal_references.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <span className="text-[10px] text-slate-500 mr-1 self-center">Your rights:</span>
+                          {entry.legal_references.slice(0, 4).map((ref: string, i: number) => (
+                            <span key={i} className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20">
+                              {ref}
+                            </span>
+                          ))}
+                          {entry.legal_references.length > 4 && (
+                            <span className="text-[10px] text-slate-500 self-center">+{entry.legal_references.length - 4} more</span>
+                          )}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <p className="text-sm text-slate-300 whitespace-pre-wrap">{entry.content}</p>

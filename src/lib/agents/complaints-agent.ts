@@ -74,6 +74,7 @@ export interface ComplaintInput {
   letterType?: string;
   billContext?: string;
   threadContext?: string; // full correspondence thread for ongoing disputes
+  verifiedLegalRefs?: string; // injected from legal_references table
 }
 
 export interface ComplaintOutput {
@@ -131,6 +132,11 @@ ${input.previousLetter ? `\nPrevious letter to revise (apply the changes above t
 ${input.threadContext || ''}
 
 ${input.threadContext ? 'IMPORTANT: This is a follow-up letter in an ongoing dispute. Reference the previous correspondence dates and key points. Open with "Further to my letter dated..." or "Following our correspondence regarding..." as appropriate. Build on the previous arguments and escalate the tone appropriately.' : ''}
+
+${input.verifiedLegalRefs ? `\nRELEVANT UK CONSUMER LAW (verified against official sources — cite ONLY these specific laws, sections, and amounts):
+${input.verifiedLegalRefs}
+
+IMPORTANT: Only cite the specific laws, section numbers, and amounts provided above. Never invent statute names, section numbers, or compensation amounts. If you are uncertain about a specific figure, use the phrase "you may be entitled to compensation under [scheme name]" rather than stating an incorrect figure.` : ''}
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 

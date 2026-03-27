@@ -98,6 +98,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Fetch verified legal references for this letter type
+    const issueTypeToCategory: Record<string, string[]> = {
+      complaint: ['general'],
+      energy_dispute: ['general', 'energy'],
+      broadband_complaint: ['general', 'broadband'],
+      flight_compensation: ['general', 'travel'],
+      parking_appeal: ['general', 'parking'],
+      debt_dispute: ['general', 'debt', 'finance'],
+      refund_request: ['general', 'finance'],
+      hmrc_tax_rebate: ['hmrc'],
+      council_tax_band: ['council_tax'],
+      dvla_vehicle: ['dvla'],
+      nhs_complaint: ['nhs'],
+    };
+
+    const categories = issueTypeToCategory[body.letterType || 'complaint'] || ['general'];
+    const { data: legalRefs } = await supabase
+      .from('legal_references')
+      .select('law_name, section, summary, source_url, escalation_body, strength')
+      .in('category', categories)
+      .in('verification_status', ['current', 'updated']);
+
+    let verifiedLegalRefs = '';
+    if (legalRefs && legalRefs.length > 0) {
+      verifiedLegalRefs = legalRefs.map(r =>
+        `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`
+      ).join('\n');
+    }
+
     // Check Claude rate limit
     const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
     if (!rateLimit.allowed) {
@@ -128,6 +157,7 @@ export async function POST(request: NextRequest) {
       letterType: body.letterType,
       billContext: body.billContext,
       threadContext,
+      verifiedLegalRefs,
     });
 
     // Auto-fill user profile data into placeholders
@@ -231,7 +261,14 @@ export async function POST(request: NextRequest) {
       provider: body.companyName,
     }).catch(() => {});
 
-    return NextResponse.json({ ...result, taskId: task?.id });
+    // Build rights pills data for the UI
+    const rightsPills = (legalRefs || []).map((r: any) => ({
+      label: `${r.law_name}${r.section ? ` ${r.section}` : ''}`,
+      url: r.source_url,
+      strength: r.strength,
+    }));
+
+    return NextResponse.json({ ...result, taskId: task?.id, rightsPills });
   } catch (error: any) {
     console.error('Complaint generation error:', error);
     return NextResponse.json(
