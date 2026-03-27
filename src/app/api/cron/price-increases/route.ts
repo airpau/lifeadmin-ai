@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { detectPriceIncreases } from '@/lib/price-increase-detector';
 import { sendPriceIncreaseAlert } from '@/lib/email/price-increase-alerts';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -73,6 +74,9 @@ export async function GET(request: NextRequest) {
       const isPaid = profile?.subscription_tier === 'essential' || profile?.subscription_tier === 'pro';
       const userName = profile?.full_name || profile?.first_name || 'there';
 
+      // Collect all new increases for this user, then send ONE consolidated email
+      const newIncreases: typeof increases = [];
+
       for (const increase of increases) {
         // Skip if already alerted for this merchant
         if (existingMerchants.has(increase.merchantNormalized)) continue;
@@ -99,10 +103,15 @@ export async function GET(request: NextRequest) {
         }
 
         totalAlertsCreated++;
+        newIncreases.push(increase);
+      }
 
-        // Send email to Essential/Pro users only
-        if (isPaid && profile?.email) {
-          const sent = await sendPriceIncreaseAlert(profile.email, userName, increase);
+      // Send ONE consolidated email with ALL price increases for this user
+      if (isPaid && profile?.email && newIncreases.length > 0) {
+        // Global daily email rate limit
+        const rateCheck = await canSendEmail(supabase, userId, 'price_increase_alert');
+        if (rateCheck.allowed) {
+          const sent = await sendPriceIncreaseAlert(profile.email, userName, newIncreases);
           if (sent) totalEmailsSent++;
         }
       }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendChurnEmail } from '@/lib/email/churn-prevention';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -87,6 +88,13 @@ export async function GET(request: NextRequest) {
     const daysSinceActive = lastActiveDate
       ? Math.floor((now.getTime() - lastActiveDate) / (1000 * 60 * 60 * 24))
       : daysSinceCreated;
+
+    // Global daily email rate limit
+    const rateCheck = await canSendEmail(admin, userId, 'churn_reengagement');
+    if (!rateCheck.allowed) {
+      results.skipped++;
+      continue;
+    }
 
     // --- 7-day inactive re-engagement ---
     if (daysSinceActive >= 7 && daysSinceActive < 14) {

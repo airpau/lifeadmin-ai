@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { findDealOpportunities, sendDealAlertEmail } from '@/lib/email/deal-alerts';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -62,6 +63,14 @@ export async function GET(request: NextRequest) {
       if (recentAlert) {
         skipped++;
         results.push({ email: user.email, alerts: 0, sent: false, reason: 'Already sent this week' });
+        continue;
+      }
+
+      // Global daily email rate limit
+      const rateCheck = await canSendEmail(supabase, user.id, 'deal_alert_email');
+      if (!rateCheck.allowed) {
+        skipped++;
+        results.push({ email: user.email, alerts: 0, sent: false, reason: rateCheck.reason });
         continue;
       }
 

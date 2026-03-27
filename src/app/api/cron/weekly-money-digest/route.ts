@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendWeeklyDigestEmail } from '@/lib/email/weekly-money-digest';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -63,6 +64,13 @@ export async function GET(request: NextRequest) {
         .gte('created_at', weekStart.toISOString());
 
       if ((recentDigest || 0) > 0) {
+        skipped++;
+        continue;
+      }
+
+      // Global daily email rate limit
+      const rateCheck = await canSendEmail(admin, userId, 'weekly_money_digest');
+      if (!rateCheck.allowed) {
         skipped++;
         continue;
       }

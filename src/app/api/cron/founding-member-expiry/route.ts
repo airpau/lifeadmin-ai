@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -166,6 +167,10 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (existing) continue;
+
+      // Global daily email rate limit
+      const rateCheck = await canSendEmail(supabase, user.id, 'founding_reminder');
+      if (!rateCheck.allowed) continue;
 
       try {
         await resend.emails.send({

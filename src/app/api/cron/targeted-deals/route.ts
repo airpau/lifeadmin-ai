@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { updateUserOpportunityScore } from '@/lib/opportunity-scoring';
 import { sendTargetedDealEmail } from '@/lib/email/targeted-deals';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -81,6 +82,14 @@ export async function GET(request: NextRequest) {
       if (recentSend) {
         skipped++;
         results.push({ email: user.email, score: score.total, tier: score.tier, sent: false, reason: `Cooldown (sent within ${cooldownDays} days)` });
+        continue;
+      }
+
+      // Global daily email rate limit
+      const rateCheck = await canSendEmail(supabase, user.id, 'targeted_deal_email');
+      if (!rateCheck.allowed) {
+        skipped++;
+        results.push({ email: user.email, score: score.total, tier: score.tier, sent: false, reason: rateCheck.reason });
         continue;
       }
 
