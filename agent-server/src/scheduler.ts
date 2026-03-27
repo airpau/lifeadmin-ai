@@ -16,8 +16,8 @@ const urgentQueue = new Set<string>();
 // Only Riley checks for support tickets more often.
 // Target: ~$1-2/day (~$30-60/month)
 const MIN_INTERVALS: Record<string, number> = {
-  // SUPPORT - Riley checks every 4 hours for tickets
-  support_agent: 4 * 60 * 60 * 1000,
+  // SUPPORT - Riley checks every 30 minutes for tickets
+  support_agent: 30 * 60 * 1000,
   support_lead: 24 * 60 * 60 * 1000,
 
   // ALL OTHERS - once per day
