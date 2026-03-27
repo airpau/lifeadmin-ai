@@ -47,12 +47,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields: provider_name, issue_type, issue_summary' }, { status: 400 });
   }
 
+  // Normalise provider name: trim whitespace, title-case known providers
+  const rawName = body.provider_name.trim();
+  const PROVIDER_NAMES: Record<string, string> = {
+    'eon': 'E.ON', 'e.on': 'E.ON', 'british gas': 'British Gas',
+    'virgin media': 'Virgin Media', 'onestream': 'OneStream',
+    'lendinvest': 'LendInvest', 'sky': 'Sky', 'bt': 'BT',
+    'vodafone': 'Vodafone', 'ee': 'EE', 'three': 'Three',
+    'o2': 'O2', 'talktalk': 'TalkTalk', 'plusnet': 'Plusnet',
+    'octopus energy': 'Octopus Energy', 'ovo': 'OVO Energy',
+    'edf': 'EDF Energy', 'scottish power': 'Scottish Power',
+    'hmrc': 'HMRC', 'dvla': 'DVLA', 'nhs': 'NHS',
+  };
+  const normalisedName = PROVIDER_NAMES[rawName.toLowerCase()] || rawName;
+
+  // Auto-detect provider_type from issue_type and provider name
+  function detectProviderType(issueType: string, name: string): string {
+    const n = name.toLowerCase();
+    if (issueType === 'energy_dispute' || /british gas|eon|e\.on|octopus|ovo|edf|scottish power|sse|shell energy|bulb/i.test(n)) return 'energy';
+    if (issueType === 'broadband_complaint' || /sky|virgin media|bt|onestream|talktalk|plusnet|vodafone|ee|three|o2/i.test(n)) return 'broadband';
+    if (issueType === 'flight_compensation') return 'travel';
+    if (issueType === 'parking_appeal') return 'parking';
+    if (issueType === 'debt_dispute' || /lendinvest|lowell|cabot|debt/i.test(n)) return 'finance';
+    if (issueType === 'hmrc_tax_rebate') return 'government';
+    if (issueType === 'council_tax_band') return 'government';
+    if (issueType === 'dvla_vehicle') return 'government';
+    if (issueType === 'nhs_complaint') return 'nhs';
+    return 'general';
+  }
+
+  const providerType = body.provider_type || detectProviderType(body.issue_type, normalisedName);
+
   const { data: dispute, error } = await supabase
     .from('disputes')
     .insert({
       user_id: user.id,
-      provider_name: body.provider_name,
-      provider_type: body.provider_type || null,
+      provider_name: normalisedName,
+      provider_type: providerType,
       account_number: body.account_number || null,
       issue_type: body.issue_type,
       issue_summary: body.issue_summary,
