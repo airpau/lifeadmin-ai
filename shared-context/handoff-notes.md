@@ -1,5 +1,22 @@
 # Handoff Notes
 
+## 2026-03-28 -- Claude Code Session (Money Hub Overhaul)
+**Interface:** Claude Code
+**Completed:**
+- Money Hub Financial Snapshot upgraded:
+  - Month-on-month change arrows on income and spending
+  - End-of-month forecast based on daily average spend
+  - "This month's insight" banner
+  - Regular Payments summary card with link to payments page
+
+**Money Hub current state (2,200+ lines):**
+Already has: Financial Health Score, income/spending breakdown with drill-down,
+top merchants, monthly trends with hover, net worth tracker, budget planner,
+savings goals, email scanner, Pro AI chatbot, 10-step guided tour.
+Now also has: month-on-month changes, forecast, insight banner, payments link.
+
+---
+
 ## 2026-03-28 -- Claude Code Session (6 Parts — Polish + Features)
 **Interface:** Claude Code
 **Completed:**
