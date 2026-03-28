@@ -418,23 +418,27 @@ export default function DealsPage() {
       {/* Deal categories */}
       <div className="space-y-10">
         {visibleCategories.map((category) => {
-          // Convert DB affiliate_deals for this category into Deal format and prepend
+          // Get affiliate providers for this category — one card each, positioned first
           const catLower = category.toLowerCase();
-          const dbDeals: Deal[] = verifiedDeals
-            .filter(d => d.category === catLower)
-            .map(d => ({
-              id: `db-${d.id}`,
-              provider: d.provider,
-              headline: d.plan_name + (d.speed_mbps ? ` - ${d.speed_mbps} Mbps` : '') + (d.data_allowance ? ` - ${d.data_allowance}` : ''),
-              saving: d.price_promotional
-                ? `From £${d.price_promotional}/mo`
-                : `£${d.price_monthly}/mo`,
+          const affiliateProviders = [...new Set(verifiedDeals.filter(d => d.category === catLower).map(d => d.provider))];
+          const affiliateCards: Deal[] = affiliateProviders.map(provider => {
+            const providerDeals = verifiedDeals.filter(d => d.provider === provider && d.category === catLower);
+            const cheapest = providerDeals.reduce((min, d) => parseFloat(String(d.price_promotional || d.price_monthly)) < parseFloat(String(min.price_promotional || min.price_monthly)) ? d : min, providerDeals[0]);
+            return {
+              id: `aff-${provider}`,
+              provider: cheapest.provider,
+              headline: `Plans from £${cheapest.price_promotional || cheapest.price_monthly}/mo`,
+              saving: providerDeals.length > 1 ? `${providerDeals.length} plans available` : cheapest.plan_name,
               awinMid: '',
               providerUrl: '',
               category,
-              awinUrl: d.affiliate_url,
-            }));
-          const deals = [...dbDeals, ...(DEALS[category] || [])];
+              awinUrl: cheapest.affiliate_url,
+            };
+          });
+          // Remove hardcoded duplicates of affiliate providers
+          const affiliateNames = new Set(affiliateProviders.map(p => p.toLowerCase()));
+          const hardcoded = (DEALS[category] || []).filter(d => !affiliateNames.has(d.provider.toLowerCase()));
+          const deals = [...affiliateCards, ...hardcoded];
           if (deals.length === 0) return null;
 
           // Find user subscriptions matching this category
