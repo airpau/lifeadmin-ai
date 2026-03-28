@@ -269,7 +269,8 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
   const [copied, setCopied] = useState(false);
   const [tracking, setTracking] = useState(false);
 
-  const handleClick = async () => {
+  const handleClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
     setTracking(true);
     try {
       await fetch('/api/affiliate-deals', {
@@ -294,81 +295,50 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
 
   const hasPromo = deal.price_promotional != null;
 
+  // Build headline from plan specs
+  const specs: string[] = [];
+  if (deal.speed_mbps) specs.push(`${deal.speed_mbps} Mbps`);
+  if (deal.data_allowance) specs.push(deal.data_allowance);
+  if (deal.uk_minutes) specs.push(`${deal.uk_minutes} UK mins`);
+  if (deal.contract_length) specs.push(deal.contract_length);
+  if (deal.setup_fee != null) specs.push(deal.setup_fee > 0 ? `£${deal.setup_fee} setup` : 'Free setup');
+  const headline = specs.join(' · ');
+
+  // Build saving text
+  const saving = hasPromo
+    ? `From £${deal.price_promotional}/mo`
+    : `£${deal.price_monthly}/mo`;
+
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 hover:border-mint-400/30 transition-all flex flex-col">
-      {/* Featured badge */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[9px] uppercase tracking-wider text-mint-400 font-semibold bg-mint-400/10 px-2 py-0.5 rounded-full">Featured</span>
-        <span className="text-slate-600 text-[10px]">{deal.contract_length}</span>
-      </div>
-
-      {/* Provider + Plan */}
-      <h3 className="text-white font-semibold mb-0.5">{deal.provider}</h3>
-      <p className="text-slate-400 text-sm mb-3">{deal.plan_name}</p>
-
-      {/* Price */}
-      <div className="mb-3">
-        {hasPromo ? (
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-mint-400">£{deal.price_promotional}</span>
-            <span className="text-slate-500 text-sm line-through">£{deal.price_monthly}</span>
-            <span className="text-slate-400 text-xs">/mo</span>
-          </div>
-        ) : (
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-white">£{deal.price_monthly}</span>
-            <span className="text-slate-400 text-xs">/mo</span>
-          </div>
+    <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-navy-600">
+      {/* Body — identical to DealCard */}
+      <div className="flex-1 min-w-0 mb-3">
+        <h3 className="text-base font-semibold text-white mb-1 truncate">{deal.provider} {deal.plan_name}</h3>
+        <p className="text-slate-400 text-sm line-clamp-2">{headline}</p>
+        {hasPromo && deal.promotional_period && (
+          <p className="text-xs text-mint-400 mt-1">{deal.promo_code_discount || `Half price for ${deal.promotional_period}`}</p>
         )}
-        {deal.promotional_period && (
-          <p className="text-mint-400 text-xs mt-1">{deal.promo_code_discount || `Promotional price for ${deal.promotional_period}`}</p>
+        {deal.promo_code && (
+          <button onClick={copyPromo} className="inline-flex items-center gap-1.5 mt-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-dashed border-emerald-500/30 px-2 py-0.5 rounded transition-all hover:bg-emerald-500/15">
+            <span className="font-mono font-bold">{deal.promo_code}</span>
+            <span className="text-[10px]">{copied ? 'Copied!' : '— tap to copy'}</span>
+          </button>
         )}
       </div>
-
-      {/* Specs */}
-      <div className="flex flex-wrap gap-2 mb-3 text-xs text-slate-400">
-        {deal.speed_mbps && (
-          <span className="bg-navy-800 px-2 py-1 rounded">{deal.speed_mbps} Mbps</span>
-        )}
-        {deal.data_allowance && (
-          <span className="bg-navy-800 px-2 py-1 rounded">{deal.data_allowance}</span>
-        )}
-        {deal.uk_minutes && (
-          <span className="bg-navy-800 px-2 py-1 rounded">{deal.uk_minutes} UK mins</span>
-        )}
-        {deal.international_minutes && (
-          <span className="bg-navy-800 px-2 py-1 rounded">{deal.international_minutes} intl</span>
-        )}
-        {deal.setup_fee != null && (
-          <span className="bg-navy-800 px-2 py-1 rounded">{deal.setup_fee > 0 ? `£${deal.setup_fee} setup` : 'Free setup'}</span>
-        )}
-      </div>
-
-      {/* Promo code */}
-      {deal.promo_code && (
-        <button
-          onClick={copyPromo}
-          className="flex items-center justify-between gap-2 w-full bg-emerald-500/10 border border-dashed border-emerald-500/30 rounded-lg px-3 py-2 mb-3 text-left transition-all hover:bg-emerald-500/15"
+      {/* Footer — pinned to bottom, identical to DealCard */}
+      <div className="flex items-center gap-2 mt-auto flex-shrink-0">
+        <span className="text-xs font-semibold text-mint-400 bg-mint-400/10 px-2 py-1 rounded-full truncate min-w-0">
+          {saving}
+        </span>
+        <a
+          href={deal.affiliate_url}
+          onClick={handleClick}
+          className="flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
         >
-          <div>
-            <p className="text-[10px] text-emerald-400/70 uppercase tracking-wide">Promo code</p>
-            <p className="text-emerald-400 font-mono font-bold text-sm">{deal.promo_code}</p>
-          </div>
-          <span className="text-emerald-400 text-[10px] font-medium whitespace-nowrap">
-            {copied ? 'Copied!' : 'Copy'}
-          </span>
-        </button>
-      )}
-
-      {/* CTA */}
-      <button
-        onClick={handleClick}
-        disabled={tracking}
-        className="mt-auto w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-1.5"
-      >
-        {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-        Get Deal →
-      </button>
+          {tracking ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+          View Deal →
+        </a>
+      </div>
     </div>
   );
 }
@@ -562,28 +532,14 @@ export default function DealsPage() {
                 </div>
               )}
 
-              {/* Affiliate plan cards — individual plans, shown first */}
-              {affiliatePlans.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
-                  {affiliatePlans.map((plan) => (
-                    <AffiliatePlanCard key={plan.id} deal={plan} />
-                  ))}
-                </div>
-              )}
-
-              {/* Generic provider cards */}
-              {genericDeals.length > 0 && (
-                <>
-                  {affiliatePlans.length > 0 && (
-                    <p className="text-slate-500 text-xs mb-3 mt-2">More {category.toLowerCase()} deals</p>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {genericDeals.map((deal) => (
-                      <DealCard key={deal.id} deal={deal} />
-                    ))}
-                  </div>
-                </>
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {affiliatePlans.map((plan) => (
+                  <AffiliatePlanCard key={plan.id} deal={plan} />
+                ))}
+                {genericDeals.map((deal) => (
+                  <DealCard key={deal.id} deal={deal} />
+                ))}
+              </div>
             </section>
           );
         })}
