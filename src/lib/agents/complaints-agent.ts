@@ -133,10 +133,10 @@ ${input.threadContext || ''}
 
 ${input.threadContext ? 'IMPORTANT: This is a follow-up letter in an ongoing dispute. Reference the previous correspondence dates and key points. Open with "Further to my letter dated..." or "Following our correspondence regarding..." as appropriate. Build on the previous arguments and escalate the tone appropriately.' : ''}
 
-${input.verifiedLegalRefs ? `\nRELEVANT UK CONSUMER LAW (verified against official sources — cite ONLY these specific laws, sections, and amounts):
+${input.verifiedLegalRefs ? `\nRELEVANT UK CONSUMER LAW (verified against official sources):
 ${input.verifiedLegalRefs}
 
-IMPORTANT: Only cite the specific laws, section numbers, and amounts provided above. Never invent statute names, section numbers, or compensation amounts. If you are uncertain about a specific figure, use the phrase "you may be entitled to compensation under [scheme name]" rather than stating an incorrect figure.` : ''}
+CRITICAL INSTRUCTION — You MUST ONLY cite the legal references provided above. Do NOT invent, guess, or hallucinate any statute names, section numbers, or legal provisions. If no relevant legal reference is provided for a particular point, state the consumer's position without citing specific legislation. If you are uncertain about a specific figure (like a compensation amount or time limit), use the phrase "you may be entitled to compensation under [scheme name]" rather than stating an incorrect figure. The legalReferences array in your JSON output MUST only contain entries from the list above.` : ''}
 
 Return a JSON object only — no prose, no markdown fences. Keys: letter, legalReferences, estimatedSuccess, nextSteps, escalationPath.`;
 

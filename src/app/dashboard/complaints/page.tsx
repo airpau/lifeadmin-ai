@@ -183,8 +183,14 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
                         href={pill.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors"
+                        className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors inline-flex items-center gap-1"
+                        title={pill.strength === 'strong' ? 'Strong legal protection' : pill.strength === 'moderate' ? 'Moderate legal protection' : 'Legal reference'}
                       >
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                          pill.strength === 'strong' ? 'bg-green-500' :
+                          pill.strength === 'moderate' ? 'bg-amber-500' :
+                          'bg-gray-400'
+                        }`} />
                         {pill.label}
                       </a>
                     ))
@@ -197,7 +203,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
               </div>
             </div>
           )}
-          <p className="text-[10px] text-slate-600 text-center">This letter was drafted with AI assistance using verified UK consumer law references. We recommend reviewing before sending.</p>
+          <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">This letter was generated with AI assistance using publicly available legal information from legislation.gov.uk. It does not constitute legal advice. If you are unsure about your rights, please consult a qualified solicitor, Citizens Advice (citizensadvice.org.uk), or your relevant ombudsman.</p>
         </div>
         <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
           <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium">
@@ -670,8 +676,14 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                                   href={pill.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors"
+                                  className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors inline-flex items-center gap-1"
+                                  title={pill.strength === 'strong' ? 'Strong legal protection' : pill.strength === 'moderate' ? 'Moderate legal protection' : 'Legal reference'}
                                 >
+                                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                                    pill.strength === 'strong' ? 'bg-green-500' :
+                                    pill.strength === 'moderate' ? 'bg-amber-500' :
+                                    'bg-gray-400'
+                                  }`} />
                                   {pill.label}
                                 </a>
                               ))

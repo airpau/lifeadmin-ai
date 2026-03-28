@@ -160,6 +160,18 @@ export async function POST(request: NextRequest) {
       verifiedLegalRefs,
     });
 
+    // Cross-check: warn if AI cited laws not in our verified refs
+    if (legalRefs && legalRefs.length > 0 && result.legalReferences?.length > 0) {
+      const knownLaws = new Set(legalRefs.map((r: any) => r.law_name.toLowerCase()));
+      for (const cited of result.legalReferences) {
+        const citedLower = cited.toLowerCase();
+        const matched = [...knownLaws].some(k => citedLower.includes(k));
+        if (!matched) {
+          console.warn(`[anti-hallucination] AI cited unknown reference: "${cited}" — not in verified legal_references`);
+        }
+      }
+    }
+
     // Auto-fill user profile data into placeholders
     const { data: profile } = await supabase
       .from('profiles')
