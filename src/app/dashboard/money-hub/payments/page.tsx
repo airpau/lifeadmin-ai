@@ -36,8 +36,8 @@ const CAT_LABELS: Record<string, string> = {
 
 const PIE_COLORS = ['#a78bfa', '#3b82f6', '#34d399', '#f59e0b', '#ef4444', '#64748b'];
 
-const SUB_CATEGORIES = new Set(['streaming', 'software', 'fitness']);
 const DD_CATEGORIES = new Set(['utility', 'broadband', 'mobile', 'insurance', 'mortgage', 'council_tax', 'loan', 'water']);
+const APP_SUB_CATEGORIES = new Set(['streaming', 'software', 'fitness']);
 
 function annualCost(amount: number, cycle: string): number {
   if (cycle === 'weekly') return amount * 52;
@@ -143,7 +143,7 @@ function PaymentCard({ payment, type }: { payment: Payment; type: string }) {
                 View details
               </Link>
             )}
-            {DD_CATEGORIES.has(payment.category) && (
+            {['energy', 'broadband', 'mobile', 'insurance', 'streaming', 'software'].includes(payment.category) && (
               <Link
                 href={`/dashboard/deals`}
                 className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-1 rounded transition-all hover:bg-mint-400/20"
@@ -183,21 +183,22 @@ export default function PaymentsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const subscriptions = payments.filter(p => SUB_CATEGORIES.has(p.category));
+  // All = everything from subscriptions table (matches subscriptions page count)
+  const appSubs = payments.filter(p => APP_SUB_CATEGORIES.has(p.category));
   const directDebits = payments.filter(p => DD_CATEGORIES.has(p.category));
-  const standingOrders = payments.filter(p => !SUB_CATEGORIES.has(p.category) && !DD_CATEGORIES.has(p.category));
+  const otherPayments = payments.filter(p => !APP_SUB_CATEGORIES.has(p.category) && !DD_CATEGORIES.has(p.category));
 
   const totalMonthly = payments.reduce((sum, p) => sum + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0);
 
-  const tabPayments = tab === 'subscriptions' ? subscriptions
+  const tabPayments = tab === 'subscriptions' ? payments // "All Payments" shows everything
     : tab === 'direct_debits' ? directDebits
-    : standingOrders;
+    : appSubs;
 
   // Pie chart data
   const pieData = [
-    { name: 'Subscriptions', value: Math.round(subscriptions.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
-    { name: 'Direct Debits', value: Math.round(directDebits.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
-    { name: 'Other', value: Math.round(standingOrders.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
+    { name: 'Apps & Streaming', value: Math.round(appSubs.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
+    { name: 'Bills & Utilities', value: Math.round(directDebits.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
+    { name: 'Other', value: Math.round(otherPayments.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
   ].filter(d => d.value > 0);
 
   return (
@@ -241,11 +242,11 @@ export default function PaymentsPage() {
               <p className="text-2xl font-bold text-white">£{totalMonthly.toFixed(0)}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Subscriptions</p>
-              <p className="text-xl font-bold text-purple-400">{subscriptions.length}</p>
+              <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Total payments</p>
+              <p className="text-xl font-bold text-purple-400">{payments.length}</p>
             </div>
             <div>
-              <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Direct debits</p>
+              <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Bills & utilities</p>
               <p className="text-xl font-bold text-blue-400">{directDebits.length}</p>
             </div>
             <div>
@@ -271,9 +272,9 @@ export default function PaymentsPage() {
       {/* Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto">
         {[
-          { key: 'subscriptions' as const, label: 'Subscriptions', count: subscriptions.length, icon: Zap },
-          { key: 'direct_debits' as const, label: 'Direct Debits', count: directDebits.length, icon: Repeat },
-          { key: 'standing_orders' as const, label: 'Other', count: standingOrders.length, icon: ArrowUpRight },
+          { key: 'subscriptions' as const, label: 'All Payments', count: payments.length, icon: Zap },
+          { key: 'direct_debits' as const, label: 'Bills & Utilities', count: directDebits.length, icon: Repeat },
+          { key: 'standing_orders' as const, label: 'Apps & Streaming', count: appSubs.length, icon: ArrowUpRight },
         ].map(t => (
           <button
             key={t.key}

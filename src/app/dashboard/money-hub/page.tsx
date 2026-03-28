@@ -88,6 +88,9 @@ const INCOME_LABELS: Record<string, { label: string; color: string; icon: string
   investment: { label: 'Investments', color: '#06b6d4', icon: '📈' },
   refund: { label: 'Refunds', color: '#10b981', icon: '💸' },
   transfer: { label: 'Transfers', color: '#64748b', icon: '🔄' },
+  loan_repayment: { label: 'Loan Repayment', color: '#ef4444', icon: '🏦' },
+  gift: { label: 'Gifts', color: '#ec4899', icon: '🎁' },
+  loan: { label: 'Loan', color: '#ef4444', icon: '🏦' },
   other: { label: 'Other', color: '#475569', icon: '📋' },
 };
 
@@ -1111,7 +1114,7 @@ export default function MoneyHubPage() {
                       <div className="w-3 bg-green-500/60 rounded-t transition-all hover:bg-green-500/80" style={{ height: `${(m.income / maxVal) * 100}%` }} />
                       <div className="w-3 bg-red-500/60 rounded-t transition-all hover:bg-red-500/80" style={{ height: `${(m.outgoings / maxVal) * 100}%` }} />
                     </div>
-                    <p className="text-slate-500 text-[10px]">{m.month.substring(5)}</p>
+                    <p className="text-slate-500 text-[10px]">{new Date(m.month + '-01').toLocaleDateString('en-GB', { month: 'short' })}</p>
 
                     {/* Hover tooltip */}
                     {hoveredMonth === idx && (
@@ -1201,10 +1204,10 @@ export default function MoneyHubPage() {
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-mint-400" /> Subscriptions
+            <CreditCard className="h-5 w-5 text-mint-400" /> Regular Payments
           </h2>
-          <Link href="/dashboard/subscriptions" className="text-mint-400 text-xs flex items-center gap-1">
-            Manage <ArrowRight className="h-3 w-3" />
+          <Link href="/dashboard/money-hub/payments" className="text-mint-400 text-xs flex items-center gap-1">
+            View all <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
         <div className="grid grid-cols-3 gap-4 mb-4">

@@ -78,6 +78,22 @@ export async function POST(request: NextRequest) {
 
   const providerType = body.provider_type || detectProviderType(body.issue_type, normalisedName);
 
+  // Dedup: check if same user + similar issue exists within 5 minutes
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: recentDup } = await supabase
+    .from('disputes')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('provider_name', normalisedName)
+    .gte('created_at', fiveMinAgo)
+    .maybeSingle();
+
+  if (recentDup) {
+    // Return existing dispute instead of creating duplicate
+    const { data: existing } = await supabase.from('disputes').select().eq('id', recentDup.id).single();
+    return NextResponse.json(existing, { status: 200 });
+  }
+
   const { data: dispute, error } = await supabase
     .from('disputes')
     .insert({

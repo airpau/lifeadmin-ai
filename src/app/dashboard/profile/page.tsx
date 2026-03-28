@@ -37,9 +37,9 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
       const [letters, resolved, disputes] = await Promise.all([
-        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('type', 'complaint_letter'),
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('user_id', user.id).in('status', ['pending_review', 'in_progress']),
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
       ]);
       setLettersWritten(letters.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);

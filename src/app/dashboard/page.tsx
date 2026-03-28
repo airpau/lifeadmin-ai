@@ -156,8 +156,8 @@ export default function DashboardPage() {
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).single(),
           supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
-          supabase.from('tasks').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id).eq('type', 'complaint_letter'),
+          supabase.from('disputes').select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id),
           supabase.from('bank_connections').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).eq('status', 'active'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
@@ -571,7 +571,7 @@ export default function DashboardPage() {
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
           <FileText className="h-6 w-6 text-blue-400 mb-3" />
           <p className="text-3xl font-bold text-white">{complaintsGenerated}</p>
-          <p className="text-slate-400 text-sm">Complaints generated</p>
+          <p className="text-slate-400 text-sm">Disputes</p>
         </div>
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
           <Building2 className="h-6 w-6 text-green-400 mb-3" />
