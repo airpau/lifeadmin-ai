@@ -132,7 +132,8 @@ export async function POST(request: NextRequest) {
       .from('legal_references')
       .select('law_name, section, summary, source_url, escalation_body, strength')
       .in('category', categories)
-      .in('verification_status', ['current', 'updated']);
+      .in('verification_status', ['current', 'updated'])
+      .gte('confidence_score', 60);
 
     let verifiedLegalRefs = '';
     if (legalRefs && legalRefs.length > 0) {

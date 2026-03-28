@@ -52,24 +52,49 @@ export async function GET(request: NextRequest) {
   for (const ref of refs) {
     try {
       if (ref.source_type === 'statute') {
-        // ============================================
-        // STATUTE VERIFICATION via legislation.gov.uk
-        // ============================================
         await verifyStatute(supabase, ref, results, issues);
       } else {
-        // ============================================
-        // REGULATOR VERIFICATION via Claude Haiku
-        // ============================================
         await verifyRegulatorRule(supabase, ref, results, issues);
       }
       results.checked++;
     } catch (err) {
       console.error(`[verify-legal] Error checking ${ref.law_name}:`, err);
       results.errors++;
+      // Log failed check
+      await supabase.from('legal_audit_log').insert({
+        legal_reference_id: ref.id,
+        check_type: ref.source_type === 'statute' ? 'http_head' : 'ai_comparison',
+        result: 'check_failed',
+        details: err instanceof Error ? err.message : String(err),
+      });
+      // Confidence decay on failure
+      const newConfidence = Math.max(0, (ref.confidence_score || 100) - 20);
+      await supabase.from('legal_references').update({ confidence_score: newConfidence }).eq('id', ref.id);
     }
 
     // Small delay to respect rate limits
     await new Promise(r => setTimeout(r, 200));
+  }
+
+  // B3: Confidence decay for stale refs (30+ days since last_verified)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  await supabase
+    .from('legal_references')
+    .update({ confidence_score: 90 }) // Will be overwritten below with per-ref decay
+    .lt('last_verified', thirtyDaysAgo.toISOString())
+    .gt('confidence_score', 60);
+
+  // Actually decay stale ones
+  const { data: staleRefs } = await supabase
+    .from('legal_references')
+    .select('id, confidence_score')
+    .lt('last_verified', thirtyDaysAgo.toISOString())
+    .gt('confidence_score', 60);
+
+  for (const stale of staleRefs || []) {
+    const decayed = Math.max(60, (stale.confidence_score || 100) - 10);
+    await supabase.from('legal_references').update({ confidence_score: decayed }).eq('id', stale.id);
   }
 
   // Log to business_log if any issues found
