@@ -203,28 +203,21 @@ const DEALS_LIVE = !!AWIN_AFF_ID && AWIN_AFF_ID !== '!!!REPLACE_WITH_AWIN_ID!!!'
 function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   const [tracking, setTracking] = useState(false);
 
-  const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    if (!DEALS_LIVE) return; // Don't navigate if deals aren't live
-    setTracking(true);
-    try {
-      await fetch('/api/deals/click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: deal.provider,
-          category: deal.category,
-          deal_id: deal.id,
-          awin_mid: deal.awinMid,
-        }),
-      });
-      capture('deal_clicked', { provider: deal.provider, category: deal.category });
-    } catch {
-      // Non-fatal
-    } finally {
-      setTracking(false);
-      window.open(deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl), '_blank', 'noopener,noreferrer');
-    }
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!DEALS_LIVE) { e.preventDefault(); return; }
+    // Let the native <a> handle navigation (works on iOS Safari)
+    // Track click in background — don't block navigation
+    fetch('/api/deals/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: deal.provider,
+        category: deal.category,
+        deal_id: deal.id,
+        awin_mid: deal.awinMid,
+      }),
+    }).catch(() => {});
+    capture('deal_clicked', { provider: deal.provider, category: deal.category });
   };
 
   return (
@@ -247,10 +240,11 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
         {DEALS_LIVE ? (
           <a
             href={deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
             onClick={handleClick}
             className="flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
           >
-            {tracking ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             View Deal →
           </a>
         ) : (
@@ -289,19 +283,14 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
   const [copied, setCopied] = useState(false);
   const [tracking, setTracking] = useState(false);
 
-  const handleClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    setTracking(true);
-    try {
-      await fetch('/api/affiliate-deals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: deal.provider, category: deal.category, deal_id: deal.id, plan_name: deal.plan_name }),
-      });
-      capture('deal_clicked', { provider: deal.provider, plan: deal.plan_name });
-    } catch {}
-    setTracking(false);
-    window.open(deal.affiliate_url, '_blank', 'noopener,noreferrer');
+  const handleClick = () => {
+    // Track in background — don't block navigation (iOS Safari blocks async window.open)
+    fetch('/api/affiliate-deals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: deal.provider, category: deal.category, deal_id: deal.id, plan_name: deal.plan_name }),
+    }).catch(() => {});
+    capture('deal_clicked', { provider: deal.provider, plan: deal.plan_name });
   };
 
   const copyPromo = (e: React.MouseEvent) => {
@@ -352,10 +341,11 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
         </span>
         <a
           href={deal.affiliate_url}
+          target="_blank"
+          rel="noopener noreferrer"
           onClick={handleClick}
           className="flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
         >
-          {tracking ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
           View Deal →
         </a>
       </div>
