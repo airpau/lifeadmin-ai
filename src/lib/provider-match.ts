@@ -78,14 +78,24 @@ export function matchProviderName(input: string): string | null {
  */
 export async function getProviderTerms(supabase: SupabaseClient, providerName: string) {
   const matched = matchProviderName(providerName);
-  if (!matched) return null;
 
-  const { data } = await supabase
+  if (matched) {
+    const { data } = await supabase
+      .from('provider_terms')
+      .select('*')
+      .eq('provider_name', matched)
+      .eq('active', true)
+      .maybeSingle();
+    if (data) return data;
+  }
+
+  // Fallback: try display_name case-insensitive match
+  const { data: fallback } = await supabase
     .from('provider_terms')
     .select('*')
-    .eq('provider_name', matched)
+    .ilike('display_name', providerName.trim())
     .eq('active', true)
     .maybeSingle();
 
-  return data;
+  return fallback;
 }
