@@ -188,6 +188,13 @@ export async function POST(request: NextRequest) {
         .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
     }
 
+    // Build rights pills data for the UI (needed before agent run log)
+    const rightsPills = (legalRefs || []).map((r: any) => ({
+      label: `${r.law_name}${r.section ? ` ${r.section}` : ''}`,
+      url: r.source_url,
+      strength: r.strength,
+    }));
+
     // Save task to database
     const { data: task } = await supabase
       .from('tasks')
@@ -218,7 +225,7 @@ export async function POST(request: NextRequest) {
         model_name: 'claude-sonnet-4-6',
         status: 'completed',
         input_data: body,
-        output_data: result,
+        output_data: { ...result, rightsPills },
         legal_references: result.legalReferences,
         input_tokens: result.usage?.input_tokens || null,
         output_tokens: result.usage?.output_tokens || null,
@@ -260,13 +267,6 @@ export async function POST(request: NextRequest) {
       email: user.email || undefined,
       provider: body.companyName,
     }).catch(() => {});
-
-    // Build rights pills data for the UI
-    const rightsPills = (legalRefs || []).map((r: any) => ({
-      label: `${r.law_name}${r.section ? ` ${r.section}` : ''}`,
-      url: r.source_url,
-      strength: r.strength,
-    }));
 
     return NextResponse.json({ ...result, taskId: task?.id, rightsPills });
   } catch (error: any) {

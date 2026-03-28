@@ -61,6 +61,7 @@ export async function GET(
         return {
           ...c,
           legal_references: run.output_data.legalReferences || [],
+          rights_pills: run.output_data.rightsPills || [],
           estimated_success: run.output_data.estimatedSuccess || null,
           next_steps: run.output_data.nextSteps || [],
           escalation_path: run.output_data.escalationPath || null,

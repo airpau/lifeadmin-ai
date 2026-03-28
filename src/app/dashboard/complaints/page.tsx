@@ -55,6 +55,12 @@ interface ContractExtraction {
   created_at: string;
 }
 
+interface RightsPill {
+  label: string;
+  url: string;
+  strength: string;
+}
+
 interface Correspondence {
   id: string;
   entry_type: string;
@@ -66,6 +72,7 @@ interface Correspondence {
   entry_date: string;
   created_at: string;
   legal_references?: string[];
+  rights_pills?: RightsPill[];
   estimated_success?: number;
   next_steps?: string[];
   escalation_path?: string;
@@ -124,10 +131,11 @@ function timeAgo(d: string) {
 // ============================================================
 // Letter Modal (reused from before)
 // ============================================================
-function LetterModal({ content, title, legalRefs, onClose }: {
+function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
   content: string;
   title: string;
   legalRefs: string[];
+  rightsPills?: RightsPill[];
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -164,15 +172,28 @@ function LetterModal({ content, title, legalRefs, onClose }: {
           <div className="bg-navy-950 rounded-xl p-6 border border-navy-700/50 mb-4">
             <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">{content}</pre>
           </div>
-          {legalRefs.length > 0 && (
+          {(rightsPills && rightsPills.length > 0 || legalRefs.length > 0) && (
             <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50 mb-3">
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Your rights used in this letter</h3>
               <div className="flex flex-wrap gap-1.5">
-                {legalRefs.map((ref, i) => (
-                  <span key={i} className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20">
-                    {ref}
-                  </span>
-                ))}
+                {rightsPills && rightsPills.length > 0
+                  ? rightsPills.map((pill, i) => (
+                      <a
+                        key={i}
+                        href={pill.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors"
+                      >
+                        {pill.label}
+                      </a>
+                    ))
+                  : legalRefs.map((ref, i) => (
+                      <span key={i} className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20">
+                        {ref}
+                      </span>
+                    ))
+                }
               </div>
             </div>
           )}
@@ -386,7 +407,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [dispute, setDispute] = useState<Dispute | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [letterModal, setLetterModal] = useState<{ content: string; title: string; refs: string[] } | null>(null);
+  const [letterModal, setLetterModal] = useState<{ content: string; title: string; refs: string[]; pills?: RightsPill[] } | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [statusDropdown, setStatusDropdown] = useState(false);
@@ -471,6 +492,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           content={letterModal.content}
           title={letterModal.title}
           legalRefs={letterModal.refs}
+          rightsPills={letterModal.pills}
           onClose={() => setLetterModal(null)}
         />
       )}
@@ -596,6 +618,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         content: entry.content,
                         title: entry.title || 'Your letter',
                         refs: entry.legal_references || [],
+                        pills: entry.rights_pills || [],
                       });
                     }
                   }}
@@ -636,17 +659,30 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         )}
                         <span className="text-xs text-mint-400 ml-auto">Click to view full letter</span>
                       </div>
-                      {/* Your rights pills */}
-                      {entry.legal_references && entry.legal_references.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-2">
+                      {/* Your rights pills — use URL-linked pills when available */}
+                      {((entry.rights_pills && entry.rights_pills.length > 0) || (entry.legal_references && entry.legal_references.length > 0)) && (
+                        <div className="flex flex-wrap gap-1.5 mt-2" onClick={e => e.stopPropagation()}>
                           <span className="text-[10px] text-slate-500 mr-1 self-center">Your rights:</span>
-                          {entry.legal_references.slice(0, 4).map((ref: string, i: number) => (
-                            <span key={i} className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20">
-                              {ref}
-                            </span>
-                          ))}
-                          {entry.legal_references.length > 4 && (
-                            <span className="text-[10px] text-slate-500 self-center">+{entry.legal_references.length - 4} more</span>
+                          {entry.rights_pills && entry.rights_pills.length > 0
+                            ? entry.rights_pills.slice(0, 4).map((pill: RightsPill, i: number) => (
+                                <a
+                                  key={i}
+                                  href={pill.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors"
+                                >
+                                  {pill.label}
+                                </a>
+                              ))
+                            : (entry.legal_references || []).slice(0, 4).map((ref: string, i: number) => (
+                                <span key={i} className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20">
+                                  {ref}
+                                </span>
+                              ))
+                          }
+                          {((entry.rights_pills?.length || entry.legal_references?.length) || 0) > 4 && (
+                            <span className="text-[10px] text-slate-500 self-center">+{((entry.rights_pills?.length || entry.legal_references?.length) || 0) - 4} more</span>
                           )}
                         </div>
                       )}

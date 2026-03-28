@@ -7,12 +7,13 @@ import { createClient } from '@/lib/supabase/client';
 import {
   ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Clock, Mail, Database, Ticket, Brain,
+  Banknote, Clock, Mail, Database, Ticket, Brain, Shield,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
 import MeetingRoom from '@/components/admin/MeetingRoom';
 import LeadsList from '@/components/admin/LeadsList';
+import Link from 'next/link';
 
 const ADMIN_EMAIL = 'aireypaul@googlemail.com';
 
@@ -235,6 +236,12 @@ export default function AdminPage() {
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
           <Brain className="h-4 w-4" /> AI Team
         </button>
+        <Link
+          href="/dashboard/admin/legal-refs"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-navy-800 text-slate-400 hover:text-white"
+        >
+          <Shield className="h-4 w-4" /> Legal Refs
+        </Link>
       </div>
 
       {/* OVERVIEW TAB */}
