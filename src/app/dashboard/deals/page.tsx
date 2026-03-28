@@ -138,6 +138,26 @@ const CATEGORY_TO_DEALS: Record<string, string[]> = {
   software: [],
 };
 
+/** Shorten badge text to fit neatly in a compact pill */
+function shortenBadge(text: string): string {
+  return text
+    .replace(/^Save up to /i, 'Save ')
+    .replace(/^Up to /i, '')
+    .replace(/ off your first month$/i, ' off')
+    .replace(/^Compare energy tariffs from all suppliers$/i, 'Compare tariffs')
+    .replace(/^Compare broadband deals from all providers$/i, 'Compare deals')
+    .replace(/^Reduce monthly payments$/i, 'Reduce payments')
+    .replace(/^Roadside peace of mind$/i, 'From £6.50/mo')
+    .replace(/^Find cheapest deals$/i, 'Compare deals')
+    .replace(/^Find cheapest flights$/i, 'Compare flights')
+    .replace(/^0% balance transfer deals$/i, '0% transfers')
+    .replace(/^Save on car finance$/i, 'Save on finance')
+    .replace(/^Compare airlines$/i, 'Compare')
+    .replace(/ on completion$/i, '')
+    .replace(/^17% insurance savings$/i, 'Save 17%')
+    .replace(/^Rates from /i, 'From ');
+}
+
 interface UserSubscription {
   id: string;
   provider_name: string;
@@ -221,8 +241,8 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
       </div>
       {/* Footer — pinned to bottom */}
       <div className="flex items-center gap-2 mt-auto flex-shrink-0">
-        <span className="text-xs font-semibold text-mint-400 bg-mint-400/10 px-2 py-1 rounded-full truncate min-w-0">
-          {deal.saving}
+        <span className="text-[11px] font-semibold text-mint-400 bg-mint-400/10 px-2 py-1 rounded-full whitespace-nowrap">
+          {shortenBadge(deal.saving)}
         </span>
         {DEALS_LIVE ? (
           <a
@@ -327,7 +347,7 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
       </div>
       {/* Footer — pinned to bottom, identical to DealCard */}
       <div className="flex items-center gap-2 mt-auto flex-shrink-0">
-        <span className="text-xs font-semibold text-mint-400 bg-mint-400/10 px-2 py-1 rounded-full truncate min-w-0">
+        <span className="text-[11px] font-semibold text-mint-400 bg-mint-400/10 px-2 py-1 rounded-full whitespace-nowrap">
           {saving}
         </span>
         <a
@@ -348,6 +368,7 @@ export default function DealsPage() {
   const [verifiedDeals, setVerifiedDeals] = useState<VerifiedDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -533,9 +554,35 @@ export default function DealsPage() {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {affiliatePlans.map((plan) => (
-                  <AffiliatePlanCard key={plan.id} deal={plan} />
-                ))}
+                {(() => {
+                  // Group affiliate plans by provider, show max 3 per provider unless expanded
+                  const byProvider = new Map<string, VerifiedDeal[]>();
+                  for (const plan of affiliatePlans) {
+                    if (!byProvider.has(plan.provider)) byProvider.set(plan.provider, []);
+                    byProvider.get(plan.provider)!.push(plan);
+                  }
+                  const cards: React.ReactNode[] = [];
+                  for (const [provider, plans] of byProvider) {
+                    const isExpanded = expandedProviders.has(`${catLower}-${provider}`);
+                    const shown = isExpanded ? plans : plans.slice(0, 3);
+                    const hasMore = plans.length > 3 && !isExpanded;
+                    for (const plan of shown) {
+                      cards.push(<AffiliatePlanCard key={plan.id} deal={plan} />);
+                    }
+                    if (hasMore) {
+                      cards.push(
+                        <button
+                          key={`expand-${provider}`}
+                          onClick={() => setExpandedProviders(prev => { const n = new Set(prev); n.add(`${catLower}-${provider}`); return n; })}
+                          className="bg-navy-900 border border-dashed border-navy-700/50 rounded-2xl p-5 flex items-center justify-center text-sm text-mint-400 hover:border-mint-400/30 transition-all"
+                        >
+                          See all {plans.length} {provider} plans →
+                        </button>
+                      );
+                    }
+                  }
+                  return cards;
+                })()}
                 {genericDeals.map((deal) => (
                   <DealCard key={deal.id} deal={deal} />
                 ))}
