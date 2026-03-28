@@ -153,9 +153,11 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
       <style>body{font-family:'Times New Roman',serif;max-width:800px;margin:40px auto;padding:0 40px;line-height:1.8;color:#000}
       pre{white-space:pre-wrap;font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}
       .refs{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:11px;color:#555}
+      .disclaimer{margin-top:12px;font-size:10px;color:#888;font-style:italic}
       @media print{body{margin:20mm 25mm}}</style></head><body>
       <pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
       ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
+      <div class="disclaimer">This letter is for guidance only and does not constitute legal advice.</div>
       <script>window.onload=()=>{window.print()}<\/script></body></html>`);
     printWindow.document.close();
   };
@@ -165,8 +167,28 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-navy-700/50 flex-shrink-0">
-          <h2 className="text-xl font-bold text-white">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-xl font-bold text-white truncate">{title}</h2>
+            {(() => {
+              const count = rightsPills?.length ?? 0;
+              if (count >= 3) return (
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                  Strong legal backing
+                </span>
+              );
+              if (count >= 1) return (
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Some legal backing
+                </span>
+              );
+              return (
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                  Review carefully
+                </span>
+              );
+            })()}
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 flex-shrink-0"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-navy-950 rounded-xl p-6 border border-navy-700/50 mb-4">
@@ -197,7 +219,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
               </div>
             </div>
           )}
-          <p className="text-[10px] text-slate-600 text-center">This letter was drafted with AI assistance using verified UK consumer law references. We recommend reviewing before sending.</p>
+          <p className="text-[10px] text-slate-500 text-center">This letter is for guidance only and does not constitute legal advice. We recommend reviewing before sending.</p>
         </div>
         <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
           <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium">
