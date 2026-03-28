@@ -390,7 +390,7 @@ export default function ScannerPage() {
                 <label className="block text-sm font-medium text-slate-300 mb-2">Choose your email provider</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => { window.location.href = '/api/gmail/auth'; }}
+                    onClick={() => { window.location.href = '/api/auth/google'; }}
                     className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
                   >
                     <span className="text-xl">📧</span>
@@ -625,13 +625,19 @@ export default function ScannerPage() {
     console.log('[scanner] email_connections query:', { allEmailConns, emailErr, userId: user.id });
 
     const accounts: ConnectedAccount[] = [];
-    if (gmail) accounts.push({ provider: 'gmail', email: gmail.email });
 
-    // Add OAuth connections (Outlook)
+    // Add all OAuth connections from email_connections (Google + Outlook)
     for (const conn of (allEmailConns || [])) {
-      if (conn.provider_type === 'outlook' && conn.auth_method === 'oauth') {
+      if (conn.provider_type === 'google' && conn.auth_method === 'oauth') {
+        accounts.push({ provider: 'gmail', email: conn.email_address });
+      } else if (conn.provider_type === 'outlook' && conn.auth_method === 'oauth') {
         accounts.push({ provider: 'outlook', email: conn.email_address });
       }
+    }
+
+    // Fallback: check legacy gmail_tokens if no Google connection in email_connections
+    if (!accounts.find(a => a.provider === 'gmail') && gmail) {
+      accounts.push({ provider: 'gmail', email: gmail.email });
     }
     setConnectedAccounts(accounts);
 
@@ -817,7 +823,7 @@ export default function ScannerPage() {
           <div className="flex flex-wrap gap-3">
             {!connectedAccounts.find((a) => a.provider === 'gmail') && (
               <button
-                onClick={() => { window.location.href = '/api/gmail/auth'; }}
+                onClick={() => { window.location.href = '/api/auth/google'; }}
                 className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
               >
                 <GoogleIcon />
