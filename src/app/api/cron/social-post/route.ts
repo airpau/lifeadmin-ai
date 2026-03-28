@@ -44,7 +44,7 @@ async function generateImage(prompt: string): Promise<string | null> {
     const fileName = `social-auto-${Date.now()}.png`;
     const buffer = Buffer.from(base64, 'base64');
 
-    await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/social-images/${fileName}`, {
+    await fetch(`${(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()}/storage/v1/object/social-images/${fileName}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
@@ -53,7 +53,7 @@ async function generateImage(prompt: string): Promise<string | null> {
       body: buffer,
     });
 
-    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/social-images/${fileName}`;
+    return `${(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()}/storage/v1/object/public/social-images/${fileName}`;
   } catch {
     return null;
   }
