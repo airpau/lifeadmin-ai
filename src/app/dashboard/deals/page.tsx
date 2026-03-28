@@ -359,60 +359,6 @@ export default function DealsPage() {
         ))}
       </div>
 
-      {/* Verified Plan Deals — prices checked daily */}
-      {verifiedDeals.length > 0 && (activeCategory === null || verifiedDeals.some(d => d.category === activeCategory?.toLowerCase())) && (
-        <section className="mb-10">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-white">Verified Plan Prices</h2>
-              <p className="text-slate-400 text-sm">Exact prices checked daily — not estimates</p>
-            </div>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {verifiedDeals
-              .filter(d => activeCategory === null || d.category === activeCategory?.toLowerCase())
-              .map(deal => (
-                <a
-                  key={deal.id}
-                  href={deal.affiliate_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 hover:border-mint-400/30 transition-all block"
-                  onClick={() => capture('deal_clicked', { provider: deal.provider, plan: deal.plan_name })}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <p className="text-white font-semibold text-sm">{deal.provider}</p>
-                      <p className="text-slate-400 text-xs">{deal.plan_name}</p>
-                    </div>
-                    <div className="text-right">
-                      {deal.price_promotional ? (
-                        <>
-                          <p className="text-mint-400 font-bold">£{deal.price_promotional}</p>
-                          <p className="text-slate-500 text-[10px] line-through">£{deal.price_monthly}/mo</p>
-                          {deal.promotional_period && <p className="text-mint-400 text-[10px]">for {deal.promotional_period}</p>}
-                        </>
-                      ) : (
-                        <p className="text-mint-400 font-bold">£{deal.price_monthly}<span className="text-xs font-normal">/mo</span></p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 text-[10px] text-slate-500 flex-wrap">
-                    {deal.speed_mbps && <span>{deal.speed_mbps} Mbps</span>}
-                    {deal.data_allowance && <span>{deal.data_allowance}</span>}
-                    {deal.contract_length && <span>{deal.contract_length}</span>}
-                    {deal.uk_minutes && <span>{deal.uk_minutes} mins</span>}
-                    {deal.setup_fee > 0 && <span>£{deal.setup_fee} setup</span>}
-                  </div>
-                  <p className="text-[9px] text-slate-600 mt-2">
-                    Prices verified {new Date(deal.last_verified_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                </a>
-              ))}
-          </div>
-        </section>
-      )}
-
       {/* Contracts Ending Soon -- URGENT section */}
       {urgentCategories.length > 0 && (activeCategory === null || urgentSubsByCategory[activeCategory]) && (
         <section className="mb-10">
@@ -472,7 +418,23 @@ export default function DealsPage() {
       {/* Deal categories */}
       <div className="space-y-10">
         {visibleCategories.map((category) => {
-          const deals = DEALS[category] || [];
+          // Convert DB affiliate_deals for this category into Deal format and prepend
+          const catLower = category.toLowerCase();
+          const dbDeals: Deal[] = verifiedDeals
+            .filter(d => d.category === catLower)
+            .map(d => ({
+              id: `db-${d.id}`,
+              provider: d.provider,
+              headline: d.plan_name + (d.speed_mbps ? ` - ${d.speed_mbps} Mbps` : '') + (d.data_allowance ? ` - ${d.data_allowance}` : ''),
+              saving: d.price_promotional
+                ? `From £${d.price_promotional}/mo`
+                : `£${d.price_monthly}/mo`,
+              awinMid: '',
+              providerUrl: '',
+              category,
+              awinUrl: d.affiliate_url,
+            }));
+          const deals = [...dbDeals, ...(DEALS[category] || [])];
           if (deals.length === 0) return null;
 
           // Find user subscriptions matching this category
