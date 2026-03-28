@@ -1,5 +1,23 @@
 # Handoff Notes
 
+## 2026-03-28 -- Claude Code Session (Parts A-E Complete)
+**Interface:** Claude Code
+**Completed:**
+- Part A: UAT fixes (duplicate Ofcom deleted, provider matching display_name fallback)
+- Part B: Self-learning legal intelligence (audit log, confidence decay, only refs >= 60 used)
+- Part C: Subscription auto-detection (1,103 txs enriched, merchant_rules is_subscription fixed, daily detection cron)
+- Part D: Money Hub payments dashboard (/dashboard/money-hub/payments — subs, DDs, standing orders)
+- Part E: Global self-learning engine (weekly metrics, Claude Haiku improvement proposals, accuracy tracking)
+
+**New crons added:**
+- /api/cron/detect-subscriptions (daily 4am)
+- /api/cron/self-improve (weekly Sunday 7am)
+
+**New tables:** legal_audit_log, confidence_score column on legal_references
+**New pages:** /dashboard/money-hub/payments
+
+---
+
 ## 2026-03-28 -- Claude Code Session (Phase 4 Complete)
 **Interface:** Claude Code
 **Completed:**
@@ -974,3 +992,17 @@ ALWAYS use: "dispute", "what happened", "your rights", "next step", "their respo
 **Completed:** All 3 phases of AI Letters Intelligence Upgrade verified complete in Supabase. Phase 3 confirmed: contract_extractions schema updated (dispute_id nullable, subscription_id added, file_type, contract_type, monthly_cost, annual_cost columns), full CRUD RLS, private contracts storage bucket. 85 legal refs all current. Project status updated.
 
 **Next steps:** 1. BUG FIX: Guided tour breaks on step 2 — Framer Motion spotlight, likely DOM target not found or timing issue. 2. Phase 4: Provider T&Cs for 30+ UK companies. 3. Phase 5: Deadlock tracking, nudges, resolution, dashboard stats.
+
+---
+
+## 2026-03-28 01:40:04 - Claude Desktop (Cowork)
+**Completed:** Full UAT of Phases 1-4 complete via Supabase queries. 3 issues found: (1) Duplicate Ofcom auto compensation entry with conflicting outdated rates — row 618f8832 has pre-2025 rates, needs deletion. (2) provider_name format mismatch — provider_terms uses snake_case, disputes uses display format, matching will fail on simple equality. (3) Need codebase verification of generate route imports and vercel.json cron schedules.
+
+**Next steps:** Claude Code: delete outdated Ofcom row (618f8832), verify provider matching normalises both sides (lowercase + strip underscores/dots/spaces), confirm generate route imports both legal_references and provider_terms, verify vercel.json crons. Then Phase 5: deadlock tracking, nudges, resolution flow, dashboard stats.
+
+---
+
+## 2026-03-28 01:46:11 - Claude Desktop (Cowork)
+**Completed:** Comprehensive audit complete. Major findings: (1) bank_transactions.merchant_name is NULL on all 5,182 transactions, (2) merchant_rules.is_subscription is FALSE on all 102 rules, (3) 197 recurring transactions unmatched to subscriptions — detection is broken. Self-learning infra partially exists (agent_memory, agent_feedback_events, improvement_proposals) but not wired together. Prepared 5-part Claude Code prompt covering UAT fixes, self-learning legal failsafes, subscription intelligence rebuild, Money Hub Emma-killer upgrade, and global self-learning system.
+
+**Next steps:** Claude Code: Execute 5-part build. Priority order: (A) UAT fixes, (C) fix subscription detection (merchant enrichment, is_subscription flags, smart recurring cron), (D) Money Hub payments dashboard (3-tab layout, AI insights, timeline), (B) legal failsafes (monitor cron, confidence decay, feedback loop), (E) global self-learning (improvement engine, accuracy dashboard, feedback loops everywhere).
