@@ -5,6 +5,7 @@ import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { trackLetterGenerated } from '@/lib/meta-conversions';
 import { awardPoints } from '@/lib/loyalty';
+import { getProviderTerms } from '@/lib/provider-match';
 
 // Claude takes 10-20s for complaint letters — extend beyond Vercel's 10s default
 export const maxDuration = 60;
@@ -139,6 +140,33 @@ export async function POST(request: NextRequest) {
         `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`
       ).join('\n');
     }
+
+    // Fetch provider-specific terms (cancellation, complaints, ombudsman)
+    const providerTerms = await getProviderTerms(supabase, body.companyName);
+    let providerContext = '';
+    if (providerTerms) {
+      const parts = [
+        providerTerms.complaints_email && `Send complaints to: ${providerTerms.complaints_email}`,
+        providerTerms.complaints_url && `Complaints page: ${providerTerms.complaints_url}`,
+        providerTerms.complaints_response_days && `They have ${providerTerms.complaints_response_days} days to respond`,
+        providerTerms.ombudsman_name && `If unresolved, escalate to ${providerTerms.ombudsman_name} (${providerTerms.ombudsman_url})`,
+        providerTerms.notice_period_days && `Their notice period is ${providerTerms.notice_period_days} days`,
+        providerTerms.early_exit_fee_info && `Early exit fees: ${providerTerms.early_exit_fee_info}`,
+        providerTerms.cancellation_method && `Cancellation method: ${providerTerms.cancellation_method}`,
+        providerTerms.price_increase_exit_rights && `Price increase exit rights: ${providerTerms.price_increase_exit_rights}`,
+      ].filter(Boolean);
+
+      if (parts.length > 0) {
+        providerContext = `\n\nPROVIDER-SPECIFIC INFORMATION FOR ${providerTerms.display_name}:\n${parts.join('\n')}`;
+        // Add "send to" instruction
+        if (providerTerms.complaints_email) {
+          providerContext += `\n\nAddress this letter to ${providerTerms.display_name} at ${providerTerms.complaints_email}. Include "Send this letter to: ${providerTerms.complaints_email}" as a note after the letter.`;
+        }
+      }
+    }
+
+    // Append provider context to thread context
+    threadContext += providerContext;
 
     // Check Claude rate limit
     const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);

@@ -418,6 +418,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [generating, setGenerating] = useState(false);
   const [statusDropdown, setStatusDropdown] = useState(false);
   const [contractUploading, setContractUploading] = useState(false);
+  const [providerInfo, setProviderInfo] = useState<any>(null);
 
   const fetchDispute = async () => {
     try {
@@ -431,6 +432,16 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   };
 
   useEffect(() => { fetchDispute(); }, [disputeId]);
+
+  // Fetch provider info when dispute loads
+  useEffect(() => {
+    if (dispute?.provider_name) {
+      fetch(`/api/provider-terms?provider=${encodeURIComponent(dispute.provider_name)}`)
+        .then(r => r.json())
+        .then(d => { if (d) setProviderInfo(d); })
+        .catch(() => {});
+    }
+  }, [dispute?.provider_name]);
 
   const updateStatus = async (newStatus: string) => {
     await fetch(`/api/disputes/${disputeId}`, {
@@ -559,6 +570,56 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         )}
         <p className="text-slate-600 text-xs mt-2">Started {formatDate(dispute.created_at)}</p>
       </div>
+
+      {/* Provider Info Card */}
+      {providerInfo && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+          <h3 className="text-sm font-semibold text-white mb-3">About {providerInfo.display_name}</h3>
+          <div className="grid sm:grid-cols-2 gap-3 text-xs">
+            {providerInfo.cancellation_method && (
+              <div className="bg-navy-950 rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to cancel</p>
+                <p className="text-slate-300 capitalize">{providerInfo.cancellation_method}</p>
+                {providerInfo.cancellation_phone && <p className="text-mint-400">{providerInfo.cancellation_phone}</p>}
+                {providerInfo.cancellation_url && (
+                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline">Cancel online</a>
+                )}
+              </div>
+            )}
+            {providerInfo.complaints_url && (
+              <div className="bg-navy-950 rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to complain</p>
+                {providerInfo.complaints_email && <p className="text-slate-300">{providerInfo.complaints_email}</p>}
+                {providerInfo.complaints_phone && <p className="text-slate-300">{providerInfo.complaints_phone}</p>}
+                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline">Complaints page</a>
+              </div>
+            )}
+            {providerInfo.complaints_response_days && (
+              <div className="bg-navy-950 rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Response deadline</p>
+                <p className="text-slate-300">{providerInfo.complaints_response_days} days to respond</p>
+              </div>
+            )}
+            {providerInfo.ombudsman_name && (
+              <div className="bg-navy-950 rounded-lg px-3 py-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Escalate to</p>
+                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline">{providerInfo.ombudsman_name}</a>
+              </div>
+            )}
+            {providerInfo.early_exit_fee_info && (
+              <div className="bg-navy-950 rounded-lg px-3 py-2 sm:col-span-2">
+                <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Exit fees</p>
+                <p className="text-slate-300">{providerInfo.early_exit_fee_info}</p>
+              </div>
+            )}
+          </div>
+          {providerInfo.terms_url && (
+            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-mint-400 mt-3 inline-block">
+              View {providerInfo.display_name} T&Cs
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Thread */}
       <div className="mb-6">
