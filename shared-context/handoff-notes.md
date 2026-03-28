@@ -1,5 +1,22 @@
 # Handoff Notes
 
+## 2026-03-28 -- Claude Code Session (6 Parts — Polish + Features)
+**Interface:** Claude Code
+**Completed:**
+- Part 1: Money Hub payments polish — clean display names, initials logos, action buttons, pie chart, usage warnings
+- Part 2: Chatbot inline charts — Recharts PieChart/BarChart rendering from :::chart blocks
+- Part 3: Customisable dashboard — dashboard_layouts table, chatbot show/hide/reset commands
+- Part 4: Tutorials page — 8 step-by-step feature guides at /dashboard/tutorials
+- Part 5: Instagram DM webhook — Claude Haiku auto-replies via ManyChat at /api/webhooks/instagram-dm
+- Part 6: Tour fix — graceful skip for missing DOM elements, 100ms settle delay
+
+**New pages:** /dashboard/tutorials, /dashboard/money-hub/payments (rebuilt)
+**New APIs:** /api/dashboard-layout, /api/webhooks/instagram-dm
+**New tables:** dashboard_layouts, instagram_dm_log
+**Sidebar changes:** "Blog" replaced with "How It Works" tutorials link
+
+---
+
 ## 2026-03-28 -- Claude Code Session (Parts A-E Complete)
 **Interface:** Claude Code
 **Completed:**
@@ -1006,3 +1023,17 @@ ALWAYS use: "dispute", "what happened", "your rights", "next step", "their respo
 **Completed:** Comprehensive audit complete. Major findings: (1) bank_transactions.merchant_name is NULL on all 5,182 transactions, (2) merchant_rules.is_subscription is FALSE on all 102 rules, (3) 197 recurring transactions unmatched to subscriptions — detection is broken. Self-learning infra partially exists (agent_memory, agent_feedback_events, improvement_proposals) but not wired together. Prepared 5-part Claude Code prompt covering UAT fixes, self-learning legal failsafes, subscription intelligence rebuild, Money Hub Emma-killer upgrade, and global self-learning system.
 
 **Next steps:** Claude Code: Execute 5-part build. Priority order: (A) UAT fixes, (C) fix subscription detection (merchant enrichment, is_subscription flags, smart recurring cron), (D) Money Hub payments dashboard (3-tab layout, AI insights, timeline), (B) legal failsafes (monitor cron, confidence decay, feedback loop), (E) global self-learning (improvement engine, accuracy dashboard, feedback loops everywhere).
+
+---
+
+## 2026-03-28 02:03:00 - Claude Desktop (Cowork)
+**Completed:** Screenshots captured of all key pages (dashboard overview, Money Hub, payments, AI Letters, contracts, subscriptions, scanner). Identified Money Hub payments page as major issue: raw bank names, only 6 subs vs 19 on main page, no logos, no actions, no price indicators. Compiled 6-part Claude Code prompt covering payments polish, chatbot chart rendering, customisable dashboard, tutorials page, Instagram DM webhook, tour fix.
+
+**Next steps:** Claude Code: Execute 6-part build. Priority: (1) Money Hub payments page enrichment, (2) chatbot inline charts, (3) tour fix, (4) customisable dashboard with chatbot, (5) tutorials page, (6) Instagram DM webhook.
+
+---
+
+## 2026-03-28 02:08:29 - Claude Desktop (Cowork)
+**Completed:** Deep audit of Money Hub data: 5,182 transactions (Mar 2025-Mar 2026), 9 TrueLayer types, 24 user categories, 177 category overrides, income types (rental/salary/transfer/etc). Rewrote Money Hub overhaul prompt to make it an Emma-killer: 8 dashboard sections (financial snapshot with forecasting, spending intelligence with drill-down, income intelligence with tax estimates, regular payments with enriched names, top merchants drill-down, cash flow timeline, net worth tracker, AI insights). Removed incorrect last_used_date references. Emphasised TrueLayer + email as single source of truth, data consistency across all tools.
+
+**Next steps:** Claude Code: Execute 6-part build. Money Hub overhaul is #1 priority — restructure into 8 sections with full drill-down, merchant name enrichment, price change indicators, cash flow timeline, AI insights. Then chatbot charts, tour fix, customisable dashboard, tutorials, Instagram DM.
