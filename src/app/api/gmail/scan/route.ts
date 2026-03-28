@@ -85,13 +85,48 @@ export async function POST(request: NextRequest) {
       for (let page = 0; page < 5; page++) {
         const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ''}`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-        if (!res.ok) break;
+        if (!res.ok) {
+          const errBody = await res.text().catch(() => '');
+          console.error(`[gmail-scan] Gmail API error ${res.status}: ${errBody}`);
+          // If 401, token is bad — try to refresh once
+          if (res.status === 401 && tokenRow.refresh_token) {
+            console.log('[gmail-scan] Token expired, attempting refresh...');
+            try {
+              const refreshed = await refreshAccessToken(tokenRow.refresh_token);
+              accessToken = refreshed.access_token;
+              const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+              await admin.from('gmail_tokens').update({
+                access_token: accessToken,
+                token_expiry: newExpiry,
+                updated_at: new Date().toISOString(),
+              }).eq('user_id', user.id);
+              // Also update email_connections
+              await admin.from('email_connections').update({
+                access_token: accessToken,
+                token_expiry: newExpiry,
+              }).eq('user_id', user.id).eq('provider_type', 'google');
+              console.log('[gmail-scan] Token refreshed, retrying...');
+              // Retry this query with new token
+              const retryRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (retryRes.ok) {
+                const retryData = await retryRes.json();
+                for (const m of retryData.messages || []) allMessageIds.add(m.id);
+              }
+            } catch (refreshErr: any) {
+              console.error('[gmail-scan] Token refresh failed:', refreshErr.message);
+              return NextResponse.json({ error: 'Gmail token expired. Please reconnect Gmail.', opportunities: [] }, { status: 401 });
+            }
+          }
+          break;
+        }
         const data = await res.json();
         for (const m of data.messages || []) allMessageIds.add(m.id);
         if (!data.nextPageToken) break;
         pageToken = data.nextPageToken;
       }
     }
+
+    console.log(`[gmail-scan] Found ${allMessageIds.size} message IDs`);
 
     const emailsFound = allMessageIds.size;
 
@@ -231,6 +266,8 @@ Return ONLY the JSON array. No markdown fences. No explanation.`,
         debugParseError = 'No JSON array found in response';
       }
     }
+
+    console.log(`[gmail-scan] Claude returned ${opportunities.length} opportunities from ${emailDetails.length} emails. Parse issues: ${debugParseError || 'none'}`);
 
     if (!isAdmin) {
       await recordClaudeCall(user.id, usageCheck.tier);
