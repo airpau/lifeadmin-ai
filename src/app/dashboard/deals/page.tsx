@@ -259,6 +259,116 @@ interface VerifiedDeal {
   international_minutes: string | null;
   affiliate_url: string;
   last_verified_at: string;
+  promo_code: string | null;
+  promo_code_discount: string | null;
+}
+
+function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
+  const [copied, setCopied] = useState(false);
+  const [tracking, setTracking] = useState(false);
+
+  const handleClick = async () => {
+    setTracking(true);
+    try {
+      await fetch('/api/affiliate-deals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: deal.provider, category: deal.category, deal_id: deal.id, plan_name: deal.plan_name }),
+      });
+      capture('deal_clicked', { provider: deal.provider, plan: deal.plan_name });
+    } catch {}
+    setTracking(false);
+    window.open(deal.affiliate_url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyPromo = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deal.promo_code) {
+      navigator.clipboard.writeText(deal.promo_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const hasPromo = deal.price_promotional != null;
+
+  return (
+    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 hover:border-mint-400/30 transition-all flex flex-col">
+      {/* Featured badge */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[9px] uppercase tracking-wider text-mint-400 font-semibold bg-mint-400/10 px-2 py-0.5 rounded-full">Featured</span>
+        <span className="text-slate-600 text-[10px]">{deal.contract_length}</span>
+      </div>
+
+      {/* Provider + Plan */}
+      <h3 className="text-white font-semibold mb-0.5">{deal.provider}</h3>
+      <p className="text-slate-400 text-sm mb-3">{deal.plan_name}</p>
+
+      {/* Price */}
+      <div className="mb-3">
+        {hasPromo ? (
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-mint-400">£{deal.price_promotional}</span>
+            <span className="text-slate-500 text-sm line-through">£{deal.price_monthly}</span>
+            <span className="text-slate-400 text-xs">/mo</span>
+          </div>
+        ) : (
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-bold text-white">£{deal.price_monthly}</span>
+            <span className="text-slate-400 text-xs">/mo</span>
+          </div>
+        )}
+        {deal.promotional_period && (
+          <p className="text-mint-400 text-xs mt-1">{deal.promo_code_discount || `Promotional price for ${deal.promotional_period}`}</p>
+        )}
+      </div>
+
+      {/* Specs */}
+      <div className="flex flex-wrap gap-2 mb-3 text-xs text-slate-400">
+        {deal.speed_mbps && (
+          <span className="bg-navy-800 px-2 py-1 rounded">{deal.speed_mbps} Mbps</span>
+        )}
+        {deal.data_allowance && (
+          <span className="bg-navy-800 px-2 py-1 rounded">{deal.data_allowance}</span>
+        )}
+        {deal.uk_minutes && (
+          <span className="bg-navy-800 px-2 py-1 rounded">{deal.uk_minutes} UK mins</span>
+        )}
+        {deal.international_minutes && (
+          <span className="bg-navy-800 px-2 py-1 rounded">{deal.international_minutes} intl</span>
+        )}
+        {deal.setup_fee != null && (
+          <span className="bg-navy-800 px-2 py-1 rounded">{deal.setup_fee > 0 ? `£${deal.setup_fee} setup` : 'Free setup'}</span>
+        )}
+      </div>
+
+      {/* Promo code */}
+      {deal.promo_code && (
+        <button
+          onClick={copyPromo}
+          className="flex items-center justify-between gap-2 w-full bg-emerald-500/10 border border-dashed border-emerald-500/30 rounded-lg px-3 py-2 mb-3 text-left transition-all hover:bg-emerald-500/15"
+        >
+          <div>
+            <p className="text-[10px] text-emerald-400/70 uppercase tracking-wide">Promo code</p>
+            <p className="text-emerald-400 font-mono font-bold text-sm">{deal.promo_code}</p>
+          </div>
+          <span className="text-emerald-400 text-[10px] font-medium whitespace-nowrap">
+            {copied ? 'Copied!' : 'Copy'}
+          </span>
+        </button>
+      )}
+
+      {/* CTA */}
+      <button
+        onClick={handleClick}
+        disabled={tracking}
+        className="mt-auto w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-1.5"
+      >
+        {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        Get Deal →
+      </button>
+    </div>
+  );
 }
 
 export default function DealsPage() {
@@ -272,8 +382,8 @@ export default function DealsPage() {
       fetch('/api/subscriptions').then(r => r.json()).then(data => {
         if (Array.isArray(data)) setSubscriptions(data);
       }),
-      fetch('/api/deals').then(r => r.json()).then(data => {
-        setVerifiedDeals(data.deals || []);
+      fetch('/api/affiliate-deals').then(r => r.json()).then(data => {
+        setVerifiedDeals(Array.isArray(data) ? data : []);
       }),
     ]).catch(() => {}).finally(() => setLoading(false));
   }, []);
@@ -418,28 +528,14 @@ export default function DealsPage() {
       {/* Deal categories */}
       <div className="space-y-10">
         {visibleCategories.map((category) => {
-          // Get affiliate providers for this category — one card each, positioned first
           const catLower = category.toLowerCase();
-          const affiliateProviders = [...new Set(verifiedDeals.filter(d => d.category === catLower).map(d => d.provider))];
-          const affiliateCards: Deal[] = affiliateProviders.map(provider => {
-            const providerDeals = verifiedDeals.filter(d => d.provider === provider && d.category === catLower);
-            const cheapest = providerDeals.reduce((min, d) => parseFloat(String(d.price_promotional || d.price_monthly)) < parseFloat(String(min.price_promotional || min.price_monthly)) ? d : min, providerDeals[0]);
-            return {
-              id: `aff-${provider}`,
-              provider: cheapest.provider,
-              headline: `Plans from £${cheapest.price_promotional || cheapest.price_monthly}/mo`,
-              saving: providerDeals.length > 1 ? `${providerDeals.length} plans available` : cheapest.plan_name,
-              awinMid: '',
-              providerUrl: '',
-              category,
-              awinUrl: cheapest.affiliate_url,
-            };
-          });
-          // Remove hardcoded duplicates of affiliate providers
-          const affiliateNames = new Set(affiliateProviders.map(p => p.toLowerCase()));
-          const hardcoded = (DEALS[category] || []).filter(d => !affiliateNames.has(d.provider.toLowerCase()));
-          const deals = [...affiliateCards, ...hardcoded];
-          if (deals.length === 0) return null;
+          const affiliatePlans = verifiedDeals
+            .filter(d => d.category === catLower)
+            .sort((a, b) => (a.price_promotional || a.price_monthly) - (b.price_promotional || b.price_monthly));
+          // Remove hardcoded cards for providers that have affiliate plans
+          const affiliateProviderNames = new Set(affiliatePlans.map(d => d.provider.toLowerCase()));
+          const genericDeals = (DEALS[category] || []).filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()));
+          if (affiliatePlans.length === 0 && genericDeals.length === 0) return null;
 
           // Find user subscriptions matching this category
           const matchingSubs = categoryToUserSubs[category] || [];
@@ -464,11 +560,28 @@ export default function DealsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {deals.map((deal) => (
-                  <DealCard key={deal.id} deal={deal} />
-                ))}
-              </div>
+              {/* Affiliate plan cards — individual plans, shown first */}
+              {affiliatePlans.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
+                  {affiliatePlans.map((plan) => (
+                    <AffiliatePlanCard key={plan.id} deal={plan} />
+                  ))}
+                </div>
+              )}
+
+              {/* Generic provider cards */}
+              {genericDeals.length > 0 && (
+                <>
+                  {affiliatePlans.length > 0 && (
+                    <p className="text-slate-500 text-xs mb-3 mt-2">More {category.toLowerCase()} deals</p>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {genericDeals.map((deal) => (
+                      <DealCard key={deal.id} deal={deal} />
+                    ))}
+                  </div>
+                </>
+              )}
             </section>
           );
         })}
