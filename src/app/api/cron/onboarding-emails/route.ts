@@ -52,7 +52,14 @@ export async function GET(request: NextRequest) {
     const firstName = profile.first_name || profile.full_name?.split(' ')[0] || 'there';
     const email = profile.email;
 
+    // Stop onboarding after 14 days — they're no longer "new"
+    if (days > 14) continue;
+
+    // Max 1 onboarding email per user per day
+    let sentThisRun = false;
+
     for (const seq of ONBOARDING_SEQUENCE) {
+      if (sentThisRun) break;
       // Send if enough days have passed and not already sent
       if (days >= seq.dayOffset && !alreadySent.has(`${profile.id}:${seq.key}`)) {
         const sent = await sendOnboardingEmail(email, firstName, seq.key);
@@ -64,6 +71,7 @@ export async function GET(request: NextRequest) {
             email_key: seq.key,
           });
           totalSent++;
+          sentThisRun = true;
           results.push(`${email} → ${seq.key}`);
         }
 

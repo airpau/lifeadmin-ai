@@ -30,7 +30,16 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const results = { sent: 0, skipped: 0, errors: 0 };
 
+  // Get all signed-up user emails — skip waitlist emails for them
+  const { data: signedUpUsers } = await supabase.from('profiles').select('email');
+  const signedUpEmails = new Set((signedUpUsers || []).map((u: any) => u.email?.toLowerCase()).filter(Boolean));
+
   for (const subscriber of subscribers ?? []) {
+    // Skip if they've already signed up as a user
+    if (signedUpEmails.has(subscriber.email?.toLowerCase())) {
+      results.skipped++;
+      continue;
+    }
     const signupDate = new Date(subscriber.created_at);
     const daysSinceSignup = Math.floor(
       (now.getTime() - signupDate.getTime()) / (1000 * 60 * 60 * 24)

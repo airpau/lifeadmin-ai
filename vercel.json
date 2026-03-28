@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/waitlist-emails",
-      "schedule": "0 9 * * *"
+      "schedule": "0 9 * * 1,4"
     },
     {
       "path": "/api/cron/onboarding-emails",
-      "schedule": "0 10 * * *"
+      "schedule": "0 10 * * 2,5"
     },
     {
       "path": "/api/cron/bank-sync",
@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/cron/targeted-deals",
-      "schedule": "0 9 * * 3,5"
+      "schedule": "0 9 * * 3"
     },
     {
       "path": "/api/cron/email-monitor",
@@ -74,7 +74,7 @@
     },
     {
       "path": "/api/cron/churn-prevention",
-      "schedule": "0 11 * * *"
+      "schedule": "0 11 * * 2,5"
     },
     {
       "path": "/api/cron/twitter-engagement",
