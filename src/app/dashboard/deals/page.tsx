@@ -208,31 +208,33 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   };
 
   return (
-    <div className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-6 transition-all flex flex-col gap-4 ${
+    <div className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-5 transition-all flex flex-col overflow-hidden ${
       highlight ? 'border-mint-400/40 ring-1 ring-mint-400/20' : 'border-navy-700/50'
     } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-navy-600'}`}>
-      <div className="flex-1">
-        <h3 className="text-lg font-semibold text-white mb-1">{deal.provider}</h3>
-        <p className="text-slate-400 text-sm">{deal.headline}</p>
+      {/* Body — grows to fill, pushes footer to bottom */}
+      <div className="flex-1 min-w-0 mb-3">
+        <h3 className="text-base font-semibold text-white mb-1 truncate">{deal.provider}</h3>
+        <p className="text-slate-400 text-sm line-clamp-2">{deal.headline}</p>
         {deal.promoCode && (
-          <p className="text-xs text-green-400 mt-1">Promo code: <span className="font-mono font-bold bg-green-500/10 px-2 py-0.5 rounded">{deal.promoCode}</span> — apply at checkout</p>
+          <p className="text-xs text-green-400 mt-1.5">Promo: <span className="font-mono font-bold bg-green-500/10 px-1.5 py-0.5 rounded">{deal.promoCode}</span></p>
         )}
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-sm font-semibold text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full">
+      {/* Footer — pinned to bottom */}
+      <div className="flex items-center gap-2 mt-auto flex-shrink-0">
+        <span className="text-xs font-semibold text-mint-400 bg-mint-400/10 px-2 py-1 rounded-full truncate min-w-0">
           {deal.saving}
         </span>
         {DEALS_LIVE ? (
           <a
             href={deal.awinUrl || buildAwinUrl(deal.awinMid, deal.providerUrl)}
             onClick={handleClick}
-            className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap"
+            className="flex items-center gap-1 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
           >
-            {tracking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {tracking ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
             View Deal →
           </a>
         ) : (
-          <span className="bg-navy-700 text-slate-400 font-medium px-4 py-2 rounded-lg text-sm cursor-not-allowed">
+          <span className="bg-navy-700 text-slate-400 font-medium px-3 py-1.5 rounded-lg text-xs cursor-not-allowed flex-shrink-0 ml-auto">
             Coming Soon
           </span>
         )}
