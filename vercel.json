@@ -119,6 +119,10 @@
     {
       "path": "/api/cron/self-improve",
       "schedule": "0 7 * * 0"
+    },
+    {
+      "path": "/api/cron/check-deal-prices",
+      "schedule": "0 6 * * *"
     }
   ]
 }
