@@ -1266,21 +1266,39 @@ const TOUR_STEPS = [
 function GuidedTour({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [skippedSteps, setSkippedSteps] = useState(new Set<number>());
 
   useEffect(() => {
-    const el = document.getElementById(TOUR_STEPS[step].target);
-    if (el) {
-      setRect(el.getBoundingClientRect());
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      // If target doesn't exist (e.g. no disputes yet for card), skip
-      if (step < TOUR_STEPS.length - 1) setStep(step + 1);
-      else onComplete();
+    // Small delay to let DOM settle after render
+    const timer = setTimeout(() => {
+      const el = document.getElementById(TOUR_STEPS[step].target);
+      if (el) {
+        setRect(el.getBoundingClientRect());
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        // Target doesn't exist — skip to next available step
+        setSkippedSteps(prev => new Set(prev).add(step));
+        const nextStep = findNextValidStep(step);
+        if (nextStep !== null) {
+          setStep(nextStep);
+        } else {
+          onComplete();
+        }
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function findNextValidStep(from: number): number | null {
+    for (let i = from + 1; i < TOUR_STEPS.length; i++) {
+      if (document.getElementById(TOUR_STEPS[i].target)) return i;
     }
-  }, [step]);
+    return null;
+  }
 
   const handleNext = () => {
-    if (step < TOUR_STEPS.length - 1) setStep(step + 1);
+    const next = findNextValidStep(step);
+    if (next !== null) setStep(next);
     else onComplete();
   };
 
