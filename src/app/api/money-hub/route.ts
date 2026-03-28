@@ -100,6 +100,14 @@ export async function GET(request: Request) {
       merchantTotals[merchant] = (merchantTotals[merchant] || 0) + amt;
     }
 
+    // Merge similar "other" category keys into one
+    const otherKeys = Object.keys(categoryTotals).filter(k => ['other', 'Other', 'unknown', 'uncategorised', ''].includes(k));
+    if (otherKeys.length > 1) {
+      let merged = 0;
+      for (const k of otherKeys) { merged += categoryTotals[k]; delete categoryTotals[k]; }
+      categoryTotals['other'] = merged;
+    }
+
     const categoryBreakdown = Object.entries(categoryTotals)
       .map(([cat, total]) => ({ category: cat, total: parseFloat(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total);
@@ -126,7 +134,7 @@ export async function GET(request: Request) {
       }
     }
     if (otherTotal > 0) {
-      incomeByType['Other'] = (incomeByType['Other'] || 0) + otherTotal;
+      incomeByType['other'] = (incomeByType['other'] || 0) + otherTotal;
     }
 
     // Monthly trends (last 6 months)
