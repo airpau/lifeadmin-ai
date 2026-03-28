@@ -33,7 +33,7 @@ const navItems = [
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
-  { name: 'Blog', href: '/blog', icon: BookOpen },
+  { name: 'How It Works', href: '/dashboard/tutorials', icon: BookOpen },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
