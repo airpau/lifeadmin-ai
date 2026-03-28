@@ -179,7 +179,32 @@ export default function ChatWidget() {
       if (data.toolsUsed) {
         setLoadingMessage(null);
       }
-      setMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
+      const reply = data.reply;
+
+      // Execute any dashboard commands in the response
+      const dashboardCmds = reply.match(/:::dashboard\s*(\{[\s\S]*?\})\s*:::/g);
+      if (dashboardCmds) {
+        for (const cmd of dashboardCmds) {
+          const jsonMatch = cmd.match(/:::dashboard\s*(\{[\s\S]*?\})\s*:::/);
+          if (jsonMatch) {
+            try {
+              const parsed = JSON.parse(jsonMatch[1]);
+              if (parsed.action === 'reset') {
+                fetch('/api/dashboard-layout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset' }) });
+              } else if (parsed.action === 'show' && parsed.widget) {
+                fetch('/api/dashboard-layout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update_widget', widgetId: parsed.widget, changes: { visible: true } }) });
+              } else if (parsed.action === 'hide' && parsed.widget) {
+                fetch('/api/dashboard-layout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update_widget', widgetId: parsed.widget, changes: { visible: false } }) });
+              }
+            } catch {}
+          }
+        }
+      }
+
+      // Strip dashboard commands from displayed message
+      const cleanReply = reply.replace(/:::dashboard\s*\{[\s\S]*?\}\s*:::/g, '').trim();
+
+      setMessages([...updatedMessages, { role: 'assistant', content: cleanReply }]);
       if (data.escalated && data.ticketNumber) {
         setEscalatedTicket(data.ticketNumber);
         // Clear chat history after ticket is created so next conversation starts fresh
