@@ -804,33 +804,114 @@ export default function MoneyHubPage() {
         </div>
       </div>
 
-      {/* ═══ SECTION 1: Financial Overview ═══ */}
-      <div id="tour-overview" className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <TrendingUp className="h-5 w-5 text-green-400 mb-2" />
-          <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyIncome)}</p>
-          <p className="text-slate-400 text-xs">Income this month</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <TrendingDown className="h-5 w-5 text-red-400 mb-2" />
-          <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyOutgoings)}</p>
-          <p className="text-slate-400 text-xs">Spent this month</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
-          <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {data.overview.netPosition >= 0 ? '+' : '-'}£{fmt(Math.abs(data.overview.netPosition))}
-          </p>
-          <p className="text-slate-400 text-xs">Net position</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <Calendar className="h-5 w-5 text-blue-400 mb-2" />
-          <div className="w-full bg-navy-700 rounded-full h-2 mb-2">
-            <div className="bg-mint-400 h-2 rounded-full" style={{ width: `${data.overview.monthProgress}%` }} />
-          </div>
-          <p className="text-slate-400 text-xs">Day {data.overview.dayOfMonth} of {data.overview.daysInMonth}</p>
-        </div>
-      </div>
+      {/* ═══ SECTION 1: Financial Snapshot ═══ */}
+      {(() => {
+        // Calculate month-on-month changes from trends data
+        const trends = data.spending.monthlyTrends || [];
+        const prevMonth = trends.length >= 2 ? trends[trends.length - 2] : null;
+        const incomeChange = prevMonth ? data.overview.monthlyIncome - prevMonth.income : 0;
+        const spendChange = prevMonth ? data.overview.monthlyOutgoings - prevMonth.outgoings : 0;
+
+        // Forecast: projected end-of-month balance
+        const dailyAvgSpend = data.overview.dayOfMonth > 0 ? data.overview.monthlyOutgoings / data.overview.dayOfMonth : 0;
+        const remainingDays = data.overview.daysInMonth - data.overview.dayOfMonth;
+        const projectedSpend = data.overview.monthlyOutgoings + (dailyAvgSpend * remainingDays);
+        const projectedNet = data.overview.monthlyIncome - projectedSpend;
+
+        // Biggest change this month
+        let biggestChangeText = '';
+        if (prevMonth && data.spending.categories.length > 0) {
+          // This is an approximation - we show top spending category as the insight
+          const topCat = data.spending.categories[0];
+          const catLabel = CATEGORY_LABELS[topCat.category]?.label || topCat.category;
+          if (spendChange > 50) biggestChangeText = `Your spending is up £${fmt(Math.abs(spendChange))} vs last month. Top category: ${catLabel} (£${fmt(topCat.total)})`;
+          else if (spendChange < -50) biggestChangeText = `Your spending is down £${fmt(Math.abs(spendChange))} vs last month`;
+        }
+
+        return (
+          <>
+            <div id="tour-overview" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+                <TrendingUp className="h-5 w-5 text-green-400 mb-2" />
+                <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyIncome)}</p>
+                <p className="text-slate-400 text-xs">Income this month</p>
+                {incomeChange !== 0 && (
+                  <p className={`text-[10px] mt-1 font-medium ${incomeChange > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {incomeChange > 0 ? '↑' : '↓'} £{fmt(Math.abs(incomeChange))} vs last month
+                  </p>
+                )}
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+                <TrendingDown className="h-5 w-5 text-red-400 mb-2" />
+                <p className="text-2xl font-bold text-white">£{fmt(data.overview.monthlyOutgoings)}</p>
+                <p className="text-slate-400 text-xs">Spent this month</p>
+                {spendChange !== 0 && (
+                  <p className={`text-[10px] mt-1 font-medium ${spendChange > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {spendChange > 0 ? '↑' : '↓'} £{fmt(Math.abs(spendChange))} vs last month
+                  </p>
+                )}
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+                <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
+                <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {data.overview.netPosition >= 0 ? '+' : '-'}£{fmt(Math.abs(data.overview.netPosition))}
+                </p>
+                <p className="text-slate-400 text-xs">Net position</p>
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+                <Calendar className="h-5 w-5 text-blue-400 mb-2" />
+                <div className="w-full bg-navy-700 rounded-full h-2 mb-2">
+                  <div className="bg-mint-400 h-2 rounded-full" style={{ width: `${data.overview.monthProgress}%` }} />
+                </div>
+                <p className="text-slate-400 text-xs">Day {data.overview.dayOfMonth} of {data.overview.daysInMonth}</p>
+              </div>
+            </div>
+
+            {/* Forecast + Insight Banner */}
+            {(remainingDays > 0 || biggestChangeText) && (
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4 flex flex-col sm:flex-row gap-4">
+                {remainingDays > 0 && (
+                  <div className="flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">End of month forecast</p>
+                    <p className={`text-sm font-semibold ${projectedNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {projectedNet >= 0 ? '+' : '-'}£{fmt(Math.abs(projectedNet))} projected net
+                    </p>
+                    <p className="text-[10px] text-slate-500">Based on £{fmt(dailyAvgSpend)}/day average spend x {remainingDays} days remaining</p>
+                  </div>
+                )}
+                {biggestChangeText && (
+                  <div className="flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">This month&apos;s insight</p>
+                    <p className="text-sm text-slate-300">{biggestChangeText}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Regular Payments Summary */}
+            {data.subscriptions.count > 0 && (
+              <Link
+                href="/dashboard/money-hub/payments"
+                className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4 hover:border-mint-400/30 transition-all block"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CreditCard className="h-5 w-5 text-purple-400" />
+                    <div>
+                      <p className="text-white font-medium text-sm">Regular Payments</p>
+                      <p className="text-slate-500 text-xs">{data.subscriptions.count} active payments totalling £{fmt(data.subscriptions.monthlyTotal)}/month</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-mint-400 font-bold">£{fmt(data.subscriptions.annualTotal)}/yr</p>
+                    <p className="text-[10px] text-mint-400">View all →</p>
+                  </div>
+                </div>
+              </Link>
+            )}
+          </>
+        );
+      })()}
 
       {/* ═══ SECTION 1b: Income Breakdown ═══ */}
       <div id="tour-income" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
