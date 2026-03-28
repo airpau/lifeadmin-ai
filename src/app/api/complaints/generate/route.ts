@@ -77,8 +77,21 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(1);
 
-      if (contracts && contracts.length > 0) {
-        const c = contracts[0];
+      // Fallback: if no contract linked to dispute, check by provider name
+      let contractData = contracts && contracts.length > 0 ? contracts : null;
+      if (!contractData && body.companyName) {
+        const { data: providerContracts } = await supabase
+          .from('contract_extractions')
+          .select('*')
+          .eq('user_id', user.id)
+          .ilike('provider_name', body.companyName)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        contractData = providerContracts && providerContracts.length > 0 ? providerContracts : null;
+      }
+
+      if (contractData && contractData.length > 0) {
+        const c = contractData[0];
         const terms = [
           c.minimum_term && `Minimum term: ${c.minimum_term}`,
           c.notice_period && `Notice period: ${c.notice_period}`,
