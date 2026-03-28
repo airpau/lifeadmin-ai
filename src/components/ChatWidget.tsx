@@ -4,6 +4,89 @@ import { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+
+const CHART_COLORS = ['#34d399', '#a78bfa', '#3b82f6', '#f59e0b', '#ef4444', '#64748b', '#ec4899', '#14b8a6'];
+
+function InlineChart({ chartJson }: { chartJson: string }) {
+  try {
+    const chart = JSON.parse(chartJson);
+    if (!chart.data || !Array.isArray(chart.data)) return null;
+
+    const tooltipStyle = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', fontSize: '11px' };
+
+    if (chart.chart_type === 'pie') {
+      return (
+        <div className="my-2 bg-navy-950 rounded-lg p-3">
+          {chart.title && <p className="text-xs text-white font-medium mb-2">{chart.title}</p>}
+          <ResponsiveContainer width="100%" height={160}>
+            <PieChart>
+              <Pie data={chart.data} cx="50%" cy="50%" innerRadius={30} outerRadius={55} paddingAngle={2} dataKey="value" nameKey="name">
+                {chart.data.map((_: any, i: number) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: '#e2e8f0' }} formatter={(v: any) => [`£${v}`, '']} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {chart.data.map((d: any, i: number) => (
+              <span key={i} className="text-[9px] text-slate-400 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full inline-block" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                {d.name}: £{d.value}
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (chart.chart_type === 'bar') {
+      return (
+        <div className="my-2 bg-navy-950 rounded-lg p-3">
+          {chart.title && <p className="text-xs text-white font-medium mb-2">{chart.title}</p>}
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={chart.data}>
+              <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} width={40} />
+              <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: '#e2e8f0' }} formatter={(v: any) => [`£${v}`, '']} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                {chart.data.map((_: any, i: number) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function renderAssistantMessage(content: string) {
+  // Split content into text and chart blocks
+  // Chart blocks are marked as :::chart {...} :::
+  const parts = content.split(/(:::chart\s*\{[\s\S]*?\}\s*:::)/g);
+
+  return parts.filter(Boolean).map((part, i) => {
+    // Check if this is a chart block
+    const chartMatch = part.match(/:::chart\s*(\{[\s\S]*?\})\s*:::/);
+    if (chartMatch) {
+      return <InlineChart key={i} chartJson={chartMatch[1]} />;
+    }
+
+    // Regular text — render with markdown-lite formatting
+    return part.split('\n').filter(Boolean).map((line, j) => {
+      if (line.startsWith('- ') || line.startsWith('• ')) {
+        return <p key={`${i}-${j}`} className="pl-3 before:content-['•'] before:mr-2 before:text-mint-400">{line.replace(/^[-•]\s*/, '')}</p>;
+      }
+      if (line.startsWith('**') && line.endsWith('**')) {
+        return <p key={`${i}-${j}`} className="font-semibold text-white">{line.replace(/\*\*/g, '')}</p>;
+      }
+      return <p key={`${i}-${j}`}>{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
+    });
+  });
+}
 
 interface Message {
   role: 'user' | 'assistant';
@@ -236,15 +319,7 @@ export default function ChatWidget() {
                     msg.content
                   ) : (
                     <div className="space-y-2">
-                      {msg.content.split('\n').filter(Boolean).map((line, j) => {
-                        if (line.startsWith('- ') || line.startsWith('• ')) {
-                          return <p key={j} className="pl-3 before:content-['•'] before:mr-2 before:text-mint-400">{line.replace(/^[-•]\s*/, '')}</p>;
-                        }
-                        if (line.startsWith('**') && line.endsWith('**')) {
-                          return <p key={j} className="font-semibold text-white">{line.replace(/\*\*/g, '')}</p>;
-                        }
-                        return <p key={j}>{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
-                      })}
+                      {renderAssistantMessage(msg.content)}
                     </div>
                   )}
                 </div>
