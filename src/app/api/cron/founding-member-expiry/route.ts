@@ -15,14 +15,14 @@ function getAdmin() {
 const ALERT_WINDOWS = [7, 3, 1]; // Days before expiry to send reminders
 
 function buildReminderEmail(name: string, daysLeft: number, tier: string): string {
-  const urgencyColor = daysLeft <= 1 ? '#ef4444' : daysLeft <= 3 ? '#f59e0b' : '#3b82f6';
+  const urgencyColor = daysLeft <= 1 ? '#ef4444' : daysLeft <= 3 ? '#34d399' : '#3b82f6';
   const urgencyLabel = daysLeft <= 1 ? 'Tomorrow' : `In ${daysLeft} days`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:600px;margin:0 auto;padding:32px;">
   <div style="text-align:center;padding:24px 0;">
-    <div style="font-size:24px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></div>
+    <div style="font-size:24px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></div>
   </div>
   <div style="background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:32px;">
     <div style="text-align:center;margin-bottom:24px;">
@@ -44,7 +44,7 @@ function buildReminderEmail(name: string, daysLeft: number, tier: string): strin
     </p>
 
     <div style="background:#1e293b;border-radius:12px;padding:20px;margin:24px 0;">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;">What you'll lose on Free:</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;">What you'll lose on Free:</p>
       <ul style="color:#94a3b8;padding-left:20px;line-height:2;margin:0;">
         <li>Unlimited complaint letters (drops to 3/month)</li>
         <li>Daily bank auto-sync</li>
@@ -56,7 +56,7 @@ function buildReminderEmail(name: string, daysLeft: number, tier: string): strin
     </div>
 
     <div style="text-align:center;margin:32px 0;">
-      <a href="https://paybacker.co.uk/pricing" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#0f172a;font-weight:700;padding:16px 40px;border-radius:12px;text-decoration:none;font-size:16px;">
+      <a href="https://paybacker.co.uk/pricing" style="display:inline-block;background:linear-gradient(135deg,#34d399,#10b981);color:#0f172a;font-weight:700;padding:16px 40px;border-radius:12px;text-decoration:none;font-size:16px;">
         Keep Pro for just £9.99/month
       </a>
       <p style="color:#64748b;font-size:12px;margin-top:8px;">or Essential from £4.99/month</p>
@@ -78,7 +78,7 @@ function buildExpiredEmail(name: string): string {
 <body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:600px;margin:0 auto;padding:32px;">
   <div style="text-align:center;padding:24px 0;">
-    <div style="font-size:24px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></div>
+    <div style="font-size:24px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></div>
   </div>
   <div style="background:#0f172a;border:1px solid #1e293b;border-radius:16px;padding:32px;">
     <p style="color:#e2e8f0;font-size:16px;line-height:1.6;">Hi ${name || 'there'},</p>
@@ -107,7 +107,7 @@ function buildExpiredEmail(name: string): string {
     </div>
 
     <div style="text-align:center;margin:32px 0;">
-      <a href="https://paybacker.co.uk/pricing" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#0f172a;font-weight:700;padding:16px 40px;border-radius:12px;text-decoration:none;font-size:16px;">
+      <a href="https://paybacker.co.uk/pricing" style="display:inline-block;background:linear-gradient(135deg,#34d399,#10b981);color:#0f172a;font-weight:700;padding:16px 40px;border-radius:12px;text-decoration:none;font-size:16px;">
         Upgrade to Pro - £9.99/month
       </a>
       <p style="color:#64748b;font-size:12px;margin-top:8px;">or Essential from £4.99/month</p>

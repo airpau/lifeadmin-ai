@@ -1,27 +1,27 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 
-// ─── Shared styles (matches Paybacker brand: dark navy + amber) ──────────────
+// ─── Shared styles (matches Paybacker brand: dark navy + mint) ───────────────
 
 const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;`;
 const header = `background:#0f172a;padding:28px 32px 20px;border-bottom:1px solid #1e293b;`;
 const body = `padding:32px;`;
-const h1 = `color:#f59e0b;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
+const h1 = `color:#34d399;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
 const p = `color:#94a3b8;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#1e293b;border-radius:10px;padding:20px 24px;margin:20px 0;border-left:3px solid #f59e0b;`;
-const cta = `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px;text-decoration:none;margin:8px 0;`;
+const box = `background:#1e293b;border-radius:10px;padding:20px 24px;margin:20px 0;border-left:3px solid #34d399;`;
+const cta = `display:inline-block;background:#34d399;color:#0f172a;font-weight:700;font-size:15px;padding:13px 26px;border-radius:8px;text-decoration:none;margin:8px 0;`;
 const footer = `padding:20px 32px 28px;border-top:1px solid #1e293b;`;
 const footerText = `color:#334155;font-size:12px;line-height:1.6;margin:0;`;
 
 const Logo = () => `
   <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    <span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span>
   </a>
 `;
 
 const Footer = (listName = 'waitlist') => `
   <div style="${footer}">
     <p style="${footerText}">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/>
+      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/>
       You're receiving this because you joined the Paybacker ${listName}.<br/>
       <a href="https://paybacker.co.uk/legal/privacy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
       <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
@@ -54,7 +54,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       Thanks for joining Paybacker. We're building an AI that disputes overcharges, cancels forgotten subscriptions, and writes formal complaints — all automatically, all citing UK consumer law.
     </p>
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT YOU GET AS AN EARLY MEMBER</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT YOU GET AS AN EARLY MEMBER</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
         <li>Early access invite before public launch</li>
         <li>3 months free on any paid plan</li>
@@ -83,17 +83,17 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">Here's exactly what happens when you connect your Gmail to Paybacker — and why it works.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">🔍 STEP 1 — INBOX SCAN</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">🔍 STEP 1 — INBOX SCAN</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">The AI scans 2 years of billing emails — energy, broadband, mobile, streaming. It looks for overcharges, upcoming renewals, forgotten subscriptions, and missed refund windows.</p>
     </div>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">💷 STEP 2 — SPOTS WHAT YOU'D MISS</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">💷 STEP 2 — SPOTS WHAT YOU'D MISS</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">Most people don't notice when their broadband quietly rises by £8/month. Or that they're still paying for a subscription they cancelled in their head six months ago. The AI catches all of it.</p>
     </div>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">✅ STEP 3 — YOU REVIEW AND SEND</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">✅ STEP 3 — YOU REVIEW AND SEND</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">Paybacker generates the complaint letter or cancellation email — citing UK consumer law — and shows it to you. Review it, edit if you like, and send it from your own email in under a minute.</p>
     </div>
 
@@ -117,23 +117,23 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">UK energy companies collected £1.5 billion in excess profit in 2023. Some of it came from customers who simply didn't know their rights.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 6px;font-size:14px;">1. You can claim backdated refunds</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 6px;font-size:14px;">1. You can claim backdated refunds</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">If you were overcharged, you're entitled to a refund going back up to 6 years. They won't volunteer this.</p>
     </div>
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 6px;font-size:14px;">2. A formal complaint starts a legal clock</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 6px;font-size:14px;">2. A formal complaint starts a legal clock</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">They have 8 weeks to resolve it — or you escalate to the Energy Ombudsman, which costs them far more than just paying you.</p>
     </div>
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 6px;font-size:14px;">3. Price increases have rules they must follow</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 6px;font-size:14px;">3. Price increases have rules they must follow</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">Under Ofgem rules, they must notify you in writing before increasing prices. If they didn't, you may have grounds for a complaint.</p>
     </div>
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 6px;font-size:14px;">4. Exit fees are often unenforceable</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 6px;font-size:14px;">4. Exit fees are often unenforceable</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">If they changed your tariff without consent, exit fees may not apply under Consumer Rights Act 2015, s.50.</p>
     </div>
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 6px;font-size:14px;">5. Citing the law changes everything</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 6px;font-size:14px;">5. Citing the law changes everything</p>
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">A letter citing "Consumer Rights Act 2015, s.54" lands very differently than "I'm unhappy with my bill." Paybacker writes letters that cite all of this — automatically.</p>
     </div>
 
@@ -185,7 +185,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">When someone connects their Gmail to Paybacker, the subscriptions agent runs immediately. Here's what it typically finds.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT THE AI LOOKS FOR</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT THE AI LOOKS FOR</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
         <li>Recurring charges from services you forgot you signed up for</li>
         <li>Free trials that quietly converted to paid plans</li>
@@ -217,7 +217,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">We're opening Paybacker to our first users very soon. As a waitlist member, you're at the front of the queue — and you get something regular users won't.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">YOUR EARLY ACCESS BENEFITS</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:15px;">YOUR EARLY ACCESS BENEFITS</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
         <li>✅ <strong style="color:#e2e8f0;">3 months free</strong> on any paid plan</li>
         <li>✅ <strong style="color:#e2e8f0;">Founding member</strong> — locked-in pricing forever</li>
@@ -246,7 +246,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">Most energy and broadband contracts auto-renew into a more expensive tariff. The provider is required to notify you — but the notice is usually buried in a boring email most people ignore.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT TO DO AT RENEWAL</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT TO DO AT RENEWAL</p>
       <ul style="color:#94a3b8;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
         <li><strong style="color:#e2e8f0;">30 days before:</strong> Contact them to negotiate — you have the most leverage here.</li>
         <li><strong style="color:#e2e8f0;">On renewal day:</strong> You can still cancel within 14 days under the Consumer Contracts Regulations 2013.</li>
@@ -275,7 +275,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">Paybacker is now in early access. As a waitlist member, your first month is free on any paid plan.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">WHAT YOU GET FROM DAY ONE</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:15px;">WHAT YOU GET FROM DAY ONE</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
         <li>Connect your bank account to detect all subscriptions instantly</li>
         <li>Track every contract with renewal dates and alerts</li>
@@ -290,7 +290,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Claim your free month →</a>
 
     <p style="color:#64748b;font-size:13px;margin-top:16px;">
-      Use code <strong style="color:#f59e0b;">WAITLIST</strong> at checkout for your free first month.
+      Use code <strong style="color:#34d399;">WAITLIST</strong> at checkout for your free first month.
     </p>
   </div>
   ${Footer()}

@@ -59,7 +59,7 @@ export function buildWeeklyDigestEmail(
     <div style="background: #162544; border-radius: 12px; padding: 20px; margin: 20px 0;">
       <h2 style="color: white; font-size: 16px; margin: 0 0 12px;">Budget Tracker</h2>
       ${data.budgetAlerts.map(b => {
-        const barColor = b.percentage >= 100 ? '#ef4444' : b.percentage >= 80 ? '#f59e0b' : '#34d399';
+        const barColor = b.percentage >= 100 ? '#ef4444' : b.percentage >= 80 ? '#34d399' : '#34d399';
         const barWidth = Math.min(100, b.percentage);
         return `
           <div style="margin-bottom: 12px;">
