@@ -1,5 +1,23 @@
 # Handoff Notes
 
+## 2026-03-28 -- Claude Code Session (Phase 3 Complete — All Phases Done)
+**Interface:** Claude Code
+**Completed:**
+- Phase 3: Contract Vault — FULLY COMPLETE
+  - Private contracts storage bucket with user-scoped RLS
+  - /api/contracts/upload + /api/contracts (list/delete)
+  - /dashboard/contracts: card grid, detail view, upload modal, filters
+  - "My Contracts" in sidebar, status badges, unfair clause warnings
+  - Daily contract expiry cron, letter generation integration
+  - Subscription sync from extracted contract terms
+
+**ALL 3 PHASES OF AI LETTERS INTELLIGENCE UPGRADE ARE COMPLETE:**
+1. Phase 1: Dispute threads + correspondence tracking
+2. Phase 2: Legal intelligence (56 refs, anti-hallucination, weekly verification cron)
+3. Phase 3: Contract vault, upload UI, alerts, subscription linking
+
+---
+
 ## 2026-03-28 -- Claude Code Session (Phase 2 Complete)
 **Interface:** Claude Code
 **Completed:**
@@ -921,3 +939,10 @@ ALWAYS use: "dispute", "what happened", "your rights", "next step", "their respo
    - Add visual confidence badges using the strength column (values likely: strong/moderate/weak)
    - Green badge = strong, Amber = moderate, Grey = informational
    - Show on the letter preview UI next to each cited reference
+
+---
+
+## 2026-03-28 01:16:14 - Claude Desktop (Cowork)
+**Completed:** Phase 3 architecture designed. Audited existing infrastructure: contract_extractions table exists but locked to disputes (dispute_id NOT NULL, 0 rows), subscriptions has contract fields but no file upload, correspondence-files bucket exists but no contracts bucket, contract_extractions missing UPDATE/DELETE RLS.
+
+**Next steps:** Phase 3 scope: 1) Schema changes (make dispute_id nullable, add subscription_id FK, add UPDATE/DELETE RLS, create private contracts storage bucket), 2) Contract upload API with Claude Vision extraction, 3) Contract Vault page at /dashboard/contracts with cards/filters/detail view, 4) Contract expiry alerts (30-day warnings via money_hub_alerts), 5) Link contracts to subscriptions with sync, 6) Integration with letter generation (inject contract terms into prompts). Full prompt provided to Paul for Claude Code session.
