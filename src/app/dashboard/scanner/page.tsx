@@ -202,17 +202,43 @@ export default function ScannerPage() {
   const handleScanEmail = async (connectionId: string) => {
     setScanningEmailId(connectionId);
     try {
-      const res = await fetch('/api/email/scan', {
+      // Find the connection to determine which scanner to use
+      const conn = emailConns.find((c: any) => c.id === connectionId);
+      let endpoint = '/api/email/scan';
+      let body: any = { connectionId };
+
+      // OAuth connections use dedicated scanners (no IMAP decrypt needed)
+      if (conn?.authMethod === 'oauth' && conn?.provider === 'google') {
+        endpoint = '/api/gmail/scan';
+        body = {};
+      } else if (conn?.authMethod === 'oauth' && conn?.provider === 'outlook') {
+        endpoint = '/api/outlook/scan';
+        body = {};
+      }
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (res.ok) {
+      if (data.error) {
+        setError(`Scan error: ${data.error}`);
+      } else if (res.ok) {
         setEmailScanResults((prev) => ({ ...prev, [connectionId]: data.opportunities?.length || 0 }));
+        // Merge opportunities into the main list
+        if (data.opportunities?.length > 0) {
+          setOpportunities((prev) => {
+            const existingKeys = new Set(prev.map((o: any) => `${o.provider}-${o.title}`));
+            const newOnly = data.opportunities.filter((o: any) => !existingKeys.has(`${o.provider}-${o.title}`));
+            return [...prev, ...newOnly];
+          });
+        }
         loadEmailConnections();
       }
-    } catch {}
+    } catch (err: any) {
+      setError(err.message || 'Scan failed');
+    }
     setScanningEmailId(null);
   };
 
