@@ -720,36 +720,36 @@ export default function ScannerPage() {
     setScanning(true);
     setError(null);
 
-    // Hard timeout — stop spinner after 45 seconds no matter what
-    const timeout = setTimeout(() => setScanning(false), 45000);
-
     try {
-      // Only scan Gmail for now (Outlook handled separately)
-      const gmailAccount = connectedAccounts.find(a => a.provider === 'gmail');
-      if (!gmailAccount) {
-        setError('No Gmail account connected');
-        setScanning(false);
-        clearTimeout(timeout);
-        return;
-      }
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 55000);
 
       const res = await fetch('/api/gmail/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        signal: controller.signal,
       });
 
-      const data = await res.json();
+      clearTimeout(fetchTimeout);
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        data = { error: 'Scan timed out. Please try again.' };
+      }
 
       if (data.error) {
         setError(data.error);
-      } else {
+      }
+
+      const opps = data.opportunities || [];
+      if (opps.length > 0) {
         const today = new Date().toISOString().split('T')[0];
-        const all: Opportunity[] = (data.opportunities || []).map((o: any, i: number) => ({
-          id: o.id || `opp_${Date.now()}_${i}`,
+        setOpportunities(opps.map((o: any, i: number) => ({
+          id: o.id || `opp_${i}`,
           type: o.type || 'overcharge',
           category: o.category || 'other',
-          title: o.title || 'Unknown opportunity',
+          title: o.title || 'Opportunity found',
           description: o.description || '',
           amount: o.amount || 0,
           confidence: o.confidence || 60,
@@ -759,17 +759,14 @@ export default function ScannerPage() {
           suggestedAction: o.suggestedAction || 'track',
           paymentAmount: o.paymentAmount || null,
           paymentFrequency: o.paymentFrequency || null,
-        }));
-
+        })));
         setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
-        setOpportunities(all); // Replace entirely — fresh scan
         setScannedAt(new Date().toISOString());
       }
-    } catch (err: any) {
-      setError(err.message || 'Scan failed');
+    } catch {
+      setError('Scan timed out or failed. Please try again.');
     }
 
-    clearTimeout(timeout);
     setScanning(false);
   };
 
