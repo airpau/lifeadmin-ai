@@ -27,12 +27,7 @@ const CYCLE_LABELS: Record<string, string> = {
   monthly: '/mo', weekly: '/wk', yearly: '/yr', quarterly: '/qtr',
 };
 
-const CAT_LABELS: Record<string, string> = {
-  streaming: 'Streaming', software: 'Software', fitness: 'Gym & Fitness',
-  utility: 'Energy', broadband: 'Broadband', mobile: 'Mobile',
-  insurance: 'Insurance', mortgage: 'Mortgage', council_tax: 'Council Tax',
-  loan: 'Loans', water: 'Water', food: 'Food', other: 'Other',
-};
+import { getCategoryLabel } from '@/lib/category-config';
 
 const PIE_COLORS = ['#a78bfa', '#3b82f6', '#34d399', '#f59e0b', '#ef4444', '#64748b'];
 
@@ -107,7 +102,7 @@ function PaymentCard({ payment, type }: { payment: Payment; type: string }) {
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-white font-semibold text-sm truncate">{name}</h3>
-              <span className="text-slate-500 text-xs">{CAT_LABELS[payment.category] || payment.category}</span>
+              <span className="text-slate-500 text-xs">{getCategoryLabel(payment.category)}</span>
             </div>
             <div className="text-right flex-shrink-0 ml-2">
               <p className="text-mint-400 font-bold">£{Math.abs(payment.amount).toFixed(2)}</p>
