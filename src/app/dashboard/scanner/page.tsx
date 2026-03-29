@@ -745,7 +745,22 @@ export default function ScannerPage() {
         setError([...errors, ...apiErrors].join('. '));
       }
 
-      const all: Opportunity[] = results.flatMap((d) => d.opportunities || []);
+      const today = new Date().toISOString().split('T')[0];
+      const all: Opportunity[] = results.flatMap((d) => (d.opportunities || []).map((o: any, i: number) => ({
+        id: o.id || `opp_${Date.now()}_${i}`,
+        type: o.type || 'overcharge',
+        category: o.category || 'other',
+        title: o.title || 'Unknown opportunity',
+        description: o.description || '',
+        amount: o.amount || 0,
+        confidence: o.confidence || 60,
+        provider: o.provider || 'Unknown',
+        detected: o.detected || today,
+        status: 'new' as const,
+        suggestedAction: o.suggestedAction || 'track',
+        paymentAmount: o.paymentAmount || null,
+        paymentFrequency: o.paymentFrequency || null,
+      })));
 
       const totalFound = results.reduce((s, d) => s + (d.emailsFound || 0), 0);
       const totalScanned = results.reduce((s, d) => s + (d.emailsScanned || 0), 0);
