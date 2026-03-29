@@ -45,17 +45,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Connection is not active' }, { status: 400 });
     }
 
-    // Decrypt password
+    // For OAuth connections (Google/Outlook), use their dedicated scan endpoints
+    // These connections store plain-text OAuth tokens, not encrypted IMAP passwords
+    if (conn.auth_method === 'oauth') {
+      if (conn.provider_type === 'google') {
+        // Proxy to Gmail scan which handles token refresh and Gmail API
+        console.log('[email/scan] Redirecting Google OAuth connection to /api/gmail/scan');
+        const gmailRes = await fetch(new URL('/api/gmail/scan', req.url), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': req.headers.get('cookie') || '',
+          },
+        });
+        const gmailData = await gmailRes.json();
+        return NextResponse.json(gmailData, { status: gmailRes.status });
+      }
+      if (conn.provider_type === 'outlook') {
+        console.log('[email/scan] Redirecting Outlook OAuth connection to /api/outlook/scan');
+        const outlookRes = await fetch(new URL('/api/outlook/scan', req.url), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': req.headers.get('cookie') || '',
+          },
+        });
+        const outlookData = await outlookRes.json();
+        return NextResponse.json(outlookData, { status: outlookRes.status });
+      }
+    }
+
+    // IMAP connections — decrypt password
     let password: string;
     try {
-      password = decryptPassword(conn.encrypted_password);
+      password = decryptPassword(conn.imap_password_encrypted || conn.encrypted_password);
     } catch (err: any) {
       console.error('[email/scan] Decryption error:', err.message);
       return NextResponse.json({ error: 'Failed to decrypt credentials' }, { status: 500 });
     }
 
     // Scan emails via IMAP
-    console.log(`[email/scan] Scanning ${conn.email} via ${conn.imap_host}:${conn.imap_port}`);
+    console.log(`[email/scan] Scanning ${conn.email_address} via ${conn.imap_host}:${conn.imap_port}`);
     const emails = await scanEmailsViaImap(
       conn.imap_host,
       conn.imap_port,
