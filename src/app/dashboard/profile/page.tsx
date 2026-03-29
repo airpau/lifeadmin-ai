@@ -679,13 +679,13 @@ export default function ProfilePage() {
           </div>
           {effectiveTier === 'free' ? (
             <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-              Upgrade
+              Upgrade Plan
             </Link>
-          ) : hasActiveStripe ? (
-            <a href="/api/stripe/portal" className="bg-navy-800 hover:bg-navy-700 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+          ) : (
+            <button onClick={handleManageBilling} className="bg-navy-800 hover:bg-navy-700 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
               Manage Billing
-            </a>
-          ) : null}
+            </button>
+          )}
         </div>
       </div>
 
