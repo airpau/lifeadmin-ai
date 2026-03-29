@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { scanEmailsForOpportunities, refreshAccessToken } from '@/lib/gmail';
@@ -75,63 +75,45 @@ export async function POST(request: NextRequest) {
   try {
     // Fetch email list using Gmail API directly
     const queries = [
-      'subject:(bill OR invoice OR statement OR renewal OR subscription OR receipt OR "direct debit" OR "price increase" OR mortgage OR loan OR "credit card" OR flight OR compensation OR "council tax") newer_than:730d',
-      'from:(netflix OR spotify OR disney OR amazon OR apple OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf) newer_than:730d',
+      'subject:(bill OR invoice OR statement OR renewal OR subscription OR "direct debit" OR "price increase") newer_than:90d',
+      'from:(netflix OR spotify OR disney OR amazon OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf OR talktalk OR plusnet) newer_than:90d',
     ];
+
+    // Refresh token first if expired (token_expiry was hours ago)
+    if (tokenRow.token_expiry && new Date(tokenRow.token_expiry) < new Date()) {
+      if (!tokenRow.refresh_token) {
+        return NextResponse.json({ error: 'Gmail token expired, please reconnect', opportunities: [] }, { status: 401 });
+      }
+      console.log('[gmail-scan] Token expired, refreshing...');
+      const refreshed = await refreshAccessToken(tokenRow.refresh_token);
+      accessToken = refreshed.access_token;
+      const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+      await admin.from('gmail_tokens').update({ access_token: accessToken, token_expiry: newExpiry, updated_at: new Date().toISOString() }).eq('user_id', user.id);
+      await admin.from('email_connections').update({ access_token: accessToken, token_expiry: newExpiry }).eq('user_id', user.id).eq('provider_type', 'google');
+      console.log('[gmail-scan] Token refreshed successfully');
+    }
 
     const allMessageIds = new Set<string>();
     for (const q of queries) {
-      let pageToken = '';
-      for (let page = 0; page < 5; page++) {
-        const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ''}`;
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => '');
-          console.error(`[gmail-scan] Gmail API error ${res.status}: ${errBody}`);
-          // If 401, token is bad — try to refresh once
-          if (res.status === 401 && tokenRow.refresh_token) {
-            console.log('[gmail-scan] Token expired, attempting refresh...');
-            try {
-              const refreshed = await refreshAccessToken(tokenRow.refresh_token);
-              accessToken = refreshed.access_token;
-              const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-              await admin.from('gmail_tokens').update({
-                access_token: accessToken,
-                token_expiry: newExpiry,
-                updated_at: new Date().toISOString(),
-              }).eq('user_id', user.id);
-              // Also update email_connections
-              await admin.from('email_connections').update({
-                access_token: accessToken,
-                token_expiry: newExpiry,
-              }).eq('user_id', user.id).eq('provider_type', 'google');
-              console.log('[gmail-scan] Token refreshed, retrying...');
-              // Retry this query with new token
-              const retryRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-              if (retryRes.ok) {
-                const retryData = await retryRes.json();
-                for (const m of retryData.messages || []) allMessageIds.add(m.id);
-              }
-            } catch (refreshErr: any) {
-              console.error('[gmail-scan] Token refresh failed:', refreshErr.message);
-              return NextResponse.json({ error: 'Gmail token expired. Please reconnect Gmail.', opportunities: [] }, { status: 401 });
-            }
-          }
-          break;
-        }
-        const data = await res.json();
-        for (const m of data.messages || []) allMessageIds.add(m.id);
-        if (!data.nextPageToken) break;
-        pageToken = data.nextPageToken;
+      const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=50`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!res.ok) {
+        console.error(`[gmail-scan] Gmail API ${res.status}: ${await res.text().catch(() => '')}`);
+        continue; // Skip this query, try the next one
       }
+      const data = await res.json();
+      for (const m of data.messages || []) allMessageIds.add(m.id);
     }
 
     console.log(`[gmail-scan] Found ${allMessageIds.size} message IDs`);
-
     const emailsFound = allMessageIds.size;
 
-    // Fetch details for up to 100 emails in batches
-    const idsToFetch = Array.from(allMessageIds).slice(0, 100);
+    if (emailsFound === 0) {
+      return NextResponse.json({ opportunities: [], emailsFound: 0, emailsScanned: 0, message: 'No matching emails found' });
+    }
+
+    // Fetch details for max 40 emails (keeps it fast)
+    const idsToFetch = Array.from(allMessageIds).slice(0, 40);
     const emailDetails: Array<{ id: string; from: string; subject: string; date: string; snippet: string }> = [];
 
     for (let i = 0; i < idsToFetch.length; i += 20) {
@@ -177,7 +159,7 @@ export async function POST(request: NextRequest) {
 
     const claudeRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 16384,
+      max_tokens: 4096,
       system: `You are a UK consumer finance analyst. Analyse the email providers below and return a JSON array of financial opportunities.
 
 For EVERY provider you recognise as financially relevant, create an entry.
