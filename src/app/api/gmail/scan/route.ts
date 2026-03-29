@@ -75,18 +75,33 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Single combined query — faster than 2 separate queries
-    const q = '{subject:(bill invoice statement renewal subscription "direct debit") from:(netflix spotify disney amazon sky bt virgin vodafone ee three "british gas" eon octopus ovo edf talktalk)} newer_than:90d';
     const allMessageIds = new Set<string>();
-    const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=20`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+
+    // Two parallel queries
+    const queries = [
+      'subject:(bill OR invoice OR statement OR renewal OR subscription OR "direct debit") newer_than:90d',
+      'from:(netflix OR spotify OR disney OR amazon OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf OR talktalk OR plusnet) newer_than:90d',
+    ];
+
+    const listResults = await Promise.allSettled(
+      queries.map(async (q) => {
+        const res = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=30`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!res.ok) {
+          console.error(`[gmail-scan] Gmail API ${res.status} for query: ${q.substring(0, 40)}...`);
+          return [];
+        }
+        const data = await res.json();
+        return data.messages || [];
+      })
     );
-    if (listRes.ok) {
-      const listData = await listRes.json();
-      for (const m of listData.messages || []) allMessageIds.add(m.id);
-    } else {
-      console.error(`[gmail-scan] Gmail API ${listRes.status}: ${await listRes.text().catch(() => '')}`);
+
+    for (const r of listResults) {
+      if (r.status === 'fulfilled') {
+        for (const m of r.value) allMessageIds.add(m.id);
+      }
     }
 
     console.log(`[gmail-scan] Found ${allMessageIds.size} message IDs`);
