@@ -137,45 +137,20 @@ export async function POST(request: NextRequest) {
     }
 
     const providerList = Array.from(senderMap.values())
-      .map((g, i) => `${i + 1}. From: ${g.from} (${g.count} emails)\n   Subjects: ${g.subjects.join(' | ')}\n   Snippets: ${g.snippets.join(' | ')}`)
+      .slice(0, 30) // Max 30 providers to keep input short
+      .map((g, i) => `${i + 1}. ${g.from} (${g.count}x): ${g.subjects.slice(0, 3).join(' | ')}`)
       .join('\n');
 
     // Call Claude
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    console.log(`[gmail-scan] Sending ${senderMap.size} providers to Claude Haiku for analysis`);
+
     const claudeRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: `You are a UK consumer finance analyst. Analyse the email providers below and return a JSON array of financial opportunities.
-
-For EVERY provider you recognise as financially relevant, create an entry.
-
-Each entry must have:
-- id: "opp_1", "opp_2", etc
-- emailId: use the first email ID from that provider
-- type: one of "subscription" | "utility_bill" | "renewal" | "insurance" | "loan" | "credit_card" | "mortgage" | "flight_delay" | "debt_dispute" | "tax_rebate" | "overcharge" | "forgotten_subscription" | "admin_task" | "price_alert"
-- category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "business" | "other"
-- title: short actionable title
-- description: 2-3 sentences with specific advice. Include UK consumer rights where relevant.
-- amount: GBP amount if visible in snippet, 0 if unknown
-- confidence: 60-95
-- provider: clean company name
-- detected: "${new Date().toISOString().split('T')[0]}"
-- status: "new"
-- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_compensation" | "create_task" | "monitor"
-- paymentAmount: amount if visible, null otherwise
-- paymentFrequency: "monthly" | "quarterly" | "yearly" | null
-
-CRITICAL CATEGORISATION RULES:
-- Skyscanner, Google Flights, Kayak price alerts are "price_alert" type, NOT "flight_delay". Only classify as flight_delay if the email is about an ACTUAL flight booking that was delayed.
-- Companies House, HMRC confirmation statements, annual returns are "admin_task" type with suggestedAction "create_task". These are business compliance deadlines, not subscriptions.
-- Marketing emails, newsletters, and promotional offers should be EXCLUDED unless they contain billing/subscription information.
-- Booking confirmations (hotels, flights, car hire) are NOT subscriptions unless they clearly involve recurring payments.
-- Only use "claim_compensation" for actual flight delays (not price alerts) or genuine overcharges.
-- Use "create_task" for anything that requires an action but is not a financial product (filing deadlines, compliance tasks, account verification).
-
-Return ONLY the JSON array. No markdown fences. No explanation.`,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      system: `Analyse email senders and return a JSON array of financial opportunities. Each entry: {"id":"opp_1", "type":"subscription|utility_bill|renewal|insurance|loan|overcharge", "category":"streaming|broadband|mobile|utility|insurance|loan|mortgage|other", "title":"short title", "description":"1 sentence", "amount":0, "confidence":70, "provider":"Company", "status":"new", "suggestedAction":"track|cancel|switch_deal|dispute|monitor", "paymentFrequency":"monthly|yearly|null"}. Skip marketing emails. Return ONLY the JSON array.`,
       messages: [{ role: 'user', content: `Find every financial opportunity from these ${senderMap.size} email providers:\n\n${providerList}` }],
     });
 
