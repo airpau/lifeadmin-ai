@@ -682,8 +682,8 @@ export default function ProfilePage() {
               Upgrade Plan
             </Link>
           ) : (
-            <button onClick={handleManageBilling} className="bg-navy-800 hover:bg-navy-700 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-              Manage Billing
+            <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+              {portalLoading ? 'Loading...' : 'Manage Billing'}
             </button>
           )}
         </div>
