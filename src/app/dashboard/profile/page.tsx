@@ -25,6 +25,8 @@ interface Profile {
   total_tasks_completed: number;
   total_agents_run: number;
   created_at: string;
+  trial_ends_at: string | null;
+  founding_member: boolean;
 }
 
 function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: ReturnType<typeof createClient>; fallbackRecovered: number }) {
@@ -227,6 +229,8 @@ export default function ProfilePage() {
               total_tasks_completed: data.total_tasks_completed || 0,
               total_agents_run: data.total_agents_run || 0,
               created_at: data.created_at,
+              trial_ends_at: data.trial_ends_at || null,
+              founding_member: data.founding_member || false,
             });
           }
         }
@@ -655,39 +659,54 @@ export default function ProfilePage() {
       <ProfileStatsSection supabase={supabase} fallbackRecovered={profile?.total_money_recovered || 0} />
 
       {/* Your Plan */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-mint-400" />
-          Your Plan
-        </h2>
-        <div className="flex items-center justify-between">
-          <div>
-            <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
-              effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
-              effectiveTier === 'essential' ? 'bg-mint-400/10 text-mint-400' :
-              'bg-slate-400/10 text-slate-400'
-            }`}>
-              {effectiveTier === 'pro' ? 'Pro' : effectiveTier === 'essential' ? 'Essential' : 'Free'}
-            </span>
-            <p className="text-slate-400 text-sm mt-2">
-              {effectiveTier === 'free'
-                ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
-                : effectiveTier === 'essential'
-                ? 'Unlimited letters, daily bank sync, full spending dashboard.'
-                : 'Everything in Essential plus unlimited bank accounts and priority support.'}
-            </p>
+      {(() => {
+        const isTrialUser = profile?.subscription_status === 'trialing' && !profile?.stripe_subscription_id && effectiveTier !== 'free';
+        const trialEnd = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+        const trialDays = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null;
+
+        return (
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-mint-400" />
+              Your Plan
+            </h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
+                  isTrialUser ? 'bg-amber-400/10 text-amber-400' :
+                  effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
+                  effectiveTier === 'essential' ? 'bg-mint-400/10 text-mint-400' :
+                  'bg-slate-400/10 text-slate-400'
+                }`}>
+                  {isTrialUser ? 'Pro Trial' : effectiveTier === 'pro' ? 'Pro' : effectiveTier === 'essential' ? 'Essential' : 'Free'}
+                </span>
+                <p className="text-slate-400 text-sm mt-2">
+                  {isTrialUser
+                    ? `Free for 14 days${trialDays !== null ? ` — ${trialDays} days left on your free trial` : ''}`
+                    : effectiveTier === 'free'
+                    ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
+                    : effectiveTier === 'essential'
+                    ? 'Unlimited letters, daily bank sync, full spending dashboard.'
+                    : 'Everything in Essential plus unlimited bank accounts and priority support.'}
+                </p>
+              </div>
+              {isTrialUser ? (
+                <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                  Subscribe to keep Pro
+                </Link>
+              ) : effectiveTier === 'free' ? (
+                <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                  Upgrade Plan
+                </Link>
+              ) : (
+                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                  {portalLoading ? 'Loading...' : 'Manage Billing'}
+                </button>
+              )}
+            </div>
           </div>
-          {effectiveTier === 'free' ? (
-            <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-              Upgrade Plan
-            </Link>
-          ) : (
-            <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-              {portalLoading ? 'Loading...' : 'Manage Billing'}
-            </button>
-          )}
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Connected Accounts */}
       <ConnectedAccountsSection supabase={supabase} />

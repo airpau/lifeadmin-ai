@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import TrialBanner from '@/components/TrialBanner';
 import {
   LayoutDashboard,
   ScanSearch,
@@ -46,16 +47,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [firstName, setFirstName] = useState<string | null>(null);
   const [userTier, setUserTier] = useState<string>('free');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isTrial, setIsTrial] = useState(false);
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
+  const [trialExpired, setTrialExpired] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUserEmail(user?.email || null);
       if (user) {
-        const { data } = await supabase.from('profiles').select('first_name, full_name, subscription_tier').eq('id', user.id).single();
+        const { data } = await supabase.from('profiles').select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at').eq('id', user.id).single();
         const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
         setFirstName(name);
         setUserTier(data?.subscription_tier || 'free');
+
+        // Detect founding member trial
+        if (data?.subscription_status === 'trialing' && !data?.stripe_subscription_id && data?.subscription_tier !== 'free') {
+          const trialEnd = data?.trial_ends_at ? new Date(data.trial_ends_at) : null;
+          if (trialEnd) {
+            const days = Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            if (days > 0) {
+              setIsTrial(true);
+              setTrialDaysLeft(days);
+            } else {
+              setTrialExpired(true);
+              setUserTier('free');
+            }
+          } else {
+            setIsTrial(true);
+          }
+        }
       }
     };
     loadUser();
@@ -91,7 +112,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="text-sm font-medium text-white">{firstName}</p>
         )}
         <p className="text-xs text-slate-500 truncate">{userEmail}</p>
-        {userTier === 'free' ? (
+        {isTrial ? (
+          <span className="inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-amber-400 bg-amber-400/10">
+            Pro Trial{trialDaysLeft ? ` · ${trialDaysLeft}d left` : ''}
+          </span>
+        ) : userTier === 'free' ? (
           <Link href="/pricing" className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-400 bg-slate-400/10 hover:bg-mint-400/10 hover:text-mint-400 transition-all`}>
             Free Plan <ArrowRight className="h-2.5 w-2.5" />
           </Link>
@@ -202,6 +227,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Main content */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0 bg-navy-950 pb-20 lg:pb-8">
+          {(isTrial || trialExpired) && <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />}
           {children}
         </main>
       </div>

@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
       founding_member: true,
       founding_member_expires: expiresAt.toISOString(),
       trial_started_at: new Date().toISOString(),
+      trial_ends_at: expiresAt.toISOString(),
     }).eq('id', user.id);
 
     return NextResponse.json({
