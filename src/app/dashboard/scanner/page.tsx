@@ -718,48 +718,50 @@ export default function ScannerPage() {
   const handleScan = async () => {
     setScanning(true);
     setError(null);
-    const today = new Date().toISOString().split('T')[0];
 
     try {
-      // Use /api/gmail/scan directly — confirmed working
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const text = await res.text();
-
-      let data: any;
-      try { data = JSON.parse(text); } catch { data = { error: 'Invalid response from scan API' }; }
+      const data = (() => { try { return JSON.parse(text); } catch { return { error: 'Invalid response' }; } })();
 
       console.log('[scanner] Scan response:', { status: res.status, opps: data.opportunities?.length, error: data.error });
 
-      if (data.error) setError(String(data.error));
+      if (data.error) {
+        setError(String(data.error));
+      }
 
-      if (data.opportunities && data.opportunities.length > 0) {
-        const mapped: Opportunity[] = data.opportunities.map((o: any, i: number) => ({
-          id: o.id || `scan_${Date.now()}_${i}`,
-          type: o.type || 'overcharge',
-          category: o.category || 'other',
-          title: o.title || 'Opportunity',
-          description: o.description || '',
-          amount: typeof o.amount === 'number' ? o.amount : 0,
-          confidence: typeof o.confidence === 'number' ? o.confidence : 60,
-          provider: o.provider || 'Unknown',
-          detected: today,
-          status: 'new' as const,
-          suggestedAction: o.suggestedAction || 'track',
-          paymentAmount: o.paymentAmount ?? null,
-          paymentFrequency: o.paymentFrequency ?? null,
-        }));
-        console.log('[scanner] Setting', mapped.length, 'opportunities');
-        setOpportunities(mapped);
-        setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
+      const opps = data.opportunities || [];
+      const today = new Date().toISOString().split('T')[0];
+      const mapped: Opportunity[] = opps.map((o: any, i: number) => ({
+        id: o.id || `scan_${Date.now()}_${i}`,
+        type: o.type || 'overcharge',
+        category: o.category || 'other',
+        title: o.title || 'Opportunity',
+        description: o.description || '',
+        amount: typeof o.amount === 'number' ? o.amount : 0,
+        confidence: typeof o.confidence === 'number' ? o.confidence : 60,
+        provider: o.provider || 'Unknown',
+        detected: today,
+        status: 'new' as const,
+        suggestedAction: o.suggestedAction || 'track',
+        paymentAmount: o.paymentAmount ?? null,
+        paymentFrequency: o.paymentFrequency ?? null,
+      }));
+
+      // Always set results — even if empty (clears stale data)
+      setOpportunities(mapped);
+      setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
+      if (opps.length > 0) {
         setScannedAt(new Date().toISOString());
       }
+      console.log('[scanner] Set', mapped.length, 'opportunities');
     } catch (err: any) {
       console.error('[scanner] Scan error:', err);
       setError('Scan failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setScanning(false);
+      console.log('[scanner] scanning=false');
     }
-
-    console.log('[scanner] Setting scanning=false');
-    setScanning(false);
   };
 
   const filteredOpportunities = opportunities.filter(

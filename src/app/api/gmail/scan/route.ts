@@ -157,8 +157,25 @@ export async function POST(request: NextRequest) {
 
     const claudeRes = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
-      system: `Analyse email senders and return a JSON array of financial opportunities. Each entry: {"id":"opp_1", "type":"subscription|utility_bill|renewal|insurance|loan|overcharge", "category":"streaming|broadband|mobile|utility|insurance|loan|mortgage|other", "title":"short title", "description":"1 sentence", "amount":0, "confidence":70, "provider":"Company", "status":"new", "suggestedAction":"track|cancel|switch_deal|dispute|monitor", "paymentFrequency":"monthly|yearly|null"}. Skip marketing emails. Return ONLY the JSON array.`,
+      max_tokens: 8192,
+      system: `Analyse email senders and return a JSON array of financial opportunities. You are a UK consumer finance analyst. Be AGGRESSIVE — if an email is from ANY known provider, that IS an opportunity.
+
+CRITICAL RULES:
+- Any email from Netflix, Spotify, Disney+, Amazon, Apple, YouTube = active subscription
+- Any email from BT, Sky, Virgin Media, Vodafone, EE, Three, TalkTalk, Plusnet = broadband/mobile contract
+- Any email from British Gas, EDF, Octopus, OVO, E.ON, Scottish Power, Shell Energy = energy bill
+- Any email from an insurance company = renewal comparison opportunity
+- Any email from banks, loan companies, credit cards = track and suggest better rates
+- Any email from airlines (Ryanair, easyJet, BA) = check for flight delay compensation
+- Any email mentioning "price increase", "renewal", "direct debit" = switching opportunity
+- You MUST return at least one entry for EVERY unique provider/service you can identify
+- A normal inbox should produce 10-30+ opportunities
+- Include anything with confidence >= 40
+- Group emails by provider: multiple emails from Netflix = ONE Netflix opportunity
+
+Each entry MUST have: {"id":"opp_1", "type":"subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay", "category":"streaming|broadband|mobile|utility|insurance|loan|mortgage|council_tax|transport|fitness|software|other", "title":"short title", "description":"1-2 sentences with specific UK consumer rights where relevant", "amount":0, "confidence":70, "provider":"Company", "status":"new", "suggestedAction":"track|cancel|switch_deal|dispute|monitor|claim_compensation", "paymentFrequency":"monthly|yearly|null"}
+
+Return ONLY the JSON array, no markdown.`,
       messages: [{ role: 'user', content: `Find every financial opportunity from these ${senderMap.size} email providers:\n\n${providerList}` }],
     });
 
