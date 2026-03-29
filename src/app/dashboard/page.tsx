@@ -3,6 +3,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import UpgradePrompt from '@/components/UpgradePrompt';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -340,6 +341,7 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl">
+      {userTier === 'free' && <UpgradePrompt variant="banner" />}
       {syncMessage && (
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
           <CheckCircle className="h-4 w-4" />

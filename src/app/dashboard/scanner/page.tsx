@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import UpgradePrompt from '@/components/UpgradePrompt';
 import {
   ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
   Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus, Shield,
@@ -105,6 +106,8 @@ export default function ScannerPage() {
   const [scanningEmailId, setScanningEmailId] = useState<string | null>(null);
   const [emailScanResults, setEmailScanResults] = useState<Record<string, number>>({});
   const [scanResults, setScanResults] = useState<any[]>([]);
+  const [userTier, setUserTier] = useState('free');
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   // Receipt scanner state
   const [showReceiptScanner, setShowReceiptScanner] = useState(false);
@@ -676,6 +679,10 @@ export default function ScannerPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Fetch subscription tier
+    const { data: profile } = await supabase.from('profiles').select('subscription_tier').eq('id', user.id).single();
+    setUserTier(profile?.subscription_tier || 'free');
+
     // Check Gmail (legacy table)
     const { data: gmail } = await supabase.from('gmail_tokens').select('email').eq('user_id', user.id).maybeSingle();
 
@@ -754,6 +761,11 @@ export default function ScannerPage() {
   };
 
   const handleScan = async () => {
+    // Free users: check if they've already scanned (one free scan)
+    if (userTier === 'free' && scannedAt) {
+      setShowUpgradeModal(true);
+      return;
+    }
     setScanning(true);
     setError(null);
     setOpportunities([]); // Clear previous results
@@ -802,6 +814,7 @@ export default function ScannerPage() {
 
   return (
     <div className="max-w-7xl">
+      {showUpgradeModal && <UpgradePrompt variant="modal" onClose={() => setShowUpgradeModal(false)} />}
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3">

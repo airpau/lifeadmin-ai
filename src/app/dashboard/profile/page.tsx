@@ -4,7 +4,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2 } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
@@ -652,6 +653,41 @@ export default function ProfilePage() {
 
       {/* Stats */}
       <ProfileStatsSection supabase={supabase} fallbackRecovered={profile?.total_money_recovered || 0} />
+
+      {/* Your Plan */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-mint-400" />
+          Your Plan
+        </h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
+              effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
+              effectiveTier === 'essential' ? 'bg-mint-400/10 text-mint-400' :
+              'bg-slate-400/10 text-slate-400'
+            }`}>
+              {effectiveTier === 'pro' ? 'Pro' : effectiveTier === 'essential' ? 'Essential' : 'Free'}
+            </span>
+            <p className="text-slate-400 text-sm mt-2">
+              {effectiveTier === 'free'
+                ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
+                : effectiveTier === 'essential'
+                ? 'Unlimited letters, daily bank sync, full spending dashboard.'
+                : 'Everything in Essential plus unlimited bank accounts and priority support.'}
+            </p>
+          </div>
+          {effectiveTier === 'free' ? (
+            <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+              Upgrade
+            </Link>
+          ) : hasActiveStripe ? (
+            <a href="/api/stripe/portal" className="bg-navy-800 hover:bg-navy-700 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+              Manage Billing
+            </a>
+          ) : null}
+        </div>
+      </div>
 
       {/* Connected Accounts */}
       <ConnectedAccountsSection supabase={supabase} />

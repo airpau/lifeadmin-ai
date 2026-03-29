@@ -13,6 +13,7 @@ import {
   User,
   LogOut,
   Menu,
+  ArrowRight,
   X,
   ShieldAlert,
   Shield,
@@ -90,13 +91,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <p className="text-sm font-medium text-white">{firstName}</p>
         )}
         <p className="text-xs text-slate-500 truncate">{userEmail}</p>
-        <span className={`inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full ${
-          userTier === 'pro' ? 'text-brand-400 bg-brand-400/10' :
-          userTier === 'essential' ? 'text-mint-400 bg-mint-400/10' :
-          'text-slate-400 bg-slate-400/10'
-        }`}>
-          {userTier === 'pro' ? 'Pro Plan' : userTier === 'essential' ? 'Essential Plan' : 'Free Plan'}
-        </span>
+        {userTier === 'free' ? (
+          <Link href="/pricing" className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-400 bg-slate-400/10 hover:bg-mint-400/10 hover:text-mint-400 transition-all`}>
+            Free Plan <ArrowRight className="h-2.5 w-2.5" />
+          </Link>
+        ) : (
+          <span className={`inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full ${
+            userTier === 'pro' ? 'text-brand-400 bg-brand-400/10' : 'text-mint-400 bg-mint-400/10'
+          }`}>
+            {userTier === 'pro' ? 'Pro Plan' : 'Essential Plan'}
+          </span>
+        )}
+        {userTier === 'free' && (
+          <Link href="/pricing" className="block mt-2 text-center text-[11px] font-semibold bg-mint-400 hover:bg-mint-500 text-navy-950 px-3 py-1.5 rounded-lg transition-all">
+            Upgrade Now
+          </Link>
+        )}
       </div>
 
       <nav className="space-y-0.5 flex-1">
