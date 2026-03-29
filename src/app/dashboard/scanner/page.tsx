@@ -721,26 +721,37 @@ export default function ScannerPage() {
     setError(null);
 
     try {
-      // Scan all connected providers in parallel
-      const scans = connectedAccounts.map((acct) => {
+      // Scan all connected providers — use allSettled so one failure doesn't block others
+      const scans = connectedAccounts.map(async (acct) => {
         const endpoint = acct.provider === 'gmail' ? '/api/gmail/scan' : '/api/outlook/scan';
-        return fetch(endpoint, { method: 'POST' })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.error) throw new Error(`${acct.provider}: ${d.error}`);
-            return d;
-          });
+        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        return res.json();
       });
 
-      const results = await Promise.all(scans);
+      const settled = await Promise.allSettled(scans);
+      const results = settled
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .map(r => r.value)
+        .filter(d => !d.error);
+
+      const errors = settled.filter(r => r.status === 'rejected').map(r => (r as PromiseRejectedResult).reason?.message);
+      const apiErrors = settled
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .map(r => r.value)
+        .filter(d => d.error)
+        .map(d => d.error);
+
+      if ([...errors, ...apiErrors].length > 0 && results.length === 0) {
+        setError([...errors, ...apiErrors].join('. '));
+      }
+
       const all: Opportunity[] = results.flatMap((d) => d.opportunities || []);
 
-      // Aggregate debug info
       const totalFound = results.reduce((s, d) => s + (d.emailsFound || 0), 0);
       const totalScanned = results.reduce((s, d) => s + (d.emailsScanned || 0), 0);
       setScanDebug({ emailsFound: totalFound, emailsScanned: totalScanned });
 
-      // Merge with existing, dedup by title+provider
+      // Merge with existing, dedup
       const existingKeys = new Set(opportunities.map(o => `${o.provider}-${o.title}`));
       const newOnly = all.filter((o) => {
         const key = `${o.provider}-${o.title}`;
@@ -749,13 +760,14 @@ export default function ScannerPage() {
         return true;
       });
 
-      setOpportunities(prev => [...prev, ...newOnly]);
+      if (newOnly.length > 0) {
+        setOpportunities(prev => [...prev, ...newOnly]);
+      }
       setScannedAt(new Date().toISOString());
     } catch (err: any) {
-      setError(err.message || 'Scan failed. Try disconnecting and reconnecting your inbox.');
-    } finally {
-      setScanning(false);
+      setError(err.message || 'Scan failed');
     }
+    setScanning(false);
   };
 
   const filteredOpportunities = opportunities.filter(
