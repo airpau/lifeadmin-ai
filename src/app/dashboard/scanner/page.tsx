@@ -104,6 +104,7 @@ export default function ScannerPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [scanningEmailId, setScanningEmailId] = useState<string | null>(null);
   const [emailScanResults, setEmailScanResults] = useState<Record<string, number>>({});
+  const [scanResults, setScanResults] = useState<any[]>([]);
 
   // Receipt scanner state
   const [showReceiptScanner, setShowReceiptScanner] = useState(false);
@@ -201,13 +202,12 @@ export default function ScannerPage() {
 
   const handleScanEmail = async (connectionId: string) => {
     setScanningEmailId(connectionId);
+    setScanResults([]);
     try {
-      // Find the connection to determine which scanner to use
       const conn = emailConns.find((c: any) => c.id === connectionId);
       let endpoint = '/api/email/scan';
       let body: any = { connectionId };
 
-      // OAuth connections use dedicated scanners (no IMAP decrypt needed)
       if (conn?.authMethod === 'oauth' && conn?.provider === 'google') {
         endpoint = '/api/gmail/scan';
         body = {};
@@ -222,24 +222,41 @@ export default function ScannerPage() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
+
       if (data.error) {
         setError(`Scan error: ${data.error}`);
       } else if (res.ok) {
-        setEmailScanResults((prev) => ({ ...prev, [connectionId]: data.opportunities?.length || 0 }));
-        // Merge opportunities into the main list
-        if (data.opportunities?.length > 0) {
-          setOpportunities((prev) => {
-            const existingKeys = new Set(prev.map((o: any) => `${o.provider}-${o.title}`));
-            const newOnly = data.opportunities.filter((o: any) => !existingKeys.has(`${o.provider}-${o.title}`));
-            return [...prev, ...newOnly];
-          });
+        const opps = data.opportunities || [];
+        setEmailScanResults((prev) => ({ ...prev, [connectionId]: opps.length }));
+        setScanResults(opps);
+
+        if (opps.length > 0) {
+          const today = new Date().toISOString().split('T')[0];
+          setOpportunities(opps.map((o: any, i: number) => ({
+            id: o.id || `scan_${Date.now()}_${i}`,
+            type: o.type || 'overcharge',
+            category: o.category || 'other',
+            title: o.title || 'Opportunity',
+            description: o.description || '',
+            amount: typeof o.amount === 'number' ? o.amount : 0,
+            confidence: typeof o.confidence === 'number' ? o.confidence : 60,
+            provider: o.provider || 'Unknown',
+            detected: today,
+            status: 'new' as const,
+            suggestedAction: o.suggestedAction || 'track',
+            paymentAmount: o.paymentAmount ?? null,
+            paymentFrequency: o.paymentFrequency ?? null,
+          })));
+          setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
+          setScannedAt(new Date().toISOString());
         }
         loadEmailConnections();
       }
     } catch (err: any) {
       setError(err.message || 'Scan failed');
+    } finally {
+      setScanningEmailId(null);
     }
-    setScanningEmailId(null);
   };
 
   useEffect(() => {
@@ -366,6 +383,27 @@ export default function ScannerPage() {
                   >
                     Disconnect
                   </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Scan results — rendered immediately after scan completes */}
+        {scanResults.length > 0 && (
+          <div className="space-y-3 mt-4">
+            <h3 className="text-white font-semibold text-sm">{scanResults.length} opportunities found from email scan</h3>
+            {scanResults.map((opp: any, i: number) => (
+              <div key={opp.id || i} className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-white font-medium text-sm">{opp.title}</p>
+                    <p className="text-slate-500 text-xs">{opp.provider} · {opp.category}</p>
+                    <p className="text-slate-400 text-xs mt-1">{opp.description}</p>
+                  </div>
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-mint-400/10 text-mint-400 whitespace-nowrap flex-shrink-0">
+                    {(opp.suggestedAction || 'track').replace(/_/g, ' ')}
+                  </span>
                 </div>
               </div>
             ))}
