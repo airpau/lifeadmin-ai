@@ -716,57 +716,49 @@ export default function ScannerPage() {
   };
 
   const handleScan = async () => {
-    if (!connectedAccounts.length) return;
     setScanning(true);
     setError(null);
+    const today = new Date().toISOString().split('T')[0];
 
     try {
-      const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 55000);
-
-      const res = await fetch('/api/gmail/scan', {
-        method: 'POST',
-        signal: controller.signal,
-      });
-
-      clearTimeout(fetchTimeout);
+      // Use /api/gmail/scan directly — confirmed working
+      const res = await fetch('/api/gmail/scan', { method: 'POST' });
+      const text = await res.text();
 
       let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        data = { error: 'Scan timed out. Please try again.' };
-      }
+      try { data = JSON.parse(text); } catch { data = { error: 'Invalid response from scan API' }; }
 
-      if (data.error) {
-        setError(data.error);
-      }
+      console.log('[scanner] Scan response:', { status: res.status, opps: data.opportunities?.length, error: data.error });
 
-      const opps = data.opportunities || [];
-      if (opps.length > 0) {
-        const today = new Date().toISOString().split('T')[0];
-        setOpportunities(opps.map((o: any, i: number) => ({
-          id: o.id || `opp_${i}`,
+      if (data.error) setError(String(data.error));
+
+      if (data.opportunities && data.opportunities.length > 0) {
+        const mapped: Opportunity[] = data.opportunities.map((o: any, i: number) => ({
+          id: o.id || `scan_${Date.now()}_${i}`,
           type: o.type || 'overcharge',
           category: o.category || 'other',
-          title: o.title || 'Opportunity found',
+          title: o.title || 'Opportunity',
           description: o.description || '',
-          amount: o.amount || 0,
-          confidence: o.confidence || 60,
+          amount: typeof o.amount === 'number' ? o.amount : 0,
+          confidence: typeof o.confidence === 'number' ? o.confidence : 60,
           provider: o.provider || 'Unknown',
-          detected: o.detected || today,
+          detected: today,
           status: 'new' as const,
           suggestedAction: o.suggestedAction || 'track',
-          paymentAmount: o.paymentAmount || null,
-          paymentFrequency: o.paymentFrequency || null,
-        })));
+          paymentAmount: o.paymentAmount ?? null,
+          paymentFrequency: o.paymentFrequency ?? null,
+        }));
+        console.log('[scanner] Setting', mapped.length, 'opportunities');
+        setOpportunities(mapped);
         setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
         setScannedAt(new Date().toISOString());
       }
-    } catch {
-      setError('Scan timed out or failed. Please try again.');
+    } catch (err: any) {
+      console.error('[scanner] Scan error:', err);
+      setError('Scan failed: ' + (err.message || 'Unknown error'));
     }
 
+    console.log('[scanner] Setting scanning=false');
     setScanning(false);
   };
 

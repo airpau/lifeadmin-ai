@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
 
     const claudeRes = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: `Analyse email senders and return a JSON array of financial opportunities. Each entry: {"id":"opp_1", "type":"subscription|utility_bill|renewal|insurance|loan|overcharge", "category":"streaming|broadband|mobile|utility|insurance|loan|mortgage|other", "title":"short title", "description":"1 sentence", "amount":0, "confidence":70, "provider":"Company", "status":"new", "suggestedAction":"track|cancel|switch_deal|dispute|monitor", "paymentFrequency":"monthly|yearly|null"}. Skip marketing emails. Return ONLY the JSON array.`,
       messages: [{ role: 'user', content: `Find every financial opportunity from these ${senderMap.size} email providers:\n\n${providerList}` }],
     });
@@ -239,6 +239,20 @@ export async function POST(request: NextRequest) {
           }))
         );
       }
+
+      // Also save to scanned_receipts for the Scanner UI
+      const today = new Date().toISOString().split('T')[0];
+      await admin.from('scanned_receipts').insert(
+        opportunities.map((o: any) => ({
+          user_id: user.id,
+          provider_name: o.provider || 'Unknown',
+          receipt_type: o.category || o.type || 'other',
+          amount: o.amount || 0,
+          receipt_date: today,
+          image_url: o.provider || 'scan',
+          extracted_data: o,
+        }))
+      ).then(({ error: e }) => { if (e) console.error('[gmail-scan] scanned_receipts insert:', e.message); });
     }
 
     return NextResponse.json({
