@@ -20,41 +20,45 @@ async function getPageToken(systemToken: string): Promise<string> {
 }
 
 async function generateImage(prompt: string): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+  // Use fal.ai for image generation (per CLAUDE.md — ALL images through fal.ai)
+  // NO hex colour codes in prompt — AI models render them as visible text
+  const falKey = (process.env.FAL_KEY || '').replace(/\\n/g, '').trim();
+  if (!falKey) return null;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt: `Dark navy blue background (#0f172a), mint green accents (#34d399), soft orange highlights (#FB923C), ${prompt}, absolutely no text no words no letters, premium fintech aesthetic, clean modern design` }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' },
-        }),
-      }
-    );
-    const data = await res.json();
-    const base64 = data.predictions?.[0]?.bytesBase64Encoded;
-    if (!base64) return null;
-
-    // Upload to Supabase storage
-    const supabase = getAdmin();
-    const fileName = `social-auto-${Date.now()}.png`;
-    const buffer = Buffer.from(base64, 'base64');
-
-    await fetch(`${(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()}/storage/v1/object/social-images/${fileName}`, {
+    const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-        'Content-Type': 'image/png',
+        'Authorization': `Key ${falKey}`,
+        'Content-Type': 'application/json',
       },
-      body: buffer,
+      body: JSON.stringify({
+        prompt: `Dark navy blue background, mint green glowing accents, soft warm orange highlights, ${prompt}, absolutely no text no words no letters no numbers no characters, abstract shapes, premium fintech aesthetic, clean modern design, professional social media square post`,
+        image_size: 'square',
+        num_images: 1,
+      }),
     });
 
+    const falData = await falRes.json();
+    const imageUrl = falData.images?.[0]?.url;
+    if (!imageUrl) { console.error('[social-post] No image URL from fal.ai:', JSON.stringify(falData).substring(0, 200)); return null; }
+
+    // Download from fal.ai and upload to Supabase storage
+    const imgRes = await fetch(imageUrl);
+    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+    const supabase = getAdmin();
+    const fileName = `social-auto-${Date.now()}.jpg`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from('social-images')
+      .upload(fileName, imgBuffer, { contentType: 'image/jpeg', upsert: true });
+
+    if (uploadErr) { console.error('[social-post] Upload error:', uploadErr.message); return null; }
+
     return `${(process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()}/storage/v1/object/public/social-images/${fileName}`;
-  } catch {
+  } catch (err: any) {
+    console.error('[social-post] Image generation error:', err.message);
     return null;
   }
 }
@@ -157,7 +161,7 @@ Rules:
 - Add 8-12 relevant hashtags at the end
 - Do NOT repeat topics from recent posts
 
-Return JSON: {"caption": "the post text", "imagePrompt": "brief description for image generation, dark navy background with mint green and soft orange abstract shapes, no text no words no letters"}`,
+Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract description for image, e.g. glowing WiFi signal waves, shield protecting coins, house with energy bolt. Do NOT include any colour codes or hex values. Do NOT include any text or words in the image description."}`,
     messages: [{
       role: 'user',
       content: `Today's UK consumer news:\n${researchContext || 'No research available - write about a general UK consumer rights topic.'}\n\nRecent posts (avoid repeating):\n${recentTopics || 'None yet'}`,
