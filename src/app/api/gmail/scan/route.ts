@@ -42,56 +42,43 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim(),
+    (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
   );
 
-  const { data: tokenRow } = await admin
+  const { data: tokenRow, error: tokenErr } = await admin
     .from('gmail_tokens')
     .select('*')
     .eq('user_id', user.id)
     .single();
 
-  if (!tokenRow) {
-    return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 });
+  if (tokenErr || !tokenRow) {
+    console.error('[gmail-scan] No gmail_tokens row:', tokenErr?.message);
+    return NextResponse.json({ error: 'Gmail not connected. Please connect Gmail first.', opportunities: [] }, { status: 400 });
   }
 
-  // Refresh token if expired
+  // Always refresh token (they expire every hour)
   let accessToken = tokenRow.access_token;
-  if (tokenRow.token_expiry && new Date(tokenRow.token_expiry) < new Date()) {
-    if (!tokenRow.refresh_token) {
-      return NextResponse.json({ error: 'Token expired, please reconnect Gmail' }, { status: 400 });
-    }
-    const refreshed = await refreshAccessToken(tokenRow.refresh_token);
-    accessToken = refreshed.access_token;
-    const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-    await admin.from('gmail_tokens').update({
-      access_token: accessToken,
-      token_expiry: newExpiry,
-      updated_at: new Date().toISOString(),
-    }).eq('user_id', user.id);
-  }
-
-  try {
-    // Fetch email list using Gmail API directly
-    const queries = [
-      'subject:(bill OR invoice OR statement OR renewal OR subscription OR "direct debit" OR "price increase") newer_than:90d',
-      'from:(netflix OR spotify OR disney OR amazon OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf OR talktalk OR plusnet) newer_than:90d',
-    ];
-
-    // Refresh token first if expired (token_expiry was hours ago)
-    if (tokenRow.token_expiry && new Date(tokenRow.token_expiry) < new Date()) {
-      if (!tokenRow.refresh_token) {
-        return NextResponse.json({ error: 'Gmail token expired, please reconnect', opportunities: [] }, { status: 401 });
-      }
-      console.log('[gmail-scan] Token expired, refreshing...');
+  if (tokenRow.refresh_token) {
+    try {
+      console.log('[gmail-scan] Refreshing access token...');
       const refreshed = await refreshAccessToken(tokenRow.refresh_token);
       accessToken = refreshed.access_token;
       const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
       await admin.from('gmail_tokens').update({ access_token: accessToken, token_expiry: newExpiry, updated_at: new Date().toISOString() }).eq('user_id', user.id);
       await admin.from('email_connections').update({ access_token: accessToken, token_expiry: newExpiry }).eq('user_id', user.id).eq('provider_type', 'google');
-      console.log('[gmail-scan] Token refreshed successfully');
+      console.log('[gmail-scan] Token refreshed OK');
+    } catch (refreshErr: any) {
+      console.error('[gmail-scan] Token refresh failed:', refreshErr.message);
+      return NextResponse.json({ error: 'Gmail token refresh failed. Please reconnect Gmail.', opportunities: [] }, { status: 401 });
     }
+  }
+
+  try {
+    const queries = [
+      'subject:(bill OR invoice OR statement OR renewal OR subscription OR "direct debit" OR "price increase") newer_than:90d',
+      'from:(netflix OR spotify OR disney OR amazon OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf OR talktalk OR plusnet) newer_than:90d',
+    ];
 
     const allMessageIds = new Set<string>();
     for (const q of queries) {
