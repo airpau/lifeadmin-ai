@@ -720,68 +720,56 @@ export default function ScannerPage() {
     setScanning(true);
     setError(null);
 
+    // Hard timeout — stop spinner after 45 seconds no matter what
+    const timeout = setTimeout(() => setScanning(false), 45000);
+
     try {
-      // Scan all connected providers — use allSettled so one failure doesn't block others
-      const scans = connectedAccounts.map(async (acct) => {
-        const endpoint = acct.provider === 'gmail' ? '/api/gmail/scan' : '/api/outlook/scan';
-        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        return res.json();
-      });
-
-      const settled = await Promise.allSettled(scans);
-      const results = settled
-        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
-        .map(r => r.value)
-        .filter(d => !d.error);
-
-      const errors = settled.filter(r => r.status === 'rejected').map(r => (r as PromiseRejectedResult).reason?.message);
-      const apiErrors = settled
-        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
-        .map(r => r.value)
-        .filter(d => d.error)
-        .map(d => d.error);
-
-      if ([...errors, ...apiErrors].length > 0 && results.length === 0) {
-        setError([...errors, ...apiErrors].join('. '));
+      // Only scan Gmail for now (Outlook handled separately)
+      const gmailAccount = connectedAccounts.find(a => a.provider === 'gmail');
+      if (!gmailAccount) {
+        setError('No Gmail account connected');
+        setScanning(false);
+        clearTimeout(timeout);
+        return;
       }
 
-      const today = new Date().toISOString().split('T')[0];
-      const all: Opportunity[] = results.flatMap((d) => (d.opportunities || []).map((o: any, i: number) => ({
-        id: o.id || `opp_${Date.now()}_${i}`,
-        type: o.type || 'overcharge',
-        category: o.category || 'other',
-        title: o.title || 'Unknown opportunity',
-        description: o.description || '',
-        amount: o.amount || 0,
-        confidence: o.confidence || 60,
-        provider: o.provider || 'Unknown',
-        detected: o.detected || today,
-        status: 'new' as const,
-        suggestedAction: o.suggestedAction || 'track',
-        paymentAmount: o.paymentAmount || null,
-        paymentFrequency: o.paymentFrequency || null,
-      })));
-
-      const totalFound = results.reduce((s, d) => s + (d.emailsFound || 0), 0);
-      const totalScanned = results.reduce((s, d) => s + (d.emailsScanned || 0), 0);
-      setScanDebug({ emailsFound: totalFound, emailsScanned: totalScanned });
-
-      // Merge with existing, dedup
-      const existingKeys = new Set(opportunities.map(o => `${o.provider}-${o.title}`));
-      const newOnly = all.filter((o) => {
-        const key = `${o.provider}-${o.title}`;
-        if (existingKeys.has(key)) return false;
-        existingKeys.add(key);
-        return true;
+      const res = await fetch('/api/gmail/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
       });
 
-      if (newOnly.length > 0) {
-        setOpportunities(prev => [...prev, ...newOnly]);
+      const data = await res.json();
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        const today = new Date().toISOString().split('T')[0];
+        const all: Opportunity[] = (data.opportunities || []).map((o: any, i: number) => ({
+          id: o.id || `opp_${Date.now()}_${i}`,
+          type: o.type || 'overcharge',
+          category: o.category || 'other',
+          title: o.title || 'Unknown opportunity',
+          description: o.description || '',
+          amount: o.amount || 0,
+          confidence: o.confidence || 60,
+          provider: o.provider || 'Unknown',
+          detected: o.detected || today,
+          status: 'new' as const,
+          suggestedAction: o.suggestedAction || 'track',
+          paymentAmount: o.paymentAmount || null,
+          paymentFrequency: o.paymentFrequency || null,
+        }));
+
+        setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
+        setOpportunities(all); // Replace entirely — fresh scan
+        setScannedAt(new Date().toISOString());
       }
-      setScannedAt(new Date().toISOString());
     } catch (err: any) {
       setError(err.message || 'Scan failed');
     }
+
+    clearTimeout(timeout);
     setScanning(false);
   };
 
