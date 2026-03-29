@@ -77,16 +77,15 @@ export async function POST(request: NextRequest) {
   try {
     const allMessageIds = new Set<string>();
 
-    // Two parallel queries
+    // Broad query — let Claude filter the relevant ones
     const queries = [
-      'subject:(bill OR invoice OR statement OR renewal OR subscription OR "direct debit") newer_than:90d',
-      'from:(netflix OR spotify OR disney OR amazon OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf OR talktalk OR plusnet) newer_than:90d',
+      'newer_than:1y',
     ];
 
     const listResults = await Promise.allSettled(
       queries.map(async (q) => {
         const res = await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=30`,
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=80`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
         if (!res.ok) {
@@ -112,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch details for max 15 emails in one parallel batch
-    const idsToFetch = Array.from(allMessageIds).slice(0, 15);
+    const idsToFetch = Array.from(allMessageIds).slice(0, 40);
     const emailDetails: Array<{ id: string; from: string; subject: string; date: string; snippet: string }> = [];
 
     const detailResults = await Promise.allSettled(
@@ -146,7 +145,7 @@ export async function POST(request: NextRequest) {
     }
 
     const providerList = Array.from(senderMap.values())
-      .slice(0, 30) // Max 30 providers to keep input short
+      .slice(0, 50) // Max 50 providers
       .map((g, i) => `${i + 1}. ${g.from} (${g.count}x): ${g.subjects.slice(0, 3).join(' | ')}`)
       .join('\n');
 
