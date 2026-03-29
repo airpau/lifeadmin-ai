@@ -75,21 +75,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const queries = [
-      'subject:(bill OR invoice OR statement OR renewal OR subscription OR "direct debit" OR "price increase") newer_than:90d',
-      'from:(netflix OR spotify OR disney OR amazon OR sky OR bt OR virgin OR vodafone OR ee OR three OR "british gas" OR eon OR octopus OR ovo OR edf OR talktalk OR plusnet) newer_than:90d',
-    ];
-
+    // Single combined query — faster than 2 separate queries
+    const q = '{subject:(bill invoice statement renewal subscription "direct debit") from:(netflix spotify disney amazon sky bt virgin vodafone ee three "british gas" eon octopus ovo edf talktalk)} newer_than:90d';
     const allMessageIds = new Set<string>();
-    for (const q of queries) {
-      const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=50`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!res.ok) {
-        console.error(`[gmail-scan] Gmail API ${res.status}: ${await res.text().catch(() => '')}`);
-        continue; // Skip this query, try the next one
-      }
-      const data = await res.json();
-      for (const m of data.messages || []) allMessageIds.add(m.id);
+    const listRes = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=20`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      for (const m of listData.messages || []) allMessageIds.add(m.id);
+    } else {
+      console.error(`[gmail-scan] Gmail API ${listRes.status}: ${await listRes.text().catch(() => '')}`);
     }
 
     console.log(`[gmail-scan] Found ${allMessageIds.size} message IDs`);
@@ -99,28 +96,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ opportunities: [], emailsFound: 0, emailsScanned: 0, message: 'No matching emails found' });
     }
 
-    // Fetch details for max 40 emails (keeps it fast)
-    const idsToFetch = Array.from(allMessageIds).slice(0, 40);
+    // Fetch details for max 15 emails in one parallel batch
+    const idsToFetch = Array.from(allMessageIds).slice(0, 15);
     const emailDetails: Array<{ id: string; from: string; subject: string; date: string; snippet: string }> = [];
 
-    for (let i = 0; i < idsToFetch.length; i += 20) {
-      const batch = idsToFetch.slice(i, i + 20);
-      const results = await Promise.allSettled(
-        batch.map(async (id) => {
-          const res = await fetch(
-            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
-          if (!res.ok) return null;
-          const msg = await res.json();
-          const headers = msg.payload?.headers || [];
-          const get = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
-          return { id: msg.id, from: get('From'), subject: get('Subject'), date: get('Date'), snippet: msg.snippet || '' };
-        })
-      );
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value) emailDetails.push(r.value);
-      }
+    const detailResults = await Promise.allSettled(
+      idsToFetch.map(async (id) => {
+        const res = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!res.ok) return null;
+        const msg = await res.json();
+        const hdrs = msg.payload?.headers || [];
+        const get = (n: string) => hdrs.find((h: any) => h.name.toLowerCase() === n.toLowerCase())?.value || '';
+        return { id: msg.id, from: get('From'), subject: get('Subject'), date: get('Date'), snippet: msg.snippet || '' };
+      })
+    );
+    for (const r of detailResults) {
+      if (r.status === 'fulfilled' && r.value) emailDetails.push(r.value);
     }
 
     // Group by sender
