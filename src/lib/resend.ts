@@ -1,6 +1,18 @@
 import { Resend } from 'resend';
 
-export const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy singleton — defers instantiation until first use so that Next.js build-time
+// page-data collection doesn't throw "Missing API key" in preview environments
+// where RESEND_API_KEY is absent.
+let _resend: Resend | undefined;
+function getClient() {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY!);
+  return _resend;
+}
+export const resend = new Proxy({} as Resend, {
+  get(_, prop) {
+    return Reflect.get(getClient(), prop, getClient());
+  },
+});
 
 // paybacker.co.uk domain is verified in Resend — RESEND_FROM_EMAIL set to noreply@, REPLY_TO set to support@
 export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>';
