@@ -29,13 +29,10 @@ import { useEffect, useState } from 'react';
 const navItems = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
-  { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
-  { name: 'AI Letters', href: '/dashboard/complaints', icon: FileText },
-  { name: 'My Contracts', href: '/dashboard/contracts', icon: Shield },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
+  { name: 'AI Letters', href: '/dashboard/complaints', icon: FileText },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
-  { name: 'How It Works', href: '/dashboard/tutorials', icon: BookOpen },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
@@ -226,9 +223,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0 bg-navy-950 pb-20 lg:pb-8">
-          {(isTrial || trialExpired) && <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />}
-          {children}
+        <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0 bg-navy-950 pb-20 lg:pb-8 flex flex-col min-h-screen">
+          <div className="flex-1">
+            {(isTrial || trialExpired) && <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />}
+            {children}
+          </div>
+
+          {/* Dashboard Footer */}
+          <footer className="mt-12 pt-6 border-t border-navy-800 flex flex-wrap justify-center gap-4 text-xs text-slate-500">
+            <Link href="/blog" className="hover:text-mint-400 transition-colors">Blog</Link>
+            <span>&middot;</span>
+            <Link href="/dashboard/deals" className="hover:text-mint-400 transition-colors">Deals</Link>
+            <span>&middot;</span>
+            <Link href="/about" className="hover:text-mint-400 transition-colors">About</Link>
+            <span>&middot;</span>
+            <Link href="/pricing" className="hover:text-mint-400 transition-colors">Pricing</Link>
+            <span>&middot;</span>
+            <Link href="mailto:hello@paybacker.co.uk" className="hover:text-mint-400 transition-colors">Help</Link>
+          </footer>
         </main>
       </div>
 
@@ -238,7 +250,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
           { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
           { name: 'Letters', href: '/dashboard/complaints', icon: FileText },
-          { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
+          { name: 'Deals', href: '/dashboard/deals', icon: Tag },
           { name: 'Subs', href: '/dashboard/subscriptions', icon: CreditCard },
         ].map((item) => {
           const Icon = item.icon;

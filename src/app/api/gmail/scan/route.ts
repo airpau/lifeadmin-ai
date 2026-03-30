@@ -274,7 +274,7 @@ Return ONLY the JSON array.`,
             title: o.title,
             description: JSON.stringify(o),
             provider_name: o.provider,
-            status: 'pending_review',
+            status: o.confidence < 70 ? 'suggested' : 'pending_review',
             priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
           }))
         );

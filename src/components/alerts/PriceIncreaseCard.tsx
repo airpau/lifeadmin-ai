@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { TrendingUp, FileText, ArrowRight, X } from 'lucide-react';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 interface PriceAlert {
   id: string;
@@ -40,9 +41,10 @@ function getRegulationHint(merchantNormalized: string): string | null {
 }
 
 export default function PriceIncreaseCard({ alert, onDismiss, onAction }: PriceIncreaseCardProps) {
-  const regulationHint = getRegulationHint(alert.merchant_normalized);
+  const cleanName = cleanMerchantName(alert.merchant_name || alert.merchant_normalized);
+  const regulationHint = getRegulationHint(cleanName);
 
-  const complaintUrl = `/dashboard/complaints?company=${encodeURIComponent(alert.merchant_normalized)}&issue=${encodeURIComponent(`price increase from £${alert.old_amount.toFixed(2)} to £${alert.new_amount.toFixed(2)}`)}`;
+  const complaintUrl = `/dashboard/complaints?company=${encodeURIComponent(cleanName)}&issue=${encodeURIComponent(`price increase from £${alert.old_amount.toFixed(2)} to £${alert.new_amount.toFixed(2)}`)}`;
 
   return (
     <div className="bg-navy-900 border border-red-500/20 rounded-xl p-5">
@@ -52,7 +54,7 @@ export default function PriceIncreaseCard({ alert, onDismiss, onAction }: PriceI
             <TrendingUp className="h-5 w-5 text-red-400" />
           </div>
           <div>
-            <h3 className="text-white font-semibold text-sm">{alert.merchant_normalized}</h3>
+            <h3 className="text-white font-semibold text-sm">{cleanName}</h3>
             <p className="text-slate-500 text-xs">
               {new Date(alert.old_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
               {' '}&rarr;{' '}

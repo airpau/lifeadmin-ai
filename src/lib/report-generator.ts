@@ -334,18 +334,15 @@ export async function generateOnDemandReportData(
     admin.from('subscriptions')
       .select('id, provider_name, company, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
       .eq('user_id', userId)
-      .eq('status', 'active')
-      .is('dismissed_at', null),
+      .eq('status', 'active'),
 
-    // Current month transactions
     admin.from('bank_transactions')
-      .select('amount, description, category, timestamp')
+      .select('amount, description, category, timestamp, merchant_name, user_category, id')
       .eq('user_id', userId)
       .gte('timestamp', currentMonthStart),
 
-    // Disputes
     admin.from('disputes')
-      .select('id, company_name, description, status, created_at')
+      .select('id, provider_name, company_name, description, status, created_at, disputed_amount, money_recovered')
       .eq('user_id', userId),
 
     // Active price increase alerts
@@ -367,10 +364,10 @@ export async function generateOnDemandReportData(
       .select('id, bank_name, status')
       .eq('user_id', userId),
 
-    // Email connections
     admin.from('email_connections')
-      .select('id, email, provider, status')
-      .eq('user_id', userId),
+      .select('id, email_address, provider_type, status')
+      .eq('user_id', userId)
+      .eq('status', 'active'),
 
     // Pending action items
     admin.from('tasks')
@@ -497,8 +494,8 @@ export async function generateOnDemandReportData(
   // --- Disputes ---
   const disputeItems: DisputeItem[] = disputes.map(d => ({
     id: d.id,
-    company: d.company_name || 'Unknown',
-    issue: (d.description || '').substring(0, 100),
+    company: d.provider_name || d.company_name || 'Unknown',
+    issue: (d.description || `Dispute for ${d.disputed_amount ? '£'+d.disputed_amount : 'unknown amount'}`).substring(0, 100),
     dateFiled: d.created_at ? new Date(d.created_at).toLocaleDateString('en-GB') : '',
     status: d.status || 'open',
   }));
@@ -605,8 +602,13 @@ export async function generateAnnualReportData(
   year: number
 ): Promise<AnnualReportData> {
   const admin = getAdmin();
-  const yearStart = `${year}-01-01`;
-  const yearEnd = `${year}-12-31T23:59:59`;
+  const now = new Date();
+  const yearEnd = now.toISOString();
+  
+  // Use a rolling 12-month window instead of the calendar year
+  const yearStartDt = new Date(now);
+  yearStartDt.setFullYear(yearStartDt.getFullYear() - 1);
+  const yearStart = yearStartDt.toISOString();
 
   const [
     profileRes,
@@ -640,8 +642,7 @@ export async function generateAnnualReportData(
     admin.from('subscriptions')
       .select('id, provider_name, company, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
       .eq('user_id', userId)
-      .eq('status', 'active')
-      .is('dismissed_at', null),
+      .eq('status', 'active'),
 
     admin.from('tasks')
       .select('money_recovered, created_at')
@@ -658,7 +659,7 @@ export async function generateAnnualReportData(
       .lte('created_at', yearEnd),
 
     admin.from('bank_transactions')
-      .select('amount, description, category, timestamp')
+      .select('amount, description, category, timestamp, merchant_name, user_category, id')
       .eq('user_id', userId)
       .gte('timestamp', yearStart)
       .lte('timestamp', yearEnd),
@@ -686,7 +687,7 @@ export async function generateAnnualReportData(
       .eq('user_id', userId),
 
     admin.from('disputes')
-      .select('id, company_name, description, status, created_at')
+      .select('id, provider_name, company_name, description, status, created_at, disputed_amount, money_recovered')
       .eq('user_id', userId),
 
     admin.from('bank_connections')
@@ -694,8 +695,9 @@ export async function generateAnnualReportData(
       .eq('user_id', userId),
 
     admin.from('email_connections')
-      .select('id, email, provider, status')
-      .eq('user_id', userId),
+      .select('id, email_address, provider_type, status')
+      .eq('user_id', userId)
+      .eq('status', 'active'),
 
     admin.from('price_increase_alerts')
       .select('id, status')
@@ -728,7 +730,7 @@ export async function generateAnnualReportData(
     .map(tx => ({
       ...tx,
       amount: Math.abs(parseFloat(String(tx.amount))),
-      meaningfulCategory: categoriseTransaction(tx.description || '', tx.category || ''),
+      meaningfulCategory: tx.user_category || categoriseTransaction(tx.merchant_name || tx.description || '', tx.category || ''),
     }));
   const credits = transactions
     .filter(tx => parseFloat(String(tx.amount)) > 0)
@@ -784,7 +786,12 @@ export async function generateAnnualReportData(
   // Top 5 merchants (clean names)
   const merchantMap: Record<string, { total: number; count: number }> = {};
   for (const tx of debits) {
-    const name = normaliseMerchantName(tx.description || 'Unknown');
+    if (tx.meaningfulCategory === 'transfers' || tx.meaningfulCategory === 'internal') continue;
+    
+    // Fallback to description if merchant_name is absent, and normalize it
+    const rawName = tx.merchant_name || tx.description || 'Unknown';
+    const name = cleanMerchantName(tx.merchant_name || '', rawName) || normaliseMerchantName(rawName);
+    
     if (!merchantMap[name]) merchantMap[name] = { total: 0, count: 0 };
     merchantMap[name].total += tx.amount;
     merchantMap[name].count += 1;
@@ -876,16 +883,19 @@ export async function generateAnnualReportData(
   // --- Disputes ---
   const disputeItems: DisputeItem[] = disputes.map(d => ({
     id: d.id,
-    company: d.company_name || 'Unknown',
-    issue: (d.description || '').substring(0, 100),
+    company: d.provider_name || d.company_name || 'Unknown',
+    issue: (d.description || `Dispute for ${d.disputed_amount ? '£'+d.disputed_amount : 'unknown amount'}`).substring(0, 100),
     dateFiled: d.created_at ? new Date(d.created_at).toLocaleDateString('en-GB') : '',
     status: d.status || 'open',
   }));
 
+  const totalDisputedAmount = disputes.reduce((sum, d) => sum + (parseFloat(String(d.disputed_amount)) || 0), 0);
+  const disputesRecovered = disputes.reduce((sum, d) => sum + (parseFloat(String(d.money_recovered)) || 0), 0);
+
   // --- Legacy calculations ---
   const taskMoneyRecovered = tasks.reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
   const subsMoneySaved = cancelledSubs.reduce((sum, s) => sum + (parseFloat(String(s.money_saved)) || 0), 0);
-  const totalMoneyRecovered = taskMoneyRecovered + subsMoneySaved;
+  const totalMoneyRecovered = taskMoneyRecovered + subsMoneySaved + disputesRecovered;
 
   const annualSavingsFromCancellations = cancelledSubs.reduce((sum, s) => {
     const amt = parseFloat(String(s.amount)) || 0;
@@ -907,8 +917,7 @@ export async function generateAnnualReportData(
     .filter(b => b.status === 'active')
     .map(b => ({ name: b.bank_name || 'Bank Account', status: b.status }));
   const connectedEmails = emailConns
-    .filter(e => e.status === 'active')
-    .map(e => ({ email: e.email, provider: e.provider }));
+    .map(e => ({ email: e.email_address, provider: e.provider_type }));
 
   // Data months
   const uniqueMonths = new Set(transactions.map(tx => tx.timestamp?.substring(0, 7)).filter(Boolean));
@@ -976,6 +985,7 @@ export async function generateAnnualReportData(
     potentialSavings: totalSubSavings,
     disputes: disputes.length,
     monthlySubCost: monthlySubscriptionCost,
+    totalDisputedAmount,
   });
 
   const userName = profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'User';
@@ -1042,28 +1052,34 @@ function buildExecutiveSummary(data: {
   potentialSavings: number;
   disputes: number;
   monthlySubCost: number;
+  totalDisputedAmount?: number;
 }): string {
   const parts: string[] = [];
 
   if (data.monthlySpend > 0 || data.activeSubs > 0) {
     const spendStr = data.monthlySpend > 0 ? `£${data.monthlySpend.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
-    if (spendStr) {
-      parts.push(`Your total spending this period was ${spendStr} across ${data.activeSubs} active subscriptions and regular payments.`);
-    } else {
-      parts.push(`You have ${data.activeSubs} active subscriptions costing £${data.monthlySubCost.toLocaleString('en-GB', { minimumFractionDigits: 2 })}/month.`);
+    const subsStr = data.activeSubs > 0 ? `${data.activeSubs} active subscriptions and regular payments totalling £${data.monthlySubCost.toLocaleString('en-GB', { minimumFractionDigits: 0 })}/month` : '';
+    
+    if (spendStr && subsStr) {
+      parts.push(`Over the past 12 months, you spent approximately ${spendStr} across ${subsStr}.`);
+    } else if (spendStr) {
+      parts.push(`Over the past 12 months, your total spending was ${spendStr}.`);
+    } else if (subsStr) {
+      parts.push(`You currently have ${subsStr}.`);
     }
   }
 
+  if (data.disputes > 0) {
+    const dispAmountStr = data.totalDisputedAmount ? ` worth £${data.totalDisputedAmount.toLocaleString('en-GB', { minimumFractionDigits: 0 })} in potential recovery` : '';
+    parts.push(`You have ${data.disputes} open dispute${data.disputes !== 1 ? 's' : ''}${dispAmountStr}.`);
+  }
+
   if (data.priceAlertCount > 0) {
-    parts.push(`We detected ${data.priceAlertCount} price increase${data.priceAlertCount !== 1 ? 's' : ''} costing you an extra £${data.priceAlertCost.toLocaleString('en-GB', { minimumFractionDigits: 2 })}/yr.`);
+    parts.push(`We detected ${data.priceAlertCount} price increase${data.priceAlertCount !== 1 ? 's' : ''} costing you an extra £${data.priceAlertCost.toLocaleString('en-GB', { minimumFractionDigits: 0 })}/yr.`);
   }
 
   if (data.potentialSavings > 0) {
-    parts.push(`Based on your spending patterns, we've identified potential savings of £${data.potentialSavings.toLocaleString('en-GB', { minimumFractionDigits: 2 })}/yr through better deals and subscription optimisation.`);
-  }
-
-  if (data.disputes > 0) {
-    parts.push(`You have ${data.disputes} dispute${data.disputes !== 1 ? 's' : ''} ${data.disputes === 1 ? '' : 'in progress or filed'}.`);
+    parts.push(`Based on your spending patterns, we've identified potential savings of £${data.potentialSavings.toLocaleString('en-GB', { minimumFractionDigits: 0 })}/yr.`);
   }
 
   return parts.join(' ') || 'Your financial report is ready. Connect your bank account and add subscriptions to unlock personalised insights.';

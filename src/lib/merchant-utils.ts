@@ -12,26 +12,68 @@ import { normaliseMerchantName, categoriseTransaction } from '@/lib/merchant-nor
 /*  Clean Merchant Name Resolution                                     */
 /* ------------------------------------------------------------------ */
 
+// Synchronous fallback map for immediate UI resolution matching the merchant_rules DB pattern
+const HARDCODED_MERCHANT_RULES: Record<string, string> = {
+  'PAYPAL *DISNEYPLUS': 'Disney+',
+  'PAYPAL *WWW.PLEX.TV': 'Plex',
+  'PAYPAL *LEBARA': 'Lebara',
+  'EXPERIAN': 'Experian',
+  'ENERGIE FI': 'énergie Fitness',
+  'B/CARD PLAT': 'Barclaycard Platinum Visa',
+  'LBH': 'London Borough of Hounslow',
+  'TESTVALLEY': 'Test Valley Borough Council',
+  'DVLA-A15EYP': 'DVLA Vehicle Tax',
+  'COMMUNITYFIBRE': 'Community Fibre',
+};
+
 /**
  * Resolve a clean display name for a raw bank transaction description.
  *
- * Resolution order:
- *   1. subscriptionCompany — from subscriptions.company (user-facing)
- *   2. merchantRuleDisplayName — from merchant_rules.display_name
- *   3. normaliseMerchantName() — our shared normaliser
+ * Rules:
+ *   1. Check static overrides for known dirty payloads (matches DB seeds)
+ *   2. Use existing parsed subscriptionCompany or merchantRuleDisplayName if provided
+ *   3. Strip PayPal prefixes
+ *   4. Strip phone numbers
+ *   5. Strip location suffixes
+ *   6. Expand abbreviations and normalise case via normaliseMerchantName
  */
 export function cleanMerchantName(
   rawName: string,
   subscriptionCompany?: string | null,
   merchantRuleDisplayName?: string | null,
 ): string {
+  if (!rawName) return '';
+  const upperRaw = rawName.toUpperCase();
+
+  // 1. Static synchronous overrides matching our DB inserts
+  for (const [pattern, display] of Object.entries(HARDCODED_MERCHANT_RULES)) {
+    if (upperRaw.startsWith(pattern) || (pattern === 'EXPERIAN' && upperRaw.includes('EXPERIAN'))) {
+      return display;
+    }
+  }
+
+  // 2. Existing mapped db overrides if passed
   if (subscriptionCompany && subscriptionCompany.trim()) {
     return subscriptionCompany.trim();
   }
   if (merchantRuleDisplayName && merchantRuleDisplayName.trim()) {
     return merchantRuleDisplayName.trim();
   }
-  return normaliseMerchantName(rawName);
+
+  // 3. Deeper string cleaning logic (PayPal, phone numbers, locations) before using normaliseMerchantName
+  let cleaned = rawName;
+  
+  // Strip PayPal
+  cleaned = cleaned.replace(/^paypal\s*\*?\s*/i, '');
+  
+  // Strip phone numbers (10+ digits with optional spaces/hyphens)
+  cleaned = cleaned.replace(/[\s-]*\+?\(?0\d{3}\)?[\s-]?\d{3}[\s-]?\d{3,4}[\s-]*$/, '');
+  
+  // Strip specific location suffixes seen in transactions
+  cleaned = cleaned.replace(/\s+Gb$/, '');
+  cleaned = cleaned.replace(/\s+[A-Z][a-z]+ Gb$/, '');
+  
+  return normaliseMerchantName(cleaned);
 }
 
 /* ------------------------------------------------------------------ */

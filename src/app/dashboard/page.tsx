@@ -13,6 +13,7 @@ import {
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -24,6 +25,7 @@ export default function DashboardPage() {
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  const [taskFilter, setTaskFilter] = useState('all');
   const [potentialSavings, setPotentialSavings] = useState(0);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
@@ -157,7 +159,7 @@ export default function DashboardPage() {
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
           supabase.from('bank_connections').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).eq('status', 'active'),
-          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
+          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(20),
           supabase.from('subscriptions').select('id, provider_name, amount, billing_cycle, money_saved, cancelled_at, notes')
@@ -488,96 +490,129 @@ export default function DashboardPage() {
       )}
 
       {/* Action Items */}
-      {pendingTasks.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-            <Clock className="h-5 w-5 text-mint-400" />
-            Your Action Items ({pendingTasks.length})
-          </h2>
-          <div className="space-y-3">
-            {pendingTasks.map((task) => {
-              // Parse JSON description if present
-              const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
-              const oppType = parsedDesc?.type || '';
-              const descText = parsedDesc?.description || task.description || '';
-              const descLower = descText.toLowerCase();
-              const provider = task.provider_name || parsedDesc?.provider || '';
-              const amount = task.disputed_amount || parsedDesc?.amount || parsedDesc?.paymentAmount || '';
+      {(() => {
+        if (pendingTasks.length === 0) return null;
 
-              // Intelligent action classification
-              const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
-              const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
-              const isRenewal = oppType === 'renewal' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir');
-              const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
-              const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
-              const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
-              const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
-              const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
-              const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
-              const needsDeal = isRenewal || isInsurance;
-              const needsSubscription = isSubscription;
+        const processedTasks = pendingTasks.map((task) => {
+          const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
+          const oppType = parsedDesc?.type || '';
+          const descText = parsedDesc?.description || task.description || '';
+          const descLower = descText.toLowerCase();
+          const rawProvider = task.provider_name || parsedDesc?.provider || '';
+          const provider = cleanMerchantName(rawProvider);
+          const amount = task.disputed_amount || parsedDesc?.amount || parsedDesc?.paymentAmount || '';
 
-              // Determine badge
-              const badge = isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
-                : needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
-                : needsDeal ? { text: 'Switch and Save', color: 'bg-mint-400/10 text-mint-400' }
-                : needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
-                : isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
-                : isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
-                : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
+          const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
+          const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
+          const isRenewal = oppType === 'renewal' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir');
+          const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
+          const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
+          const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
+          const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
+          const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
+          
+          const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
+          const needsDeal = isRenewal || isInsurance;
+          const needsSubscription = isSubscription;
 
-              // Build correct action URL with proper params for each destination
-              const complaintParams = new URLSearchParams();
-              if (provider) complaintParams.set('company', provider);
-              if (descText && descText.length < 500) complaintParams.set('issue', descText);
-              if (amount) complaintParams.set('amount', String(amount));
-              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+          return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, needsComplaint, needsDeal, needsSubscription };
+        });
 
-              const subscriptionParams = new URLSearchParams();
-              if (provider) subscriptionParams.set('name', provider);
-              if (amount) subscriptionParams.set('amount', String(amount));
+        let filtered = processedTasks;
+        if (taskFilter === 'disputes') filtered = filtered.filter(t => t.needsComplaint || t.isFlightDelay || t.isLoan);
+        if (taskFilter === 'deals') filtered = filtered.filter(t => t.needsDeal);
+        if (taskFilter === 'subscriptions') filtered = filtered.filter(t => t.needsSubscription);
 
-              return (
-                <div key={task.id} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+        const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
+        filtered.sort((a, b) => (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0));
+
+        const displayTasks = filtered.slice(0, 5);
+
+        return (
+          <div className="mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2 font-[family-name:var(--font-heading)]">
+                <Clock className="h-5 w-5 text-mint-400" />
+                Your Action Items ({filtered.length})
+              </h2>
+              <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide">
+                {['all', 'disputes', 'deals', 'subscriptions'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setTaskFilter(f)}
+                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-mint-400 text-navy-950 font-semibold' : 'bg-navy-800 text-slate-400 hover:text-white'}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {displayTasks.length === 0 ? (
+              <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-6 text-center">
+                <p className="text-slate-500 text-sm">No action items found for this filter.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {displayTasks.map((task) => {
+                  const badge = task.isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
+                    : task.needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
+                    : task.needsDeal ? { text: 'Switch and Save', color: 'bg-mint-400/10 text-mint-400' }
+                    : task.needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
+                    : task.isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
+                    : task.isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
+                    : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
+
+                  const isHighPriority = task.priority === 'high';
+
+                  const complaintParams = new URLSearchParams();
+                  if (task.provider) complaintParams.set('company', task.provider);
+                  if (task.descText && task.descText.length < 500) complaintParams.set('issue', task.descText);
+                  if (task.amount) complaintParams.set('amount', String(task.amount));
+                  const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+
+                  return (
+                    <div key={task.id} className={`bg-navy-900 border rounded-xl p-4 transition-all ${isHighPriority ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-navy-700/50'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
-                        {provider && <span className="text-slate-500 text-xs">{provider}</span>}
-                        {amount && Number(amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(amount)))}</span>}
+                        {task.provider && <span className="text-slate-500 text-xs">{task.provider}</span>}
+                        {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{descText}</p>
+                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.descText}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
                     {/* Context-aware primary action */}
-                    {needsComplaint && (
+                    {task.needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Write Complaint Letter
                       </Link>
                     )}
-                    {isFlightDelay && (
-                      <Link href={`/dashboard/complaints?type=flight_compensation${provider ? `&company=${encodeURIComponent(provider)}` : ''}&new=1`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                    {task.isFlightDelay && (
+                      <Link href={`/dashboard/complaints?type=flight_compensation${task.provider ? `&company=${encodeURIComponent(task.provider)}` : ''}&new=1`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Claim £520 Compensation
                       </Link>
                     )}
-                    {needsDeal && (
+                    {task.needsDeal && (
                       <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Find Better Deal
                       </Link>
                     )}
-                    {needsSubscription && (
+                    {task.needsSubscription && (
                       <Link href="/dashboard/subscriptions" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <CreditCard className="h-3 w-3" /> Track Subscription
                       </Link>
                     )}
-                    {isLoan && (
+                    {task.isLoan && (
                       <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Review and Dispute
                       </Link>
                     )}
-                    {isAdmin && !needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && (
+                    {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (
                       <button
                         onClick={async () => {
                           await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
@@ -587,7 +622,7 @@ export default function DashboardPage() {
                         <CheckCircle2 className="h-3 w-3" /> Mark as Done
                       </button>
                     )}
-                    {!needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && !isAdmin && (
+                    {!task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && !task.isAdmin && (
                       <Link href={complaintUrl} className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Take Action
                       </Link>
@@ -606,11 +641,13 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Quick Actions */}
       <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">

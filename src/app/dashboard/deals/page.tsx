@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Tag, Loader2, Clock, AlertTriangle, Zap, Trophy, CheckCircle2, Info } from 'lucide-react';
+import { Tag, Loader2, Clock, AlertTriangle, Zap, Trophy, CheckCircle2, Info, X } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 
@@ -200,7 +200,7 @@ function urgencyLabel(days: number): { text: string; color: string; bg: string }
 // Deals are coming soon. Check if Awin publisher ID is configured.
 const DEALS_LIVE = !!AWIN_AFF_ID && AWIN_AFF_ID !== '!!!REPLACE_WITH_AWIN_ID!!!';
 
-function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
+function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: boolean; onDismiss?: () => void }) {
   const [tracking, setTracking] = useState(false);
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -221,11 +221,20 @@ function DealCard({ deal, highlight }: { deal: Deal; highlight?: boolean }) {
   };
 
   return (
-    <div className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-5 transition-all flex flex-col overflow-hidden ${
+    <div className={`group relative bg-navy-900 backdrop-blur-sm border rounded-2xl p-5 transition-all flex flex-col overflow-hidden ${
       highlight ? 'border-mint-400/40 ring-1 ring-mint-400/20' : 'border-navy-700/50'
     } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-navy-600'}`}>
+      {onDismiss && (
+        <button 
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
+          className="absolute top-3 right-3 p-1.5 bg-navy-800 hover:bg-navy-700 text-slate-400 hover:text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Not interested"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
       {/* Body — grows to fill, pushes footer to bottom */}
-      <div className="flex-1 min-w-0 mb-3">
+      <div className="flex-1 min-w-0 mb-3 pr-6">
         <h3 className="text-base font-semibold text-white mb-1 truncate">{deal.provider}</h3>
         <p className="text-slate-400 text-sm line-clamp-2">{deal.headline}</p>
         {deal.promoCode && (
@@ -305,9 +314,10 @@ interface AffiliatePlanCardProps {
   savingsYearly?: number;
   userProvider?: string;
   userSpend?: number;
+  onDismiss?: () => void;
 }
 
-function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, userSpend }: AffiliatePlanCardProps) {
+function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, userSpend, onDismiss }: AffiliatePlanCardProps) {
   const [copied, setCopied] = useState(false);
 
   const handleClick = () => {
@@ -350,9 +360,18 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   const isSaving = hasSavingsData && savingsMonthly! > 0;
 
   return (
-    <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-navy-600">
+    <div className="group relative bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-navy-600">
+      {onDismiss && (
+        <button 
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
+          className="absolute top-3 right-3 p-1.5 bg-navy-800 hover:bg-navy-700 text-slate-400 hover:text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          title="Not interested"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
       {/* Body — identical to DealCard */}
-      <div className="flex-1 min-w-0 mb-3">
+      <div className="flex-1 min-w-0 mb-3 pr-6">
         <div className="flex items-start justify-between gap-2 mb-1">
           <h3 className="text-base font-semibold text-white truncate">{deal.provider} {deal.plan_name}</h3>
           {freshness && (
@@ -412,6 +431,7 @@ export default function DealsPage() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+  const [dismissedDeals, setDismissedDeals] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([
@@ -597,8 +617,13 @@ export default function DealsPage() {
                     );
                   })}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-3">
-                    {deals.map((deal) => (
-                      <DealCard key={`urgent-${deal.id}`} deal={deal} highlight />
+                    {deals.filter(d => !dismissedDeals.has(d.id)).map((deal) => (
+                      <DealCard 
+                        key={`urgent-${deal.id}`} 
+                        deal={deal} 
+                        highlight 
+                        onDismiss={() => setDismissedDeals(prev => new Set(prev).add(deal.id))}
+                      />
                     ))}
                   </div>
                 </div>
@@ -631,8 +656,13 @@ export default function DealsPage() {
 
           // Remove hardcoded cards for providers that have affiliate plans
           const affiliateProviderNames = new Set(affiliatePlans.map(d => d.provider.toLowerCase()));
-          const genericDeals = (DEALS[category] || []).filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()));
-          if (affiliatePlans.length === 0 && genericDeals.length === 0) return null;
+          const genericDeals = (DEALS[category] || [])
+            .filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()))
+            .filter(d => !dismissedDeals.has(d.id));
+
+          const activeAffiliatePlans = affiliatePlans.filter(d => !dismissedDeals.has(d.id));
+
+          if (activeAffiliatePlans.length === 0 && genericDeals.length === 0) return null;
 
           // Find user subscriptions matching this category
           const matchingSubs = categoryToUserSubs[category] || [];
@@ -710,7 +740,7 @@ export default function DealsPage() {
                 {(() => {
                   // Group affiliate plans by provider, show max 3 per provider unless expanded
                   const byProvider = new Map<string, VerifiedDeal[]>();
-                  for (const plan of affiliatePlans) {
+                  for (const plan of activeAffiliatePlans) {
                     if (!byProvider.has(plan.provider)) byProvider.set(plan.provider, []);
                     byProvider.get(plan.provider)!.push(plan);
                   }
@@ -731,6 +761,7 @@ export default function DealsPage() {
                           savingsYearly={savYr}
                           userProvider={userSpend?.provider}
                           userSpend={userSpend?.amount}
+                          onDismiss={() => setDismissedDeals(prev => new Set(prev).add(plan.id))}
                         />
                       );
                     }
@@ -749,7 +780,11 @@ export default function DealsPage() {
                   return cards;
                 })()}
                 {genericDeals.map((deal) => (
-                  <DealCard key={deal.id} deal={deal} />
+                  <DealCard 
+                    key={deal.id} 
+                    deal={deal} 
+                    onDismiss={() => setDismissedDeals(prev => new Set(prev).add(deal.id))}
+                  />
                 ))}
               </div>
             </section>
