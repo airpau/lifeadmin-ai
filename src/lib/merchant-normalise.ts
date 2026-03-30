@@ -248,7 +248,7 @@ export function normaliseMerchantName(raw: string): string {
  * Single source of truth to prevent mismatches between Money Hub and Spending page.
  */
 export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'lendinvest', 'skipton b.s', 'nationwide b.s'], category: 'mortgage' },
+  { keywords: ['mortgage', 'mtg', 'lendinvest', 'skipton', 'nationwide', 'halifax', 'santander mtg', 'barclays mtg', 'natwest mtg', 'hsbc mtg', 'virgin mtg', 'coventry b.s', 'yorkshire b.s', 'kensington'], category: 'mortgage' },
   { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle'], category: 'loans' },
   { keywords: ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'capital one'], category: 'credit' },
   { keywords: ['council', 'winchester city', 'southampton city', 'l.b.'], category: 'council_tax' },
@@ -296,8 +296,25 @@ export const BANK_CATEGORY_MAP: Record<string, string> = {
  */
 export function categoriseTransaction(description: string, bankCategory: string): string {
   const d = description.toLowerCase();
+  const bc = bankCategory ? bankCategory.toLowerCase() : '';
+
+  // Handle obvious OpenBanking bank categories first to ensure high precision
+  if (bc.includes('loan') && bc.includes('mortgage')) return 'mortgage';
+  if (bc === 'mortgage') return 'mortgage';
+  
+  // Keyword mapping from our manual rules
   for (const { keywords, category } of DESCRIPTION_CATEGORIES) {
     if (keywords.some(kw => d.includes(kw))) return category;
   }
-  return BANK_CATEGORY_MAP[bankCategory] || 'other';
+  
+  // Standard BANK_CATEGORY mapping
+  if (bankCategory && BANK_CATEGORY_MAP[bankCategory.toUpperCase()]) {
+    return BANK_CATEGORY_MAP[bankCategory.toUpperCase()];
+  }
+  
+  // Fallbacks based on raw string
+  if (bc.includes('transfer')) return 'transfers';
+  if (bc.includes('loan')) return 'loans';
+
+  return 'other';
 }

@@ -392,10 +392,26 @@ export async function generateOnDemandReportData(
   const allPriceAlerts = allPriceAlertsRes.data || [];
 
   // --- Money Snapshot ---
-  const debits = transactions.filter(tx => parseFloat(String(tx.amount)) < 0);
-  const credits = transactions.filter(tx => parseFloat(String(tx.amount)) > 0);
-  const currentMonthSpend = debits.reduce((sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0);
-  const currentMonthIncome = credits.reduce((sum, tx) => sum + parseFloat(String(tx.amount)), 0);
+  const validDebits = transactions
+    .filter(tx => parseFloat(String(tx.amount)) < 0)
+    .map(tx => ({
+      ...tx,
+      amount: Math.abs(parseFloat(String(tx.amount))),
+      meaningfulCategory: tx.user_category || categoriseTransaction(tx.merchant_name || tx.description || '', tx.category || ''),
+    }))
+    .filter(tx => tx.meaningfulCategory !== 'transfers' && tx.meaningfulCategory !== 'internal');
+
+  const validCredits = transactions
+    .filter(tx => parseFloat(String(tx.amount)) > 0)
+    .map(tx => ({
+      ...tx,
+      amount: parseFloat(String(tx.amount)),
+      meaningfulCategory: tx.user_category || categoriseTransaction(tx.merchant_name || tx.description || '', tx.category || ''),
+    }))
+    .filter(tx => tx.meaningfulCategory !== 'transfers' && tx.meaningfulCategory !== 'internal');
+
+  const currentMonthSpend = validDebits.reduce((sum, tx) => sum + tx.amount, 0);
+  const currentMonthIncome = validCredits.reduce((sum, tx) => sum + tx.amount, 0);
   const netPosition = currentMonthIncome - currentMonthSpend;
 
   // --- Subscription overview ---
@@ -725,23 +741,30 @@ export async function generateAnnualReportData(
   const allPriceAlerts = allPriceAlertsRes.data || [];
 
   // --- Spending calculations with meaningful categories ---
-  const debits = transactions
+  const validDebits = transactions
     .filter(tx => parseFloat(String(tx.amount)) < 0)
     .map(tx => ({
       ...tx,
       amount: Math.abs(parseFloat(String(tx.amount))),
       meaningfulCategory: tx.user_category || categoriseTransaction(tx.merchant_name || tx.description || '', tx.category || ''),
-    }));
-  const credits = transactions
-    .filter(tx => parseFloat(String(tx.amount)) > 0)
-    .map(tx => ({ ...tx, amount: parseFloat(String(tx.amount)) }));
+    }))
+    .filter(tx => tx.meaningfulCategory !== 'transfers' && tx.meaningfulCategory !== 'internal');
 
-  const totalOutgoings = debits.reduce((sum, tx) => sum + tx.amount, 0);
-  const totalIncome = credits.reduce((sum, tx) => sum + tx.amount, 0);
+  const validCredits = transactions
+    .filter(tx => parseFloat(String(tx.amount)) > 0)
+    .map(tx => ({
+      ...tx,
+      amount: parseFloat(String(tx.amount)),
+      meaningfulCategory: tx.user_category || categoriseTransaction(tx.merchant_name || tx.description || '', tx.category || ''),
+    }))
+    .filter(tx => tx.meaningfulCategory !== 'transfers' && tx.meaningfulCategory !== 'internal');
+
+  const totalOutgoings = validDebits.reduce((sum, tx) => sum + tx.amount, 0);
+  const totalIncome = validCredits.reduce((sum, tx) => sum + tx.amount, 0);
 
   // Spending by meaningful category
   const categoryTotals: Record<string, { total: number; count: number }> = {};
-  for (const tx of debits) {
+  for (const tx of validDebits) {
     const cat = tx.meaningfulCategory;
     if (!categoryTotals[cat]) categoryTotals[cat] = { total: 0, count: 0 };
     categoryTotals[cat].total += tx.amount;
@@ -759,14 +782,14 @@ export async function generateAnnualReportData(
 
   // Monthly trends — only populated months
   const monthlyMap: Record<string, { spend: number; income: number }> = {};
-  for (const tx of debits) {
+  for (const tx of validDebits) {
     const key = tx.timestamp?.substring(0, 7);
     if (key) {
       if (!monthlyMap[key]) monthlyMap[key] = { spend: 0, income: 0 };
       monthlyMap[key].spend += tx.amount;
     }
   }
-  for (const tx of credits) {
+  for (const tx of validCredits) {
     const key = tx.timestamp?.substring(0, 7);
     if (key) {
       if (!monthlyMap[key]) monthlyMap[key] = { spend: 0, income: 0 };
@@ -785,9 +808,7 @@ export async function generateAnnualReportData(
 
   // Top 5 merchants (clean names)
   const merchantMap: Record<string, { total: number; count: number }> = {};
-  for (const tx of debits) {
-    if (tx.meaningfulCategory === 'transfers' || tx.meaningfulCategory === 'internal') continue;
-    
+  for (const tx of validDebits) {
     // Fallback to description if merchant_name is absent, and normalize it
     const rawName = tx.merchant_name || tx.description || 'Unknown';
     const name = cleanMerchantName(tx.merchant_name || '', rawName) || normaliseMerchantName(rawName);
