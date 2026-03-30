@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
         auto_renews: body.auto_renews !== undefined ? body.auto_renews : true,
         provider_type: body.provider_type || null,
         current_tariff: body.current_tariff || null,
+        source: body.source || 'manual',
       })
       .select()
       .single();

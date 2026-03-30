@@ -115,6 +115,7 @@ export default function SubscriptionsPage() {
     auto_renews: true,
     provider_type: '',
     current_tariff: '',
+    source: 'manual',
   });
   const [shareModal, setShareModal] = useState<{ open: boolean; amount: number; provider: string }>({ open: false, amount: 0, provider: '' });
   const [creditWarning, setCreditWarning] = useState<{ open: boolean; productType: string; providerName: string; warningContent: string; sub: Subscription | null }>({ open: false, productType: '', providerName: '', warningContent: '', sub: null });
@@ -381,6 +382,7 @@ export default function SubscriptionsPage() {
       auto_renews: true,
       provider_type: '',
       current_tariff: '',
+      source: 'email',
     });
     setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
     setShowAddForm(true);
@@ -403,6 +405,7 @@ export default function SubscriptionsPage() {
           auto_renews: newSub.auto_renews,
           provider_type: newSub.provider_type || null,
           current_tariff: newSub.current_tariff || null,
+          source: newSub.source || 'manual',
         }),
       });
       if (res.ok) {
@@ -421,6 +424,7 @@ export default function SubscriptionsPage() {
           auto_renews: true,
           provider_type: '',
           current_tariff: '',
+          source: 'manual',
         });
       }
     } catch (error) {
