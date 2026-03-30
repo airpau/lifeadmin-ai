@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
-  ArrowRight, Loader2, AlertTriangle, Clock, Sparkles,
+  ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
@@ -24,13 +24,9 @@ export default function DashboardPage() {
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
-  const [moneySaved, setMoneySaved] = useState(0);
   const [potentialSavings, setPotentialSavings] = useState(0);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
-  const [unconfirmedSavings, setUnconfirmedSavings] = useState<{ id: string; provider_name: string; money_saved: number }[]>([]);
-  const [editingSavingId, setEditingSavingId] = useState<string | null>(null);
-  const [editingSavingAmount, setEditingSavingAmount] = useState('');
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
@@ -158,7 +154,7 @@ export default function DashboardPage() {
           supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id),
+            .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
           supabase.from('bank_connections').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).eq('status', 'active'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
@@ -188,45 +184,6 @@ export default function DashboardPage() {
         setPendingTasks((userTasks.data || []).filter((t: any) =>
           !((t.provider_name || '').toLowerCase().includes('paybacker'))
         ));
-
-        // Calculate Money Recovery Score
-        let saved = parseFloat(String(profile.data?.total_money_recovered || 0));
-
-        // Add cancelled subscription savings
-        for (const sub of (cancelledSubs.data || [])) {
-          if (sub.money_saved) {
-            saved += parseFloat(String(sub.money_saved));
-          } else if (sub.cancelled_at && sub.amount) {
-            // Estimate: monthly amount x months since cancellation
-            const monthsSince = Math.max(1, Math.floor(
-              (Date.now() - new Date(sub.cancelled_at).getTime()) / (30 * 24 * 60 * 60 * 1000)
-            ));
-            const monthlyAmt = sub.billing_cycle === 'yearly'
-              ? parseFloat(String(sub.amount)) / 12
-              : sub.billing_cycle === 'quarterly'
-                ? parseFloat(String(sub.amount)) / 3
-                : parseFloat(String(sub.amount));
-            saved += monthlyAmt * monthsSince;
-          }
-        }
-
-        // Add resolved task recoveries
-        for (const t of (resolvedTasks.data || [])) {
-          if (t.money_recovered) {
-            saved += parseFloat(String(t.money_recovered));
-          }
-        }
-        setMoneySaved(saved);
-
-        // Find cancelled subs where user hasn't confirmed the saving yet
-        const unconfirmed = (cancelledSubs.data || [])
-          .filter(s => s.money_saved && s.money_saved > 0 && s.notes !== 'savings_confirmed')
-          .map(s => ({
-            id: s.id,
-            provider_name: s.provider_name,
-            money_saved: parseFloat(String(s.money_saved)),
-          }));
-        setUnconfirmedSavings(unconfirmed);
 
         // Potential savings: estimate from active subscriptions (assume 15% could be saved by switching)
         const activeSubs = subs.data || [];
@@ -304,32 +261,7 @@ export default function DashboardPage() {
     fetchData();
   }, [supabase]);
 
-  const handleSavingAction = async (subId: string, action: 'confirm' | 'reject' | 'amend', newAmount?: number) => {
-    const updates: Record<string, any> = { notes: 'savings_confirmed' };
-    if (action === 'reject') {
-      updates.money_saved = 0;
-    } else if (action === 'amend' && newAmount !== undefined) {
-      updates.money_saved = newAmount;
-    }
 
-    await fetch(`/api/subscriptions/${subId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-
-    setUnconfirmedSavings(prev => prev.filter(s => s.id !== subId));
-    setEditingSavingId(null);
-
-    // Recalculate total
-    if (action === 'reject') {
-      const sub = unconfirmedSavings.find(s => s.id === subId);
-      if (sub) setMoneySaved(prev => prev - sub.money_saved);
-    } else if (action === 'amend' && newAmount !== undefined) {
-      const sub = unconfirmedSavings.find(s => s.id === subId);
-      if (sub) setMoneySaved(prev => prev - sub.money_saved + newAmount);
-    }
-  };
 
   if (loading) {
     return (
@@ -408,117 +340,59 @@ export default function DashboardPage() {
         <p className="text-slate-400">Your financial snapshot and quick actions</p>
       </div>
 
-      {/* Money Recovery Score */}
-      <div className="bg-gradient-to-r from-mint-400/10 to-brand-400/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="h-5 w-5 text-mint-400" />
-              <h2 className="text-sm font-semibold text-mint-400 uppercase tracking-wider">Money Recovery Score</h2>
-            </div>
-            <p className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-heading)]">
-              {formatGBP(moneySaved)}
-            </p>
-            <p className="text-slate-400 text-sm mt-1">
-              {moneySaved > 0
-                ? 'saved through cancelled subscriptions and recovered money'
-                : 'Start saving by cancelling unused subscriptions or disputing unfair charges'}
-            </p>
-          </div>
-          {potentialSavings > 0 && (
-            <div className="bg-navy-900/50 rounded-xl px-5 py-3 text-center sm:text-right">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Potential savings</p>
-              <p className="text-xl font-bold text-brand-400">{formatGBP(potentialSavings)}<span className="text-sm font-normal text-slate-500">/yr</span></p>
-              <Link href="/dashboard/deals" className="text-xs text-mint-400 hover:text-mint-300 flex items-center justify-center sm:justify-end gap-1 mt-1">
-                Find deals <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-          )}
+      {/* Potential Savings Hero */}
+      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
+        <div className="flex items-center gap-2 mb-2">
+          <PiggyBank className="h-5 w-5 text-emerald-400" />
+          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Your Potential Savings</h2>
         </div>
-        {/* Unconfirmed savings to review */}
-        {unconfirmedSavings.length > 0 && (
-          <div className="mt-4 border-t border-navy-700/50 pt-4">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Review your savings</p>
-            <div className="space-y-2">
-              {unconfirmedSavings.map(sub => (
-                <div key={sub.id} className="flex items-center justify-between bg-navy-900/50 rounded-lg px-4 py-3">
-                  <div>
-                    <p className="text-sm text-white font-medium">{sub.provider_name}</p>
-                    <p className="text-xs text-slate-400">
-                      {editingSavingId === sub.id ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span>&pound;</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingSavingAmount}
-                            onChange={(e) => setEditingSavingAmount(e.target.value)}
-                            className="w-20 bg-navy-800 border border-navy-700 rounded px-2 py-0.5 text-white text-xs focus:outline-none focus:border-mint-400"
-                            autoFocus
-                          />
-                          <span>/month</span>
-                        </span>
-                      ) : (
-                        <span>Estimated saving: {formatGBP(sub.money_saved)}/month</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {editingSavingId === sub.id ? (
-                      <button
-                        onClick={() => handleSavingAction(sub.id, 'amend', parseFloat(editingSavingAmount) || 0)}
-                        className="text-xs bg-mint-400 text-navy-950 px-3 py-1.5 rounded-lg font-medium"
-                      >
-                        Save
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleSavingAction(sub.id, 'confirm')}
-                          className="text-xs bg-mint-400/10 text-mint-400 px-3 py-1.5 rounded-lg hover:bg-mint-400/20 transition-all"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingSavingId(sub.id);
-                            setEditingSavingAmount(String(sub.money_saved));
-                          }}
-                          className="text-xs bg-navy-800 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-navy-700 transition-all"
-                        >
-                          Amend
-                        </button>
-                        <button
-                          onClick={() => handleSavingAction(sub.id, 'reject')}
-                          className="text-xs text-slate-500 hover:text-red-400 px-2 py-1.5 transition-all"
-                          title="Not a real saving"
-                        >
-                          &times;
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <p className="text-4xl md:text-5xl font-bold text-emerald-400 font-[family-name:var(--font-heading)] mb-1">
+          {formatGBP(potentialSavings)}<span className="text-2xl font-normal text-emerald-400/70">/yr</span>
+        </p>
+        <p className="text-slate-400 text-sm mb-6">
+          Based on your subscriptions, price increases &amp; better deals
+        </p>
 
-        {moneySaved > 0 && potentialSavings > 0 && (
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-slate-500 mb-1">
-              <span>Recovered</span>
-              <span>Potential total: {formatGBP(moneySaved + potentialSavings)}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <button
+            onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
+            className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
+          >
+            <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
+              <TrendingUp className="h-5 w-5" />
             </div>
-            <div className="w-full bg-navy-800 rounded-full h-2">
-              <div
-                className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, (moneySaved / (moneySaved + potentialSavings)) * 100)}%` }}
-              />
+            <div>
+              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => sum + (parseFloat(a.annual_impact) || 0), 0))}/yr</p>
+              <p className="text-slate-400 text-xs">Price hikes detected</p>
             </div>
-          </div>
-        )}
+          </button>
+
+          <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
+            <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-400 h-10 w-10 flex items-center justify-center shrink-0">
+              <Tag className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-white font-semibold">{comparisonCount} deals</p>
+              <p className="text-slate-400 text-xs">Available</p>
+            </div>
+          </Link>
+
+          <Link href="/dashboard/complaints" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
+            <div className="bg-blue-500/10 p-2 rounded-lg text-blue-400 h-10 w-10 flex items-center justify-center shrink-0">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-white font-semibold">{complaintsGenerated} disputes</p>
+              <p className="text-slate-400 text-xs">Filed</p>
+            </div>
+          </Link>
+        </div>
+
+        <div className="flex">
+          <Link href="/dashboard/deals" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+            See Your Savings Plan <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
       {/* Savings Opportunity Widget */}
@@ -526,7 +400,7 @@ export default function DashboardPage() {
 
       {/* Price Increase Alerts */}
       {priceAlerts.length > 0 && (
-        <div className="mb-8">
+        <div id="price-alerts" className="mb-8">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             Price Increase Alerts ({priceAlerts.length})
