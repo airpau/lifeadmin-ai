@@ -255,6 +255,7 @@ export default function SubscriptionsPage() {
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
   const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
   const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(new Set());
+  const [groupAmountOverrides, setGroupAmountOverrides] = useState<Record<string, string>>({});
   const duplicateGroups = (() => {
     const groups: Record<string, Subscription[]> = {};
     subscriptions.filter(s => !isFinancePayment(s.provider_name) && s.status === 'active').forEach(s => {
@@ -265,13 +266,39 @@ export default function SubscriptionsPage() {
     return Object.values(groups).filter(g => g.length > 1);
   })();
 
-  const handleMergeDuplicates = async (singleGroup?: Subscription[]) => {
+  // Sort group so the best entry to keep is first:
+  // 1. Prefer bank-sourced (bank/bank_and_email) — real transaction data
+  // 2. Prefer non-zero amount over zero
+  // 3. Then highest amount wins
+  const rankForKeep = (s: Subscription) => {
+    const bankScore = (s.source === 'bank' || s.source === 'bank_and_email') ? 2 : 0;
+    const nonZeroScore = (s.amount && s.amount > 0) ? 1 : 0;
+    return bankScore + nonZeroScore;
+  };
+
+  const handleMergeDuplicates = async (singleGroup?: Subscription[], groupKey?: string) => {
     setMergingDuplicates(true);
     let deletedCount = 0;
     const groups = singleGroup ? [singleGroup] : duplicateGroups;
     for (const group of groups) {
-      const sorted = [...group].sort((a, b) => b.amount - a.amount);
+      const sorted = [...group].sort((a, b) => rankForKeep(b) - rankForKeep(a) || b.amount - a.amount);
+      const keep = sorted[0];
       const duplicates = sorted.slice(1);
+
+      // Apply amount override if user edited it
+      const key = groupKey || `${cleanMerchantName(group[0].provider_name).toLowerCase()}|${group[0].category}`;
+      const overrideVal = groupAmountOverrides[key];
+      if (overrideVal !== undefined) {
+        const parsed = parseFloat(overrideVal);
+        if (!isNaN(parsed) && parsed !== keep.amount) {
+          await fetch(`/api/subscriptions/${keep.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: parsed }),
+          });
+        }
+      }
+
       for (const dup of duplicates) {
         await fetch(`/api/subscriptions/${dup.id}`, { method: 'DELETE' });
         deletedCount++;
@@ -1103,10 +1130,11 @@ export default function SubscriptionsPage() {
               {showDuplicateDetails && (
                 <div className="space-y-3 mt-2">
                   {activeDuplicateGroups.map((group) => {
-                    const sorted = [...group].sort((a, b) => b.amount - a.amount);
+                    const sorted = [...group].sort((a, b) => rankForKeep(b) - rankForKeep(a) || b.amount - a.amount);
                     const keep = sorted[0];
                     const remove = sorted.slice(1);
                     const groupKey = `${cleanMerchantName(group[0].provider_name).toLowerCase()}|${group[0].category}`;
+                    const overrideAmt = groupAmountOverrides[groupKey] ?? String(keep.amount);
                     return (
                       <div key={groupKey} className="bg-navy-950/80 border border-navy-700/50 rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
@@ -1120,7 +1148,7 @@ export default function SubscriptionsPage() {
                               Dismiss
                             </button>
                             <button
-                              onClick={() => handleMergeDuplicates(group)}
+                              onClick={() => handleMergeDuplicates(group, groupKey)}
                               disabled={mergingDuplicates}
                               className="text-xs bg-amber-500 hover:bg-amber-600 text-navy-950 font-semibold px-3 py-1 rounded transition-colors disabled:opacity-50"
                             >
@@ -1129,10 +1157,22 @@ export default function SubscriptionsPage() {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <div className="flex items-center gap-2 text-xs">
+                          <div className="flex items-center gap-2 text-xs flex-wrap">
                             <span className="w-14 text-green-400 font-medium shrink-0">Keep:</span>
                             <span className="text-slate-200">{keep.provider_name}</span>
-                            <span className="text-slate-400">— £{keep.amount}/{keep.billing_cycle}</span>
+                            <span className="text-slate-500">at</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-slate-400">£</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={overrideAmt}
+                                onChange={e => setGroupAmountOverrides(prev => ({ ...prev, [groupKey]: e.target.value }))}
+                                className="w-20 bg-navy-800 border border-navy-600 rounded px-1.5 py-0.5 text-white text-xs focus:outline-none focus:border-amber-400"
+                              />
+                              <span className="text-slate-500">/{keep.billing_cycle}</span>
+                            </span>
                             {keep.source && <span className="text-slate-500">({keep.source})</span>}
                           </div>
                           {remove.map(r => (
