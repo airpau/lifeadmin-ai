@@ -63,9 +63,18 @@ export async function GET(request: NextRequest) {
   // Load learned rules for learning-aware categorisation
   await loadLearnedRules();
 
+  // Generic auto-assigned categories that can be overridden by runtime categorisation.
+  // Allows mortgage transactions stored as 'bills' and groceries stored as 'shopping'
+  // to be correctly re-categorised for drill-down without requiring a full re-sync.
+  const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
+
   let filtered = (txns || []).map(t => ({
     ...t,
-    spending_category: t.user_category || categorise(t.description || '', t.category || '', parseFloat(t.amount)),
+    spending_category: (() => {
+      const rawCat = t.user_category || '';
+      if (rawCat && !SOFT_CATEGORIES.has(rawCat)) return rawCat;
+      return categorise(t.description || '', t.category || '', parseFloat(t.amount)) || rawCat || 'other';
+    })(),
     amount: parseFloat(t.amount),
   }));
 
