@@ -253,6 +253,8 @@ export default function SubscriptionsPage() {
   })();
 
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
+  const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
+  const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(new Set());
   const duplicateGroups = (() => {
     const groups: Record<string, Subscription[]> = {};
     subscriptions.filter(s => !isFinancePayment(s.provider_name) && s.status === 'active').forEach(s => {
@@ -263,10 +265,11 @@ export default function SubscriptionsPage() {
     return Object.values(groups).filter(g => g.length > 1);
   })();
 
-  const handleMergeDuplicates = async () => {
+  const handleMergeDuplicates = async (singleGroup?: Subscription[]) => {
     setMergingDuplicates(true);
     let deletedCount = 0;
-    for (const group of duplicateGroups) {
+    const groups = singleGroup ? [singleGroup] : duplicateGroups;
+    for (const group of groups) {
       const sorted = [...group].sort((a, b) => b.amount - a.amount);
       const duplicates = sorted.slice(1);
       for (const dup of duplicates) {
@@ -275,11 +278,19 @@ export default function SubscriptionsPage() {
       }
     }
     if (deletedCount > 0) {
-      alert(`Successfully merged ${deletedCount} duplicate subscription${deletedCount > 1 ? 's' : ''}.`);
       await fetchSubscriptions();
     }
     setMergingDuplicates(false);
   };
+
+  const handleDismissGroup = (key: string) => {
+    setDismissedGroups(prev => new Set([...prev, key]));
+  };
+
+  const activeDuplicateGroups = duplicateGroups.filter(g => {
+    const key = `${cleanMerchantName(g[0].provider_name).toLowerCase()}|${g[0].category}`;
+    return !dismissedGroups.has(key);
+  });
 
   const statutoryTotalMonthly = baseSubscriptions
     .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time' && isStatutoryService(normaliseProviderName(s.provider_name)))
@@ -1068,24 +1079,85 @@ export default function SubscriptionsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Subscriptions list */}
         <div className="space-y-4">
-          {duplicateGroups.length > 0 && (
-            <div className="bg-navy-900 border border-amber-500/50 rounded-lg p-4 mb-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
-                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+          {activeDuplicateGroups.length > 0 && (
+            <div className="bg-navy-900 border border-amber-500/30 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-amber-500/10 rounded-lg flex items-center justify-center shrink-0">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="text-white font-medium text-sm">Possible Duplicate Subscriptions</p>
+                    <p className="text-slate-400 text-xs">{activeDuplicateGroups.length} provider{activeDuplicateGroups.length !== 1 ? 's' : ''} — review before merging</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-white font-medium text-sm">Duplicate Subscriptions Detected</p>
-                  <p className="text-slate-400 text-xs">We found structured overlaps in your transactions for {duplicateGroups.length} provider{duplicateGroups.length !== 1 ? 's' : ''}.</p>
-                </div>
+                <button
+                  onClick={() => setShowDuplicateDetails(v => !v)}
+                  className="text-xs text-amber-400 hover:text-amber-300 underline whitespace-nowrap"
+                >
+                  {showDuplicateDetails ? 'Hide details' : 'Review duplicates'}
+                </button>
               </div>
-              <button
-                onClick={handleMergeDuplicates}
-                disabled={mergingDuplicates}
-                className="bg-amber-500 hover:bg-amber-600 text-navy-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
-              >
-                {mergingDuplicates ? 'Merging...' : `Merge ${duplicateGroups.reduce((acc, g) => acc + g.length - 1, 0)} Duplicates`}
-              </button>
+
+              {showDuplicateDetails && (
+                <div className="space-y-3 mt-2">
+                  {activeDuplicateGroups.map((group) => {
+                    const sorted = [...group].sort((a, b) => b.amount - a.amount);
+                    const keep = sorted[0];
+                    const remove = sorted.slice(1);
+                    const groupKey = `${cleanMerchantName(group[0].provider_name).toLowerCase()}|${group[0].category}`;
+                    return (
+                      <div key={groupKey} className="bg-navy-950/80 border border-navy-700/50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-white text-sm font-semibold">{cleanMerchantName(keep.provider_name)}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDismissGroup(groupKey)}
+                              className="text-xs text-slate-500 hover:text-slate-300 px-2 py-1 rounded transition-colors"
+                              title="Not a duplicate — dismiss"
+                            >
+                              Dismiss
+                            </button>
+                            <button
+                              onClick={() => handleMergeDuplicates(group)}
+                              disabled={mergingDuplicates}
+                              className="text-xs bg-amber-500 hover:bg-amber-600 text-navy-950 font-semibold px-3 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              Merge
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="w-14 text-green-400 font-medium shrink-0">Keep:</span>
+                            <span className="text-slate-200">{keep.provider_name}</span>
+                            <span className="text-slate-400">— £{keep.amount}/{keep.billing_cycle}</span>
+                            {keep.source && <span className="text-slate-500">({keep.source})</span>}
+                          </div>
+                          {remove.map(r => (
+                            <div key={r.id} className="flex items-center gap-2 text-xs">
+                              <span className="w-14 text-red-400 font-medium shrink-0">Remove:</span>
+                              <span className="text-slate-400 line-through">{r.provider_name}</span>
+                              <span className="text-slate-500">— £{r.amount}/{r.billing_cycle}</span>
+                              {r.source && <span className="text-slate-500">({r.source})</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {activeDuplicateGroups.length > 1 && (
+                    <button
+                      onClick={() => handleMergeDuplicates()}
+                      disabled={mergingDuplicates}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-navy-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {mergingDuplicates ? 'Merging...' : `Merge all ${activeDuplicateGroups.reduce((acc, g) => acc + g.length - 1, 0)} duplicates`}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {hiddenFinanceCount > 0 && (
