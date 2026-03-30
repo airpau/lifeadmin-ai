@@ -172,10 +172,10 @@ export default function Home() {
                 className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto"
               >
                 {[
-                  { value: 'AI-Powered', label: 'Complaint letters' },
+                  { value: 'Up to £520', label: 'For flight delays (EU261/UK261 rights)' },
+                  { value: '£312', label: 'Average wasted on subscriptions' },
                   { value: '50+', label: 'UK providers covered' },
                   { value: '30 sec', label: 'To generate a letter' },
-                  { value: '9', label: 'Deal categories' },
                 ].map((stat) => (
                   <motion.div key={stat.label} variants={fadeUp} className="text-center">
                     <p className="text-2xl font-bold text-mint-400">{stat.value}</p>
@@ -417,18 +417,21 @@ export default function Home() {
                 <thead>
                   <tr className="border-b-2 border-navy-700/50">
                     <th className="text-left py-4 px-3 text-slate-500 font-normal text-xs uppercase tracking-wider">Feature</th>
-                    <th className="text-center py-4 px-3 w-[140px]">
-                      <span className="text-white font-bold text-base block">Free</span>
-                      <span className="text-slate-500 text-xs">£0/month</span>
+                    <th className="text-center py-4 px-3 w-[140px] align-top">
+                      <span className="text-white font-bold text-base block mb-0.5">Free</span>
+                      <span className="text-slate-500 text-xs font-semibold block mb-2">£0/month</span>
+                      <span className="text-slate-400 text-[10px] leading-tight font-normal">Try Paybacker with 3 complaint letters. See what we can do.</span>
                     </th>
-                    <th className="text-center py-4 px-3 w-[140px] bg-mint-400/5 rounded-t-xl">
+                    <th className="text-center py-4 px-3 w-[140px] bg-mint-400/5 rounded-t-xl align-top">
                       <span className="inline-block bg-mint-400 text-navy-950 text-[10px] font-bold px-2 py-0.5 rounded-full mb-1">MOST POPULAR</span>
-                      <span className="text-mint-400 font-bold text-base block">Essential</span>
-                      <span className="text-slate-400 text-xs">£4.99/month</span>
+                      <span className="text-mint-400 font-bold text-base block mb-0.5">Essential</span>
+                      <span className="text-slate-400 text-xs font-semibold block mb-2">£4.99/month</span>
+                      <span className="text-slate-300 text-[10px] leading-tight font-normal">Let Paybacker scan your inbox, find subscriptions, and cancel them automatically</span>
                     </th>
-                    <th className="text-center py-4 px-3 w-[140px]">
-                      <span className="text-brand-400 font-bold text-base block">Pro</span>
-                      <span className="text-slate-400 text-xs">£9.99/month</span>
+                    <th className="text-center py-4 px-3 w-[140px] align-top">
+                      <span className="text-brand-400 font-bold text-base block mb-0.5">Pro</span>
+                      <span className="text-slate-400 text-xs font-semibold block mb-2">£9.99/month</span>
+                      <span className="text-slate-300 text-[10px] leading-tight font-normal">Full financial picture with Open Banking + spending insights</span>
                     </th>
                   </tr>
                 </thead>

@@ -22,13 +22,16 @@ export async function POST(request: NextRequest) {
   const isAdmin = user.email === 'aireypaul@googlemail.com';
 
   if (!isAdmin) {
-    // Free users get one-time scan, Essential gets monthly, Pro gets unlimited
-    if (!usageCheck.allowed) {
-      const message = plan.tier === 'free'
-        ? 'You have used your free scan. Upgrade to Essential for monthly re-scans.'
-        : 'Monthly scan limit reached. Upgrade to Pro for unlimited scans.';
+    if (plan.tier === 'free') {
       return NextResponse.json(
-        { error: message, upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+        { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
+        { status: 403 }
+      );
+    }
+
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Monthly scan limit reached. Upgrade to Pro for unlimited scans.', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
         { status: 403 }
       );
     }
@@ -78,8 +81,10 @@ export async function POST(request: NextRequest) {
     const allMessageIds = new Set<string>();
 
     // Broad query — let Claude filter the relevant ones
+    // We explicitly hunt for typical subscription receipts and flight delay keywords
     const queries = [
       'newer_than:1y',
+      'flight delayed OR EU261 OR UK261 OR compensation OR easyjet OR ryanair OR british airways OR wizz air',
     ];
 
     const listResults = await Promise.allSettled(
@@ -167,7 +172,7 @@ IDENTIFY BY PATTERN:
 - ANY email mentioning price increase, tariff change, rate change, "new prices" = dispute opportunity
 - ANY email mentioning direct debit, standing order, regular payment = financial tracking
 - ANY email mentioning insurance, policy, cover, premium, excess = insurance comparison
-- ANY email about flight booking, travel confirmation, itinerary = flight delay compensation check (UK261 up to £520)
+- ANY email mentioning "flight delayed", "EU261", "UK261", "compensation", or airline names (EasyJet, Ryanair, British Airways, Wizz) = flight delay compensation opportunity (up to £520)
 - ANY email mentioning loan, credit card, APR, interest rate = better rate opportunity
 - ANY email mentioning council tax, HMRC, tax code = tax challenge opportunity
 - ANY email from a gym, fitness, wellness provider = subscription review

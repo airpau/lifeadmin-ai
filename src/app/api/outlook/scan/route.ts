@@ -13,6 +13,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Plan and rate limit checks
+  const { getUserPlan } = await import('@/lib/get-user-plan');
+  const { checkUsageLimit } = await import('@/lib/plan-limits');
+  
+  const plan = await getUserPlan(user.id);
+  const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+  const isAdmin = user.email === 'aireypaul@googlemail.com';
+
+  if (!isAdmin) {
+    if (plan.tier === 'free') {
+      return NextResponse.json(
+        { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
+        { status: 403 }
+      );
+    }
+
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Monthly scan limit reached. Upgrade to Pro for unlimited scans.', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+        { status: 403 }
+      );
+    }
+  }
+
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

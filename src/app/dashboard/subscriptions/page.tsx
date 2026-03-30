@@ -63,7 +63,7 @@ const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
 function normaliseProviderName(raw: string): string {
   return cleanMerchantName(raw);
 }
-const STATUTORY_KEYWORDS = ['council', 'testvalley', 'winchester', 'lbh', 'l.b.hounslow', 'dvla', 'thames water', 'severn trent', 'hmrc', 'southern water', 'anglian water', 'united utilities'];
+const STATUTORY_KEYWORDS = ['council', 'testvalley', 'winchester', 'lbh', 'l.b.hounslow', 'dvla', 'hmrc'];
 
 function isStatutoryService(name: string): boolean {
   const lower = name.toLowerCase();

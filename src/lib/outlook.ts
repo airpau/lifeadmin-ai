@@ -101,6 +101,13 @@ export async function scanOutlookForOpportunities(accessToken: string) {
     "contains(subject,'statement')",
     "contains(subject,'overdue')",
     "contains(subject,'direct debit')",
+    "contains(subject,'flight delayed')",
+    "contains(subject,'EU261')",
+    "contains(subject,'UK261')",
+    "contains(subject,'compensation')",
+    "contains(subject,'easyjet')",
+    "contains(subject,'ryanair')",
+    "contains(subject,'wizz')"
   ].join(' or ');
 
   const params = new URLSearchParams({
@@ -146,11 +153,11 @@ export async function scanOutlookForOpportunities(accessToken: string) {
   const message = await anthropic.messages.create({
     model: OUTLOOK_MODEL,
     max_tokens: 2048,
-    system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities.
+    system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities. Look closely for ANY email mentioning "flight delayed", "EU261", "UK261", "compensation", or airline names (EasyJet, Ryanair, British Airways) which indicate a flight delay compensation opportunity (£520).
 Return a JSON array of opportunities. Each must have:
 - id: unique string
 - emailId: the email id it came from
-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase"
+- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "flight_delay" | "insurance" | "loan" | "utility_bill" | "refund_opportunity" | "debt_dispute" | "tax_rebate"
 - title: short title (max 60 chars)
 - description: 1-2 sentences explaining the opportunity
 - amount: estimated GBP amount at risk or saveable (number, 0 if unknown)
