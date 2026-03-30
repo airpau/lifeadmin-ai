@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Tag, Loader2, Clock, AlertTriangle, Zap } from 'lucide-react';
+import { Tag, Loader2, Clock, AlertTriangle, Zap, Trophy, CheckCircle2, Info } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 
@@ -275,13 +275,40 @@ interface VerifiedDeal {
   international_minutes: string | null;
   affiliate_url: string;
   last_verified_at: string;
+  is_active: boolean;
   promo_code: string | null;
   promo_code_discount: string | null;
 }
 
-function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
+/** Parse data allowance string to numeric GB for comparison */
+function parseDataAllowanceGB(da: string | null): number {
+  if (!da) return 0;
+  if (/unlimited/i.test(da)) return Infinity;
+  const m = da.match(/([\d.]+)\s*(gb|tb)/i);
+  if (!m) return 0;
+  const val = parseFloat(m[1]);
+  return m[2].toLowerCase() === 'tb' ? val * 1024 : val;
+}
+
+/** Get freshness indicator based on last_verified_at */
+function freshnessIndicator(lastVerified: string | null): { text: string; color: string; bg: string } | null {
+  if (!lastVerified) return null;
+  const days = Math.floor((Date.now() - new Date(lastVerified).getTime()) / (1000 * 60 * 60 * 24));
+  if (days <= 7) return { text: '✓ Verified', color: 'text-green-400', bg: 'bg-green-500/10' };
+  if (days <= 30) return null; // fine, show nothing
+  return { text: 'Prices may have changed', color: 'text-amber-400', bg: 'bg-amber-500/10' };
+}
+
+interface AffiliatePlanCardProps {
+  deal: VerifiedDeal;
+  savingsMonthly?: number;
+  savingsYearly?: number;
+  userProvider?: string;
+  userSpend?: number;
+}
+
+function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, userSpend }: AffiliatePlanCardProps) {
   const [copied, setCopied] = useState(false);
-  const [tracking, setTracking] = useState(false);
 
   const handleClick = () => {
     // Track in background — don't block navigation (iOS Safari blocks async window.open)
@@ -303,6 +330,7 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
   };
 
   const hasPromo = deal.price_promotional != null;
+  const freshness = freshnessIndicator(deal.last_verified_at);
 
   // Build headline from plan specs
   const specs: string[] = [];
@@ -318,11 +346,21 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
     ? `From £${deal.price_promotional}/mo`
     : `£${deal.price_monthly}/mo`;
 
+  const hasSavingsData = savingsMonthly !== undefined && userSpend !== undefined && userSpend > 0;
+  const isSaving = hasSavingsData && savingsMonthly! > 0;
+
   return (
     <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-navy-600">
       {/* Body — identical to DealCard */}
       <div className="flex-1 min-w-0 mb-3">
-        <h3 className="text-base font-semibold text-white mb-1 truncate">{deal.provider} {deal.plan_name}</h3>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h3 className="text-base font-semibold text-white truncate">{deal.provider} {deal.plan_name}</h3>
+          {freshness && (
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${freshness.color} ${freshness.bg}`}>
+              {freshness.text}
+            </span>
+          )}
+        </div>
         <p className="text-slate-400 text-sm line-clamp-2">{headline}</p>
         {hasPromo && deal.promotional_period && (
           <p className="text-xs text-mint-400 mt-1">{deal.promo_code_discount || `Half price for ${deal.promotional_period}`}</p>
@@ -332,6 +370,21 @@ function AffiliatePlanCard({ deal }: { deal: VerifiedDeal }) {
             <span className="font-mono font-bold">{deal.promo_code}</span>
             <span className="text-[10px]">{copied ? 'Copied!' : '— tap to copy'}</span>
           </button>
+        )}
+
+        {/* Personalised savings badge */}
+        {hasSavingsData && (
+          <div className={`mt-2 text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1 ${
+            isSaving
+              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+          }`}>
+            {isSaving ? (
+              <>Save £{savingsMonthly!.toFixed(2)}/mo <span className="text-[10px] text-green-400/70">(£{savingsYearly!.toFixed(0)}/yr vs your {userProvider} plan)</span></>
+            ) : (
+              <>£{Math.abs(savingsMonthly!).toFixed(2)}/mo more than your current plan</>
+            )}
+          </div>
         )}
       </div>
       {/* Footer — pinned to bottom, identical to DealCard */}
@@ -403,6 +456,53 @@ export default function DealsPage() {
 
   // Collect all urgent categories (deduplicated) for the urgent section
   const urgentCategories = Object.keys(urgentSubsByCategory);
+
+  // Compute per-category user spend (highest monthly amount) for savings comparison
+  const categoryUserSpend: Record<string, { amount: number; provider: string; speedMbps: number; dataAllowanceGB: number }> = {};
+  for (const [cat, subs] of Object.entries(categoryToUserSubs)) {
+    let highest: { amount: number; provider: string; speedMbps: number; dataAllowanceGB: number } | null = null;
+    for (const sub of subs) {
+      let monthly = parseFloat(String(sub.amount)) || 0;
+      if (sub.billing_cycle === 'yearly') monthly /= 12;
+      else if (sub.billing_cycle === 'quarterly') monthly /= 3;
+      if (!highest || monthly > highest.amount) {
+        highest = {
+          amount: monthly,
+          provider: normaliseMerchantName(sub.provider_name),
+          speedMbps: sub.speed_mbps || 0,
+          dataAllowanceGB: parseDataAllowanceGB(sub.data_allowance),
+        };
+      }
+    }
+    if (highest && highest.amount > 0) categoryUserSpend[cat] = highest;
+  }
+
+  // Find "Best Deal For You" per category from database deals
+  function findBestDeal(category: string, deals: VerifiedDeal[]): { deal: VerifiedDeal; savingsYearly: number; savingsMonthly: number } | null {
+    const userSpend = categoryUserSpend[category];
+    if (!userSpend || userSpend.amount <= 0 || deals.length === 0) return null;
+
+    let best: { deal: VerifiedDeal; savingsYearly: number; savingsMonthly: number } | null = null;
+    for (const d of deals) {
+      const effectivePrice = d.price_promotional ?? d.price_monthly;
+      const savingsMonthly = userSpend.amount - effectivePrice;
+      if (savingsMonthly <= 0) continue;
+
+      // For broadband: must have same or higher speed
+      if (category === 'Broadband' && d.speed_mbps && userSpend.speedMbps > 0 && d.speed_mbps < userSpend.speedMbps) continue;
+      // For mobile: must have same or more data
+      if (category === 'Mobile' && d.data_allowance) {
+        const dealData = parseDataAllowanceGB(d.data_allowance);
+        if (userSpend.dataAllowanceGB > 0 && dealData < userSpend.dataAllowanceGB) continue;
+      }
+
+      const savingsYearly = savingsMonthly * 12;
+      if (!best || savingsYearly > best.savingsYearly) {
+        best = { deal: d, savingsYearly, savingsMonthly };
+      }
+    }
+    return best;
+  }
 
   // Categories to display based on filter
   const visibleCategories = activeCategory
@@ -513,8 +613,22 @@ export default function DealsPage() {
         {visibleCategories.map((category) => {
           const catLower = category.toLowerCase();
           const affiliatePlans = verifiedDeals
-            .filter(d => d.category === catLower)
-            .sort((a, b) => (a.price_promotional || a.price_monthly) - (b.price_promotional || b.price_monthly));
+            .filter(d => d.category === catLower);
+
+          // Sort by savings if user has spend data, otherwise by price
+          const userSpend = categoryUserSpend[category];
+          if (userSpend) {
+            affiliatePlans.sort((a, b) => {
+              const aPrice = a.price_promotional ?? a.price_monthly;
+              const bPrice = b.price_promotional ?? b.price_monthly;
+              const aSaving = userSpend.amount - aPrice;
+              const bSaving = userSpend.amount - bPrice;
+              return bSaving - aSaving; // highest savings first
+            });
+          } else {
+            affiliatePlans.sort((a, b) => (a.price_promotional || a.price_monthly) - (b.price_promotional || b.price_monthly));
+          }
+
           // Remove hardcoded cards for providers that have affiliate plans
           const affiliateProviderNames = new Set(affiliatePlans.map(d => d.provider.toLowerCase()));
           const genericDeals = (DEALS[category] || []).filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()));
@@ -522,6 +636,9 @@ export default function DealsPage() {
 
           // Find user subscriptions matching this category
           const matchingSubs = categoryToUserSubs[category] || [];
+
+          // Find best deal for this category
+          const bestDeal = affiliatePlans.length > 0 ? findBestDeal(category, affiliatePlans) : null;
 
           return (
             <section key={category}>
@@ -543,6 +660,52 @@ export default function DealsPage() {
                 </div>
               )}
 
+              {/* Best Deal For You recommendation */}
+              {bestDeal && userSpend && (
+                <div className="bg-gradient-to-r from-emerald-500/10 to-mint-400/5 border border-emerald-500/20 rounded-2xl p-5 mb-4">
+                  <div className="flex items-start gap-3">
+                    <Trophy className="h-6 w-6 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold text-white mb-1">Best Deal For You</h3>
+                      <p className="text-sm text-slate-300 mb-3">
+                        Based on your current £{userSpend.amount.toFixed(2)}/mo spend, switching to{' '}
+                        <span className="text-white font-semibold">{bestDeal.deal.provider} {bestDeal.deal.plan_name}</span>
+                        {bestDeal.deal.speed_mbps ? ` (${bestDeal.deal.speed_mbps} Mbps)` : ''}
+                        {' '}at <span className="text-emerald-400 font-semibold">£{(bestDeal.deal.price_promotional ?? bestDeal.deal.price_monthly).toFixed(2)}/mo</span>
+                        {' '}would save you <span className="text-emerald-400 font-bold">£{bestDeal.savingsYearly.toFixed(0)}/yr</span>
+                        {bestDeal.deal.speed_mbps && userSpend.speedMbps > 0 && bestDeal.deal.speed_mbps > userSpend.speedMbps
+                          ? ` — with ${(bestDeal.deal.speed_mbps / userSpend.speedMbps).toFixed(0)}x faster speeds`
+                          : ''}.
+                      </p>
+                      <a
+                        href={bestDeal.deal.affiliate_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => {
+                          fetch('/api/affiliate-deals', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ provider: bestDeal.deal.provider, category: bestDeal.deal.category, deal_id: bestDeal.deal.id, plan_name: bestDeal.deal.plan_name }),
+                          }).catch(() => {});
+                          capture('best_deal_clicked', { provider: bestDeal.deal.provider, plan: bestDeal.deal.plan_name, savings: bestDeal.savingsYearly });
+                        }}
+                        className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-xl transition-all text-sm"
+                      >
+                        Switch Now →
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* No savings available but user has spend */}
+              {!bestDeal && userSpend && affiliatePlans.length > 0 && (
+                <div className="bg-navy-800/30 border border-navy-700/40 rounded-xl px-4 py-3 mb-4 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-mint-400 flex-shrink-0" />
+                  <p className="text-sm text-slate-400">You&apos;re on a competitive deal! We&apos;ll notify you if better options appear.</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {(() => {
                   // Group affiliate plans by provider, show max 3 per provider unless expanded
@@ -557,7 +720,19 @@ export default function DealsPage() {
                     const shown = isExpanded ? plans : plans.slice(0, 3);
                     const hasMore = plans.length > 3 && !isExpanded;
                     for (const plan of shown) {
-                      cards.push(<AffiliatePlanCard key={plan.id} deal={plan} />);
+                      const effectivePrice = plan.price_promotional ?? plan.price_monthly;
+                      const savMo = userSpend ? userSpend.amount - effectivePrice : undefined;
+                      const savYr = savMo !== undefined ? savMo * 12 : undefined;
+                      cards.push(
+                        <AffiliatePlanCard
+                          key={plan.id}
+                          deal={plan}
+                          savingsMonthly={savMo}
+                          savingsYearly={savYr}
+                          userProvider={userSpend?.provider}
+                          userSpend={userSpend?.amount}
+                        />
+                      );
                     }
                     if (hasMore) {
                       cards.push(
