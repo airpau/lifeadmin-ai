@@ -509,7 +509,18 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         const data = await res.json();
         throw new Error(data.error || 'Failed to generate');
       }
+      
+      const data = await res.json();
       setShowGenerate(false);
+      
+      // Immediately display the newly generated letter
+      setLetterModal({
+        content: data.letter,
+        title: 'Your letter',
+        refs: data.legalReferences || [],
+        pills: data.rightsPills || [],
+      });
+      
       fetchDispute();
     } catch (error: any) {
       alert(error.message || 'Failed to generate letter. Please try again.');
