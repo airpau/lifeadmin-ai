@@ -295,18 +295,18 @@ export default function SubscriptionsPage() {
   const statutoryTotalMonthly = baseSubscriptions
     .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time' && isStatutoryService(normaliseProviderName(s.provider_name)))
     .reduce((sum, s) => {
-      let monthlyAmt = s.amount;
-      if (s.billing_cycle === 'yearly') monthlyAmt = s.amount / 12;
-      else if (s.billing_cycle === 'quarterly') monthlyAmt = s.amount / 3;
+      let monthlyAmt = parseFloat(String(s.amount)) || 0;
+      if (s.billing_cycle === 'yearly') monthlyAmt = monthlyAmt / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = monthlyAmt / 3;
       return sum + monthlyAmt;
     }, 0);
 
   const flexibleTotalMonthly = baseSubscriptions
     .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time' && !isStatutoryService(normaliseProviderName(s.provider_name)))
     .reduce((sum, s) => {
-      let monthlyAmt = s.amount;
-      if (s.billing_cycle === 'yearly') monthlyAmt = s.amount / 12;
-      else if (s.billing_cycle === 'quarterly') monthlyAmt = s.amount / 3;
+      let monthlyAmt = parseFloat(String(s.amount)) || 0;
+      if (s.billing_cycle === 'yearly') monthlyAmt = monthlyAmt / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = monthlyAmt / 3;
       return sum + monthlyAmt;
     }, 0);
 
@@ -340,22 +340,23 @@ export default function SubscriptionsPage() {
     }
   };
 
-  const handleAddDetected = async (detected: any) => {
-    const res = await fetch('/api/subscriptions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider_name: detected.provider_name,
-        category: detected.category || 'other',
-        amount: detected.amount || 0,
-        billing_cycle: detected.billing_cycle || 'monthly',
-        usage_frequency: 'sometimes',
-      }),
+  const handleAddDetected = (detected: any) => {
+    setNewSub({
+      provider_name: detected.provider_name,
+      category: detected.category || 'other',
+      amount: detected.amount ? detected.amount.toString() : '',
+      billing_cycle: detected.billing_cycle || 'monthly',
+      next_billing_date: '',
+      account_email: '',
+      usage_frequency: 'sometimes',
+      contract_type: '',
+      contract_end_date: '',
+      auto_renews: true,
+      provider_type: '',
+      current_tariff: '',
     });
-    if (res.ok) {
-      setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
-      await fetchSubscriptions();
-    }
+    setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
+    setShowAddForm(true);
   };
 
   const handleAddSubscription = async (e: React.FormEvent) => {
