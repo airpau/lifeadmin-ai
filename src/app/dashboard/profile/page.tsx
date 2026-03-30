@@ -90,7 +90,7 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
 
 function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string }>>([]);
-  const [emailConns, setEmailConns] = useState<Array<{ id: string; email: string; provider: string; status: string }>>([]);
+  const [emailConns, setEmailConns] = useState<Array<{ id: string; email_address: string; provider_type: string; status: string }>>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -99,7 +99,7 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
       if (!user) { setLoaded(true); return; }
       const [banks, emails] = await Promise.all([
         supabase.from('bank_connections').select('id, bank_name, status, connected_at').eq('user_id', user.id),
-        supabase.from('email_connections').select('id, email, provider, status').eq('user_id', user.id),
+        supabase.from('email_connections').select('id, email_address, provider_type, status').eq('user_id', user.id),
       ]);
       setBankConns(banks.data || []);
       setEmailConns(emails.data || []);
@@ -124,7 +124,7 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
             <div>
               <h3 className="text-white font-semibold">Email</h3>
               <p className="text-sm text-slate-400">
-                {activeEmails.length > 0 ? activeEmails.map(e => e.email).join(', ') : 'Scan emails for bills and subscriptions'}
+                {activeEmails.length > 0 ? activeEmails.map(e => e.email_address).join(', ') : 'Scan emails for bills and subscriptions'}
               </p>
             </div>
           </div>
