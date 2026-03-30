@@ -4,11 +4,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, ShieldCheck, ArrowRight, ExternalLink, Target, Wallet, PiggyBank, Bell, Zap, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
-import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
+import type { OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {
   email: string;
@@ -191,8 +191,8 @@ export default function ProfilePage() {
   const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
   const [renewalDate, setRenewalDate] = useState<string | null>(null);
   const [billingMessage, setBillingMessage] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<AnnualReportData | OnDemandReportData | null>(null);
-  const [reportType, setReportType] = useState<'annual' | 'on_demand' | 'sample'>('sample');
+  const [reportData, setReportData] = useState<OnDemandReportData | null>(null);
+  const [reportType, setReportType] = useState<'on_demand' | 'sample'>('sample');
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
@@ -353,26 +353,25 @@ export default function ProfilePage() {
     }
   };
 
-  const handleGenerateReport = async (type: 'annual' | 'on_demand') => {
+  const handleGenerateQuickSummary = async () => {
     setReportLoading(true);
     setReportError(null);
     try {
       const res = await fetch('/api/reports/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, year: new Date().getFullYear() }),
+        body: JSON.stringify({ type: 'on_demand' }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setReportError(data.error || 'Failed to generate report');
+        setReportError(data.error || 'Failed to generate summary');
         return;
       }
       setReportData(data.data);
-      setReportType(type);
+      setReportType('on_demand');
       setShowReport(true);
-      if (type === 'annual') fetchSavedReports();
     } catch {
-      setReportError('Failed to generate report');
+      setReportError('Failed to generate summary');
     } finally {
       setReportLoading(false);
     }
@@ -721,20 +720,20 @@ export default function ProfilePage() {
         {effectiveTier === 'pro' ? (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => handleGenerateReport('annual')}
-                disabled={reportLoading}
-                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+              <Link
+                href="/dashboard/profile/report"
+                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all"
               >
-                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                {reportLoading ? 'Generating...' : 'Generate Annual Report'}
-              </button>
+                <FileText className="h-4 w-4" />
+                Generate Annual Report
+              </Link>
               <button
-                onClick={() => handleGenerateReport('on_demand')}
+                onClick={handleGenerateQuickSummary}
                 disabled={reportLoading}
                 className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
               >
-                Quick Summary
+                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                {reportLoading ? 'Generating...' : 'Quick Summary'}
               </button>
             </div>
 
@@ -748,9 +747,10 @@ export default function ProfilePage() {
                 <h3 className="text-sm font-semibold text-slate-300 mb-2">Saved Reports</h3>
                 <div className="space-y-2">
                   {savedReports.map((r) => (
-                    <div
+                    <Link
                       key={r.id}
-                      className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/50"
+                      href="/dashboard/profile/report"
+                      className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/50 hover:border-mint-400/30 transition-all"
                     >
                       <div className="flex items-center gap-3">
                         <FileText className="h-4 w-4 text-mint-400" />
@@ -767,27 +767,179 @@ export default function ProfilePage() {
                           </p>
                         </div>
                       </div>
-                    </div>
+                      <ChevronRight className="h-4 w-4 text-slate-500" />
+                    </Link>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Report display */}
+            {/* Quick Summary Panel */}
             {showReport && reportData && (
-              <div className="mt-4 pt-4 border-t border-navy-700/50">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">
-                    {reportType === 'annual' ? 'Annual Report' : 'Financial Summary'}
-                  </h3>
-                  <button
-                    onClick={() => setShowReport(false)}
-                    className="text-sm text-slate-400 hover:text-white transition-all"
-                  >
-                    Close
-                  </button>
+              <div className="mt-4 pt-4 border-t border-navy-700/50 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">Financial Summary — {reportData.currentMonth}</h3>
+                  <button onClick={() => setShowReport(false)} className="text-sm text-slate-400 hover:text-white transition-all">Close</button>
                 </div>
-                <FinancialReport data={reportData} type={reportType} />
+
+                {/* Section 1: Financial Health Score */}
+                <div className="flex flex-col sm:flex-row items-center gap-6 bg-navy-950/50 rounded-2xl p-6 border border-navy-700/50">
+                  <div className="relative w-28 h-28 flex-shrink-0">
+                    <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                      <circle cx="60" cy="60" r="52" fill="none" stroke="#1e293b" strokeWidth="10" />
+                      <circle cx="60" cy="60" r="52" fill="none" stroke={reportData.financialHealth.ringColor} strokeWidth="10" strokeLinecap="round"
+                        strokeDasharray={`${(reportData.financialHealth.overallScore / 100) * 327} 327`} />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-3xl font-bold text-white">{reportData.financialHealth.overallScore}</span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">/ 100</span>
+                    </div>
+                  </div>
+                  <div className="text-center sm:text-left flex-1">
+                    <p className={`text-lg font-bold ${reportData.financialHealth.tierColor}`}>{reportData.financialHealth.tierLabel}</p>
+                    <p className="text-sm text-slate-400 mb-3">Financial Health Score</p>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {reportData.financialHealth.components.map(c => (
+                        <div key={c.name} className="flex items-center gap-2">
+                          <div className="w-20 text-[11px] text-slate-400 truncate">{c.name.replace('Subscription ', 'Sub ')}</div>
+                          <div className="flex-1 bg-navy-800 rounded-full h-1.5">
+                            <div className="h-1.5 rounded-full transition-all" style={{ width: `${c.score}%`, backgroundColor: reportData.financialHealth.ringColor }} />
+                          </div>
+                          <span className="text-[11px] text-slate-400 w-8 text-right">{c.score}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Money Snapshot */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <div className="flex items-center gap-1.5 mb-1"><Wallet className="h-3.5 w-3.5 text-red-400" /><span className="text-[11px] text-slate-400">Spending</span></div>
+                    <p className="text-lg font-bold text-white">{formatGBP(reportData.currentMonthSpend)}</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <div className="flex items-center gap-1.5 mb-1"><TrendingUp className="h-3.5 w-3.5 text-green-400" /><span className="text-[11px] text-slate-400">Income</span></div>
+                    <p className="text-lg font-bold text-white">{formatGBP(reportData.currentMonthIncome)}</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <div className="flex items-center gap-1.5 mb-1"><Target className="h-3.5 w-3.5" style={{ color: reportData.netPosition >= 0 ? '#4ade80' : '#f87171' }} /><span className="text-[11px] text-slate-400">Net</span></div>
+                    <p className={`text-lg font-bold ${reportData.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatGBP(reportData.netPosition)}</p>
+                  </div>
+                </div>
+
+                {/* Section 3: Subscription Overview */}
+                <div className="bg-navy-950/50 rounded-2xl p-5 border border-navy-700/50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-white font-semibold flex items-center gap-2"><CreditCard className="h-4 w-4 text-mint-400" />Subscriptions</h4>
+                    <div className="text-right">
+                      <p className="text-white font-bold">{formatGBP(reportData.totalMonthlyCost)}<span className="text-slate-400 font-normal text-sm">/mo</span></p>
+                      <p className="text-xs text-slate-500">{reportData.totalSubscriptions} active</p>
+                    </div>
+                  </div>
+                  {reportData.potentialAnnualSavings > 0 && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 mb-4 flex items-center gap-2">
+                      <PiggyBank className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                      <p className="text-sm text-emerald-400 font-medium">Potential savings: <span className="text-white font-bold">{formatGBP(reportData.potentialAnnualSavings)}/yr</span></p>
+                    </div>
+                  )}
+                  <div className="space-y-2.5">
+                    {reportData.topSubscriptions.map(sub => (
+                      <div key={sub.id} className="bg-navy-900/80 rounded-lg p-3 border border-navy-700/30">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-white font-medium text-sm">{sub.name}</span>
+                          <span className="text-white font-semibold text-sm">{formatGBP(sub.monthlyCost)}/mo</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
+                            sub.guidance.type === 'switch' ? 'bg-emerald-500/10 text-emerald-400' :
+                            sub.guidance.type === 'complain' ? 'bg-red-500/10 text-red-400' :
+                            sub.guidance.type === 'cancel' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-green-500/10 text-green-400'
+                          }`}>{sub.guidance.type === 'competitive' ? '✓' : sub.guidance.type}</span>
+                          {sub.guidance.type !== 'competitive' ? (
+                            <a href={sub.guidance.actionUrl} target={sub.guidance.actionUrl.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer"
+                              className="text-xs text-slate-300 hover:text-white transition-all flex items-center gap-1">
+                              {sub.guidance.message} <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">{sub.guidance.message}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 4: Alerts & Actions */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <TrendingUp className="h-4 w-4 text-red-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.priceAlertCount}</p>
+                    <p className="text-[10px] text-slate-400">Price Increases</p>
+                    {reportData.priceAlertAnnualCost > 0 && <p className="text-[10px] text-red-400 font-medium">{formatGBP(reportData.priceAlertAnnualCost)}/yr</p>}
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <Bell className="h-4 w-4 text-amber-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.upcomingRenewals.length}</p>
+                    <p className="text-[10px] text-slate-400">Renewals (30d)</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <FileText className="h-4 w-4 text-blue-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.activeDisputeCount}</p>
+                    <p className="text-[10px] text-slate-400">Active Disputes</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <Clock className="h-4 w-4 text-purple-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.pendingActionCount}</p>
+                    <p className="text-[10px] text-slate-400">Actions Pending</p>
+                  </div>
+                </div>
+
+                {/* Upcoming Renewals */}
+                {reportData.upcomingRenewals.length > 0 && (
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <h4 className="text-white font-semibold text-sm mb-3 flex items-center gap-2"><Bell className="h-4 w-4 text-amber-400" />Upcoming Renewals (30 days)</h4>
+                    <div className="space-y-2">
+                      {reportData.upcomingRenewals.map((r, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span className="text-slate-300">{r.provider}</span>
+                          <div className="text-right">
+                            <span className="text-white font-medium">{formatGBP(r.amount)}</span>
+                            <span className="text-slate-500 text-xs ml-2">{r.date}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 5: Savings Plan */}
+                {reportData.savingsActions.length > 0 && (
+                  <div className="bg-gradient-to-br from-emerald-500/5 to-emerald-600/5 border border-emerald-500/20 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-white font-semibold flex items-center gap-2"><PiggyBank className="h-4 w-4 text-emerald-400" />Your Savings Plan</h4>
+                      <p className="text-emerald-400 font-bold">{formatGBP(reportData.totalPotentialSaving)}/yr</p>
+                    </div>
+                    <div className="space-y-2.5">
+                      {reportData.savingsActions.slice(0, 8).map((action, i) => (
+                        <a key={i} href={action.actionUrl} target={action.actionUrl.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer"
+                          className="flex items-start gap-3 bg-navy-900/60 rounded-lg p-3 hover:bg-navy-900/80 transition-all group border border-navy-700/30">
+                          <span className="text-base flex-shrink-0">{action.difficultyEmoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-navy-700 text-slate-300 capitalize">{action.difficulty}</span>
+                              <span className="text-white text-sm font-medium">{action.description} — {action.provider}</span>
+                            </div>
+                            <p className="text-emerald-400 text-xs font-medium mt-1">Save {formatGBP(action.monthlySaving)}/month ({formatGBP(action.annualSaving)}/yr)</p>
+                          </div>
+                          <ExternalLink className="h-3.5 w-3.5 text-slate-500 group-hover:text-white transition-all flex-shrink-0 mt-1" />
+                        </a>
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-3 text-center">Complete all actions to save <span className="text-emerald-400 font-semibold">{formatGBP(reportData.totalPotentialSaving)}/yr</span></p>
+                  </div>
+                )}
               </div>
             )}
           </div>

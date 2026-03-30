@@ -1,11 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  throw new Error('ANTHROPIC_API_KEY not configured');
-}
-
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ANTHROPIC_API_KEY || 'ant_dummy_key_for_build',
 });
 
 const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advocate and complaint letter writer. Your role is to help UK consumers write effective, legally-grounded formal complaint letters.

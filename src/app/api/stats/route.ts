@@ -11,6 +11,10 @@ function getAdmin() {
 }
 
 export async function GET() {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return NextResponse.json({ lettersGenerated: 0, subscriptionsTracked: 0, usersJoined: 0, dealClicks: 0 });
+  }
+
   const supabase = getAdmin();
 
   const [letters, subs, users, deals] = await Promise.all([

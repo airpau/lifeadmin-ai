@@ -13,7 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
-import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
+import type { AnnualReportData } from '@/lib/report-generator';
 
 /* ------------------------------------------------------------------ */
 /*  Sample data for non-Pro users                                      */
@@ -33,32 +33,62 @@ const SAMPLE_ANNUAL: AnnualReportData = {
   monthlySubscriptionCost: 52.94,
   complaintsGenerated: 3,
   spendingByCategory: [
-    { category: 'Groceries', total: 4820, percentage: 28.5 },
-    { category: 'Mortgage', total: 3600, percentage: 21.3 },
-    { category: 'Energy', total: 1920, percentage: 11.4 },
-    { category: 'Transport', total: 1440, percentage: 8.5 },
-    { category: 'Eating Out', total: 1200, percentage: 7.1 },
-    { category: 'Shopping', total: 960, percentage: 5.7 },
-    { category: 'Streaming', total: 480, percentage: 2.8 },
-    { category: 'Insurance', total: 360, percentage: 2.1 },
-    { category: 'Other', total: 2120, percentage: 12.6 },
+    { category: 'groceries', label: 'Food & Groceries', total: 4820, percentage: 28.5, transactionCount: 96 },
+    { category: 'mortgage', label: 'Housing & Mortgage', total: 3600, percentage: 21.3, transactionCount: 12 },
+    { category: 'energy', label: 'Utilities (Energy)', total: 1920, percentage: 11.4, transactionCount: 12 },
+    { category: 'transport', label: 'Transport', total: 1440, percentage: 8.5, transactionCount: 45 },
+    { category: 'eating_out', label: 'Eating Out', total: 1200, percentage: 7.1, transactionCount: 28 },
+    { category: 'shopping', label: 'Shopping', total: 960, percentage: 5.7, transactionCount: 22 },
+    { category: 'streaming', label: 'Entertainment & Streaming', total: 480, percentage: 2.8, transactionCount: 6 },
+    { category: 'insurance', label: 'Insurance', total: 360, percentage: 2.1, transactionCount: 4 },
+    { category: 'other', label: 'Other / Uncategorised', total: 2120, percentage: 12.6, transactionCount: 38 },
   ],
   monthlyTrends: [
-    { month: '2026-01', spend: 1450, income: 3200 },
-    { month: '2026-02', spend: 1380, income: 3200 },
-    { month: '2026-03', spend: 1520, income: 3400 },
-    { month: '2026-04', spend: 1290, income: 3200 },
-    { month: '2026-05', spend: 1610, income: 3200 },
-    { month: '2026-06', spend: 1420, income: 3500 },
-    { month: '2026-07', spend: 1550, income: 3200 },
-    { month: '2026-08', spend: 1480, income: 3200 },
-    { month: '2026-09', spend: 1350, income: 3200 },
-    { month: '2026-10', spend: 1420, income: 3400 },
-    { month: '2026-11', spend: 1560, income: 3200 },
-    { month: '2026-12', spend: 1870, income: 3600 },
+    { month: '2026-01', monthLabel: 'Jan', spend: 1450, income: 3200, hasData: true },
+    { month: '2026-02', monthLabel: 'Feb', spend: 1380, income: 3200, hasData: true },
+    { month: '2026-03', monthLabel: 'Mar', spend: 1520, income: 3400, hasData: true },
+    { month: '2026-04', monthLabel: 'Apr', spend: 1290, income: 3200, hasData: true },
+    { month: '2026-05', monthLabel: 'May', spend: 1610, income: 3200, hasData: true },
+    { month: '2026-06', monthLabel: 'Jun', spend: 1420, income: 3500, hasData: true },
+    { month: '2026-07', monthLabel: 'Jul', spend: 1550, income: 3200, hasData: true },
+    { month: '2026-08', monthLabel: 'Aug', spend: 1480, income: 3200, hasData: true },
+    { month: '2026-09', monthLabel: 'Sep', spend: 1350, income: 3200, hasData: true },
+    { month: '2026-10', monthLabel: 'Oct', spend: 1420, income: 3400, hasData: true },
+    { month: '2026-11', monthLabel: 'Nov', spend: 1560, income: 3200, hasData: true },
+    { month: '2026-12', monthLabel: 'Dec', spend: 1870, income: 3600, hasData: true },
   ],
   totalIncome: 39400,
   totalOutgoings: 16900,
+  netPosition: 22500,
+  userName: 'Sample User',
+  userPlan: 'Pro Plan',
+  executiveSummary: 'Your total spending this period was £16,900.00 across 6 active subscriptions and regular payments. Based on your spending patterns, we\'ve identified potential savings of £480.00/yr through better deals and subscription optimisation.',
+  financialHealth: {
+    overallScore: 72,
+    tier: 'good',
+    tierLabel: 'Good',
+    tierColor: 'text-green-400',
+    tierBgColor: 'bg-green-400/10',
+    ringColor: '#4ADE80',
+    components: [
+      { name: 'Profile Completeness', score: 100, maxScore: 100, weight: 0.25, description: '5/5 fields completed' },
+      { name: 'Subscription Optimisation', score: 67, maxScore: 100, weight: 0.25, description: '4/6 on best deals' },
+      { name: 'Price Increase Awareness', score: 50, maxScore: 100, weight: 0.20, description: '1/2 alerts actioned' },
+      { name: 'Dispute Activity', score: 75, maxScore: 100, weight: 0.15, description: '3 disputes filed' },
+      { name: 'Account Connectivity', score: 70, maxScore: 100, weight: 0.15, description: '1 bank connected' },
+    ],
+  },
+  annualSubscriptionCost: 635.28,
+  subscriptionsList: [],
+  priceAlerts: [],
+  totalPriceIncreaseImpact: 0,
+  potentialAnnualSavings: 480,
+  savingsActions: [],
+  totalDisputes: 3,
+  disputes: [],
+  connectedBanks: [{ name: 'HSBC', status: 'active' }],
+  connectedEmails: [{ email: 'user@example.com', provider: 'Gmail' }],
+  dataMonths: 12,
   topMerchants: [
     { name: 'Tesco', total: 2840, count: 96 },
     { name: 'Amazon', total: 1260, count: 34 },
@@ -72,6 +102,7 @@ const SAMPLE_ANNUAL: AnnualReportData = {
   loyaltyTier: 'Silver',
   totalPoints: 1800,
   profileCompleteness: 100,
+  profileCompletenessNum: 100,
   moneyRecoveryScore: 847,
 };
 
@@ -95,22 +126,16 @@ function monthLabel(yyyymm: string): string {
 /* ------------------------------------------------------------------ */
 
 interface FinancialReportProps {
-  data?: AnnualReportData | OnDemandReportData | null;
-  type: 'annual' | 'on_demand' | 'sample';
-}
-
-function isAnnualData(
-  d: AnnualReportData | OnDemandReportData
-): d is AnnualReportData {
-  return 'year' in d;
+  data?: AnnualReportData | null;
+  type: 'sample';
 }
 
 export default function FinancialReport({ data, type }: FinancialReportProps) {
   const [pdfLoading, setPdfLoading] = useState(false);
 
-  const isSample = type === 'sample';
-  const report: AnnualReportData | OnDemandReportData = data || SAMPLE_ANNUAL;
-  const isAnnual = type === 'annual' || type === 'sample';
+  const isSample = true;
+  const report: AnnualReportData = data || SAMPLE_ANNUAL;
+  const isAnnual = true;
 
   const handleDownloadPdf = async () => {
     setPdfLoading(true);
@@ -124,91 +149,7 @@ export default function FinancialReport({ data, type }: FinancialReportProps) {
     }
   };
 
-  /* ---- On-demand (quick summary) ---- */
-  if (!isAnnual && !isSample) {
-    const od = report as OnDemandReportData;
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-white font-[family-name:var(--font-heading)]">
-            Financial Summary - {od.currentMonth}
-          </h2>
-        </div>
-
-        {/* Key stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Spending" value={formatGBP(od.currentMonthSpend)} icon={<ShoppingCart className="h-5 w-5" />} color="red" />
-          <StatCard label="Income" value={formatGBP(od.currentMonthIncome)} icon={<TrendingUp className="h-5 w-5" />} color="green" />
-          <StatCard label="Active Subs" value={String(od.activeSubscriptions)} icon={<CreditCard className="h-5 w-5" />} color="blue" />
-          <StatCard label="Recent Complaints" value={String(od.recentComplaints)} icon={<FileText className="h-5 w-5" />} color="purple" />
-        </div>
-
-        {/* Subscription cost */}
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-2">Monthly Subscription Cost</h3>
-          <p className="text-3xl font-bold text-mint-400">{formatGBP(od.monthlySubscriptionTotal)}</p>
-          <p className="text-sm text-slate-400 mt-1">across {od.activeSubscriptions} active subscriptions</p>
-        </div>
-
-        {/* Budgets */}
-        {od.budgets.length > 0 && (
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Budget Status</h3>
-            <div className="space-y-3">
-              {od.budgets.map((b) => (
-                <div key={b.category}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-300 capitalize">{b.category}</span>
-                    <span className="text-slate-400">
-                      {formatGBP(b.spent)} / {formatGBP(b.limit)}
-                    </span>
-                  </div>
-                  <div className="w-full bg-navy-800 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full transition-all ${
-                        b.spent > b.limit ? 'bg-red-500' : 'bg-mint-400'
-                      }`}
-                      style={{ width: `${Math.min((b.spent / b.limit) * 100, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Upcoming renewals */}
-        {od.upcomingRenewals.length > 0 && (
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-400" />
-              Upcoming Renewals (30 days)
-            </h3>
-            <div className="space-y-2">
-              {od.upcomingRenewals.map((r, i) => (
-                <div key={i} className="flex justify-between items-center p-3 bg-navy-950/50 rounded-lg">
-                  <span className="text-white font-medium">{r.provider}</span>
-                  <div className="text-right">
-                    <span className="text-white font-semibold">{formatGBP(r.amount)}</span>
-                    <span className="text-slate-400 text-sm ml-2">{r.date}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Money Recovery Score */}
-        <div className="bg-gradient-to-br from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-6 text-center">
-          <p className="text-sm text-mint-400 font-medium mb-1">Money Recovery Score</p>
-          <p className="text-4xl font-bold text-white">{formatGBP(od.moneyRecoveryScore)}</p>
-          <p className="text-xs text-slate-400 mt-1">Total money recovered to date</p>
-        </div>
-      </div>
-    );
-  }
-
-  /* ---- Annual report ---- */
+  /* ---- Annual report (sample preview for non-Pro users) ---- */
   const annual = (isSample ? SAMPLE_ANNUAL : report) as AnnualReportData;
 
   const maxCategorySpend = annual.spendingByCategory[0]?.total || 1;

@@ -132,7 +132,7 @@ async function sendReferralSignupEmail(referrerId: string, referredEmail: string
     const maskedEmail = referredEmail.replace(/(.{2}).*(@.*)/, '$1***$2');
 
     const { Resend } = await import('resend');
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
@@ -185,7 +185,7 @@ async function sendReferralPaidEmail(referrerId: string): Promise<void> {
     const name = referrer.first_name || referrer.full_name?.split(' ')[0] || 'there';
 
     const { Resend } = await import('resend');
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',

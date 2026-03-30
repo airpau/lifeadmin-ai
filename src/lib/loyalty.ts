@@ -291,7 +291,7 @@ async function sendTierUpgradeEmail(userId: string, newTier: keyof typeof LOYALT
     const emailConfig = tierEmails[newTier] || { subject: `You have reached ${tierInfo.label} status`, emoji: '🏆', extra: '' };
 
     const { Resend } = await import('resend');
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
     await resend.emails.send({
       from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
@@ -355,7 +355,7 @@ export async function checkPointsExpiry(userId: string): Promise<boolean> {
       const { data: profile } = await supabase.from('profiles').select('email, first_name').eq('id', userId).single();
       if (profile?.email) {
         const { Resend } = await import('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
         await resend.emails.send({
           from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
           to: profile.email,
@@ -754,7 +754,7 @@ async function sendRedemptionEmail(
     const name = profile?.first_name || profile?.full_name?.split(' ')[0] || 'there';
 
     const { Resend } = await import('resend');
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
     await resend.emails.send({
       from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',

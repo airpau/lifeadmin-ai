@@ -22,9 +22,9 @@ export async function POST(req: NextRequest) {
 
     const { type, year } = await req.json();
 
-    if (!type || !['annual', 'on_demand'].includes(type)) {
+    if (!type || !['annual', 'on_demand', 'summary'].includes(type)) {
       return NextResponse.json(
-        { error: 'Invalid type. Must be "annual" or "on_demand".' },
+        { error: 'Invalid type. Must be "annual", "on_demand", or "summary".' },
         { status: 400 }
       );
     }
@@ -38,29 +38,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (type === 'annual') {
-      const reportYear = year || new Date().getFullYear();
-      const data = await generateAnnualReportData(user.id, reportYear);
-
-      // Save to annual_reports table
-      const admin = createAdmin(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
-
-      await admin.from('annual_reports').insert({
-        user_id: user.id,
-        report_type: 'annual',
-        year: reportYear,
-        data,
-      });
-
-      return NextResponse.json({ type: 'annual', data });
+    // Quick Summary / On-demand — same enriched data, not saved to DB
+    if (type === 'on_demand' || type === 'summary') {
+      const data = await generateOnDemandReportData(user.id);
+      return NextResponse.json({ type: 'on_demand', data });
     }
 
-    // on_demand
-    const data = await generateOnDemandReportData(user.id);
-    return NextResponse.json({ type: 'on_demand', data });
+    // Annual report — generate + save to DB
+    const reportYear = year || new Date().getFullYear();
+    const data = await generateAnnualReportData(user.id, reportYear);
+
+    const admin = createAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    await admin.from('annual_reports').insert({
+      user_id: user.id,
+      report_type: 'annual',
+      year: reportYear,
+      data,
+    });
+
+    return NextResponse.json({ type: 'annual', data });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Report generation error:', message);

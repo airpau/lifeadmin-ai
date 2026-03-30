@@ -295,7 +295,7 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
           <Text style={styles.sectionTitle}>Spending by Category</Text>
           {data.spendingByCategory.slice(0, 8).map((cat) => (
             <View key={cat.category} style={styles.barRow}>
-              <Text style={styles.barLabel}>{cat.category}</Text>
+              <Text style={styles.barLabel}>{cat.label || cat.category}</Text>
               <View style={styles.barTrack}>
                 <View
                   style={[styles.barFill, { width: `${(cat.total / maxCat) * 100}%` }]}
@@ -401,11 +401,11 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
           </View>
         </View>
 
-        {/* Money Recovery Score */}
+        {/* Financial Health Score */}
         <View style={styles.scoreBox}>
-          <Text style={styles.scoreLabel}>MONEY RECOVERY SCORE</Text>
-          <Text style={styles.scoreValue}>{fmtGBP(data.moneyRecoveryScore)}</Text>
-          <Text style={styles.scoreCaption}>Total recovered + annual savings from cancelled subscriptions</Text>
+          <Text style={styles.scoreLabel}>FINANCIAL HEALTH SCORE</Text>
+          <Text style={styles.scoreValue}>{data.financialHealth.overallScore}/100</Text>
+          <Text style={styles.scoreCaption}>{data.financialHealth.tierLabel} — based on profile, subscriptions, pricing, disputes, and connectivity</Text>
         </View>
 
         {/* Footer */}

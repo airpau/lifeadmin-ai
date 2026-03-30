@@ -1,4 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import { normaliseMerchantName, categoriseTransaction } from '@/lib/merchant-normalise';
+import { cleanMerchantName, isLoanOrMortgage, getReportCategoryLabel, getSwitchDifficulty } from '@/lib/merchant-utils';
+import { calculateFinancialHealthScore, type FinancialHealthResult } from '@/lib/financial-health-score';
 
 const getAdmin = () =>
   createClient(
@@ -12,14 +15,18 @@ const getAdmin = () =>
 
 export interface CategorySpend {
   category: string;
+  label: string;
   total: number;
   percentage: number;
+  transactionCount: number;
 }
 
 export interface MonthlyTrend {
   month: string;       // YYYY-MM
+  monthLabel: string;  // "Jan", "Feb" etc.
   spend: number;
   income: number;
+  hasData: boolean;
 }
 
 export interface MerchantSpend {
@@ -28,81 +35,565 @@ export interface MerchantSpend {
   count: number;
 }
 
+export interface SubscriptionWithGuidance {
+  id: string;
+  name: string;
+  category: string;
+  monthlyCost: number;
+  annualCost: number;
+  status: string;
+  priceChange?: { oldAmount: number; newAmount: number; pctChange: number } | null;
+  guidance: {
+    type: 'switch' | 'cancel' | 'complain' | 'competitive';
+    message: string;
+    actionUrl: string;
+    annualSaving?: number;
+    dealProvider?: string;
+  };
+}
+
+export interface SavingsAction {
+  action: 'switch' | 'cancel' | 'complain' | 'negotiate';
+  provider: string;
+  description: string;
+  monthlySaving: number;
+  annualSaving: number;
+  actionUrl: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  difficultyEmoji: string;
+}
+
+export interface RenewalItem {
+  provider: string;
+  amount: number;
+  date: string;
+  isRenewal: boolean; // true = contract renewal, false = regular payment
+}
+
+export interface PriceAlertItem {
+  id: string;
+  merchantName: string;
+  oldAmount: number;
+  newAmount: number;
+  pctChange: number;
+  annualImpact: number;
+  status: string;
+}
+
+export interface DisputeItem {
+  id: string;
+  company: string;
+  issue: string;
+  dateFiled: string;
+  status: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  On-demand (Quick Summary) types                                    */
+/* ------------------------------------------------------------------ */
+
+export interface OnDemandReportData {
+  generatedAt: string;
+  currentMonth: string;
+
+  // Section 1: Financial Health Score
+  financialHealth: FinancialHealthResult;
+
+  // Section 2: Money Snapshot
+  currentMonthSpend: number;
+  currentMonthIncome: number;
+  netPosition: number;
+
+  // Section 3: Subscription Overview
+  totalMonthlyCost: number;
+  totalSubscriptions: number;
+  potentialAnnualSavings: number;
+  topSubscriptions: SubscriptionWithGuidance[];
+
+  // Section 4: Alerts & Actions
+  priceAlertCount: number;
+  priceAlertAnnualCost: number;
+  priceAlerts: PriceAlertItem[];
+  upcomingRenewals: RenewalItem[];
+  activeDisputeCount: number;
+  disputes: DisputeItem[];
+  pendingActionCount: number;
+
+  // Section 5: Savings Plan
+  savingsActions: SavingsAction[];
+  totalPotentialSaving: number;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Annual report types                                                */
+/* ------------------------------------------------------------------ */
+
 export interface AnnualReportData {
   year: number;
   generatedAt: string;
   memberSince: string;
   daysAsMember: number;
+  userName: string;
+  userPlan: string;
 
-  // Money
-  totalMoneyRecovered: number;    // tasks.money_recovered + subscriptions.money_saved
-  taskMoneyRecovered: number;
-  subsMoneySaved: number;
+  // Executive Summary
+  executiveSummary: string;
 
-  // Subscriptions
-  subscriptionsCancelled: number;
-  annualSavingsFromCancellations: number;
-  activeSubscriptions: number;
-  monthlySubscriptionCost: number;
+  // Financial Health
+  financialHealth: FinancialHealthResult;
 
-  // Complaints
-  complaintsGenerated: number;
-
-  // Spending
-  spendingByCategory: CategorySpend[];
-  monthlyTrends: MonthlyTrend[];
+  // Income & Spending
   totalIncome: number;
   totalOutgoings: number;
+  netPosition: number;
+  monthlyTrends: MonthlyTrend[];
+
+  // Spending by Category
+  spendingByCategory: CategorySpend[];
+
+  // Subscriptions
+  activeSubscriptions: number;
+  monthlySubscriptionCost: number;
+  annualSubscriptionCost: number;
+  subscriptionsList: SubscriptionWithGuidance[];
+
+  // Price Increases
+  priceAlerts: PriceAlertItem[];
+  totalPriceIncreaseImpact: number;
+
+  // Savings
+  potentialAnnualSavings: number;
+  savingsActions: SavingsAction[];
+
+  // Disputes
+  totalDisputes: number;
+  disputes: DisputeItem[];
+
+  // Connected Accounts
+  connectedBanks: Array<{ name: string; status: string }>;
+  connectedEmails: Array<{ email: string; provider: string }>;
+  profileCompleteness: number;
+  dataMonths: number; // how many months of tx data
+
+  // Top merchants
   topMerchants: MerchantSpend[];
 
-  // Deals
+  // Legacy fields for backwards compat with PDF & sample
+  subscriptionsCancelled: number;
+  annualSavingsFromCancellations: number;
+  complaintsGenerated: number;
+  totalMoneyRecovered: number;
+  taskMoneyRecovered: number;
+  subsMoneySaved: number;
   dealClicks: number;
-
-  // Challenges & loyalty
   challengesCompleted: number;
   pointsEarned: number;
   loyaltyTier: string;
   totalPoints: number;
-
-  // Profile
-  profileCompleteness: number;
-
-  // Composite score
+  profileCompletenessNum: number;
   moneyRecoveryScore: number;
 }
 
-export interface OnDemandReportData {
-  generatedAt: string;
+/* ------------------------------------------------------------------ */
+/*  Deals data for comparison                                          */
+/* ------------------------------------------------------------------ */
 
-  // Current month spending
-  currentMonthSpend: number;
-  currentMonthIncome: number;
-  currentMonth: string;          // e.g. "March 2026"
+interface DealForComparison {
+  provider: string;
+  headline: string;
+  monthlyPrice: number;
+  awinMid: string;
+  providerUrl: string;
+  category: string;
+}
 
-  // Subscriptions
-  activeSubscriptions: number;
-  monthlySubscriptionTotal: number;
+const AWIN_AFF_ID = '2825812';
 
-  // Recent complaints (last 3 months)
-  recentComplaints: number;
+function buildAwinUrl(awinMid: string, providerUrl: string): string {
+  return `https://www.awin1.com/cread.php?awinmid=${awinMid}&awinaffid=${AWIN_AFF_ID}&ued=${encodeURIComponent(providerUrl)}`;
+}
 
-  // Budgets
-  budgets: Array<{
-    category: string;
-    limit: number;
-    spent: number;
-    remaining: number;
-  }>;
+// Inline key deals for quick comparison (from comparison-engine.ts)
+const DEALS_BY_CATEGORY: Record<string, DealForComparison[]> = {
+  energy: [
+    { provider: 'OVO Energy', headline: 'Fixed rate', monthlyPrice: 110, awinMid: '5318', providerUrl: 'https://www.ovoenergy.com', category: 'energy' },
+    { provider: 'EDF', headline: 'Fixed price tariffs', monthlyPrice: 115, awinMid: '1887', providerUrl: 'https://www.edfenergy.com', category: 'energy' },
+    { provider: 'MoneySuperMarket', headline: 'Compare all suppliers', monthlyPrice: 100, awinMid: '22713', providerUrl: 'https://www.moneysupermarket.com/gas-and-electricity/', category: 'energy' },
+  ],
+  broadband: [
+    { provider: 'Community Fibre', headline: 'London full fibre', monthlyPrice: 25, awinMid: '19595', providerUrl: 'https://communityfibre.co.uk', category: 'broadband' },
+    { provider: 'Sky', headline: 'Ultrafast broadband', monthlyPrice: 30, awinMid: '11005', providerUrl: 'https://www.sky.com/shop/broadband', category: 'broadband' },
+    { provider: 'TalkTalk', headline: 'Budget broadband', monthlyPrice: 22, awinMid: '5765', providerUrl: 'https://www.talktalk.co.uk/shop/broadband', category: 'broadband' },
+  ],
+  mobile: [
+    { provider: 'Lebara', headline: 'SIM-only from £5', monthlyPrice: 5, awinMid: '30681', providerUrl: 'https://www.lebara.co.uk/en/best-sim-only-deals.html', category: 'mobile' },
+    { provider: 'iD Mobile', headline: 'SIM-only from £6', monthlyPrice: 8, awinMid: '6366', providerUrl: 'https://www.idmobile.co.uk', category: 'mobile' },
+    { provider: 'SMARTY', headline: 'No contract', monthlyPrice: 10, awinMid: '10933', providerUrl: 'https://smarty.co.uk', category: 'mobile' },
+  ],
+  insurance: [
+    { provider: 'Compare the Market', headline: 'Compare 100+ insurers', monthlyPrice: 0, awinMid: '3738', providerUrl: 'https://www.comparethemarket.com', category: 'insurance' },
+    { provider: 'MoneySuperMarket', headline: 'Car, home and life', monthlyPrice: 0, awinMid: '12049', providerUrl: 'https://www.moneysupermarket.com/car-insurance/', category: 'insurance' },
+  ],
+};
 
-  // Money Recovery Score
-  moneyRecoveryScore: number;
+const MONTH_LABELS: Record<string, string> = {
+  '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+  '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+  '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+};
 
-  // Upcoming renewals (next 30 days)
-  upcomingRenewals: Array<{
-    provider: string;
-    amount: number;
-    date: string;
-  }>;
+/* ------------------------------------------------------------------ */
+/*  Helper: normalise sub category to deals category                   */
+/* ------------------------------------------------------------------ */
+function subCategoryToDealCategory(category?: string | null, providerName?: string | null): string | null {
+  if (!category && !providerName) return null;
+  const cat = (category || '').toLowerCase();
+
+  const categoryMap: Record<string, string> = {
+    energy: 'energy', broadband: 'broadband', mobile: 'mobile',
+    insurance: 'insurance', streaming: 'streaming', fitness: 'fitness',
+  };
+  if (categoryMap[cat]) return categoryMap[cat];
+
+  // Check provider name keywords
+  if (providerName) {
+    const n = providerName.toLowerCase();
+    if (['energy', 'gas', 'electric', 'british gas', 'octopus', 'ovo', 'edf', 'eon'].some(k => n.includes(k))) return 'energy';
+    if (['broadband', 'fibre', 'bt ', 'sky broadband', 'virgin media', 'talktalk'].some(k => n.includes(k))) return 'broadband';
+    if (['mobile', 'vodafone', 'three', 'o2', 'ee', 'giffgaff', 'lebara'].some(k => n.includes(k))) return 'mobile';
+    if (['insurance', 'aviva', 'admiral', 'direct line'].some(k => n.includes(k))) return 'insurance';
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helper: find the cheapest deal for a subscription                  */
+/* ------------------------------------------------------------------ */
+function findCheaperDeal(
+  providerName: string,
+  monthlyCost: number,
+  category: string | null,
+): { dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string } | null {
+  if (!category || !DEALS_BY_CATEGORY[category]) return null;
+  const deals = DEALS_BY_CATEGORY[category];
+
+  let best: typeof deals[0] | null = null;
+  let bestSaving = 0;
+
+  for (const deal of deals) {
+    if (deal.monthlyPrice <= 0) continue;
+    if (deal.provider.toLowerCase() === providerName.toLowerCase()) continue;
+    const saving = (monthlyCost - deal.monthlyPrice) * 12;
+    if (saving > 24 && saving > bestSaving) {
+      best = deal;
+      bestSaving = saving;
+    }
+  }
+
+  if (!best) return null;
+  return {
+    dealProvider: best.provider,
+    dealPrice: best.monthlyPrice,
+    annualSaving: Math.round(bestSaving),
+    dealUrl: buildAwinUrl(best.awinMid, best.providerUrl),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  On-demand report generator (Quick Summary)                         */
+/* ------------------------------------------------------------------ */
+
+export async function generateOnDemandReportData(
+  userId: string
+): Promise<OnDemandReportData> {
+  const admin = getAdmin();
+  const now = new Date();
+  const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const thirtyDaysFromNow = new Date();
+  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+  const [
+    profileRes,
+    activeSubsRes,
+    transactionsRes,
+    disputesRes,
+    priceAlertsRes,
+    renewalsRes,
+    bankConnsRes,
+    emailConnsRes,
+    pendingTasksRes,
+    allPriceAlertsRes,
+  ] = await Promise.all([
+    // Profile
+    admin.from('profiles')
+      .select('full_name, first_name, last_name, phone, address, postcode, email, total_money_recovered, subscription_tier')
+      .eq('id', userId)
+      .single(),
+
+    // Active subscriptions — include extra fields
+    admin.from('subscriptions')
+      .select('id, provider_name, company, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .is('dismissed_at', null),
+
+    // Current month transactions
+    admin.from('bank_transactions')
+      .select('amount, description, category, timestamp')
+      .eq('user_id', userId)
+      .gte('timestamp', currentMonthStart),
+
+    // Disputes
+    admin.from('disputes')
+      .select('id, company_name, description, status, created_at')
+      .eq('user_id', userId),
+
+    // Active price increase alerts
+    admin.from('price_increase_alerts')
+      .select('id, merchant_name, old_amount, new_amount, percentage_increase, annual_impact, status')
+      .eq('user_id', userId)
+      .eq('status', 'active'),
+
+    // Upcoming renewals (next 30 days)
+    admin.from('subscriptions')
+      .select('provider_name, company, amount, next_billing_date, category, category_normalized, contract_end_date')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .gte('next_billing_date', now.toISOString().substring(0, 10))
+      .lte('next_billing_date', thirtyDaysFromNow.toISOString().substring(0, 10)),
+
+    // Bank connections
+    admin.from('bank_connections')
+      .select('id, bank_name, status')
+      .eq('user_id', userId),
+
+    // Email connections
+    admin.from('email_connections')
+      .select('id, email, provider, status')
+      .eq('user_id', userId),
+
+    // Pending action items
+    admin.from('tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'pending_review'),
+
+    // All price alerts (for score calculation)
+    admin.from('price_increase_alerts')
+      .select('id, status')
+      .eq('user_id', userId),
+  ]);
+
+  const profile = profileRes.data;
+  const activeSubs = activeSubsRes.data || [];
+  const transactions = transactionsRes.data || [];
+  const disputes = disputesRes.data || [];
+  const priceAlerts = priceAlertsRes.data || [];
+  const renewals = renewalsRes.data || [];
+  const bankConns = bankConnsRes.data || [];
+  const emailConns = emailConnsRes.data || [];
+  const allPriceAlerts = allPriceAlertsRes.data || [];
+
+  // --- Money Snapshot ---
+  const debits = transactions.filter(tx => parseFloat(String(tx.amount)) < 0);
+  const credits = transactions.filter(tx => parseFloat(String(tx.amount)) > 0);
+  const currentMonthSpend = debits.reduce((sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0);
+  const currentMonthIncome = credits.reduce((sum, tx) => sum + parseFloat(String(tx.amount)), 0);
+  const netPosition = currentMonthIncome - currentMonthSpend;
+
+  // --- Subscription overview ---
+  const totalMonthlyCost = activeSubs.reduce((sum, s) => {
+    const amt = parseFloat(String(s.amount)) || 0;
+    if (s.billing_cycle === 'yearly') return sum + amt / 12;
+    if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+    return sum + amt;
+  }, 0);
+
+  // Build subscription guidance
+  let potentialAnnualSavings = 0;
+  let subsWithCheaperDeal = 0;
+  const topSubscriptions: SubscriptionWithGuidance[] = activeSubs
+    .map(s => {
+      const amt = parseFloat(String(s.amount)) || 0;
+      const monthlyCost = s.billing_cycle === 'yearly' ? amt / 12 : s.billing_cycle === 'quarterly' ? amt / 3 : amt;
+      const annualCost = monthlyCost * 12;
+      const displayName = cleanMerchantName(s.provider_name, s.company);
+      const dealCat = subCategoryToDealCategory(s.category || s.category_normalized, s.provider_name);
+      const cheaperDeal = findCheaperDeal(displayName, monthlyCost, dealCat);
+
+      // Check for price increase on this sub
+      const matchingAlert = priceAlerts.find(a =>
+        normaliseMerchantName(a.merchant_name).toLowerCase() === displayName.toLowerCase()
+      );
+
+      let guidance: SubscriptionWithGuidance['guidance'];
+
+      if (cheaperDeal) {
+        subsWithCheaperDeal++;
+        potentialAnnualSavings += cheaperDeal.annualSaving;
+        guidance = {
+          type: 'switch',
+          message: `Switch to ${cheaperDeal.dealProvider} and save £${Math.round(cheaperDeal.annualSaving / 12)}/month (£${cheaperDeal.annualSaving}/yr)`,
+          actionUrl: cheaperDeal.dealUrl,
+          annualSaving: cheaperDeal.annualSaving,
+          dealProvider: cheaperDeal.dealProvider,
+        };
+      } else if (matchingAlert) {
+        const impact = parseFloat(String(matchingAlert.annual_impact)) || 0;
+        guidance = {
+          type: 'complain',
+          message: `Price went up ${parseFloat(String(matchingAlert.percentage_increase)).toFixed(1)}%. Write a complaint to negotiate it back down`,
+          actionUrl: `/dashboard/complaints?company=${encodeURIComponent(displayName)}&issue=${encodeURIComponent(`Price increase of ${parseFloat(String(matchingAlert.percentage_increase)).toFixed(1)}%`)}&amount=${impact}`,
+          annualSaving: impact,
+        };
+      } else {
+        guidance = {
+          type: 'competitive',
+          message: '✓ Good value — no cheaper alternatives found',
+          actionUrl: '/dashboard/deals',
+        };
+      }
+
+      return {
+        id: s.id,
+        name: displayName,
+        category: s.category || s.category_normalized || 'other',
+        monthlyCost: parseFloat(monthlyCost.toFixed(2)),
+        annualCost: parseFloat(annualCost.toFixed(2)),
+        status: s.status,
+        priceChange: matchingAlert ? {
+          oldAmount: parseFloat(String(matchingAlert.old_amount)),
+          newAmount: parseFloat(String(matchingAlert.new_amount)),
+          pctChange: parseFloat(String(matchingAlert.percentage_increase)),
+        } : null,
+        guidance,
+      };
+    })
+    .sort((a, b) => b.monthlyCost - a.monthlyCost)
+    .slice(0, 5);
+
+  // --- Price alerts ---
+  const priceAlertItems: PriceAlertItem[] = priceAlerts.map(a => ({
+    id: a.id,
+    merchantName: normaliseMerchantName(a.merchant_name),
+    oldAmount: parseFloat(String(a.old_amount)),
+    newAmount: parseFloat(String(a.new_amount)),
+    pctChange: parseFloat(String(a.percentage_increase)),
+    annualImpact: parseFloat(String(a.annual_impact)),
+    status: a.status,
+  }));
+  const priceAlertAnnualCost = priceAlertItems.reduce((sum, a) => sum + a.annualImpact, 0);
+
+  // --- Upcoming renewals (filter out loans/mortgages) ---
+  const filteredRenewals: RenewalItem[] = renewals
+    .filter(r => !isLoanOrMortgage(r.category || r.category_normalized, r.provider_name))
+    .map(r => ({
+      provider: cleanMerchantName(r.provider_name, r.company),
+      amount: parseFloat(String(r.amount)) || 0,
+      date: r.next_billing_date,
+      isRenewal: !!r.contract_end_date,
+    }));
+
+  // --- Disputes ---
+  const disputeItems: DisputeItem[] = disputes.map(d => ({
+    id: d.id,
+    company: d.company_name || 'Unknown',
+    issue: (d.description || '').substring(0, 100),
+    dateFiled: d.created_at ? new Date(d.created_at).toLocaleDateString('en-GB') : '',
+    status: d.status || 'open',
+  }));
+  const activeDisputeCount = disputes.filter(d => d.status === 'open' || d.status === 'in_progress' || d.status === 'awaiting_response').length;
+
+  // --- Financial Health Score ---
+  const activeBanks = bankConns.filter(b => b.status === 'active').length;
+  const activeEmails = emailConns.filter(e => e.status === 'active').length;
+  const actionedAlerts = allPriceAlerts.filter(a => a.status === 'actioned').length;
+
+  const financialHealth = calculateFinancialHealthScore({
+    profileFields: {
+      name: !!(profile?.full_name || (profile?.first_name && profile?.last_name)),
+      phone: !!profile?.phone,
+      address: !!profile?.address,
+      postcode: !!profile?.postcode,
+      email: !!profile?.email,
+    },
+    totalActiveSubscriptions: activeSubs.length,
+    subscriptionsWithCheaperDeal: subsWithCheaperDeal,
+    totalPriceAlerts: allPriceAlerts.length,
+    actionedPriceAlerts: actionedAlerts,
+    totalDisputes: disputes.length,
+    totalOpportunities: (pendingTasksRes.count || 0) + disputes.length,
+    connectedBankAccounts: activeBanks,
+    connectedEmailAccounts: activeEmails,
+  });
+
+  // --- Savings plan ---
+  const savingsActions: SavingsAction[] = [];
+
+  // Add switch opportunities from top subscriptions
+  for (const sub of activeSubs) {
+    const amt = parseFloat(String(sub.amount)) || 0;
+    const monthlyCost = sub.billing_cycle === 'yearly' ? amt / 12 : sub.billing_cycle === 'quarterly' ? amt / 3 : amt;
+    const displayName = cleanMerchantName(sub.provider_name, sub.company);
+    const dealCat = subCategoryToDealCategory(sub.category || sub.category_normalized, sub.provider_name);
+    const cheaperDeal = findCheaperDeal(displayName, monthlyCost, dealCat);
+
+    if (cheaperDeal) {
+      savingsActions.push({
+        action: 'switch',
+        provider: displayName,
+        description: `Switch to ${cheaperDeal.dealProvider}`,
+        monthlySaving: Math.round(monthlyCost - cheaperDeal.dealPrice),
+        annualSaving: cheaperDeal.annualSaving,
+        actionUrl: cheaperDeal.dealUrl,
+        difficulty: getSwitchDifficulty(sub.category || sub.category_normalized),
+        difficultyEmoji: getSwitchDifficulty(sub.category || sub.category_normalized) === 'easy' ? '🟢' : getSwitchDifficulty(sub.category || sub.category_normalized) === 'medium' ? '🟡' : '🔴',
+      });
+    }
+  }
+
+  // Add price increase complaints
+  for (const alert of priceAlertItems) {
+    savingsActions.push({
+      action: 'complain',
+      provider: alert.merchantName,
+      description: `Complain about ${alert.pctChange.toFixed(1)}% price increase`,
+      monthlySaving: Math.round(alert.annualImpact / 12),
+      annualSaving: Math.round(alert.annualImpact),
+      actionUrl: `/dashboard/complaints?company=${encodeURIComponent(alert.merchantName)}&issue=${encodeURIComponent(`Price increase of ${alert.pctChange.toFixed(1)}%`)}&amount=${alert.annualImpact}`,
+      difficulty: 'medium',
+      difficultyEmoji: '🟡',
+    });
+  }
+
+  // Sort by annual saving descending
+  savingsActions.sort((a, b) => b.annualSaving - a.annualSaving);
+
+  const totalPotentialSaving = savingsActions.reduce((sum, a) => sum + a.annualSaving, 0);
+
+  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  return {
+    generatedAt: now.toISOString(),
+    currentMonth: monthLabel,
+    financialHealth,
+    currentMonthSpend: parseFloat(currentMonthSpend.toFixed(2)),
+    currentMonthIncome: parseFloat(currentMonthIncome.toFixed(2)),
+    netPosition: parseFloat(netPosition.toFixed(2)),
+    totalMonthlyCost: parseFloat(totalMonthlyCost.toFixed(2)),
+    totalSubscriptions: activeSubs.length,
+    potentialAnnualSavings: parseFloat(potentialAnnualSavings.toFixed(2)),
+    topSubscriptions,
+    priceAlertCount: priceAlerts.length,
+    priceAlertAnnualCost: parseFloat(priceAlertAnnualCost.toFixed(2)),
+    priceAlerts: priceAlertItems,
+    upcomingRenewals: filteredRenewals,
+    activeDisputeCount,
+    disputes: disputeItems,
+    pendingActionCount: pendingTasksRes.count || 0,
+    savingsActions,
+    totalPotentialSaving: parseFloat(totalPotentialSaving.toFixed(2)),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,7 +608,6 @@ export async function generateAnnualReportData(
   const yearStart = `${year}-01-01`;
   const yearEnd = `${year}-12-31T23:59:59`;
 
-  // Run all queries in parallel
   const [
     profileRes,
     cancelledSubsRes,
@@ -128,35 +618,37 @@ export async function generateAnnualReportData(
     dealClicksRes,
     challengesRes,
     pointsRes,
+    priceAlertsRes,
+    disputesRes,
+    bankConnsRes,
+    emailConnsRes,
+    allPriceAlertsRes,
+    pendingTasksRes,
   ] = await Promise.all([
-    // Profile
     admin.from('profiles')
-      .select('full_name, phone, address, postcode, created_at')
+      .select('full_name, first_name, last_name, phone, address, postcode, email, created_at, subscription_tier, total_money_recovered')
       .eq('id', userId)
       .single(),
 
-    // Cancelled subscriptions in the year
     admin.from('subscriptions')
-      .select('provider_name, amount, billing_cycle, money_saved, cancelled_at')
+      .select('provider_name, company, amount, billing_cycle, money_saved, cancelled_at')
       .eq('user_id', userId)
       .eq('status', 'cancelled')
       .gte('cancelled_at', yearStart)
       .lte('cancelled_at', yearEnd),
 
-    // Active subscriptions
     admin.from('subscriptions')
-      .select('provider_name, amount, billing_cycle')
+      .select('id, provider_name, company, amount, billing_cycle, category, category_normalized, status, next_billing_date, contract_end_date')
       .eq('user_id', userId)
-      .eq('status', 'active'),
+      .eq('status', 'active')
+      .is('dismissed_at', null),
 
-    // Tasks with money_recovered
     admin.from('tasks')
       .select('money_recovered, created_at')
       .eq('user_id', userId)
       .gte('created_at', yearStart)
       .lte('created_at', yearEnd),
 
-    // Agent runs (complaint letters) in the year
     admin.from('agent_runs')
       .select('id')
       .eq('user_id', userId)
@@ -165,21 +657,18 @@ export async function generateAnnualReportData(
       .gte('created_at', yearStart)
       .lte('created_at', yearEnd),
 
-    // Bank transactions for the year
     admin.from('bank_transactions')
       .select('amount, description, category, timestamp')
       .eq('user_id', userId)
       .gte('timestamp', yearStart)
       .lte('timestamp', yearEnd),
 
-    // Deal clicks
     admin.from('deal_clicks')
       .select('id')
       .eq('user_id', userId)
       .gte('clicked_at', yearStart)
       .lte('clicked_at', yearEnd),
 
-    // Completed challenges
     admin.from('user_challenges')
       .select('id')
       .eq('user_id', userId)
@@ -187,11 +676,35 @@ export async function generateAnnualReportData(
       .gte('completed_at', yearStart)
       .lte('completed_at', yearEnd),
 
-    // Points / loyalty
     admin.from('user_points')
       .select('balance, lifetime_earned, loyalty_tier')
       .eq('user_id', userId)
       .single(),
+
+    admin.from('price_increase_alerts')
+      .select('id, merchant_name, old_amount, new_amount, percentage_increase, annual_impact, status')
+      .eq('user_id', userId),
+
+    admin.from('disputes')
+      .select('id, company_name, description, status, created_at')
+      .eq('user_id', userId),
+
+    admin.from('bank_connections')
+      .select('id, bank_name, status')
+      .eq('user_id', userId),
+
+    admin.from('email_connections')
+      .select('id, email, provider, status')
+      .eq('user_id', userId),
+
+    admin.from('price_increase_alerts')
+      .select('id, status')
+      .eq('user_id', userId),
+
+    admin.from('tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('status', 'pending_review'),
   ]);
 
   const profile = profileRes.data;
@@ -203,270 +716,355 @@ export async function generateAnnualReportData(
   const dealClicks = dealClicksRes.data || [];
   const challenges = challengesRes.data || [];
   const points = pointsRes.data;
+  const priceAlerts = priceAlertsRes.data || [];
+  const disputes = disputesRes.data || [];
+  const bankConns = bankConnsRes.data || [];
+  const emailConns = emailConnsRes.data || [];
+  const allPriceAlerts = allPriceAlertsRes.data || [];
 
-  // --- Calculations ---
-
-  // Money recovered
-  const taskMoneyRecovered = tasks.reduce(
-    (sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0
-  );
-  const subsMoneySaved = cancelledSubs.reduce(
-    (sum, s) => sum + (parseFloat(String(s.money_saved)) || 0), 0
-  );
-  const totalMoneyRecovered = taskMoneyRecovered + subsMoneySaved;
-
-  // Annual savings from cancellations
-  const annualSavingsFromCancellations = cancelledSubs.reduce((sum, s) => {
-    const amt = parseFloat(String(s.amount)) || 0;
-    const cycle = s.billing_cycle;
-    if (cycle === 'yearly') return sum + amt;
-    return sum + amt * 12; // monthly -> annual
-  }, 0);
-
-  // Active subscription cost
-  const monthlySubscriptionCost = activeSubs.reduce((sum, s) => {
-    const amt = parseFloat(String(s.amount)) || 0;
-    if (s.billing_cycle === 'yearly') return sum + amt / 12;
-    return sum + amt;
-  }, 0);
-
-  // Spending by category
+  // --- Spending calculations with meaningful categories ---
   const debits = transactions
-    .filter((tx) => parseFloat(String(tx.amount)) < 0)
-    .map((tx) => ({
+    .filter(tx => parseFloat(String(tx.amount)) < 0)
+    .map(tx => ({
       ...tx,
       amount: Math.abs(parseFloat(String(tx.amount))),
+      meaningfulCategory: categoriseTransaction(tx.description || '', tx.category || ''),
     }));
   const credits = transactions
-    .filter((tx) => parseFloat(String(tx.amount)) > 0)
-    .map((tx) => ({
-      ...tx,
-      amount: parseFloat(String(tx.amount)),
-    }));
+    .filter(tx => parseFloat(String(tx.amount)) > 0)
+    .map(tx => ({ ...tx, amount: parseFloat(String(tx.amount)) }));
 
   const totalOutgoings = debits.reduce((sum, tx) => sum + tx.amount, 0);
   const totalIncome = credits.reduce((sum, tx) => sum + tx.amount, 0);
 
-  const categoryTotals: Record<string, number> = {};
+  // Spending by meaningful category
+  const categoryTotals: Record<string, { total: number; count: number }> = {};
   for (const tx of debits) {
-    const cat = tx.category || 'other';
-    categoryTotals[cat] = (categoryTotals[cat] || 0) + tx.amount;
+    const cat = tx.meaningfulCategory;
+    if (!categoryTotals[cat]) categoryTotals[cat] = { total: 0, count: 0 };
+    categoryTotals[cat].total += tx.amount;
+    categoryTotals[cat].count += 1;
   }
   const spendingByCategory: CategorySpend[] = Object.entries(categoryTotals)
-    .map(([category, total]) => ({
+    .map(([category, data]) => ({
       category,
-      total: parseFloat(total.toFixed(2)),
-      percentage: totalOutgoings > 0
-        ? parseFloat(((total / totalOutgoings) * 100).toFixed(1))
-        : 0,
+      label: getReportCategoryLabel(category),
+      total: parseFloat(data.total.toFixed(2)),
+      percentage: totalOutgoings > 0 ? parseFloat(((data.total / totalOutgoings) * 100).toFixed(1)) : 0,
+      transactionCount: data.count,
     }))
     .sort((a, b) => b.total - a.total);
 
-  // Monthly trends
+  // Monthly trends — only populated months
   const monthlyMap: Record<string, { spend: number; income: number }> = {};
-  for (let m = 0; m < 12; m++) {
-    const key = `${year}-${String(m + 1).padStart(2, '0')}`;
-    monthlyMap[key] = { spend: 0, income: 0 };
-  }
   for (const tx of debits) {
     const key = tx.timestamp?.substring(0, 7);
-    if (key && monthlyMap[key]) monthlyMap[key].spend += tx.amount;
+    if (key) {
+      if (!monthlyMap[key]) monthlyMap[key] = { spend: 0, income: 0 };
+      monthlyMap[key].spend += tx.amount;
+    }
   }
   for (const tx of credits) {
     const key = tx.timestamp?.substring(0, 7);
-    if (key && monthlyMap[key]) monthlyMap[key].income += tx.amount;
+    if (key) {
+      if (!monthlyMap[key]) monthlyMap[key] = { spend: 0, income: 0 };
+      monthlyMap[key].income += tx.amount;
+    }
   }
   const monthlyTrends: MonthlyTrend[] = Object.entries(monthlyMap)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, vals]) => ({
       month,
+      monthLabel: MONTH_LABELS[month.split('-')[1]] || month.split('-')[1],
       spend: parseFloat(vals.spend.toFixed(2)),
       income: parseFloat(vals.income.toFixed(2)),
+      hasData: vals.spend > 0 || vals.income > 0,
     }));
 
-  // Top 5 merchants
+  // Top 5 merchants (clean names)
   const merchantMap: Record<string, { total: number; count: number }> = {};
   for (const tx of debits) {
-    const name = tx.description || 'Unknown';
+    const name = normaliseMerchantName(tx.description || 'Unknown');
     if (!merchantMap[name]) merchantMap[name] = { total: 0, count: 0 };
     merchantMap[name].total += tx.amount;
     merchantMap[name].count += 1;
   }
   const topMerchants: MerchantSpend[] = Object.entries(merchantMap)
-    .map(([name, v]) => ({
-      name,
-      total: parseFloat(v.total.toFixed(2)),
-      count: v.count,
-    }))
+    .map(([name, v]) => ({ name, total: parseFloat(v.total.toFixed(2)), count: v.count }))
     .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+    .slice(0, 10);
+
+  // --- Subscription costs ---
+  const monthlySubscriptionCost = activeSubs.reduce((sum, s) => {
+    const amt = parseFloat(String(s.amount)) || 0;
+    if (s.billing_cycle === 'yearly') return sum + amt / 12;
+    if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+    return sum + amt;
+  }, 0);
+
+  // Build subscription list with guidance
+  let subsWithCheaperDeal = 0;
+  let totalSubSavings = 0;
+
+  const subscriptionsList: SubscriptionWithGuidance[] = activeSubs
+    .map(s => {
+      const amt = parseFloat(String(s.amount)) || 0;
+      const monthlyCost = s.billing_cycle === 'yearly' ? amt / 12 : s.billing_cycle === 'quarterly' ? amt / 3 : amt;
+      const annualCost = monthlyCost * 12;
+      const displayName = cleanMerchantName(s.provider_name, s.company);
+      const dealCat = subCategoryToDealCategory(s.category || s.category_normalized, s.provider_name);
+      const cheaperDeal = findCheaperDeal(displayName, monthlyCost, dealCat);
+
+      const matchingAlert = priceAlerts.find(a =>
+        normaliseMerchantName(a.merchant_name).toLowerCase() === displayName.toLowerCase()
+      );
+
+      let guidance: SubscriptionWithGuidance['guidance'];
+
+      if (cheaperDeal) {
+        subsWithCheaperDeal++;
+        totalSubSavings += cheaperDeal.annualSaving;
+        guidance = {
+          type: 'switch',
+          message: `Switch to ${cheaperDeal.dealProvider} and save £${Math.round(cheaperDeal.annualSaving / 12)}/month (£${cheaperDeal.annualSaving}/yr)`,
+          actionUrl: cheaperDeal.dealUrl,
+          annualSaving: cheaperDeal.annualSaving,
+          dealProvider: cheaperDeal.dealProvider,
+        };
+      } else if (matchingAlert) {
+        guidance = {
+          type: 'complain',
+          message: `Price went up ${parseFloat(String(matchingAlert.percentage_increase)).toFixed(1)}%`,
+          actionUrl: `/dashboard/complaints?company=${encodeURIComponent(displayName)}`,
+          annualSaving: parseFloat(String(matchingAlert.annual_impact)) || 0,
+        };
+      } else {
+        guidance = { type: 'competitive', message: '✓ Good value', actionUrl: '/dashboard/deals' };
+      }
+
+      return {
+        id: s.id,
+        name: displayName,
+        category: s.category || s.category_normalized || 'other',
+        monthlyCost: parseFloat(monthlyCost.toFixed(2)),
+        annualCost: parseFloat(annualCost.toFixed(2)),
+        status: s.status,
+        priceChange: matchingAlert ? {
+          oldAmount: parseFloat(String(matchingAlert.old_amount)),
+          newAmount: parseFloat(String(matchingAlert.new_amount)),
+          pctChange: parseFloat(String(matchingAlert.percentage_increase)),
+        } : null,
+        guidance,
+      };
+    })
+    .sort((a, b) => b.monthlyCost - a.monthlyCost);
+
+  // --- Price alerts ---
+  const priceAlertItems: PriceAlertItem[] = priceAlerts
+    .filter(a => a.status === 'active')
+    .map(a => ({
+      id: a.id,
+      merchantName: normaliseMerchantName(a.merchant_name),
+      oldAmount: parseFloat(String(a.old_amount)),
+      newAmount: parseFloat(String(a.new_amount)),
+      pctChange: parseFloat(String(a.percentage_increase)),
+      annualImpact: parseFloat(String(a.annual_impact)),
+      status: a.status,
+    }));
+  const totalPriceIncreaseImpact = priceAlertItems.reduce((sum, a) => sum + a.annualImpact, 0);
+
+  // --- Disputes ---
+  const disputeItems: DisputeItem[] = disputes.map(d => ({
+    id: d.id,
+    company: d.company_name || 'Unknown',
+    issue: (d.description || '').substring(0, 100),
+    dateFiled: d.created_at ? new Date(d.created_at).toLocaleDateString('en-GB') : '',
+    status: d.status || 'open',
+  }));
+
+  // --- Legacy calculations ---
+  const taskMoneyRecovered = tasks.reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
+  const subsMoneySaved = cancelledSubs.reduce((sum, s) => sum + (parseFloat(String(s.money_saved)) || 0), 0);
+  const totalMoneyRecovered = taskMoneyRecovered + subsMoneySaved;
+
+  const annualSavingsFromCancellations = cancelledSubs.reduce((sum, s) => {
+    const amt = parseFloat(String(s.amount)) || 0;
+    const cycle = s.billing_cycle;
+    if (cycle === 'yearly') return sum + amt;
+    return sum + amt * 12;
+  }, 0);
 
   // Profile completeness
-  const profileFields = [
-    profile?.full_name,
-    profile?.phone,
-    profile?.address,
-    profile?.postcode,
-  ];
+  const profileFields = [profile?.full_name, profile?.phone, profile?.address, profile?.postcode, profile?.email];
   const filledFields = profileFields.filter(Boolean).length;
   const profileCompleteness = Math.round((filledFields / profileFields.length) * 100);
 
-  // Days as member
   const createdAt = profile?.created_at ? new Date(profile.created_at) : new Date();
-  const daysAsMember = Math.floor(
-    (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const daysAsMember = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Money Recovery Score = total money recovered + annual savings from cancellations
-  const moneyRecoveryScore = parseFloat(
-    (totalMoneyRecovered + annualSavingsFromCancellations).toFixed(2)
-  );
+  // Connected accounts
+  const connectedBanks = bankConns
+    .filter(b => b.status === 'active')
+    .map(b => ({ name: b.bank_name || 'Bank Account', status: b.status }));
+  const connectedEmails = emailConns
+    .filter(e => e.status === 'active')
+    .map(e => ({ email: e.email, provider: e.provider }));
+
+  // Data months
+  const uniqueMonths = new Set(transactions.map(tx => tx.timestamp?.substring(0, 7)).filter(Boolean));
+  const dataMonths = uniqueMonths.size;
+
+  // Financial Health Score
+  const activeBanks = bankConns.filter(b => b.status === 'active').length;
+  const activeEmails = emailConns.filter(e => e.status === 'active').length;
+  const actionedAlerts = allPriceAlerts.filter(a => a.status === 'actioned').length;
+
+  const financialHealth = calculateFinancialHealthScore({
+    profileFields: {
+      name: !!(profile?.full_name || (profile?.first_name && profile?.last_name)),
+      phone: !!profile?.phone,
+      address: !!profile?.address,
+      postcode: !!profile?.postcode,
+      email: !!profile?.email,
+    },
+    totalActiveSubscriptions: activeSubs.length,
+    subscriptionsWithCheaperDeal: subsWithCheaperDeal,
+    totalPriceAlerts: allPriceAlerts.length,
+    actionedPriceAlerts: actionedAlerts,
+    totalDisputes: disputes.length,
+    totalOpportunities: (pendingTasksRes.count || 0) + disputes.length,
+    connectedBankAccounts: activeBanks,
+    connectedEmailAccounts: activeEmails,
+  });
+
+  // --- Savings plan ---
+  const savingsActions: SavingsAction[] = [];
+  for (const sub of subscriptionsList) {
+    if (sub.guidance.type === 'switch' && sub.guidance.annualSaving) {
+      savingsActions.push({
+        action: 'switch',
+        provider: sub.name,
+        description: `Switch to ${sub.guidance.dealProvider}`,
+        monthlySaving: Math.round((sub.guidance.annualSaving || 0) / 12),
+        annualSaving: sub.guidance.annualSaving,
+        actionUrl: sub.guidance.actionUrl,
+        difficulty: getSwitchDifficulty(sub.category),
+        difficultyEmoji: getSwitchDifficulty(sub.category) === 'easy' ? '🟢' : getSwitchDifficulty(sub.category) === 'medium' ? '🟡' : '🔴',
+      });
+    }
+  }
+  for (const alert of priceAlertItems) {
+    savingsActions.push({
+      action: 'complain',
+      provider: alert.merchantName,
+      description: `Complain about ${alert.pctChange.toFixed(1)}% increase`,
+      monthlySaving: Math.round(alert.annualImpact / 12),
+      annualSaving: Math.round(alert.annualImpact),
+      actionUrl: `/dashboard/complaints?company=${encodeURIComponent(alert.merchantName)}&amount=${alert.annualImpact}`,
+      difficulty: 'medium',
+      difficultyEmoji: '🟡',
+    });
+  }
+  savingsActions.sort((a, b) => b.annualSaving - a.annualSaving);
+
+  // Executive Summary (template-based)
+  const executiveSummary = buildExecutiveSummary({
+    monthlySpend: totalOutgoings,
+    activeSubs: activeSubs.length,
+    priceAlertCount: priceAlertItems.length,
+    priceAlertCost: totalPriceIncreaseImpact,
+    potentialSavings: totalSubSavings,
+    disputes: disputes.length,
+    monthlySubCost: monthlySubscriptionCost,
+  });
+
+  const userName = profile?.full_name || [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'User';
+  const userPlan = profile?.subscription_tier
+    ? profile.subscription_tier.charAt(0).toUpperCase() + profile.subscription_tier.slice(1) + ' Plan'
+    : 'Free Plan';
 
   return {
     year,
     generatedAt: new Date().toISOString(),
     memberSince: createdAt.toISOString(),
     daysAsMember,
+    userName,
+    userPlan,
+    executiveSummary,
+    financialHealth,
+    totalIncome: parseFloat(totalIncome.toFixed(2)),
+    totalOutgoings: parseFloat(totalOutgoings.toFixed(2)),
+    netPosition: parseFloat((totalIncome - totalOutgoings).toFixed(2)),
+    monthlyTrends,
+    spendingByCategory,
+    activeSubscriptions: activeSubs.length,
+    monthlySubscriptionCost: parseFloat(monthlySubscriptionCost.toFixed(2)),
+    annualSubscriptionCost: parseFloat((monthlySubscriptionCost * 12).toFixed(2)),
+    subscriptionsList,
+    priceAlerts: priceAlertItems,
+    totalPriceIncreaseImpact: parseFloat(totalPriceIncreaseImpact.toFixed(2)),
+    potentialAnnualSavings: parseFloat(totalSubSavings.toFixed(2)),
+    savingsActions,
+    totalDisputes: disputes.length,
+    disputes: disputeItems,
+    connectedBanks,
+    connectedEmails,
+    profileCompleteness,
+    dataMonths,
+    topMerchants,
+
+    // Legacy fields
+    subscriptionsCancelled: cancelledSubs.length,
+    annualSavingsFromCancellations: parseFloat(annualSavingsFromCancellations.toFixed(2)),
+    complaintsGenerated: agentRuns.length,
     totalMoneyRecovered: parseFloat(totalMoneyRecovered.toFixed(2)),
     taskMoneyRecovered: parseFloat(taskMoneyRecovered.toFixed(2)),
     subsMoneySaved: parseFloat(subsMoneySaved.toFixed(2)),
-    subscriptionsCancelled: cancelledSubs.length,
-    annualSavingsFromCancellations: parseFloat(annualSavingsFromCancellations.toFixed(2)),
-    activeSubscriptions: activeSubs.length,
-    monthlySubscriptionCost: parseFloat(monthlySubscriptionCost.toFixed(2)),
-    complaintsGenerated: agentRuns.length,
-    spendingByCategory,
-    monthlyTrends,
-    totalIncome: parseFloat(totalIncome.toFixed(2)),
-    totalOutgoings: parseFloat(totalOutgoings.toFixed(2)),
-    topMerchants,
     dealClicks: dealClicks.length,
     challengesCompleted: challenges.length,
     pointsEarned: points?.lifetime_earned || 0,
     loyaltyTier: points?.loyalty_tier || 'Bronze',
     totalPoints: points?.balance || 0,
-    profileCompleteness,
-    moneyRecoveryScore,
+    profileCompletenessNum: profileCompleteness,
+    moneyRecoveryScore: parseFloat((totalMoneyRecovered + annualSavingsFromCancellations).toFixed(2)),
   };
 }
 
 /* ------------------------------------------------------------------ */
-/*  On-demand report generator                                         */
+/*  Executive Summary Builder (template-based)                         */
 /* ------------------------------------------------------------------ */
 
-export async function generateOnDemandReportData(
-  userId: string
-): Promise<OnDemandReportData> {
-  const admin = getAdmin();
-  const now = new Date();
-  const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const threeMonthsAgo = new Date();
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-  const thirtyDaysFromNow = new Date();
-  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+function buildExecutiveSummary(data: {
+  monthlySpend: number;
+  activeSubs: number;
+  priceAlertCount: number;
+  priceAlertCost: number;
+  potentialSavings: number;
+  disputes: number;
+  monthlySubCost: number;
+}): string {
+  const parts: string[] = [];
 
-  const [
-    activeSubsRes,
-    transactionsRes,
-    complaintsRes,
-    budgetsRes,
-    renewalsRes,
-    profileRes,
-  ] = await Promise.all([
-    // Active subscriptions
-    admin.from('subscriptions')
-      .select('provider_name, amount, billing_cycle')
-      .eq('user_id', userId)
-      .eq('status', 'active'),
+  if (data.monthlySpend > 0 || data.activeSubs > 0) {
+    const spendStr = data.monthlySpend > 0 ? `£${data.monthlySpend.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+    if (spendStr) {
+      parts.push(`Your total spending this period was ${spendStr} across ${data.activeSubs} active subscriptions and regular payments.`);
+    } else {
+      parts.push(`You have ${data.activeSubs} active subscriptions costing £${data.monthlySubCost.toLocaleString('en-GB', { minimumFractionDigits: 2 })}/month.`);
+    }
+  }
 
-    // Current month transactions
-    admin.from('bank_transactions')
-      .select('amount, timestamp')
-      .eq('user_id', userId)
-      .gte('timestamp', currentMonthStart),
+  if (data.priceAlertCount > 0) {
+    parts.push(`We detected ${data.priceAlertCount} price increase${data.priceAlertCount !== 1 ? 's' : ''} costing you an extra £${data.priceAlertCost.toLocaleString('en-GB', { minimumFractionDigits: 2 })}/yr.`);
+  }
 
-    // Recent complaints (last 3 months)
-    admin.from('agent_runs')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('agent_type', 'complaint')
-      .eq('status', 'completed')
-      .gte('created_at', threeMonthsAgo.toISOString()),
+  if (data.potentialSavings > 0) {
+    parts.push(`Based on your spending patterns, we've identified potential savings of £${data.potentialSavings.toLocaleString('en-GB', { minimumFractionDigits: 2 })}/yr through better deals and subscription optimisation.`);
+  }
 
-    // Budgets
-    admin.from('money_hub_budgets')
-      .select('category, monthly_limit')
-      .eq('user_id', userId),
+  if (data.disputes > 0) {
+    parts.push(`You have ${data.disputes} dispute${data.disputes !== 1 ? 's' : ''} ${data.disputes === 1 ? '' : 'in progress or filed'}.`);
+  }
 
-    // Upcoming renewals (next 30 days)
-    admin.from('subscriptions')
-      .select('provider_name, amount, next_billing_date')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .gte('next_billing_date', now.toISOString().substring(0, 10))
-      .lte('next_billing_date', thirtyDaysFromNow.toISOString().substring(0, 10)),
-
-    // Profile for money recovered
-    admin.from('profiles')
-      .select('total_money_recovered')
-      .eq('id', userId)
-      .single(),
-  ]);
-
-  const activeSubs = activeSubsRes.data || [];
-  const transactions = transactionsRes.data || [];
-  const complaints = complaintsRes.data || [];
-  const budgets = budgetsRes.data || [];
-  const renewals = renewalsRes.data || [];
-
-  // Current month spending
-  const debits = transactions.filter((tx) => parseFloat(String(tx.amount)) < 0);
-  const credits = transactions.filter((tx) => parseFloat(String(tx.amount)) > 0);
-  const currentMonthSpend = debits.reduce(
-    (sum, tx) => sum + Math.abs(parseFloat(String(tx.amount))), 0
-  );
-  const currentMonthIncome = credits.reduce(
-    (sum, tx) => sum + parseFloat(String(tx.amount)), 0
-  );
-
-  // Monthly subscription total
-  const monthlySubscriptionTotal = activeSubs.reduce((sum, s) => {
-    const amt = parseFloat(String(s.amount)) || 0;
-    if (s.billing_cycle === 'yearly') return sum + amt / 12;
-    return sum + amt;
-  }, 0);
-
-  // Budget status - fetch current month spending by category
-  const budgetStatus = budgets.map((b) => ({
-    category: b.category,
-    limit: parseFloat(String(b.monthly_limit)) || 0,
-    spent: 0, // Would need category-level aggregation from transactions
-    remaining: parseFloat(String(b.monthly_limit)) || 0,
-  }));
-
-  // Upcoming renewals
-  const upcomingRenewals = renewals.map((r) => ({
-    provider: r.provider_name || 'Unknown',
-    amount: parseFloat(String(r.amount)) || 0,
-    date: r.next_billing_date,
-  }));
-
-  const moneyRecoveryScore = parseFloat(
-    String(profileRes.data?.total_money_recovered || 0)
-  );
-
-  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-
-  return {
-    generatedAt: now.toISOString(),
-    currentMonthSpend: parseFloat(currentMonthSpend.toFixed(2)),
-    currentMonthIncome: parseFloat(currentMonthIncome.toFixed(2)),
-    currentMonth: monthLabel,
-    activeSubscriptions: activeSubs.length,
-    monthlySubscriptionTotal: parseFloat(monthlySubscriptionTotal.toFixed(2)),
-    recentComplaints: complaints.length,
-    budgets: budgetStatus,
-    moneyRecoveryScore,
-    upcomingRenewals,
-  };
+  return parts.join(' ') || 'Your financial report is ready. Connect your bank account and add subscriptions to unlock personalised insights.';
 }
