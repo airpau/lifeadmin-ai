@@ -144,15 +144,14 @@ export default function Home() {
               </div>
 
               <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-                Take Back{' '}
+                Your Personal{' '}
                 <span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">
-                  Control
-                </span>{' '}
-                of Your Money
+                  Consumer Champion
+                </span>
               </h1>
 
               <p className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
-                AI-powered complaint letters citing exact UK law. Track every subscription. Find cheaper deals. All in one platform, built for UK consumers.
+                Fight unfair charges with AI disputes, uncover hidden subscriptions, track your total wealth, and find better deals. The ultimate financial command centre.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
@@ -164,22 +163,22 @@ export default function Home() {
                 </a>
               </div>
 
-              {/* Value proposition stats */}
+              {/* Core Features Overview */}
               <motion.div
                 variants={staggerContainer}
                 initial="hidden"
                 animate="show"
-                className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto"
+                className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto"
               >
                 {[
-                  { value: 'Up to £520', label: 'For flight delays (EU261/UK261 rights)' },
-                  { value: '£312', label: 'Average wasted on subscriptions' },
-                  { value: '50+', label: 'UK providers covered' },
-                  { value: '30 sec', label: 'To generate a letter' },
+                  { value: 'Disputes Centre', label: 'AI letters citing UK law' },
+                  { value: 'Money Hub', label: 'Open banking intelligence' },
+                  { value: 'Subscription Finder', label: 'Scan, track & cancel' },
+                  { value: 'Deals Checker', label: 'Compare & switch to save' },
                 ].map((stat) => (
-                  <motion.div key={stat.label} variants={fadeUp} className="text-center">
-                    <p className="text-2xl font-bold text-mint-400">{stat.value}</p>
-                    <p className="text-slate-500 text-xs mt-1">{stat.label}</p>
+                  <motion.div key={stat.label} variants={fadeUp} className="bg-navy-900/50 border border-navy-700/50 rounded-xl p-4 text-center hover:border-mint-400/30 transition-all">
+                    <p className="text-lg font-bold text-mint-400 mb-1">{stat.value}</p>
+                    <p className="text-slate-400 text-xs">{stat.label}</p>
                   </motion.div>
                 ))}
               </motion.div>
@@ -228,7 +227,7 @@ export default function Home() {
                   <span>AI-Powered</span>
                 </div>
                 <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                  AI Complaint Letters
+                  Disputes Centre
                 </h2>
                 <p className="text-slate-400 text-lg leading-relaxed mb-6">
                   Generate formal complaint letters citing exact UK consumer law in 30 seconds. Our AI knows the legislation that applies to your case.
@@ -437,7 +436,7 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {[
-                    { label: 'AI Letters', sub: 'Complaints, HMRC, council tax, flights, parking, debt, NHS, DVLA', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { label: 'Disputes', sub: 'Complaints, HMRC, council tax, flights, parking, debt, NHS, DVLA', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
                     { label: 'Bill Upload + AI Scan', sub: 'Upload a bill, AI reads it and writes the letter', free: true, essential: true, pro: true },
                     { label: 'AI Cancellation Emails', sub: 'Professional cancellation citing UK law', free: false, essential: true, pro: true },
                     { label: 'Subscription Tracking', sub: 'Track every recurring payment', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
