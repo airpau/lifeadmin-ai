@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccessToken, fetchAccounts, fetchTransactions, BankConnection } from '@/lib/truelayer';
 import { detectRecurring } from '@/lib/detect-recurring';
+import {
+  TIER_CONFIG,
+  GLOBAL_DAILY_API_CEILING,
+  getTodayApiCallCount,
+  checkAndAlertCeiling,
+  sendTelegramAlert,
+} from '@/lib/bank-tier-config';
 
 export const maxDuration = 60;
 
@@ -13,15 +20,21 @@ function getAdmin() {
 }
 
 /**
- * Nightly bank sync cron — refreshes transactions for all active bank connections.
- * Schedule: Daily at 3am (configured in vercel.json)
+ * Tiered bank sync cron — runs daily at 3am (configured in vercel.json).
  *
- * For each connected bank:
- * 1. Refresh access token if needed
- * 2. Fetch last 90 days of transactions (catches new payments)
- * 3. Upsert to bank_transactions (dedup on transaction_id)
- * 4. Run recurring payment detection
- * 5. Update last_synced_at
+ * Tier behaviour:
+ *   Pro + Essential — synced every day (fetches last 90 days of transactions)
+ *   Free           — synced only on Mondays (fetches last 90 days)
+ *
+ * Processing order: Pro first, then Essential, then Free.
+ * This ensures paying users are never deprioritised behind free users.
+ *
+ * Cost protection:
+ *   - Global 500 API call ceiling per day (shared with manual syncs)
+ *   - Telegram alert at 80% (400 calls)
+ *   - Token refresh failures: mark as expired, do NOT retry in a loop
+ *
+ * All syncs are logged to bank_sync_log.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -30,45 +43,133 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdmin();
+  const today = new Date();
+  const isMonday = today.getUTCDay() === 1; // 0=Sunday, 1=Monday
+  const now = today.toISOString();
 
-  // Get active bank connections for paid users only (Essential + Pro)
-  // Free users get one-time scan only, not daily sync
-  const { data: paidUsers } = await supabase
+  // Check global API ceiling before doing anything
+  const callCountAtStart = await getTodayApiCallCount(supabase);
+  if (callCountAtStart >= GLOBAL_DAILY_API_CEILING) {
+    await sendTelegramAlert(
+      `🚨 *Bank sync cron blocked*\n\n` +
+      `Daily API ceiling of ${GLOBAL_DAILY_API_CEILING} already reached before cron ran.\n` +
+      `All syncs skipped. Investigate usage.`
+    );
+    return NextResponse.json({
+      ok: false,
+      reason: 'Global API ceiling reached — all syncs skipped',
+      callsUsedToday: callCountAtStart,
+    });
+  }
+
+  // Determine which tiers to sync today
+  // Pro + Essential: every day. Free: Mondays only.
+  const tiersToSync = isMonday
+    ? ['pro', 'essential', 'free']
+    : ['pro', 'essential'];
+
+  // Fetch all users by tier, maintaining processing order (Pro first)
+  const { data: allProfiles } = await supabase
     .from('profiles')
-    .select('id')
-    .in('subscription_tier', ['essential', 'pro']);
+    .select('id, subscription_tier')
+    .in('subscription_tier', tiersToSync);
 
-  const paidUserIds = (paidUsers || []).map(u => u.id);
+  if (!allProfiles || allProfiles.length === 0) {
+    return NextResponse.json({ ok: true, synced: 0, reason: 'No eligible users' });
+  }
 
+  // Sort: pro → essential → free
+  const tierOrder: Record<string, number> = { pro: 0, essential: 1, free: 2 };
+  const sortedProfiles = [...allProfiles].sort(
+    (a, b) => (tierOrder[a.subscription_tier] ?? 3) - (tierOrder[b.subscription_tier] ?? 3)
+  );
+
+  const orderedUserIds = sortedProfiles.map((p) => p.id);
+
+  // Fetch active bank connections for these users
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('*')
     .eq('status', 'active')
-    .in('user_id', paidUserIds.length > 0 ? paidUserIds : ['00000000-0000-0000-0000-000000000000']);
+    .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000']);
 
   if (connError || !connections || connections.length === 0) {
-    return NextResponse.json({ ok: true, synced: 0, reason: 'No active connections' });
+    return NextResponse.json({ ok: true, synced: 0, reason: 'No active bank connections' });
   }
+
+  // Sort connections to match tier order
+  const userTierMap = new Map(sortedProfiles.map((p) => [p.id, p.subscription_tier]));
+  const sortedConnections = [...connections].sort((a, b) => {
+    const tierA = tierOrder[userTierMap.get(a.user_id) ?? 'free'] ?? 3;
+    const tierB = tierOrder[userTierMap.get(b.user_id) ?? 'free'] ?? 3;
+    return tierA - tierB;
+  });
 
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-  const results: Array<{ user_id: string; connection_id: string; transactions: number; recurring: number; error?: string }> = [];
+  type SyncResult = {
+    user_id: string;
+    connection_id: string;
+    tier: string;
+    transactions: number;
+    recurring: number;
+    api_calls: number;
+    error?: string;
+  };
 
-  for (const connection of connections as BankConnection[]) {
+  const results: SyncResult[] = [];
+  let totalApiCalls = 0;
+
+  for (const connection of sortedConnections as BankConnection[]) {
+    // Re-check ceiling on every iteration to stop mid-run if needed
+    const currentCallCount = callCountAtStart + totalApiCalls;
+    if (currentCallCount >= GLOBAL_DAILY_API_CEILING) {
+      const remaining = sortedConnections.length - results.length;
+      await sendTelegramAlert(
+        `🚨 *TrueLayer ceiling hit mid-cron*\n\n` +
+        `Stopped after ${results.length} connections processed.\n` +
+        `${remaining} connections skipped. Total calls today: ${currentCallCount}.`
+      );
+      break;
+    }
+
+    const tier = userTierMap.get(connection.user_id) ?? 'free';
+    let connectionApiCalls = 0;
+
     try {
       // Get valid access token (auto-refreshes if expired)
       let accessToken: string;
       try {
         accessToken = await getAccessToken(connection);
+        connectionApiCalls++;
       } catch (err: any) {
-        console.error(`Bank sync: token refresh failed for connection ${connection.id}:`, err.message);
-        // Mark as expired
+        console.error(`Bank sync: token refresh failed for ${connection.id}:`, err.message);
+        // Mark expired — do NOT retry in a loop
         await supabase
           .from('bank_connections')
-          .update({ status: 'expired', updated_at: new Date().toISOString() })
+          .update({ status: 'expired', updated_at: now })
           .eq('id', connection.id);
-        results.push({ user_id: connection.user_id, connection_id: connection.id, transactions: 0, recurring: 0, error: 'Token expired' });
+
+        await supabase.from('bank_sync_log').insert({
+          user_id: connection.user_id,
+          connection_id: connection.id,
+          trigger_type: 'cron',
+          status: 'failed',
+          api_calls_made: connectionApiCalls,
+          error_message: 'Token refresh failed — reconnect required',
+        });
+
+        results.push({
+          user_id: connection.user_id,
+          connection_id: connection.id,
+          tier,
+          transactions: 0,
+          recurring: 0,
+          api_calls: connectionApiCalls,
+          error: 'Token expired',
+        });
+        totalApiCalls += connectionApiCalls;
         continue;
       }
 
@@ -76,24 +177,30 @@ export async function GET(request: NextRequest) {
       if (!connection.bank_name) {
         try {
           const accounts = await fetchAccounts(accessToken);
+          connectionApiCalls++;
           const bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
-          const displayNames = accounts.map((a) => [a.display_name, a.description].filter(Boolean).join(' — ') || 'Account');
+          const displayNames = accounts.map((a) =>
+            [a.display_name, a.description].filter(Boolean).join(' — ') || 'Account'
+          );
           await supabase.from('bank_connections').update({
             bank_name: bankName,
             account_display_names: displayNames,
-            account_ids: accounts.map(a => a.account_id),
+            account_ids: accounts.map((a) => a.account_id),
           }).eq('id', connection.id);
         } catch {
           // Non-fatal
         }
       }
 
+      // Sync transactions
       const accountIds = connection.account_ids || [];
       let totalSynced = 0;
 
       for (const accountId of accountIds) {
         try {
           const transactions = await fetchTransactions(accessToken, accountId, ninetyDaysAgo);
+          connectionApiCalls++;
+
           if (transactions.length === 0) continue;
 
           const rows = transactions.map((tx) => ({
@@ -113,13 +220,10 @@ export async function GET(request: NextRequest) {
             .from('bank_transactions')
             .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
 
-          if (upsertError) {
-            console.error(`Bank sync: upsert error for account ${accountId}:`, upsertError);
-          } else {
-            totalSynced += rows.length;
-          }
+          if (!upsertError) totalSynced += rows.length;
+          else console.error(`Bank sync: upsert error for ${accountId}:`, upsertError);
         } catch (err: any) {
-          console.error(`Bank sync: error syncing account ${accountId}:`, err.message);
+          console.error(`Bank sync: error on account ${accountId}:`, err.message);
         }
       }
 
@@ -129,35 +233,79 @@ export async function GET(request: NextRequest) {
       // Update last synced
       await supabase
         .from('bank_connections')
-        .update({ last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .update({ last_synced_at: now, updated_at: now })
         .eq('id', connection.id);
+
+      // Log success
+      await supabase.from('bank_sync_log').insert({
+        user_id: connection.user_id,
+        connection_id: connection.id,
+        trigger_type: 'cron',
+        status: 'success',
+        api_calls_made: connectionApiCalls,
+      });
 
       results.push({
         user_id: connection.user_id,
         connection_id: connection.id,
+        tier,
         transactions: totalSynced,
         recurring: recurringDetected,
+        api_calls: connectionApiCalls,
       });
 
-      console.log(`Bank sync: connection=${connection.id} user=${connection.user_id} txs=${totalSynced} recurring=${recurringDetected}`);
+      console.log(
+        `Bank sync: conn=${connection.id} tier=${tier} txs=${totalSynced} ` +
+        `recurring=${recurringDetected} api_calls=${connectionApiCalls}`
+      );
     } catch (err: any) {
-      console.error(`Bank sync: fatal error for connection ${connection.id}:`, err.message);
-      results.push({ user_id: connection.user_id, connection_id: connection.id, transactions: 0, recurring: 0, error: err.message });
+      console.error(`Bank sync: fatal error for ${connection.id}:`, err.message);
+
+      await supabase.from('bank_sync_log').insert({
+        user_id: connection.user_id,
+        connection_id: connection.id,
+        trigger_type: 'cron',
+        status: 'failed',
+        api_calls_made: connectionApiCalls,
+        error_message: err.message,
+      });
+
+      results.push({
+        user_id: connection.user_id,
+        connection_id: connection.id,
+        tier,
+        transactions: 0,
+        recurring: 0,
+        api_calls: connectionApiCalls,
+        error: err.message,
+      });
     }
+
+    totalApiCalls += connectionApiCalls;
   }
+
+  // Fire ceiling alert if we crossed 80% during this cron run
+  await checkAndAlertCeiling(callCountAtStart, callCountAtStart + totalApiCalls);
 
   const totalTxs = results.reduce((sum, r) => sum + r.transactions, 0);
   const totalRecurring = results.reduce((sum, r) => sum + r.recurring, 0);
-  const errors = results.filter(r => r.error).length;
+  const errors = results.filter((r) => r.error).length;
 
-  console.log(`Bank sync complete: connections=${connections.length} transactions=${totalTxs} recurring=${totalRecurring} errors=${errors}`);
+  console.log(
+    `Bank sync complete: connections=${results.length} txs=${totalTxs} ` +
+    `recurring=${totalRecurring} errors=${errors} api_calls=${totalApiCalls} ` +
+    `monday=${isMonday} tiers_synced=${tiersToSync.join(',')}`
+  );
 
   return NextResponse.json({
     ok: true,
-    connections: connections.length,
+    is_monday: isMonday,
+    tiers_synced: tiersToSync,
+    connections_processed: results.length,
     total_transactions: totalTxs,
     total_recurring: totalRecurring,
+    total_api_calls: totalApiCalls,
     errors,
-    results,
+    ceiling: { used: callCountAtStart + totalApiCalls, limit: GLOBAL_DAILY_API_CEILING },
   });
 }

@@ -28,13 +28,16 @@ export async function GET() {
 
   const connectionCount = existingConnections?.length || 0;
 
-  // Free + Essential: 1 bank max, Pro: unlimited
-  if ((tier === 'free' || tier === 'essential') && connectionCount >= 1) {
+  // Tier connection limits: Free=1, Essential=2, Pro=unlimited
+  const maxConnections = tier === 'pro' ? Infinity : tier === 'essential' ? 2 : 1;
+  if (connectionCount >= maxConnections) {
     return NextResponse.json({
       error: tier === 'free'
-        ? 'Free plan includes 1 bank connection. Upgrade to Pro for multiple banks.'
-        : 'Essential plan includes 1 bank connection. Upgrade to Pro for multiple banks.',
+        ? 'Free plan allows 1 bank connection. Upgrade to Essential for 2, or Pro for unlimited.'
+        : 'Essential plan allows 2 bank connections. Upgrade to Pro for unlimited banks.',
       upgradeRequired: true,
+      tier,
+      maxConnections,
     }, { status: 403 });
   }
 

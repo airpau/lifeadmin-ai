@@ -43,10 +43,20 @@ interface BankConnection {
   provider_id: string | null;
   status: string;
   last_synced_at: string | null;
+  last_manual_sync_at: string | null;
   connected_at: string;
   account_ids: string[] | null;
   bank_name: string | null;
   account_display_names: string[] | null;
+}
+
+interface BankTierInfo {
+  tier: 'free' | 'essential' | 'pro';
+  maxConnections: number | null; // null = unlimited
+  manualSyncAllowed: boolean;
+  manualSyncDailyLimit: number;
+  manualSyncCooldownHours: number;
+  manualSyncsToday: number;
 }
 
 interface CancellationEmail {
@@ -222,6 +232,14 @@ export default function SubscriptionsPage() {
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [bankToast, setBankToast] = useState<string | null>(null);
+  const [bankTierInfo, setBankTierInfo] = useState<BankTierInfo>({
+    tier: 'free',
+    maxConnections: 1,
+    manualSyncAllowed: false,
+    manualSyncDailyLimit: 0,
+    manualSyncCooldownHours: 0,
+    manualSyncsToday: 0,
+  });
   const [subComparisons, setSubComparisons] = useState<Record<string, any[]>>({});
 
   const fetchSubscriptions = useCallback(async () => {
@@ -246,6 +264,14 @@ export default function SubscriptionsPage() {
         const data = await res.json();
         setBankConnections(data.connections || []);
         setExpiredBanks(data.expired || []);
+        setBankTierInfo({
+          tier: data.tier || 'free',
+          maxConnections: data.maxConnections,
+          manualSyncAllowed: data.manualSyncAllowed ?? false,
+          manualSyncDailyLimit: data.manualSyncDailyLimit ?? 0,
+          manualSyncCooldownHours: data.manualSyncCooldownHours ?? 0,
+          manualSyncsToday: data.manualSyncsToday ?? 0,
+        });
       }
     } catch (error) {
       console.error('Error fetching bank connection:', error);
@@ -569,20 +595,24 @@ export default function SubscriptionsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSyncBank = async () => {
+  const handleSyncBank = async (connectionId?: string) => {
     setSyncing(true);
     try {
-      const res = await fetch('/api/bank/sync', { method: 'POST' });
+      const res = await fetch('/api/bank/sync-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
       if (res.ok) {
         await fetchBankConnection();
         await fetchSubscriptions();
         setBankToast('Sync complete!');
-        capture('bank_synced');
+        capture('bank_synced_manual');
         setTimeout(() => setBankToast(null), 3000);
       } else {
         const data = await res.json().catch(() => ({}));
-        setBankToast(`Sync failed: ${data.error || 'Please try again.'}`);
-        setTimeout(() => setBankToast(null), 5000);
+        setBankToast(data.error || 'Sync failed. Please try again.');
+        setTimeout(() => setBankToast(null), 6000);
       }
     } catch {
       setBankToast('Sync failed. Please check your connection and try again.');
@@ -682,62 +712,115 @@ export default function SubscriptionsPage() {
       {/* Bank connections */}
       {!bankLoading && (
         <div className="mb-8 space-y-3">
+          {/* Free-tier stale data banner */}
+          {bankTierInfo.tier === 'free' && bankConnections.length > 0 && (() => {
+            const conn = bankConnections[0];
+            if (!conn.last_synced_at) return null;
+            const daysSinceSync = Math.floor((Date.now() - new Date(conn.last_synced_at).getTime()) / 86_400_000);
+            if (daysSinceSync < 1) return null;
+            return (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
+                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-amber-300 text-sm">
+                  Your data was last synced {daysSinceSync} day{daysSinceSync !== 1 ? 's' : ''} ago. Essential members get daily updates.{' '}
+                  <a href="/dashboard/upgrade" className="underline hover:text-amber-200 transition-colors">Upgrade</a>
+                </p>
+              </div>
+            );
+          })()}
+
           {/* Show each connected bank */}
-          {bankConnections.map((conn) => (
-            <div key={conn.id} className="bg-navy-900 backdrop-blur-sm border border-green-500/30 rounded-2xl p-5">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
-                  <Wifi className="h-5 w-5 text-green-400" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-green-400 font-semibold text-sm">
-                      {conn.bank_name || 'Bank connected'}
-                    </span>
-                    <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
-                    {conn.account_ids && conn.account_ids.length > 1 && (
-                      <span className="text-xs text-slate-500">{conn.account_ids.length} accounts</span>
-                    )}
+          {bankConnections.map((conn) => {
+            // Compute Pro cooldown state for this connection
+            const cooldownMs = bankTierInfo.manualSyncCooldownHours * 3_600_000;
+            const cooldownRemaining = conn.last_manual_sync_at
+              ? Math.max(0, new Date(conn.last_manual_sync_at).getTime() + cooldownMs - Date.now())
+              : 0;
+            const inCooldown = cooldownRemaining > 0;
+            const cooldownH = Math.floor(cooldownRemaining / 3_600_000);
+            const cooldownM = Math.floor((cooldownRemaining % 3_600_000) / 60_000);
+            const dailyLimitReached = bankTierInfo.manualSyncsToday >= bankTierInfo.manualSyncDailyLimit && bankTierInfo.manualSyncDailyLimit > 0;
+
+            // Determine sync button state
+            let syncBtnLabel = 'Sync Now';
+            let syncBtnDisabled = syncing;
+            let syncBtnTitle = '';
+            if (syncing) {
+              syncBtnLabel = 'Syncing...';
+            } else if (bankTierInfo.tier === 'free') {
+              syncBtnDisabled = true;
+              syncBtnTitle = 'Upgrade to Essential or Pro for more syncs';
+            } else if (bankTierInfo.tier === 'essential') {
+              syncBtnDisabled = true;
+              syncBtnLabel = 'Sync Now (Pro only)';
+              syncBtnTitle = 'Upgrade to Pro for on-demand sync';
+            } else if (dailyLimitReached) {
+              syncBtnDisabled = true;
+              syncBtnLabel = 'Daily limit reached';
+              syncBtnTitle = `${bankTierInfo.manualSyncDailyLimit} manual syncs used today. Resets at midnight.`;
+            } else if (inCooldown) {
+              syncBtnDisabled = true;
+              syncBtnLabel = `Available in ${cooldownH}h ${cooldownM}m`;
+              syncBtnTitle = `Cooldown: ${bankTierInfo.manualSyncCooldownHours}h between manual syncs`;
+            }
+
+            return (
+              <div key={conn.id} className="bg-navy-900 backdrop-blur-sm border border-green-500/30 rounded-2xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                    <Wifi className="h-5 w-5 text-green-400" />
                   </div>
-                  <p className="text-slate-500 text-xs">
-                    {conn.account_display_names && conn.account_display_names.length > 0 && (
-                      <span>{conn.account_display_names.join(', ')} · </span>
-                    )}
-                    {conn.last_synced_at
-                      ? `Last synced: ${(() => {
-                          const diff = Date.now() - new Date(conn.last_synced_at).getTime();
-                          const mins = Math.floor(diff / 60000);
-                          if (mins < 1) return 'just now';
-                          if (mins < 60) return `${mins} min${mins > 1 ? 's' : ''} ago`;
-                          const hours = Math.floor(mins / 60);
-                          if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-                          const days = Math.floor(hours / 24);
-                          return `${days} day${days > 1 ? 's' : ''} ago`;
-                        })()}`
-                      : 'Never synced'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleSyncBank}
-                    disabled={syncing}
-                    className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                    {syncing ? 'Syncing...' : 'Sync Now'}
-                  </button>
-                  <button
-                    onClick={() => handleDisconnectBank(conn.id)}
-                    disabled={disconnecting}
-                    className="flex items-center gap-2 text-slate-500 hover:text-red-400 disabled:opacity-50 text-sm transition-all"
-                  >
-                    <WifiOff className="h-4 w-4" />
-                    Disconnect
-                  </button>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-green-400 font-semibold text-sm">
+                        {conn.bank_name || 'Bank connected'}
+                      </span>
+                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                      {conn.account_ids && conn.account_ids.length > 1 && (
+                        <span className="text-xs text-slate-500">{conn.account_ids.length} accounts</span>
+                      )}
+                    </div>
+                    <p className="text-slate-500 text-xs">
+                      {conn.account_display_names && conn.account_display_names.length > 0 && (
+                        <span>{conn.account_display_names.join(', ')} · </span>
+                      )}
+                      {conn.last_synced_at
+                        ? `Last synced: ${(() => {
+                            const diff = Date.now() - new Date(conn.last_synced_at).getTime();
+                            const mins = Math.floor(diff / 60000);
+                            if (mins < 1) return 'just now';
+                            if (mins < 60) return `${mins} min${mins > 1 ? 's' : ''} ago`;
+                            const hours = Math.floor(mins / 60);
+                            if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+                            const days = Math.floor(hours / 24);
+                            return `${days} day${days > 1 ? 's' : ''} ago`;
+                          })()}`
+                        : 'Never synced'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleSyncBank(conn.id)}
+                      disabled={syncBtnDisabled}
+                      title={syncBtnTitle}
+                      className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                      {syncBtnLabel}
+                    </button>
+                    <button
+                      onClick={() => handleDisconnectBank(conn.id)}
+                      disabled={disconnecting}
+                      className="flex items-center gap-2 text-slate-500 hover:text-red-400 disabled:opacity-50 text-sm transition-all"
+                    >
+                      <WifiOff className="h-4 w-4" />
+                      Disconnect
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Expired bank connections */}
           {expiredBanks.length > 0 && bankConnections.length === 0 && (
@@ -768,36 +851,72 @@ export default function SubscriptionsPage() {
             ))
           )}
 
-          {/* Add another bank button */}
-          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
-                <Building2 className="h-6 w-6 text-blue-400" />
+          {/* Add another bank — tier-gated */}
+          {(() => {
+            const atLimit = bankTierInfo.maxConnections !== null && bankConnections.length >= bankTierInfo.maxConnections;
+            const isFirst = bankConnections.length === 0 && expiredBanks.length === 0;
+
+            if (atLimit) {
+              // Show locked state with upgrade prompt
+              const upgradeMsg = bankTierInfo.tier === 'free'
+                ? 'Upgrade to Essential (2 banks) or Pro (unlimited) to connect more accounts.'
+                : 'Upgrade to Pro for unlimited bank connections.';
+              return (
+                <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="bg-slate-700/30 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                      <Building2 className="h-6 w-6 text-slate-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-slate-400 font-semibold mb-1 flex items-center gap-2">
+                        Connect another bank account
+                        <span className="text-xs bg-amber-400/10 text-amber-400 border border-amber-400/30 px-2 py-0.5 rounded-full">
+                          {bankTierInfo.tier === 'free' ? 'Essential feature' : 'Pro feature'}
+                        </span>
+                      </h3>
+                      <p className="text-slate-500 text-sm">{upgradeMsg}</p>
+                    </div>
+                    <a
+                      href="/dashboard/upgrade"
+                      className="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-navy-950 font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+                    >
+                      Upgrade
+                    </a>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                    <Building2 className="h-6 w-6 text-blue-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-white font-semibold mb-1">
+                      {isFirst ? 'Connect your bank for automatic detection' : 'Connect another bank account'}
+                    </h3>
+                    <p className="text-slate-400 text-sm mb-1">
+                      We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
+                    </p>
+                    {isFirst && (
+                      <p className="text-slate-500 text-xs">
+                        Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
+                      </p>
+                    )}
+                  </div>
+                  <a
+                    href="/api/auth/truelayer"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+                  >
+                    <Building2 className="h-4 w-4" />
+                    {isFirst ? 'Connect Bank Account' : 'Add Bank'}
+                  </a>
+                </div>
               </div>
-              <div className="flex-1">
-                <h3 className="text-white font-semibold mb-1">
-                  {bankConnections.length === 0 && expiredBanks.length === 0
-                    ? 'Connect your bank for automatic detection'
-                    : 'Connect another bank account'}
-                </h3>
-                <p className="text-slate-400 text-sm mb-1">
-                  We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
-                </p>
-                {bankConnections.length === 0 && expiredBanks.length === 0 && (
-                  <p className="text-slate-500 text-xs">
-                    Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
-                  </p>
-                )}
-              </div>
-              <a
-                href="/api/auth/truelayer"
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
-              >
-                <Building2 className="h-4 w-4" />
-                {bankConnections.length === 0 ? 'Connect Bank Account' : 'Add Bank'}
-              </a>
-            </div>
-          </div>
+            );
+          })()}
         </div>
       )}
 
