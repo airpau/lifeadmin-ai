@@ -124,7 +124,10 @@ function timeAgo(d: string) {
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 30) {
+    const w = Math.floor(days / 7);
+    return `${w} week${w !== 1 ? 's' : ''} ago`;
+  }
   return formatDate(d);
 }
 
@@ -431,6 +434,38 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
     }
   };
 
+  const FOLLOWUP_CAPTIONS = [
+    { icon: '👀', text: 'Reading their response...' },
+    { icon: '🧠', text: 'Analysing the conversation thread...' },
+    { icon: '⚖️', text: 'Researching stronger legal arguments...' },
+    { icon: '✍️', text: 'Drafting your follow-up letter...' },
+    { icon: '🎯', text: 'Making your follow-up impossible to ignore...' },
+  ];
+  const [loadingCaption, setLoadingCaption] = useState(0);
+  const latestLetterRef = useRef<HTMLDivElement>(null);
+  const [previousLength, setPreviousLength] = useState(0);
+
+  useEffect(() => {
+    if (generating) {
+      setLoadingCaption(0);
+      const interval = setInterval(() => {
+        setLoadingCaption(prev => (prev + 1) % FOLLOWUP_CAPTIONS.length);
+      }, 3500);
+      return () => clearInterval(interval);
+    }
+  }, [generating]);
+
+  useEffect(() => {
+    if (dispute?.correspondence) {
+      if (dispute.correspondence.length > previousLength && previousLength > 0) {
+        setTimeout(() => {
+          latestLetterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+      }
+      setPreviousLength(dispute.correspondence.length);
+    }
+  }, [dispute?.correspondence?.length]);
+
   useEffect(() => { fetchDispute(); }, [disputeId]);
 
   // Fetch provider info when dispute loads
@@ -634,11 +669,19 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </button>
             <button
               onClick={generateFollowUp}
-              disabled={generating}
-              className="flex items-center gap-2 px-3 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
             >
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {generating ? 'Writing...' : 'Write next letter'}
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{FOLLOWUP_CAPTIONS[loadingCaption].text}</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  <span>Write next letter</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -667,7 +710,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           </div>
         ) : (
           <div className="space-y-4">
-            {dispute.correspondence.map((entry) => {
+            {dispute.correspondence?.map((entry, index) => {
               const config = ENTRY_TYPE_CONFIG[entry.entry_type] || ENTRY_TYPE_CONFIG.user_note;
               const Icon = config.icon;
               const isAiLetter = entry.entry_type === 'ai_letter';
@@ -675,6 +718,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
               return (
                 <div
+                  ref={index === (dispute.correspondence?.length || 0) - 1 ? latestLetterRef : null}
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
                     isAiLetter ? 'cursor-pointer hover:border-mint-400/50' : ''
@@ -1380,6 +1424,8 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   // Check if user has seen the tour
   useEffect(() => {
     if (loading) return;
+    if (localStorage.getItem('hasSeenComplaintsTooltip') === 'true') return;
+
     const checkTour = async () => {
       try {
         const res = await fetch('/api/profile');
@@ -1387,6 +1433,8 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           const profile = await res.json();
           if (!profile.has_seen_disputes_tour) {
             setShowTour(true);
+          } else {
+            localStorage.setItem('hasSeenComplaintsTooltip', 'true');
           }
         }
       } catch {}
@@ -1396,6 +1444,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
 
   const completeTour = async () => {
     setShowTour(false);
+    localStorage.setItem('hasSeenComplaintsTooltip', 'true');
     try {
       await fetch('/api/profile', {
         method: 'PATCH',

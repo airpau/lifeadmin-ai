@@ -91,25 +91,34 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
 function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string }>>([]);
   const [emailConns, setEmailConns] = useState<Array<{ id: string; email: string; provider: string; status: string }>>([]);
+  const [gmailTokens, setGmailTokens] = useState<Array<{ id: string; email: string }>>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
-      const [banks, emails] = await Promise.all([
+      const [banks, emails, gmails] = await Promise.all([
         supabase.from('bank_connections').select('id, bank_name, status, connected_at').eq('user_id', user.id),
         supabase.from('email_connections').select('id, email, provider, status').eq('user_id', user.id),
+        supabase.from('gmail_tokens').select('id, email').eq('user_id', user.id),
       ]);
       setBankConns(banks.data || []);
       setEmailConns(emails.data || []);
+      setGmailTokens(gmails.data || []);
       setLoaded(true);
     };
     load();
   }, [supabase]);
 
   const activeBanks = bankConns.filter(b => b.status === 'active');
-  const activeEmails = emailConns.filter(e => e.status === 'active');
+  // Show email as connected if EITHER email_connections (active) OR gmail_tokens has a record
+  const activeEmailConns = emailConns.filter(e => e.status === 'active');
+  const connectedEmails: string[] = [
+    ...activeEmailConns.map(e => e.email),
+    ...gmailTokens.filter(g => !activeEmailConns.some(e => e.email === g.email)).map(g => g.email),
+  ];
+  const isEmailConnected = connectedEmails.length > 0;
 
   return (
     <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
@@ -124,12 +133,12 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
             <div>
               <h3 className="text-white font-semibold">Email</h3>
               <p className="text-sm text-slate-400">
-                {activeEmails.length > 0 ? activeEmails.map(e => e.email).join(', ') : 'Scan emails for bills and subscriptions'}
+                {isEmailConnected ? connectedEmails.join(', ') : 'Scan emails for bills and subscriptions'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {activeEmails.length > 0 ? (
+            {isEmailConnected ? (
               <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Connected
               </span>
@@ -638,16 +647,12 @@ export default function ProfilePage() {
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <p className="text-xs text-slate-400">
-              Complete your profile to auto-fill complaint letters.
-              {!profile?.full_name && ' Add your name.'}
-              {!profile?.phone && ' Add your phone number.'}
-              {!profile?.address && ' Add your address.'}
-              {!profile?.postcode && ' Add your postcode.'}
+            <p className="text-xs text-slate-400 mt-3 mb-2">
+              Takes just 30 seconds. We use this to auto-fill your complaint letters, saving you time.
             </p>
             {!editing && (
-              <button onClick={startEditing} className="mt-2 text-xs text-mint-400 hover:text-mint-300 font-medium transition-all">
-                Complete profile
+              <button onClick={startEditing} className="text-xs bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all">
+                Complete profile now
               </button>
             )}
           </div>
@@ -669,7 +674,7 @@ export default function ProfilePage() {
               <Sparkles className="h-5 w-5 text-mint-400" />
               Your Plan
             </h2>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
                   isTrialUser ? 'bg-amber-400/10 text-amber-400' :
@@ -685,9 +690,12 @@ export default function ProfilePage() {
                     : effectiveTier === 'free'
                     ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
                     : effectiveTier === 'essential'
-                    ? 'Unlimited letters, daily bank sync, full spending dashboard.'
-                    : 'Everything in Essential plus unlimited bank accounts and priority support.'}
+                    ? 'Unlimited letters, daily bank sync, full spending dashboard. £4.99/mo'
+                    : 'Unlimited bank accounts and priority support. £9.99/mo'}
                 </p>
+                {renewalDate && !pendingChange && effectiveTier !== 'free' && (
+                  <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
+                )}
               </div>
               {isTrialUser ? (
                 <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
@@ -698,11 +706,40 @@ export default function ProfilePage() {
                   Upgrade Plan
                 </Link>
               ) : (
-                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-semibold flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap shrink-0">
+                  <CreditCard className="h-4 w-4" />
                   {portalLoading ? 'Loading...' : 'Manage Billing'}
                 </button>
               )}
             </div>
+
+            {/* Pending downgrade or cancellation notice */}
+            {pendingChange && (
+              <div className="mt-4 flex items-start gap-3 p-4 rounded-lg border bg-mint-400/5 border-mint-400/20">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-mint-400" />
+                <div>
+                  {pendingChange.type === 'cancel' ? (
+                    <>
+                      <p className="text-sm text-mint-400 font-medium">Subscription set to not renew</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Your {effectiveTier} plan will not renew after {pendingChange.date}. You keep full access until then. To continue your subscription, click Manage Billing and reactivate.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-mint-400 font-medium">
+                        Changing to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Your plan will change to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)} on {pendingChange.date}. You keep {effectiveTier?.charAt(0).toUpperCase()}{effectiveTier?.slice(1)} access until then.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {portalError && <p className="text-xs text-red-400 mt-2">{portalError}</p>}
           </div>
         );
       })()}
@@ -961,81 +998,7 @@ export default function ProfilePage() {
         <a href="/legal/terms" className="hover:text-white transition-all">Terms of Service</a>
       </div>
 
-      {/* Subscription Management */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8">
-        <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
-        
-        {effectiveTier === 'free' ? (
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Upgrade to unlock more</h3>
-            <p className="text-slate-400 mb-6">
-              Get unlimited complaints, scanning, and lower success fees
-            </p>
-            <a
-              href="/pricing"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-6 py-3 rounded-lg transition-all"
-            >
-              Upgrade Plan
-            </a>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg">
-              <div>
-                <h3 className="text-white font-semibold capitalize">{effectiveTier} Plan</h3>
-                <p className="text-sm text-slate-400">
-                  {effectiveTier === 'essential' ? '£4.99/month' : '£9.99/month'}
-                </p>
-                {renewalDate && !pendingChange && (
-                  <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
-                )}
-              </div>
-              <button
-                onClick={handleManageBilling}
-                disabled={portalLoading}
-                className="inline-flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
-              >
-                <CreditCard className="h-4 w-4" />
-                {portalLoading ? 'Loading...' : 'Manage Billing'}
-              </button>
-            </div>
 
-            {/* Pending downgrade or cancellation notice */}
-            {pendingChange && (
-              <div className="flex items-start gap-3 p-4 rounded-lg border bg-mint-400/5 border-mint-400/20">
-                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-mint-400" />
-                <div>
-                  {pendingChange.type === 'cancel' ? (
-                    <>
-                      <p className="text-sm text-mint-400 font-medium">Subscription set to not renew</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Your {effectiveTier} plan will not renew after {pendingChange.date}. You keep full access until then. To continue your subscription, click Manage Billing and reactivate.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm text-mint-400 font-medium">
-                        Changing to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Your plan will change to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)} on {pendingChange.date}. You keep {effectiveTier?.charAt(0).toUpperCase()}{effectiveTier?.slice(1)} access until then.
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {portalError && (
-              <p className="text-xs text-red-400 mt-2">{portalError}</p>
-            )}
-            <p className="text-xs text-slate-500">
-              Manage, upgrade, downgrade or cancel anytime via the billing portal.
-            </p>
-          </div>
-        )}
-      </div>
       {/* Danger Zone — Delete Account */}
       <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
