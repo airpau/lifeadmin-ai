@@ -14,11 +14,8 @@ function isTransfer(desc: string, bankCat: string): boolean {
   const cat = bankCat.toUpperCase();
   const d = desc.toLowerCase();
   if (cat === 'TRANSFER') return true;
-  if (d.includes('personal transfer') || d.includes('from a/c') || d.includes('via mobile xfer')) return true;
-  if (d.includes('internal') || d.includes('between accounts') || d.includes('via online - pymt')) return true;
-  if (d.includes('barclaycard') && !d.includes('fee')) return true;
-  if (d.includes('mbna') && d.includes('tpp')) return true;
-  if (d.includes('halifax credit') || d.includes('hsbc bank visa')) return true;
+  if (d.includes('personal transfer') || d.includes('to a/c ') || d.includes('via mobile xfer')) return true;
+  if (d.includes('barclaycard') || d.includes('mbna') || d.includes('halifax credit') || d.includes('hsbc bank visa')) return true;
   return false;
 }
 
@@ -114,6 +111,9 @@ export async function GET(request: NextRequest) {
   if (category) {
     filtered = filtered.filter(t => t.spending_category === category);
   }
+
+  // Only include debits — credits (refunds, payouts) must never appear in spending
+  filtered = filtered.filter(t => t.amount < 0);
 
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
