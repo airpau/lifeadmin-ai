@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
+  const [showAllTasks, setShowAllTasks] = useState(false);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
   const [comparisonDeals, setComparisonDeals] = useState<Array<{ subscriptionName: string; currentPrice: number; dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string; category: string }>>([]);
@@ -556,7 +557,7 @@ export default function DashboardPage() {
         const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
         filtered.sort((a, b) => (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0));
 
-        const displayTasks = filtered.slice(0, 5);
+        const displayTasks = showAllTasks ? filtered : filtered.slice(0, 5);
 
         return (
           <div className="mb-8">
@@ -675,6 +676,14 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
+            )}
+            {filtered.length > 5 && (
+              <button
+                onClick={() => setShowAllTasks(prev => !prev)}
+                className="w-full mt-3 py-2 text-sm text-mint-400 hover:text-white bg-navy-900/50 hover:bg-navy-800 border border-navy-700/50 rounded-xl transition-all"
+              >
+                {showAllTasks ? `Show less` : `Show all ${filtered.length} items`}
+              </button>
             )}
           </div>
         );
