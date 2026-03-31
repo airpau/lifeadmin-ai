@@ -593,6 +593,7 @@ export default function DashboardPage() {
                   if (task.provider) complaintParams.set('company', task.provider);
                   if (task.descText && task.descText.length < 500) complaintParams.set('issue', task.descText);
                   if (task.amount) complaintParams.set('amount', String(task.amount));
+                  complaintParams.set('new', '1');
                   const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
 
                   return (
