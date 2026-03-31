@@ -40,6 +40,9 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   bills: { label: 'Bills', icon: Receipt, color: 'text-orange-300', bgColor: 'bg-orange-300/10' },
   fee: { label: 'Fees', icon: CircleDollarSign, color: 'text-neutral-400', bgColor: 'bg-neutral-400/10' },
   water: { label: 'Water', icon: Droplets, color: 'text-cyan-300', bgColor: 'bg-cyan-300/10' },
+  motoring: { label: 'Motoring', icon: Car, color: 'text-yellow-400', bgColor: 'bg-yellow-400/10' },
+  property_management: { label: 'Property Management', icon: Home, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10' },
+  credit_monitoring: { label: 'Credit Monitoring', icon: Shield, color: 'text-emerald-300', bgColor: 'bg-emerald-300/10' },
 };
 
 export function getCategoryLabel(category: string): string {

@@ -12,6 +12,7 @@ import {
   ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -799,6 +800,7 @@ export default function MoneyHubPage() {
             <option value="">This month</option>
             {Array.from({ length: 6 }, (_, i) => {
               const d = new Date();
+              d.setDate(1);
               d.setMonth(d.getMonth() - (i + 1));
               const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
               const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -1089,7 +1091,7 @@ export default function MoneyHubPage() {
               <div className="space-y-2">
                 {data.spending.topMerchants.slice(0, 7).map((m, i) => (
                   <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-300 truncate max-w-[200px]">{m.merchant}</span>
+                    <span className="text-slate-300 truncate max-w-[200px]">{cleanMerchantName(m.merchant)}</span>
                     <span className="text-white font-medium">£{fmt(m.total)}</span>
                   </div>
                 ))}
@@ -1287,6 +1289,12 @@ export default function MoneyHubPage() {
               <p className="text-slate-500 text-xs">Net Worth</p>
             </div>
           </div>
+
+          {(data.netWorth.assetsList?.length || 0) === 0 && (data.netWorth.liabilitiesList?.length || 0) === 0 && (
+            <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-6 mb-4 text-center">
+              <p className="text-sm text-slate-400">Complete Money Hub setup above to unlock Net Worth tracking.</p>
+            </div>
+          )}
 
           {/* Assets section */}
           <div className="mb-4">
@@ -1974,7 +1982,7 @@ export default function MoneyHubPage() {
                         {drillData.merchants.map((m: any, i: number) => (
                           <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-3 py-2 border border-navy-700/50">
                             <div>
-                              <span className="text-white text-sm">{m.merchant}</span>
+                              <span className="text-white text-sm">{cleanMerchantName(m.merchant)}</span>
                               <span className="text-slate-500 text-xs ml-2">{m.count} transactions</span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -2057,7 +2065,7 @@ export default function MoneyHubPage() {
                               >
                                 <div className="flex items-center gap-2">
                                   {isExpanded ? <ChevronUp className="h-3 w-3 text-slate-500" /> : <ChevronDown className="h-3 w-3 text-slate-500" />}
-                                  <span className="text-white text-sm">{m.merchant}</span>
+                                  <span className="text-white text-sm">{cleanMerchantName(m.merchant)}</span>
                                   <span className="text-slate-500 text-xs">{m.count} payment{m.count !== 1 ? 's' : ''}</span>
                                 </div>
                                 <div className="flex items-center gap-2">

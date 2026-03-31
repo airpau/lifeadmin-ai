@@ -63,13 +63,17 @@ export const revalidate = 3600; // Revalidate every hour
 
 export default async function BlogIndexPage() {
   // Fetch dynamic blog posts from database
-  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const { data: dynamicPosts } = await supabase
-    .from('blog_posts')
-    .select('slug, title, excerpt, published_at')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(20);
+  let dynamicPosts: any[] | null = null;
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await supabase
+      .from('blog_posts')
+      .select('slug, title, excerpt, published_at')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(20);
+    dynamicPosts = data;
+  }
 
   // Merge static posts with dynamic ones (dynamic first, then static)
   const allPosts = [

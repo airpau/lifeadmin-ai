@@ -77,6 +77,10 @@ const DEALS_BY_CATEGORY: Record<string, DealData[]> = {
     { id: 'trip-com', provider: 'Trip.com', headline: 'Flights, hotels and holidays', monthlyPrice: 0, awinMid: '22405', providerUrl: 'https://uk.trip.com' },
     { id: 'travelsupermarket', provider: 'TravelSupermarket', headline: 'Insurance, car hire, holidays', monthlyPrice: 0, awinMid: '8734', providerUrl: 'https://www.travelsupermarket.com' },
   ],
+  water: [
+    { id: 'water-switch', provider: 'Water Switch', headline: 'Check if you can switch your water supplier', monthlyPrice: 0, awinMid: '12345', providerUrl: 'https://www.uswitch.com/water/' },
+    { id: 'water-meter', provider: 'Save on Water', headline: 'Get a water meter and save', monthlyPrice: 0, awinMid: '12049', providerUrl: 'https://www.moneysavingexpert.com/utilities/cut-water-bills/' },
+  ],
 };
 
 /**
@@ -103,6 +107,7 @@ function normaliseToDealCategory(sub: {
     loan: 'loans',
     credit_card: 'credit-cards',
     tv: 'broadband', // TV often bundled with broadband
+    water: 'water',
   };
 
   if (sub.provider_type && providerTypeMap[sub.provider_type]) {
@@ -117,6 +122,7 @@ function normaliseToDealCategory(sub: {
     insurance: 'insurance',
     mortgage: 'mortgages',
     loan: 'loans',
+    water: 'water',
   };
 
   if (sub.category && categoryMap[sub.category]) {
@@ -130,6 +136,7 @@ function normaliseToDealCategory(sub: {
     broadband: ['broadband', 'fibre', 'bt ', 'sky broadband', 'virgin media', 'plusnet', 'talktalk', 'hyperoptic', 'community fibre', 'ee broadband'],
     mobile: ['mobile', 'sim', 'vodafone', 'three', 'o2', 'ee', 'giffgaff', 'smarty', 'id mobile', 'lebara', 'voxi', 'tesco mobile'],
     insurance: ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'aa breakdown', 'rac breakdown', 'green flag'],
+    water: ['water', 'severn trent', 'thames water', 'anglian water', 'united utilities', 'yorkshire water', 'wessex water', 'welsh water'],
   };
 
   for (const [cat, keywords] of Object.entries(nameKeywords)) {
@@ -185,7 +192,7 @@ export async function findCheaperAlternatives(
 
   // For comparison categories like insurance, mortgages, loans - we can't compare monthly price
   // Instead, just show comparison links
-  const isComparisonOnly = ['insurance', 'mortgages', 'loans', 'credit-cards', 'car-finance', 'travel'].includes(dealCategory);
+  const isComparisonOnly = ['insurance', 'mortgages', 'loans', 'credit-cards', 'car-finance', 'travel', 'water'].includes(dealCategory);
 
   let comparisons: ComparisonResult[] = [];
 

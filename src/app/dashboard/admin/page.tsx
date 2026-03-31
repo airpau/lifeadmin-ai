@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   ShieldAlert, Users, CreditCard, TrendingUp, BarChart3,
   Building2, FileText, Bot, Loader2, ChevronRight, ArrowLeft,
-  Banknote, Clock, Mail, Database, Ticket, Brain, Shield,
+  Banknote, Clock, Mail, Database, Ticket, Brain, Shield, Tag, RefreshCw,
 } from 'lucide-react';
 import TicketList from '@/components/admin/TicketList';
 import AITeamPanel from '@/components/admin/AITeamPanel';
@@ -56,6 +56,8 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [tab, setTab] = useState<'overview' | 'members' | 'tickets' | 'leads' | 'ai_team'>('overview');
+  const [dealHealth, setDealHealth] = useState<{ active: number; inactive: number; stale: number; lastVerified: string | null } | null>(null);
+  const [verifyingDeals, setVerifyingDeals] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -70,13 +72,38 @@ export default function AdminPage() {
 
       // Fetch via admin API (uses service role, bypasses RLS)
       const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-      const metricsRes = await fetch('/api/admin/metrics', {
-        headers: { Authorization: `Bearer ${cronSecret}` },
-      }).then(r => r.json());
+      const [metricsRes, dealsRes] = await Promise.all([
+        fetch('/api/admin/metrics', {
+          headers: { Authorization: `Bearer ${cronSecret}` },
+        }).then(r => r.json()),
+        // Fetch all deals (active + inactive) for health stats
+        supabase.from('affiliate_deals').select('is_active, last_verified_at'),
+      ]);
 
       if (metricsRes.overview) {
         setMetrics(metricsRes);
       }
+
+      // Compute deal health stats
+      const allDeals = dealsRes.data || [];
+      const now = Date.now();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      let active = 0, inactive = 0, stale = 0;
+      let latestVerified: string | null = null;
+      for (const d of allDeals) {
+        if (d.is_active) {
+          active++;
+          if (d.last_verified_at && (now - new Date(d.last_verified_at).getTime()) > thirtyDaysMs) {
+            stale++;
+          }
+        } else {
+          inactive++;
+        }
+        if (d.last_verified_at && (!latestVerified || d.last_verified_at > latestVerified)) {
+          latestVerified = d.last_verified_at;
+        }
+      }
+      setDealHealth({ active, inactive, stale, lastVerified: latestVerified });
 
       setLoading(false);
     };
@@ -303,6 +330,56 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
+
+          {/* Deal Health */}
+          {dealHealth && (
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-semibold flex items-center gap-2">
+                  <Tag className="h-5 w-5 text-mint-400" /> Deal Health
+                </h3>
+                <button
+                  onClick={async () => {
+                    setVerifyingDeals(true);
+                    try {
+                      await fetch('https://kcxxlesishltdmfctlmo.supabase.co/functions/v1/verify-deals', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}` },
+                      });
+                    } catch (e) { console.error('verify-deals failed', e); }
+                    setVerifyingDeals(false);
+                  }}
+                  disabled={verifyingDeals}
+                  className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${verifyingDeals ? 'animate-spin' : ''}`} />
+                  {verifyingDeals ? 'Verifying...' : 'Verify Deals Now'}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-navy-950/50 border border-green-500/20 rounded-xl p-4">
+                  <p className="text-2xl font-bold text-green-400">{dealHealth.active}</p>
+                  <p className="text-slate-500 text-xs">Active Deals</p>
+                </div>
+                <div className="bg-navy-950/50 border border-red-500/20 rounded-xl p-4">
+                  <p className="text-2xl font-bold text-red-400">{dealHealth.inactive}</p>
+                  <p className="text-slate-500 text-xs">Broken / Inactive</p>
+                </div>
+                <div className="bg-navy-950/50 border border-amber-500/20 rounded-xl p-4">
+                  <p className="text-2xl font-bold text-amber-400">{dealHealth.stale}</p>
+                  <p className="text-slate-500 text-xs">Stale (30+ days)</p>
+                </div>
+                <div className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-white">
+                    {dealHealth.lastVerified
+                      ? new Date(dealHealth.lastVerified).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : 'Never'}
+                  </p>
+                  <p className="text-slate-500 text-xs">Last Verification</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Recent Signups */}
           <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">

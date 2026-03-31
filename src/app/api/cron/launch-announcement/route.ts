@@ -5,7 +5,7 @@ import { Resend } from 'resend';
 // Manual trigger only — NOT scheduled in vercel.json
 // Trigger via: GET /api/cron/launch-announcement with Authorization: Bearer <CRON_SECRET>
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
 const BATCH_SIZE = 50;
 

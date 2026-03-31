@@ -4,11 +4,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, ShieldCheck, ArrowRight, ExternalLink, Target, Wallet, PiggyBank, Bell, Zap, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
-import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
+import type { OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {
   email: string;
@@ -91,25 +91,34 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
 function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string }>>([]);
   const [emailConns, setEmailConns] = useState<Array<{ id: string; email: string; provider: string; status: string }>>([]);
+  const [gmailTokens, setGmailTokens] = useState<Array<{ id: string; email: string }>>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
-      const [banks, emails] = await Promise.all([
+      const [banks, emails, gmails] = await Promise.all([
         supabase.from('bank_connections').select('id, bank_name, status, connected_at').eq('user_id', user.id),
         supabase.from('email_connections').select('id, email, provider, status').eq('user_id', user.id),
+        supabase.from('gmail_tokens').select('id, email').eq('user_id', user.id),
       ]);
       setBankConns(banks.data || []);
       setEmailConns(emails.data || []);
+      setGmailTokens(gmails.data || []);
       setLoaded(true);
     };
     load();
   }, [supabase]);
 
   const activeBanks = bankConns.filter(b => b.status === 'active');
-  const activeEmails = emailConns.filter(e => e.status === 'active');
+  // Show email as connected if EITHER email_connections (active) OR gmail_tokens has a record
+  const activeEmailConns = emailConns.filter(e => e.status === 'active');
+  const connectedEmails: string[] = [
+    ...activeEmailConns.map(e => e.email),
+    ...gmailTokens.filter(g => !activeEmailConns.some(e => e.email === g.email)).map(g => g.email),
+  ];
+  const isEmailConnected = connectedEmails.length > 0;
 
   return (
     <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
@@ -124,12 +133,12 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
             <div>
               <h3 className="text-white font-semibold">Email</h3>
               <p className="text-sm text-slate-400">
-                {activeEmails.length > 0 ? activeEmails.map(e => e.email).join(', ') : 'Scan emails for bills and subscriptions'}
+                {isEmailConnected ? connectedEmails.join(', ') : 'Scan emails for bills and subscriptions'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {activeEmails.length > 0 ? (
+            {isEmailConnected ? (
               <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Connected
               </span>
@@ -191,8 +200,8 @@ export default function ProfilePage() {
   const [pendingChange, setPendingChange] = useState<{ type: string; tier?: string; date: string } | null>(null);
   const [renewalDate, setRenewalDate] = useState<string | null>(null);
   const [billingMessage, setBillingMessage] = useState<string | null>(null);
-  const [reportData, setReportData] = useState<AnnualReportData | OnDemandReportData | null>(null);
-  const [reportType, setReportType] = useState<'annual' | 'on_demand' | 'sample'>('sample');
+  const [reportData, setReportData] = useState<OnDemandReportData | null>(null);
+  const [reportType, setReportType] = useState<'on_demand' | 'sample'>('sample');
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
@@ -353,26 +362,25 @@ export default function ProfilePage() {
     }
   };
 
-  const handleGenerateReport = async (type: 'annual' | 'on_demand') => {
+  const handleGenerateQuickSummary = async () => {
     setReportLoading(true);
     setReportError(null);
     try {
       const res = await fetch('/api/reports/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, year: new Date().getFullYear() }),
+        body: JSON.stringify({ type: 'on_demand' }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setReportError(data.error || 'Failed to generate report');
+        setReportError(data.error || 'Failed to generate summary');
         return;
       }
       setReportData(data.data);
-      setReportType(type);
+      setReportType('on_demand');
       setShowReport(true);
-      if (type === 'annual') fetchSavedReports();
     } catch {
-      setReportError('Failed to generate report');
+      setReportError('Failed to generate summary');
     } finally {
       setReportLoading(false);
     }
@@ -639,16 +647,12 @@ export default function ProfilePage() {
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <p className="text-xs text-slate-400">
-              Complete your profile to auto-fill complaint letters.
-              {!profile?.full_name && ' Add your name.'}
-              {!profile?.phone && ' Add your phone number.'}
-              {!profile?.address && ' Add your address.'}
-              {!profile?.postcode && ' Add your postcode.'}
+            <p className="text-xs text-slate-400 mt-3 mb-2">
+              Takes just 30 seconds. We use this to auto-fill your complaint letters, saving you time.
             </p>
             {!editing && (
-              <button onClick={startEditing} className="mt-2 text-xs text-mint-400 hover:text-mint-300 font-medium transition-all">
-                Complete profile
+              <button onClick={startEditing} className="text-xs bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all">
+                Complete profile now
               </button>
             )}
           </div>
@@ -670,7 +674,7 @@ export default function ProfilePage() {
               <Sparkles className="h-5 w-5 text-mint-400" />
               Your Plan
             </h2>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
                   isTrialUser ? 'bg-amber-400/10 text-amber-400' :
@@ -686,9 +690,12 @@ export default function ProfilePage() {
                     : effectiveTier === 'free'
                     ? '3 letters/month, one-time scans. Upgrade for unlimited access.'
                     : effectiveTier === 'essential'
-                    ? 'Unlimited letters, daily bank sync, full spending dashboard.'
-                    : 'Everything in Essential plus unlimited bank accounts and priority support.'}
+                    ? 'Unlimited letters, daily bank sync, full spending dashboard. £4.99/mo'
+                    : 'Unlimited bank accounts and priority support. £9.99/mo'}
                 </p>
+                {renewalDate && !pendingChange && effectiveTier !== 'free' && (
+                  <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
+                )}
               </div>
               {isTrialUser ? (
                 <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
@@ -699,159 +706,16 @@ export default function ProfilePage() {
                   Upgrade Plan
                 </Link>
               ) : (
-                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-semibold flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap shrink-0">
+                  <CreditCard className="h-4 w-4" />
                   {portalLoading ? 'Loading...' : 'Manage Billing'}
                 </button>
               )}
             </div>
-          </div>
-        );
-      })()}
-
-      {/* Connected Accounts */}
-      <ConnectedAccountsSection supabase={supabase} />
-
-      {/* Financial Reports */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-mint-400" />
-          Financial Reports
-        </h2>
-
-        {effectiveTier === 'pro' ? (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => handleGenerateReport('annual')}
-                disabled={reportLoading}
-                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
-              >
-                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                {reportLoading ? 'Generating...' : 'Generate Annual Report'}
-              </button>
-              <button
-                onClick={() => handleGenerateReport('on_demand')}
-                disabled={reportLoading}
-                className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
-              >
-                Quick Summary
-              </button>
-            </div>
-
-            {reportError && (
-              <p className="text-sm text-red-400">{reportError}</p>
-            )}
-
-            {/* Saved reports list */}
-            {savedReports.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-slate-300 mb-2">Saved Reports</h3>
-                <div className="space-y-2">
-                  {savedReports.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <FileText className="h-4 w-4 text-mint-400" />
-                        <div>
-                          <p className="text-white text-sm font-medium capitalize">
-                            {r.report_type === 'annual' ? `${r.year} Annual Report` : 'Summary Report'}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {new Date(r.created_at).toLocaleDateString('en-GB', {
-                              day: 'numeric',
-                              month: 'long',
-                              year: 'numeric',
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Report display */}
-            {showReport && reportData && (
-              <div className="mt-4 pt-4 border-t border-navy-700/50">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">
-                    {reportType === 'annual' ? 'Annual Report' : 'Financial Summary'}
-                  </h3>
-                  <button
-                    onClick={() => setShowReport(false)}
-                    className="text-sm text-slate-400 hover:text-white transition-all"
-                  >
-                    Close
-                  </button>
-                </div>
-                <FinancialReport data={reportData} type={reportType} />
-              </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            <p className="text-slate-400 text-sm mb-4">
-              {effectiveTier === 'essential'
-                ? 'Upgrade to Pro to unlock personalised annual financial reports with PDF download.'
-                : 'Pro users get personalised annual financial reports with spending analysis, savings tracking, and PDF download.'}
-            </p>
-            <FinancialReport type="sample" />
-          </div>
-        )}
-      </div>
-
-      {/* Legal links */}
-      <div className="flex gap-4 text-xs text-slate-500 mb-6">
-        <a href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</a>
-        <a href="/legal/terms" className="hover:text-white transition-all">Terms of Service</a>
-      </div>
-
-      {/* Subscription Management */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8">
-        <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
-        
-        {effectiveTier === 'free' ? (
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Upgrade to unlock more</h3>
-            <p className="text-slate-400 mb-6">
-              Get unlimited complaints, scanning, and lower success fees
-            </p>
-            <a
-              href="/pricing"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-6 py-3 rounded-lg transition-all"
-            >
-              Upgrade Plan
-            </a>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg">
-              <div>
-                <h3 className="text-white font-semibold capitalize">{effectiveTier} Plan</h3>
-                <p className="text-sm text-slate-400">
-                  {effectiveTier === 'essential' ? '£4.99/month' : '£9.99/month'}
-                </p>
-                {renewalDate && !pendingChange && (
-                  <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
-                )}
-              </div>
-              <button
-                onClick={handleManageBilling}
-                disabled={portalLoading}
-                className="inline-flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
-              >
-                <CreditCard className="h-4 w-4" />
-                {portalLoading ? 'Loading...' : 'Manage Billing'}
-              </button>
-            </div>
 
             {/* Pending downgrade or cancellation notice */}
             {pendingChange && (
-              <div className="flex items-start gap-3 p-4 rounded-lg border bg-mint-400/5 border-mint-400/20">
+              <div className="mt-4 flex items-start gap-3 p-4 rounded-lg border bg-mint-400/5 border-mint-400/20">
                 <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-mint-400" />
                 <div>
                   {pendingChange.type === 'cancel' ? (
@@ -874,16 +738,267 @@ export default function ProfilePage() {
                 </div>
               </div>
             )}
+            
+            {portalError && <p className="text-xs text-red-400 mt-2">{portalError}</p>}
+          </div>
+        );
+      })()}
 
-            {portalError && (
-              <p className="text-xs text-red-400 mt-2">{portalError}</p>
+      {/* Connected Accounts */}
+      <ConnectedAccountsSection supabase={supabase} />
+
+      {/* Financial Reports */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-mint-400" />
+          Financial Reports
+        </h2>
+
+        {effectiveTier === 'pro' ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/dashboard/profile/report"
+                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all"
+              >
+                <FileText className="h-4 w-4" />
+                Generate Annual Report
+              </Link>
+              <button
+                onClick={handleGenerateQuickSummary}
+                disabled={reportLoading}
+                className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+              >
+                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                {reportLoading ? 'Generating...' : 'Quick Summary'}
+              </button>
+            </div>
+
+            {reportError && (
+              <p className="text-sm text-red-400">{reportError}</p>
             )}
-            <p className="text-xs text-slate-500">
-              Manage, upgrade, downgrade or cancel anytime via the billing portal.
+
+            {/* Saved reports list */}
+            {savedReports.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-300 mb-2">Saved Reports</h3>
+                <div className="space-y-2">
+                  {savedReports.map((r) => (
+                    <Link
+                      key={r.id}
+                      href="/dashboard/profile/report"
+                      className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/50 hover:border-mint-400/30 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-4 w-4 text-mint-400" />
+                        <div>
+                          <p className="text-white text-sm font-medium capitalize">
+                            {r.report_type === 'annual' ? `${r.year} Annual Report` : 'Summary Report'}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {new Date(r.created_at).toLocaleDateString('en-GB', {
+                              day: 'numeric',
+                              month: 'long',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-slate-500" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Summary Panel */}
+            {showReport && reportData && (
+              <div className="mt-4 pt-4 border-t border-navy-700/50 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">Financial Summary — {reportData.currentMonth}</h3>
+                  <button onClick={() => setShowReport(false)} className="text-sm text-slate-400 hover:text-white transition-all">Close</button>
+                </div>
+
+                {/* Section 1: Financial Health Score */}
+                <div className="flex flex-col sm:flex-row items-center gap-6 bg-navy-950/50 rounded-2xl p-6 border border-navy-700/50">
+                  <div className="relative w-28 h-28 flex-shrink-0">
+                    <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                      <circle cx="60" cy="60" r="52" fill="none" stroke="#1e293b" strokeWidth="10" />
+                      <circle cx="60" cy="60" r="52" fill="none" stroke={reportData.financialHealth.ringColor} strokeWidth="10" strokeLinecap="round"
+                        strokeDasharray={`${(reportData.financialHealth.overallScore / 100) * 327} 327`} />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-3xl font-bold text-white">{reportData.financialHealth.overallScore}</span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">/ 100</span>
+                    </div>
+                  </div>
+                  <div className="text-center sm:text-left flex-1">
+                    <p className={`text-lg font-bold ${reportData.financialHealth.tierColor}`}>{reportData.financialHealth.tierLabel}</p>
+                    <p className="text-sm text-slate-400 mb-3">Financial Health Score</p>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {reportData.financialHealth.components.map(c => (
+                        <div key={c.name} className="flex items-center gap-2">
+                          <div className="w-20 text-[11px] text-slate-400 truncate">{c.name.replace('Subscription ', 'Sub ')}</div>
+                          <div className="flex-1 bg-navy-800 rounded-full h-1.5">
+                            <div className="h-1.5 rounded-full transition-all" style={{ width: `${c.score}%`, backgroundColor: reportData.financialHealth.ringColor }} />
+                          </div>
+                          <span className="text-[11px] text-slate-400 w-8 text-right">{c.score}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Money Snapshot */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <div className="flex items-center gap-1.5 mb-1"><Wallet className="h-3.5 w-3.5 text-red-400" /><span className="text-[11px] text-slate-400">Spending</span></div>
+                    <p className="text-lg font-bold text-white">{formatGBP(reportData.currentMonthSpend)}</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <div className="flex items-center gap-1.5 mb-1"><TrendingUp className="h-3.5 w-3.5 text-green-400" /><span className="text-[11px] text-slate-400">Income</span></div>
+                    <p className="text-lg font-bold text-white">{formatGBP(reportData.currentMonthIncome)}</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <div className="flex items-center gap-1.5 mb-1"><Target className="h-3.5 w-3.5" style={{ color: reportData.netPosition >= 0 ? '#4ade80' : '#f87171' }} /><span className="text-[11px] text-slate-400">Net</span></div>
+                    <p className={`text-lg font-bold ${reportData.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatGBP(reportData.netPosition)}</p>
+                  </div>
+                </div>
+
+                {/* Section 3: Subscription Overview */}
+                <div className="bg-navy-950/50 rounded-2xl p-5 border border-navy-700/50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-white font-semibold flex items-center gap-2"><CreditCard className="h-4 w-4 text-mint-400" />Subscriptions</h4>
+                    <div className="text-right">
+                      <p className="text-white font-bold">{formatGBP(reportData.totalMonthlyCost)}<span className="text-slate-400 font-normal text-sm">/mo</span></p>
+                      <p className="text-xs text-slate-500">{reportData.totalSubscriptions} active</p>
+                    </div>
+                  </div>
+                  {reportData.potentialAnnualSavings > 0 && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 mb-4 flex items-center gap-2">
+                      <PiggyBank className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                      <p className="text-sm text-emerald-400 font-medium">Potential savings: <span className="text-white font-bold">{formatGBP(reportData.potentialAnnualSavings)}/yr</span></p>
+                    </div>
+                  )}
+                  <div className="space-y-2.5">
+                    {reportData.topSubscriptions.map(sub => (
+                      <div key={sub.id} className="bg-navy-900/80 rounded-lg p-3 border border-navy-700/30">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-white font-medium text-sm">{sub.name}</span>
+                          <span className="text-white font-semibold text-sm">{formatGBP(sub.monthlyCost)}/mo</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
+                            sub.guidance.type === 'switch' ? 'bg-emerald-500/10 text-emerald-400' :
+                            sub.guidance.type === 'complain' ? 'bg-red-500/10 text-red-400' :
+                            sub.guidance.type === 'cancel' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-green-500/10 text-green-400'
+                          }`}>{sub.guidance.type === 'competitive' ? '✓' : sub.guidance.type}</span>
+                          {sub.guidance.type !== 'competitive' ? (
+                            <a href={sub.guidance.actionUrl} target={sub.guidance.actionUrl.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer"
+                              className="text-xs text-slate-300 hover:text-white transition-all flex items-center gap-1">
+                              {sub.guidance.message} <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">{sub.guidance.message}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 4: Alerts & Actions */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <TrendingUp className="h-4 w-4 text-red-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.priceAlertCount}</p>
+                    <p className="text-[10px] text-slate-400">Price Increases</p>
+                    {reportData.priceAlertAnnualCost > 0 && <p className="text-[10px] text-red-400 font-medium">{formatGBP(reportData.priceAlertAnnualCost)}/yr</p>}
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <Bell className="h-4 w-4 text-amber-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.upcomingRenewals.length}</p>
+                    <p className="text-[10px] text-slate-400">Renewals (30d)</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <FileText className="h-4 w-4 text-blue-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.activeDisputeCount}</p>
+                    <p className="text-[10px] text-slate-400">Active Disputes</p>
+                  </div>
+                  <div className="bg-navy-950/50 rounded-xl p-3 border border-navy-700/50 text-center">
+                    <Clock className="h-4 w-4 text-purple-400 mx-auto mb-1" />
+                    <p className="text-lg font-bold text-white">{reportData.pendingActionCount}</p>
+                    <p className="text-[10px] text-slate-400">Actions Pending</p>
+                  </div>
+                </div>
+
+                {/* Upcoming Renewals */}
+                {reportData.upcomingRenewals.length > 0 && (
+                  <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50">
+                    <h4 className="text-white font-semibold text-sm mb-3 flex items-center gap-2"><Bell className="h-4 w-4 text-amber-400" />Upcoming Renewals (30 days)</h4>
+                    <div className="space-y-2">
+                      {reportData.upcomingRenewals.map((r, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span className="text-slate-300">{r.provider}</span>
+                          <div className="text-right">
+                            <span className="text-white font-medium">{formatGBP(r.amount)}</span>
+                            <span className="text-slate-500 text-xs ml-2">{r.date}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 5: Savings Plan */}
+                {reportData.savingsActions.length > 0 && (
+                  <div className="bg-gradient-to-br from-emerald-500/5 to-emerald-600/5 border border-emerald-500/20 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-white font-semibold flex items-center gap-2"><PiggyBank className="h-4 w-4 text-emerald-400" />Your Savings Plan</h4>
+                      <p className="text-emerald-400 font-bold">{formatGBP(reportData.totalPotentialSaving)}/yr</p>
+                    </div>
+                    <div className="space-y-2.5">
+                      {reportData.savingsActions.slice(0, 8).map((action, i) => (
+                        <a key={i} href={action.actionUrl} target={action.actionUrl.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer"
+                          className="flex items-start gap-3 bg-navy-900/60 rounded-lg p-3 hover:bg-navy-900/80 transition-all group border border-navy-700/30">
+                          <span className="text-base flex-shrink-0">{action.difficultyEmoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-navy-700 text-slate-300 capitalize">{action.difficulty}</span>
+                              <span className="text-white text-sm font-medium">{action.description} — {action.provider}</span>
+                            </div>
+                            <p className="text-emerald-400 text-xs font-medium mt-1">Save {formatGBP(action.monthlySaving)}/month ({formatGBP(action.annualSaving)}/yr)</p>
+                          </div>
+                          <ExternalLink className="h-3.5 w-3.5 text-slate-500 group-hover:text-white transition-all flex-shrink-0 mt-1" />
+                        </a>
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-3 text-center">Complete all actions to save <span className="text-emerald-400 font-semibold">{formatGBP(reportData.totalPotentialSaving)}/yr</span></p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <p className="text-slate-400 text-sm mb-4">
+              {effectiveTier === 'essential'
+                ? 'Upgrade to Pro to unlock personalised annual financial reports with PDF download.'
+                : 'Pro users get personalised annual financial reports with spending analysis, savings tracking, and PDF download.'}
             </p>
+            <FinancialReport type="sample" />
           </div>
         )}
       </div>
+
+      {/* Legal links */}
+      <div className="flex gap-4 text-xs text-slate-500 mb-6">
+        <a href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</a>
+        <a href="/legal/terms" className="hover:text-white transition-all">Terms of Service</a>
+      </div>
+
+
       {/* Danger Zone — Delete Account */}
       <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">

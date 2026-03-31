@@ -223,7 +223,15 @@ export default function FormsPage() {
               <p className="text-slate-500 text-xs mb-4">{new Date(selectedHistoryTask.created_at).toLocaleString('en-GB')}</p>
               {selectedHistoryTask.letter ? (
                 <div className="bg-navy-950 rounded-lg p-4 border border-navy-700/50">
-                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{selectedHistoryTask.letter}</pre>
+                  <pre
+                    className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed"
+                    onCopy={(e) => {
+                      const sel = window.getSelection();
+                      if (!sel) return;
+                      e.preventDefault();
+                      e.clipboardData?.setData('text/plain', sel.toString());
+                    }}
+                  >{selectedHistoryTask.letter}</pre>
                   <button
                     onClick={() => { navigator.clipboard.writeText(selectedHistoryTask.letter!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
                     className="mt-4 flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg text-sm"
@@ -379,7 +387,15 @@ export default function FormsPage() {
           </div>
 
           <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-6">
-            <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">{result.letter}</pre>
+            <pre
+              className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed"
+              onCopy={(e) => {
+                const sel = window.getSelection();
+                if (!sel) return;
+                e.preventDefault();
+                e.clipboardData?.setData('text/plain', sel.toString());
+              }}
+            >{result.letter}</pre>
           </div>
 
           {result.legalReferences?.length > 0 && (

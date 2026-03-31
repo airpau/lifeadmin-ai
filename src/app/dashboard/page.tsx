@@ -8,11 +8,12 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
-  ArrowRight, Loader2, AlertTriangle, Clock, Sparkles,
+  ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
+import { cleanMerchantName } from '@/lib/merchant-utils';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -24,13 +25,10 @@ export default function DashboardPage() {
   const [expiringContracts, setExpiringContracts] = useState(0);
   const [userTier, setUserTier] = useState('free');
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
-  const [moneySaved, setMoneySaved] = useState(0);
+  const [taskFilter, setTaskFilter] = useState('all');
   const [potentialSavings, setPotentialSavings] = useState(0);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
-  const [unconfirmedSavings, setUnconfirmedSavings] = useState<{ id: string; provider_name: string; money_saved: number }[]>([]);
-  const [editingSavingId, setEditingSavingId] = useState<string | null>(null);
-  const [editingSavingAmount, setEditingSavingAmount] = useState('');
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
@@ -158,10 +156,10 @@ export default function DashboardPage() {
           supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id),
+            .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
           supabase.from('bank_connections').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).eq('status', 'active'),
-          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at')
+          supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(20),
           supabase.from('subscriptions').select('id, provider_name, amount, billing_cycle, money_saved, cancelled_at, notes')
@@ -188,45 +186,6 @@ export default function DashboardPage() {
         setPendingTasks((userTasks.data || []).filter((t: any) =>
           !((t.provider_name || '').toLowerCase().includes('paybacker'))
         ));
-
-        // Calculate Money Recovery Score
-        let saved = parseFloat(String(profile.data?.total_money_recovered || 0));
-
-        // Add cancelled subscription savings
-        for (const sub of (cancelledSubs.data || [])) {
-          if (sub.money_saved) {
-            saved += parseFloat(String(sub.money_saved));
-          } else if (sub.cancelled_at && sub.amount) {
-            // Estimate: monthly amount x months since cancellation
-            const monthsSince = Math.max(1, Math.floor(
-              (Date.now() - new Date(sub.cancelled_at).getTime()) / (30 * 24 * 60 * 60 * 1000)
-            ));
-            const monthlyAmt = sub.billing_cycle === 'yearly'
-              ? parseFloat(String(sub.amount)) / 12
-              : sub.billing_cycle === 'quarterly'
-                ? parseFloat(String(sub.amount)) / 3
-                : parseFloat(String(sub.amount));
-            saved += monthlyAmt * monthsSince;
-          }
-        }
-
-        // Add resolved task recoveries
-        for (const t of (resolvedTasks.data || [])) {
-          if (t.money_recovered) {
-            saved += parseFloat(String(t.money_recovered));
-          }
-        }
-        setMoneySaved(saved);
-
-        // Find cancelled subs where user hasn't confirmed the saving yet
-        const unconfirmed = (cancelledSubs.data || [])
-          .filter(s => s.money_saved && s.money_saved > 0 && s.notes !== 'savings_confirmed')
-          .map(s => ({
-            id: s.id,
-            provider_name: s.provider_name,
-            money_saved: parseFloat(String(s.money_saved)),
-          }));
-        setUnconfirmedSavings(unconfirmed);
 
         // Potential savings: estimate from active subscriptions (assume 15% could be saved by switching)
         const activeSubs = subs.data || [];
@@ -304,32 +263,7 @@ export default function DashboardPage() {
     fetchData();
   }, [supabase]);
 
-  const handleSavingAction = async (subId: string, action: 'confirm' | 'reject' | 'amend', newAmount?: number) => {
-    const updates: Record<string, any> = { notes: 'savings_confirmed' };
-    if (action === 'reject') {
-      updates.money_saved = 0;
-    } else if (action === 'amend' && newAmount !== undefined) {
-      updates.money_saved = newAmount;
-    }
 
-    await fetch(`/api/subscriptions/${subId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-
-    setUnconfirmedSavings(prev => prev.filter(s => s.id !== subId));
-    setEditingSavingId(null);
-
-    // Recalculate total
-    if (action === 'reject') {
-      const sub = unconfirmedSavings.find(s => s.id === subId);
-      if (sub) setMoneySaved(prev => prev - sub.money_saved);
-    } else if (action === 'amend' && newAmount !== undefined) {
-      const sub = unconfirmedSavings.find(s => s.id === subId);
-      if (sub) setMoneySaved(prev => prev - sub.money_saved + newAmount);
-    }
-  };
 
   if (loading) {
     return (
@@ -408,117 +342,59 @@ export default function DashboardPage() {
         <p className="text-slate-400">Your financial snapshot and quick actions</p>
       </div>
 
-      {/* Money Recovery Score */}
-      <div className="bg-gradient-to-r from-mint-400/10 to-brand-400/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="h-5 w-5 text-mint-400" />
-              <h2 className="text-sm font-semibold text-mint-400 uppercase tracking-wider">Money Recovery Score</h2>
-            </div>
-            <p className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-heading)]">
-              {formatGBP(moneySaved)}
-            </p>
-            <p className="text-slate-400 text-sm mt-1">
-              {moneySaved > 0
-                ? 'saved through cancelled subscriptions and recovered money'
-                : 'Start saving by cancelling unused subscriptions or disputing unfair charges'}
-            </p>
-          </div>
-          {potentialSavings > 0 && (
-            <div className="bg-navy-900/50 rounded-xl px-5 py-3 text-center sm:text-right">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Potential savings</p>
-              <p className="text-xl font-bold text-brand-400">{formatGBP(potentialSavings)}<span className="text-sm font-normal text-slate-500">/yr</span></p>
-              <Link href="/dashboard/deals" className="text-xs text-mint-400 hover:text-mint-300 flex items-center justify-center sm:justify-end gap-1 mt-1">
-                Find deals <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-          )}
+      {/* Potential Savings Hero */}
+      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
+        <div className="flex items-center gap-2 mb-2">
+          <PiggyBank className="h-5 w-5 text-emerald-400" />
+          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Your Potential Savings</h2>
         </div>
-        {/* Unconfirmed savings to review */}
-        {unconfirmedSavings.length > 0 && (
-          <div className="mt-4 border-t border-navy-700/50 pt-4">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Review your savings</p>
-            <div className="space-y-2">
-              {unconfirmedSavings.map(sub => (
-                <div key={sub.id} className="flex items-center justify-between bg-navy-900/50 rounded-lg px-4 py-3">
-                  <div>
-                    <p className="text-sm text-white font-medium">{sub.provider_name}</p>
-                    <p className="text-xs text-slate-400">
-                      {editingSavingId === sub.id ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span>&pound;</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingSavingAmount}
-                            onChange={(e) => setEditingSavingAmount(e.target.value)}
-                            className="w-20 bg-navy-800 border border-navy-700 rounded px-2 py-0.5 text-white text-xs focus:outline-none focus:border-mint-400"
-                            autoFocus
-                          />
-                          <span>/month</span>
-                        </span>
-                      ) : (
-                        <span>Estimated saving: {formatGBP(sub.money_saved)}/month</span>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {editingSavingId === sub.id ? (
-                      <button
-                        onClick={() => handleSavingAction(sub.id, 'amend', parseFloat(editingSavingAmount) || 0)}
-                        className="text-xs bg-mint-400 text-navy-950 px-3 py-1.5 rounded-lg font-medium"
-                      >
-                        Save
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleSavingAction(sub.id, 'confirm')}
-                          className="text-xs bg-mint-400/10 text-mint-400 px-3 py-1.5 rounded-lg hover:bg-mint-400/20 transition-all"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingSavingId(sub.id);
-                            setEditingSavingAmount(String(sub.money_saved));
-                          }}
-                          className="text-xs bg-navy-800 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-navy-700 transition-all"
-                        >
-                          Amend
-                        </button>
-                        <button
-                          onClick={() => handleSavingAction(sub.id, 'reject')}
-                          className="text-xs text-slate-500 hover:text-red-400 px-2 py-1.5 transition-all"
-                          title="Not a real saving"
-                        >
-                          &times;
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <p className="text-4xl md:text-5xl font-bold text-emerald-400 font-[family-name:var(--font-heading)] mb-1">
+          {formatGBP(potentialSavings)}<span className="text-2xl font-normal text-emerald-400/70">/yr</span>
+        </p>
+        <p className="text-slate-400 text-sm mb-6">
+          Based on your subscriptions, price increases &amp; better deals
+        </p>
 
-        {moneySaved > 0 && potentialSavings > 0 && (
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-slate-500 mb-1">
-              <span>Recovered</span>
-              <span>Potential total: {formatGBP(moneySaved + potentialSavings)}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <button
+            onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
+            className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
+          >
+            <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
+              <TrendingUp className="h-5 w-5" />
             </div>
-            <div className="w-full bg-navy-800 rounded-full h-2">
-              <div
-                className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, (moneySaved / (moneySaved + potentialSavings)) * 100)}%` }}
-              />
+            <div>
+              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => sum + (parseFloat(a.annual_impact) || 0), 0))}/yr</p>
+              <p className="text-slate-400 text-xs">Price hikes detected</p>
             </div>
-          </div>
-        )}
+          </button>
+
+          <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
+            <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-400 h-10 w-10 flex items-center justify-center shrink-0">
+              <Tag className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-white font-semibold">{comparisonCount} deals</p>
+              <p className="text-slate-400 text-xs">Available</p>
+            </div>
+          </Link>
+
+          <Link href="/dashboard/complaints" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
+            <div className="bg-blue-500/10 p-2 rounded-lg text-blue-400 h-10 w-10 flex items-center justify-center shrink-0">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-white font-semibold">{complaintsGenerated} disputes</p>
+              <p className="text-slate-400 text-xs">Filed</p>
+            </div>
+          </Link>
+        </div>
+
+        <div className="flex">
+          <Link href="/dashboard/deals" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+            See Your Savings Plan <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
       {/* Savings Opportunity Widget */}
@@ -526,7 +402,7 @@ export default function DashboardPage() {
 
       {/* Price Increase Alerts */}
       {priceAlerts.length > 0 && (
-        <div className="mb-8">
+        <div id="price-alerts" className="mb-8">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             Price Increase Alerts ({priceAlerts.length})
@@ -614,96 +490,129 @@ export default function DashboardPage() {
       )}
 
       {/* Action Items */}
-      {pendingTasks.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-            <Clock className="h-5 w-5 text-mint-400" />
-            Your Action Items ({pendingTasks.length})
-          </h2>
-          <div className="space-y-3">
-            {pendingTasks.map((task) => {
-              // Parse JSON description if present
-              const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
-              const oppType = parsedDesc?.type || '';
-              const descText = parsedDesc?.description || task.description || '';
-              const descLower = descText.toLowerCase();
-              const provider = task.provider_name || parsedDesc?.provider || '';
-              const amount = task.disputed_amount || parsedDesc?.amount || parsedDesc?.paymentAmount || '';
+      {(() => {
+        if (pendingTasks.length === 0) return null;
 
-              // Intelligent action classification
-              const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
-              const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
-              const isRenewal = oppType === 'renewal' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir');
-              const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
-              const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
-              const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
-              const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
-              const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
-              const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
-              const needsDeal = isRenewal || isInsurance;
-              const needsSubscription = isSubscription;
+        const processedTasks = pendingTasks.map((task) => {
+          const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
+          const oppType = parsedDesc?.type || '';
+          const descText = parsedDesc?.description || task.description || '';
+          const descLower = descText.toLowerCase();
+          const rawProvider = task.provider_name || parsedDesc?.provider || '';
+          const provider = cleanMerchantName(rawProvider);
+          const amount = task.disputed_amount || parsedDesc?.amount || parsedDesc?.paymentAmount || '';
 
-              // Determine badge
-              const badge = isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
-                : needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
-                : needsDeal ? { text: 'Switch and Save', color: 'bg-mint-400/10 text-mint-400' }
-                : needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
-                : isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
-                : isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
-                : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
+          const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
+          const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
+          const isRenewal = oppType === 'renewal' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir');
+          const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
+          const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
+          const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
+          const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
+          const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
+          
+          const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
+          const needsDeal = isRenewal || isInsurance;
+          const needsSubscription = isSubscription;
 
-              // Build correct action URL with proper params for each destination
-              const complaintParams = new URLSearchParams();
-              if (provider) complaintParams.set('company', provider);
-              if (descText && descText.length < 500) complaintParams.set('issue', descText);
-              if (amount) complaintParams.set('amount', String(amount));
-              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+          return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, needsComplaint, needsDeal, needsSubscription };
+        });
 
-              const subscriptionParams = new URLSearchParams();
-              if (provider) subscriptionParams.set('name', provider);
-              if (amount) subscriptionParams.set('amount', String(amount));
+        let filtered = processedTasks;
+        if (taskFilter === 'disputes') filtered = filtered.filter(t => t.needsComplaint || t.isFlightDelay || t.isLoan);
+        if (taskFilter === 'deals') filtered = filtered.filter(t => t.needsDeal);
+        if (taskFilter === 'subscriptions') filtered = filtered.filter(t => t.needsSubscription);
 
-              return (
-                <div key={task.id} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+        const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
+        filtered.sort((a, b) => (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0));
+
+        const displayTasks = filtered.slice(0, 5);
+
+        return (
+          <div className="mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2 font-[family-name:var(--font-heading)]">
+                <Clock className="h-5 w-5 text-mint-400" />
+                Your Action Items ({filtered.length})
+              </h2>
+              <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide">
+                {['all', 'disputes', 'deals', 'subscriptions'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setTaskFilter(f)}
+                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-mint-400 text-navy-950 font-semibold' : 'bg-navy-800 text-slate-400 hover:text-white'}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {displayTasks.length === 0 ? (
+              <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-6 text-center">
+                <p className="text-slate-500 text-sm">No action items found for this filter.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {displayTasks.map((task) => {
+                  const badge = task.isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
+                    : task.needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
+                    : task.needsDeal ? { text: 'Switch and Save', color: 'bg-mint-400/10 text-mint-400' }
+                    : task.needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
+                    : task.isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
+                    : task.isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
+                    : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
+
+                  const isHighPriority = task.priority === 'high';
+
+                  const complaintParams = new URLSearchParams();
+                  if (task.provider) complaintParams.set('company', task.provider);
+                  if (task.descText && task.descText.length < 500) complaintParams.set('issue', task.descText);
+                  if (task.amount) complaintParams.set('amount', String(task.amount));
+                  const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+
+                  return (
+                    <div key={task.id} className={`bg-navy-900 border rounded-xl p-4 transition-all ${isHighPriority ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-navy-700/50'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
-                        {provider && <span className="text-slate-500 text-xs">{provider}</span>}
-                        {amount && Number(amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(amount)))}</span>}
+                        {task.provider && <span className="text-slate-500 text-xs">{task.provider}</span>}
+                        {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{descText}</p>
+                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.descText}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
                     {/* Context-aware primary action */}
-                    {needsComplaint && (
+                    {task.needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Write Complaint Letter
                       </Link>
                     )}
-                    {isFlightDelay && (
-                      <Link href={`/dashboard/complaints?type=flight_compensation${provider ? `&company=${encodeURIComponent(provider)}` : ''}&new=1`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                    {task.isFlightDelay && (
+                      <Link href={`/dashboard/complaints?type=flight_compensation${task.provider ? `&company=${encodeURIComponent(task.provider)}` : ''}&new=1`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Claim £520 Compensation
                       </Link>
                     )}
-                    {needsDeal && (
+                    {task.needsDeal && (
                       <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Find Better Deal
                       </Link>
                     )}
-                    {needsSubscription && (
+                    {task.needsSubscription && (
                       <Link href="/dashboard/subscriptions" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <CreditCard className="h-3 w-3" /> Track Subscription
                       </Link>
                     )}
-                    {isLoan && (
+                    {task.isLoan && (
                       <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Review and Dispute
                       </Link>
                     )}
-                    {isAdmin && !needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && (
+                    {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (
                       <button
                         onClick={async () => {
                           await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
@@ -713,7 +622,7 @@ export default function DashboardPage() {
                         <CheckCircle2 className="h-3 w-3" /> Mark as Done
                       </button>
                     )}
-                    {!needsComplaint && !needsDeal && !needsSubscription && !isFlightDelay && !isLoan && !isAdmin && (
+                    {!task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && !task.isAdmin && (
                       <Link href={complaintUrl} className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Take Action
                       </Link>
@@ -732,11 +641,13 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Quick Actions */}
       <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">

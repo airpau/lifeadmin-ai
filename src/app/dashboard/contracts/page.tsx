@@ -431,10 +431,10 @@ export default function ContractsPage() {
           <Loader2 className="h-8 w-8 animate-spin text-mint-400" />
         </div>
       ) : contracts.length === 0 ? (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
-          <Shield className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400 mb-2">No contracts uploaded yet</p>
-          <p className="text-slate-500 text-sm mb-6">Upload a contract and we will read the key terms, flag anything unfair, and use it to write stronger complaint letters</p>
+        <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-2xl p-12 text-center">
+          <FileText className="h-12 w-12 text-slate-600 mx-auto mb-4 opacity-50" />
+          <h2 className="text-xl font-bold text-white mb-2">No contracts uploaded yet</h2>
+          <p className="text-slate-400 text-sm mb-6 max-w-md mx-auto">Upload a contract and we will read the key terms, flag anything unfair, and use it to write stronger complaint letters.</p>
           <button
             onClick={() => setShowUpload(true)}
             className="inline-flex items-center gap-2 px-6 py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg transition-all"

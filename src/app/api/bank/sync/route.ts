@@ -43,6 +43,10 @@ export async function POST() {
     return NextResponse.json({ error: 'No active bank connections' }, { status: 400 });
   }
 
+  // Fetch merchant rules for auto-categorization
+  const { data: rules } = await supabase.from('merchant_rules').select('pattern, raw_name_normalised, category');
+
+
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
 
@@ -106,18 +110,36 @@ export async function POST() {
 
         if (transactions.length === 0) continue;
 
-        const rows = transactions.map((tx) => ({
-          user_id: user.id,
-          connection_id: connection.id,
-          transaction_id: tx.transaction_id,
-          account_id: accountId,
-          amount: tx.amount,
-          currency: tx.currency || 'GBP',
-          description: tx.description || null,
-          merchant_name: tx.merchant_name || null,
-          category: tx.transaction_category || null,
-          timestamp: tx.timestamp,
-        }));
+        const rows = transactions.map((tx) => {
+          const desc = (tx.description || '').toLowerCase();
+          const merch = (tx.merchant_name || '').toLowerCase();
+          let matchedCategory = null;
+          
+          if (rules) {
+            for (const rule of rules) {
+              const rulePattern = (rule.pattern || rule.raw_name_normalised || '').toLowerCase();
+              if (!rulePattern) continue;
+              if (desc.includes(rulePattern) || merch.includes(rulePattern)) {
+                matchedCategory = rule.category;
+                break;
+              }
+            }
+          }
+
+          return {
+            user_id: user.id,
+            connection_id: connection.id,
+            transaction_id: tx.transaction_id,
+            account_id: accountId,
+            amount: tx.amount,
+            currency: tx.currency || 'GBP',
+            description: tx.description || null,
+            merchant_name: tx.merchant_name || null,
+            category: tx.transaction_category || null,
+            user_category: matchedCategory,
+            timestamp: tx.timestamp,
+          };
+        });
 
         const { error: upsertError } = await supabase
           .from('bank_transactions')

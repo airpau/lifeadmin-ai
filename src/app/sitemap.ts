@@ -19,15 +19,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   // Fetch all published blog posts from database
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-  const { data: blogPosts } = await supabase
-    .from('blog_posts')
-    .select('slug, published_at')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false });
+  let blogPosts: any[] | null = null;
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+    );
+    const { data } = await supabase
+      .from('blog_posts')
+      .select('slug, published_at')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false });
+    blogPosts = data;
+  }
 
   // Static blog posts (hardcoded routes)
   const staticBlogSlugs = [

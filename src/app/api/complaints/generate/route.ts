@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
         .order('entry_date', { ascending: true });
 
       if (correspondence && correspondence.length > 0) {
+        const letterCount = correspondence.filter((c: any) => c.entry_type === 'ai_letter').length;
         const entries = correspondence.map((c: any) => {
           const date = new Date(c.entry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
           const typeLabel: Record<string, string> = {
@@ -67,7 +68,8 @@ export async function POST(request: NextRequest) {
           };
           return `[${date}] ${typeLabel[c.entry_type] || c.entry_type}${c.title ? ` — ${c.title}` : ''}:\n${c.content}`;
         });
-        threadContext = `\n\nPREVIOUS CORRESPONDENCE (this is an ongoing dispute — reference earlier letters and responses):\n${entries.join('\n\n---\n\n')}`;
+        const nextLetterNum = letterCount + 1;
+        threadContext = `\n\nPREVIOUS CORRESPONDENCE (this is follow-up letter #${nextLetterNum} in an ongoing dispute — reference earlier letters and responses, escalate appropriately for letter #${nextLetterNum}):\n${entries.join('\n\n---\n\n')}`;
       }
 
       // Load contract extractions for this dispute
@@ -113,6 +115,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch verified legal references for this letter type
+    // Also fetch the dispute's provider_type for category targeting (prevents gym/goods refs on broadband/energy complaints)
+    let disputeProviderType: string | null = null;
+    if (body.disputeId) {
+      const { data: disputeRow } = await supabase
+        .from('disputes')
+        .select('provider_type')
+        .eq('id', body.disputeId)
+        .single();
+      disputeProviderType = disputeRow?.provider_type || null;
+    }
+
     const issueTypeToCategory: Record<string, string[]> = {
       complaint: ['general'],
       energy_dispute: ['general', 'energy'],
@@ -127,17 +140,43 @@ export async function POST(request: NextRequest) {
       nhs_complaint: ['nhs'],
     };
 
-    const categories = issueTypeToCategory[body.letterType || 'complaint'] || ['general'];
+    // Provider-type overrides issue-type so broadband disputes always get broadband refs
+    const providerTypeToCategory: Record<string, string[]> = {
+      broadband: ['broadband', 'general'],
+      energy: ['energy', 'general'],
+      mobile: ['broadband', 'general'],
+      insurance: ['insurance', 'general'],
+      travel: ['travel', 'general'],
+      parking: ['parking', 'general'],
+      finance: ['finance', 'general'],
+      debt: ['debt', 'finance', 'general'],
+    };
+
+    const categories = (disputeProviderType && providerTypeToCategory[disputeProviderType])
+      || issueTypeToCategory[body.letterType || 'complaint']
+      || ['general'];
+
     const { data: legalRefs } = await supabase
       .from('legal_references')
-      .select('law_name, section, summary, source_url, escalation_body, strength')
+      .select('law_name, section, summary, source_url, escalation_body, strength, applies_to, category')
       .in('category', categories)
       .in('verification_status', ['current', 'updated'])
       .gte('confidence_score', 60);
 
+    // Filter out 'general' refs that have a sector-specific applies_to array which doesn't
+    // overlap with the current dispute's categories. This prevents gym/fitness legal refs
+    // (mislabelled as 'general') from appearing in broadband or energy letters.
+    const relevantRefs = (legalRefs || []).filter(r => {
+      if (r.category !== 'general') return true; // Non-general refs are already scoped correctly
+      const appliesTo: string[] = Array.isArray(r.applies_to) ? r.applies_to : [];
+      if (appliesTo.length === 0) return true; // Truly general — no sector restriction
+      // Only include if applies_to overlaps with the dispute's categories
+      return appliesTo.some((a: string) => categories.includes(a.toLowerCase()));
+    });
+
     let verifiedLegalRefs = '';
-    if (legalRefs && legalRefs.length > 0) {
-      verifiedLegalRefs = legalRefs.map(r =>
+    if (relevantRefs.length > 0) {
+      verifiedLegalRefs = relevantRefs.map(r =>
         `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`
       ).join('\n');
     }
@@ -242,8 +281,29 @@ export async function POST(request: NextRequest) {
         .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
     }
 
-    // Build rights pills data for the UI (needed before agent run log)
-    const rightsPills = (legalRefs || []).map((r: any) => ({
+    // Build rights pills — ONLY include refs that match what the AI actually cited in the letter
+    // This prevents irrelevant general refs (gym terms, goods quality, etc.) from showing.
+    const allFetchedRefs = legalRefs || [];
+    let matchedRefs = allFetchedRefs;
+
+    if (result.legalReferences && result.legalReferences.length > 0) {
+      const citedLower = result.legalReferences.map((r: string) => r.toLowerCase());
+      const categorySpecific = allFetchedRefs.filter((r: any) => {
+        const lawLower = r.law_name.toLowerCase();
+        const sectionLower = (r.section || '').toLowerCase();
+        return citedLower.some((cited: string) =>
+          cited.includes(lawLower) ||
+          (sectionLower && cited.includes(sectionLower)) ||
+          lawLower.includes(cited.substring(0, 20))
+        );
+      });
+      // Only filter if we matched at least 1 ref; otherwise fall back to all fetched
+      if (categorySpecific.length > 0) {
+        matchedRefs = categorySpecific;
+      }
+    }
+
+    const rightsPills = matchedRefs.map((r: any) => ({
       label: `${r.law_name}${r.section ? ` ${r.section}` : ''}`,
       url: r.source_url,
       strength: r.strength,

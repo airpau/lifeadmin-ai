@@ -211,6 +211,7 @@ export default function RewardsPage() {
   const nextTierIndex = tierOrder.indexOf(data.tier) + 1;
   const nextTier = nextTierIndex < tierOrder.length ? data.allTiers.find(t => t.key === tierOrder[nextTierIndex]) : null;
   const isMaxTier = !nextTier;
+  const nonZeroEvents = data.recentEvents.filter(e => e.points !== 0);
 
   // Streak calendar: last 12 months
   const streakMonths = (() => {
@@ -263,7 +264,7 @@ export default function RewardsPage() {
             <Flame className="h-5 w-5 text-orange-400" />
             <p className="text-2xl font-bold text-orange-400">{data.currentStreak}</p>
           </div>
-          <p className="text-slate-500 text-xs">Month streak</p>
+          <p className="text-slate-500 text-xs">{data.currentStreak === 1 ? 'Month' : 'Months'} streak</p>
         </div>
       </div>
 
@@ -497,8 +498,8 @@ export default function RewardsPage() {
           })}
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-400">Current: <strong className="text-orange-400">{data.currentStreak} months</strong></span>
-          <span className="text-slate-400">Longest: <strong className="text-white">{data.longestStreak} months</strong></span>
+          <span className="text-slate-400">Current: <strong className="text-orange-400">{data.currentStreak} month{data.currentStreak === 1 ? '' : 's'}</strong></span>
+          <span className="text-slate-400">Longest: <strong className="text-white">{data.longestStreak} month{data.longestStreak === 1 ? '' : 's'}</strong></span>
         </div>
         {data.currentStreak < 3 && (
           <p className="text-slate-500 text-xs mt-2">Reach a 3-month streak for +15 bonus points</p>
@@ -571,11 +572,11 @@ export default function RewardsPage() {
       )}
 
       {/* ═══ SECTION 7: Points History ═══ */}
-      {data.recentEvents.length > 0 && (
+      {nonZeroEvents.length > 0 && (
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
           <h2 className="text-lg font-bold text-white mb-4">Points History</h2>
           <div className="space-y-2">
-            {(showAllHistory ? data.recentEvents : data.recentEvents.slice(0, 8)).map((event, i) => (
+            {(showAllHistory ? nonZeroEvents : nonZeroEvents.slice(0, 8)).map((event, i) => (
               <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/50">
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm truncate">{event.description}</p>
@@ -589,7 +590,7 @@ export default function RewardsPage() {
               </div>
             ))}
           </div>
-          {data.recentEvents.length > 8 && (
+          {nonZeroEvents.length > 8 && (
             <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-mint-400 text-sm mt-3 flex items-center gap-1 hover:text-mint-300 transition-all">
               {showAllHistory ? <><ChevronUp className="h-4 w-4" /> Show less</> : <><ChevronDown className="h-4 w-4" /> View all activity</>}
             </button>

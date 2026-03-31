@@ -14,7 +14,7 @@ function getAdmin() {
 
 // Smart categorisation rules
 const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mort', 'nationwide mort'], category: 'mortgage' },
+  { keywords: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'nationwide b.s', 'nationwide bs', 'halifax mort', 'barclays mort', 'hsbc mort', 'santander mort', 'bm solutions', 'accord mort', 'virgin money mort', 'leeds b.s', 'leeds bs', 'yorkshire b.s', 'yorkshire bs', 'coventry b.s', 'coventry bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort'], category: 'mortgage' },
   { keywords: ['natwest loan', 'santander loans', 'novuna personal', 'ca auto finance', 'tesco bank'], category: 'loans' },
   { keywords: ['council', 'winchester city counci', 'hounslow', 'lbh'], category: 'council_tax' },
   { keywords: ['hmrc', 'hm revenue'], category: 'tax' },
@@ -139,8 +139,10 @@ export async function POST() {
     const merchant = (txn.merchant_name || desc.substring(0, 30)).toLowerCase().trim();
     const amount = parseFloat(txn.amount);
 
-    // Priority 1: Keep existing user override
-    if (txn.user_category) continue;
+    // Priority 1: Keep existing user override, UNLESS it's a generic auto-assigned fallback
+    // ('bills', 'shopping', 'other') that might hide a more specific category.
+    const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
+    if (txn.user_category && !SOFT_CATEGORIES.has(txn.user_category)) continue;
 
     // Priority 2: Check merchant overrides (learned from user corrections)
     let finalCategory: string | null = null;

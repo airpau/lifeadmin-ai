@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
@@ -12,6 +12,8 @@ import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
+import { cleanMerchantName } from '@/lib/merchant-utils';
+import { SORTED_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 
 interface Subscription {
   id: string;
@@ -57,112 +59,11 @@ interface CancellationEmail {
 const CATEGORIES = ['streaming', 'software', 'fitness', 'news', 'shopping', 'gaming', 'energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'council_tax', 'water', 'tv', 'other'];
 const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
 
-// Known merchant name patterns for normalising raw bank descriptions
-const MERCHANT_DISPLAY_NAMES: Record<string, string> = {
-  'netflix': 'Netflix',
-  'spotify': 'Spotify',
-  'amazon prime': 'Amazon Prime',
-  'amazon': 'Amazon',
-  'disney plus': 'Disney+',
-  'disney+': 'Disney+',
-  'apple': 'Apple',
-  'google': 'Google',
-  'youtube': 'YouTube',
-  'deliveroo': 'Deliveroo',
-  'uber eats': 'Uber Eats',
-  'uber': 'Uber',
-  'just eat': 'Just Eat',
-  'virgin media': 'Virgin Media',
-  'bt group': 'BT',
-  'sky': 'Sky',
-  'now tv': 'NOW TV',
-  'three': 'Three',
-  'vodafone': 'Vodafone',
-  'ee': 'EE',
-  'o2': 'O2',
-  'giffgaff': 'giffgaff',
-  'tesco mobile': 'Tesco Mobile',
-  'tesco': 'Tesco',
-  'sainsbury': 'Sainsbury\'s',
-  'asda': 'Asda',
-  'aldi': 'Aldi',
-  'lidl': 'Lidl',
-  'ocado': 'Ocado',
-  'british gas': 'British Gas',
-  'octopus energy': 'Octopus Energy',
-  'ovo energy': 'OVO Energy',
-  'ovo': 'OVO Energy',
-  'edf': 'EDF Energy',
-  'scottish power': 'Scottish Power',
-  'sse': 'SSE Energy',
-  'bulb': 'Bulb Energy',
-  'shell energy': 'Shell Energy',
-  'thames water': 'Thames Water',
-  'anglian water': 'Anglian Water',
-  'united utilities': 'United Utilities',
-  'severn trent': 'Severn Trent',
-  'council tax': 'Council Tax',
-  'hounslow': 'L.B. Hounslow Council Tax',
-  'l.b.hounslow': 'L.B. Hounslow Council Tax',
-  'gym': 'Gym',
-  'puregym': 'PureGym',
-  'the gym': 'The Gym Group',
-  'david lloyd': 'David Lloyd',
-  'nuffield': 'Nuffield Health',
-  'adobe': 'Adobe',
-  'microsoft': 'Microsoft',
-  'notion': 'Notion',
-  'slack': 'Slack',
-  'github': 'GitHub',
-  'chatgpt': 'ChatGPT',
-  'openai': 'OpenAI',
-  'dropbox': 'Dropbox',
-  'icloud': 'iCloud',
-  'playstation': 'PlayStation',
-  'xbox': 'Xbox',
-  'nintendo': 'Nintendo',
-  'crunchyroll': 'Crunchyroll',
-  'paramount': 'Paramount+',
-  'audible': 'Audible',
-  'times': 'The Times',
-  'guardian': 'The Guardian',
-  'telegraph': 'The Telegraph',
-  'aviva': 'Aviva',
-  'direct line': 'Direct Line',
-  'admiral': 'Admiral',
-  'axa': 'AXA',
-  'aa': 'AA',
-  'rac': 'RAC',
-  'green flag': 'Green Flag',
-};
-
 /** Normalise a raw bank merchant name (e.g. "DELIVEROO PLUS SUBS") to a clean display name */
 function normaliseProviderName(raw: string): string {
-  const lower = raw.toLowerCase().trim();
-  // Strip common bank suffixes
-  const cleaned = lower
-    .replace(/\s+(pymts?|payments?|subs?|subscriptions?|ltd|plc|uk|gbr|direct debit|dd|monthly|annual)\s*/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Try exact match first, then partial match
-  for (const [pattern, display] of Object.entries(MERCHANT_DISPLAY_NAMES)) {
-    if (cleaned === pattern || cleaned.startsWith(pattern + ' ') || cleaned.includes(pattern)) {
-      return display;
-    }
-  }
-
-  // If no match found, title-case the cleaned name
-  if (raw === raw.toUpperCase() && raw.length > 3) {
-    return cleaned
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  }
-
-  return raw;
+  return cleanMerchantName(raw);
 }
-const STATUTORY_KEYWORDS = ['council', 'testvalley', 'winchester', 'lbh', 'l.b.hounslow', 'dvla', 'thames water', 'severn trent', 'hmrc', 'southern water', 'anglian water', 'united utilities'];
+const STATUTORY_KEYWORDS = ['council', 'testvalley', 'winchester', 'lbh', 'l.b.hounslow', 'dvla', 'hmrc'];
 
 function isStatutoryService(name: string): boolean {
   const lower = name.toLowerCase();
@@ -214,6 +115,7 @@ export default function SubscriptionsPage() {
     auto_renews: true,
     provider_type: '',
     current_tariff: '',
+    source: 'manual',
   });
   const [shareModal, setShareModal] = useState<{ open: boolean; amount: number; provider: string }>({ open: false, amount: 0, provider: '' });
   const [creditWarning, setCreditWarning] = useState<{ open: boolean; productType: string; providerName: string; warningContent: string; sub: Subscription | null }>({ open: false, productType: '', providerName: '', warningContent: '', sub: null });
@@ -266,6 +168,24 @@ export default function SubscriptionsPage() {
     } catch {} // Non-critical
   }, []);
 
+  const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [sortBy, setSortBy] = useState<string>('price_desc');
+  const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
+
+  // Initialize from searchParams
+  useEffect(() => {
+    const cat = searchParams.get('category');
+    if (cat) setFilterCategory(cat);
+  }, [searchParams]);
+
+  // Update URL
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (filterCategory !== 'All') url.searchParams.set('category', filterCategory);
+    else url.searchParams.delete('category');
+    window.history.replaceState({}, '', url.toString());
+  }, [filterCategory]);
+
   useEffect(() => {
     fetchSubscriptions();
     fetchBankConnection();
@@ -295,11 +215,11 @@ export default function SubscriptionsPage() {
 
   // Subscriptions = everything except loans, mortgages, credit cards
   // Also deduplicate by normalised name (e.g. "LBH" and "L.B.Hounslow" are the same)
-  const displaySubscriptions = (() => {
+  const baseSubscriptions = (() => {
     const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name));
     const seen = new Map<string, boolean>();
     return filtered.filter(s => {
-      const normName = normaliseProviderName(s.provider_name).toLowerCase();
+      const normName = cleanMerchantName(s.provider_name).toLowerCase();
       if (seen.has(normName)) return false;
       seen.set(normName, true);
       return true;
@@ -307,14 +227,125 @@ export default function SubscriptionsPage() {
   })();
   const hiddenFinanceCount = subscriptions.filter(s => s.status === 'active' && isFinancePayment(s.provider_name)).length;
 
-  const totalMonthly = displaySubscriptions
-    .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time')
+  const displaySubscriptions = (() => {
+    let result = [...baseSubscriptions];
+
+    if (filterCategory !== 'All') {
+      result = result.filter(s => s.category === filterCategory);
+    }
+
+    result.sort((a, b) => {
+      if (sortBy === 'price_desc') {
+        const amtA = a.billing_cycle === 'yearly' ? a.amount / 12 : a.amount;
+        const amtB = b.billing_cycle === 'yearly' ? b.amount / 12 : b.amount;
+        return (amtB || 0) - (amtA || 0);
+      }
+      if (sortBy === 'price_asc') {
+        const amtA = a.billing_cycle === 'yearly' ? a.amount / 12 : a.amount;
+        const amtB = b.billing_cycle === 'yearly' ? b.amount / 12 : b.amount;
+        return (amtA || 0) - (amtB || 0);
+      }
+      if (sortBy === 'category') return (a.category || '').localeCompare(b.category || '');
+      if (sortBy === 'date_added') return new Date(b.last_used_date || 0).getTime() - new Date(a.last_used_date || 0).getTime();
+      return 0;
+    });
+
+    return result;
+  })();
+
+  const [mergingDuplicates, setMergingDuplicates] = useState(false);
+  const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
+  const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(new Set());
+  const [groupAmountOverrides, setGroupAmountOverrides] = useState<Record<string, string>>({});
+  const duplicateGroups = (() => {
+    const groups: Record<string, Subscription[]> = {};
+    subscriptions.filter(s => !isFinancePayment(s.provider_name) && s.status === 'active').forEach(s => {
+      const key = `${cleanMerchantName(s.provider_name).toLowerCase()}|${s.category}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(s);
+    });
+    return Object.values(groups).filter(g => g.length > 1);
+  })();
+
+  // Sort group so the best entry to keep is first:
+  // 1. Prefer bank-sourced (bank/bank_and_email) — real transaction data
+  // 2. Prefer non-zero amount over zero
+  // 3. Then highest amount wins
+  const rankForKeep = (s: Subscription) => {
+    const bankScore = (s.source === 'bank' || s.source === 'bank_and_email') ? 2 : 0;
+    const nonZeroScore = (s.amount && s.amount > 0) ? 1 : 0;
+    return bankScore + nonZeroScore;
+  };
+
+  const handleMergeDuplicates = async (singleGroup?: Subscription[], groupKey?: string) => {
+    setMergingDuplicates(true);
+    let deletedCount = 0;
+    const groups = singleGroup ? [singleGroup] : duplicateGroups;
+    for (const group of groups) {
+      const sorted = [...group].sort((a, b) => rankForKeep(b) - rankForKeep(a) || b.amount - a.amount);
+      const keep = sorted[0];
+      const duplicates = sorted.slice(1);
+
+      // Apply amount override if user edited it
+      const key = groupKey || `${cleanMerchantName(group[0].provider_name).toLowerCase()}|${group[0].category}`;
+      const overrideVal = groupAmountOverrides[key];
+      if (overrideVal !== undefined) {
+        const parsed = parseFloat(overrideVal);
+        if (!isNaN(parsed) && parsed !== keep.amount) {
+          await fetch(`/api/subscriptions/${keep.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: parsed }),
+          });
+        }
+      }
+
+      for (const dup of duplicates) {
+        await fetch(`/api/subscriptions/${dup.id}`, { method: 'DELETE' });
+        deletedCount++;
+      }
+    }
+    if (deletedCount > 0) {
+      await fetchSubscriptions();
+    }
+    setMergingDuplicates(false);
+  };
+
+  const handleDismissGroup = (key: string) => {
+    setDismissedGroups(prev => new Set([...prev, key]));
+  };
+
+  const activeDuplicateGroups = duplicateGroups.filter(g => {
+    const key = `${cleanMerchantName(g[0].provider_name).toLowerCase()}|${g[0].category}`;
+    return !dismissedGroups.has(key);
+  });
+
+  const statutoryTotalMonthly = baseSubscriptions
+    .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time' && isStatutoryService(normaliseProviderName(s.provider_name)))
     .reduce((sum, s) => {
-      let monthlyAmt = s.amount;
-      if (s.billing_cycle === 'yearly') monthlyAmt = s.amount / 12;
-      else if (s.billing_cycle === 'quarterly') monthlyAmt = s.amount / 3;
+      let monthlyAmt = parseFloat(String(s.amount)) || 0;
+      if (s.billing_cycle === 'yearly') monthlyAmt = monthlyAmt / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = monthlyAmt / 3;
       return sum + monthlyAmt;
     }, 0);
+
+  const flexibleTotalMonthly = baseSubscriptions
+    .filter(s => s.status === 'active' && s.billing_cycle !== 'one-time' && !isStatutoryService(normaliseProviderName(s.provider_name)))
+    .reduce((sum, s) => {
+      let monthlyAmt = parseFloat(String(s.amount)) || 0;
+      if (s.billing_cycle === 'yearly') monthlyAmt = monthlyAmt / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = monthlyAmt / 3;
+      return sum + monthlyAmt;
+    }, 0);
+
+  const totalMonthly = statutoryTotalMonthly + flexibleTotalMonthly;
+
+  const handleToggleBulk = (id: string) => {
+    const newSet = new Set(selectedForBulk);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedForBulk(newSet);
+  };
 
   const handleDetectFromInbox = async () => {
     setDetectingFromInbox(true);
@@ -337,22 +368,24 @@ export default function SubscriptionsPage() {
     }
   };
 
-  const handleAddDetected = async (detected: any) => {
-    const res = await fetch('/api/subscriptions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider_name: detected.provider_name,
-        category: detected.category || 'other',
-        amount: detected.amount || 0,
-        billing_cycle: detected.billing_cycle || 'monthly',
-        usage_frequency: 'sometimes',
-      }),
+  const handleAddDetected = (detected: any) => {
+    setNewSub({
+      provider_name: detected.provider_name,
+      category: detected.category || 'other',
+      amount: detected.amount ? detected.amount.toString() : '',
+      billing_cycle: detected.billing_cycle || 'monthly',
+      next_billing_date: '',
+      account_email: '',
+      usage_frequency: 'sometimes',
+      contract_type: '',
+      contract_end_date: '',
+      auto_renews: true,
+      provider_type: '',
+      current_tariff: '',
+      source: 'email',
     });
-    if (res.ok) {
-      setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
-      await fetchSubscriptions();
-    }
+    setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
+    setShowAddForm(true);
   };
 
   const handleAddSubscription = async (e: React.FormEvent) => {
@@ -372,6 +405,7 @@ export default function SubscriptionsPage() {
           auto_renews: newSub.auto_renews,
           provider_type: newSub.provider_type || null,
           current_tariff: newSub.current_tariff || null,
+          source: newSub.source || 'manual',
         }),
       });
       if (res.ok) {
@@ -390,6 +424,7 @@ export default function SubscriptionsPage() {
           auto_renews: true,
           provider_type: '',
           current_tariff: '',
+          source: 'manual',
         });
       }
     } catch (error) {
@@ -610,6 +645,66 @@ export default function SubscriptionsPage() {
     }
   };
 
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkResults, setBulkResults] = useState<{ sub: Subscription; email: any; error?: string }[] | null>(null);
+
+  const handleBulkCancel = async () => {
+    setBulkGenerating(true);
+    setBulkResults(null);
+    const results: { sub: Subscription; email: any; error?: string }[] = [];
+    
+    for (const id of Array.from(selectedForBulk)) {
+      const sub = subscriptions.find(s => s.id === id);
+      if (!sub) continue;
+      try {
+        const res = await fetch('/api/subscriptions/cancellation-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscriptionId: sub.id,
+            providerName: sub.provider_name,
+            amount: sub.amount,
+            billingCycle: sub.billing_cycle,
+            accountEmail: sub.account_email,
+            category: sub.category,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          results.push({ sub, email: null, error: data.error || 'Failed' });
+        } else {
+          results.push({ sub, email: data });
+        }
+      } catch (err: any) {
+        results.push({ sub, email: null, error: err.message });
+      }
+    }
+    setBulkResults(results);
+    setBulkGenerating(false);
+    setSelectedForBulk(new Set());
+    await fetchSubscriptions();
+  };
+
+  const [inlineRecatSub, setInlineRecatSub] = useState<string | null>(null);
+
+  const handleInlineRecategorise = async (sub: Subscription, newCategory: string) => {
+    try {
+      const res = await fetch(`/api/subscriptions/${sub.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: newCategory }),
+      });
+      if (res.ok) {
+        // Also update merchant rules conceptually
+        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, category: newCategory } : s));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setInlineRecatSub(null);
+    }
+  };
+
   const getSourceBadges = (source?: string) => {
     if (!source || source === 'manual') {
       return <span className="text-xs bg-navy-700/50 text-slate-400 px-1.5 py-0.5 rounded" title="Manually added">✏️</span>;
@@ -670,6 +765,66 @@ export default function SubscriptionsPage() {
           if (creditWarning.sub) handleMarkCancelled(creditWarning.sub);
         }}
       />
+
+      {/* Bulk Results Modal */}
+      {bulkResults && (
+        <div className="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 lg:p-8">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-2 font-[family-name:var(--font-heading)] flex items-center gap-2">
+                  <Sparkles className="h-6 w-6 text-mint-400" /> Bulk Cancellation Complete
+                </h2>
+                <p className="text-slate-400">We've drafted cancellation emails for {bulkResults.length} subscriptions.</p>
+              </div>
+              <button
+                onClick={() => setBulkResults(null)}
+                className="text-slate-400 hover:text-white p-2 rounded-lg transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {bulkResults.map((result, i) => (
+                <div key={i} className="bg-navy-950 border border-navy-700/50 rounded-xl p-5">
+                  <h3 className="text-lg font-semibold text-white mb-2">{result.sub.provider_name}</h3>
+                  {result.error ? (
+                    <div className="text-red-400 text-sm bg-red-400/10 p-3 rounded-lg border border-red-400/20">
+                      Error: {result.error}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-slate-300 mb-2 border-b border-navy-800 pb-2">
+                        Subject: {result.email.subject}
+                      </p>
+                      <div className="bg-navy-800/50 rounded-lg p-3 max-h-48 overflow-y-auto text-sm text-slate-300 font-mono text-xs whitespace-pre-wrap">
+                        {result.email.body}
+                      </div>
+                      <button
+                        onClick={() => handleCopy(result.email.body)}
+                        className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg text-sm transition-all"
+                      >
+                        {copied ? <CheckCircle className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                        {copied ? 'Copied' : 'Copy Email Body'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            <div className="mt-8 flex justify-end">
+              <button
+                onClick={() => setBulkResults(null)}
+                className="px-6 py-3 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bank toast (success or error) */}
       {bankToast && (
@@ -867,31 +1022,189 @@ export default function SubscriptionsPage() {
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Subscriptions</p>
-          <h3 className="text-2xl font-bold text-white">{formatGBP(totalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">{formatGBP(totalMonthly * 12)}/year</p>
+          <p className="text-slate-400 text-xs mb-1">Flexible (cancellable)</p>
+          <h3 className="text-2xl font-bold text-white">{formatGBP(flexibleTotalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">Savings opportunity</p>
         </div>
 
         <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Active</p>
-          <h3 className="text-2xl font-bold text-white">
-            {displaySubscriptions.filter((s) => s.status === 'active').length}
-          </h3>
-          <p className="text-slate-500 text-xs mt-1">tracked payments</p>
+          <p className="text-slate-400 text-xs mb-1">Fixed / Statutory</p>
+          <h3 className="text-xl font-bold text-slate-300">{formatGBP(statutoryTotalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">Council tax, water, etc</p>
         </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Annual Total</p>
-          <h3 className="text-2xl font-bold text-white">
-            {formatGBP(totalMonthly * 12)}
-          </h3>
-          <p className="text-slate-500 text-xs mt-1">annual subscriptions</p>
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 md:col-span-2 flex items-center justify-between">
+          <div>
+            <p className="text-slate-400 text-xs mb-1">Active Subscriptions</p>
+            <h3 className="text-2xl font-bold text-white">
+              {displaySubscriptions.filter((s) => s.status === 'active').length}
+            </h3>
+            <p className="text-slate-500 text-xs mt-1">Tracked active payments</p>
+          </div>
+          <div className="text-right">
+             <p className="text-slate-400 text-xs mb-1">Total Annual Cost</p>
+             <h3 className="text-2xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{formatGBP(totalMonthly * 12)}</h3>
+          </div>
         </div>
       </div>
+
+      {/* Filtering and Sorting Row */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 relative z-10">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide w-full max-w-full">
+          <button
+            onClick={() => setFilterCategory('All')}
+            className={`whitespace-nowrap px-4 py-2 rounded-full text-sm transition-all ${filterCategory === 'All' ? 'bg-mint-400 text-navy-950 font-semibold' : 'bg-navy-800 text-slate-300 hover:bg-navy-700'}`}
+          >
+            All
+          </button>
+          {SORTED_CATEGORIES.map(cat => (
+            <button
+              key={cat.value}
+              onClick={() => setFilterCategory(cat.value)}
+              className={`flex items-center gap-1.5 whitespace-nowrap px-4 py-2 rounded-full text-sm transition-all ${filterCategory === cat.value ? 'bg-mint-400 text-navy-950 font-semibold' : 'bg-navy-800 text-slate-300 hover:bg-navy-700'}`}
+            >
+              {(() => {
+                 const Icon = getCategoryIcon(cat.value);
+                 return <Icon className="w-3.5 h-3.5 opacity-70" />;
+              })()}
+              {cat.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="bg-navy-900 border border-navy-700/50 text-slate-300 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-mint-400"
+          >
+            <option value="price_desc">Price: High to Low</option>
+            <option value="price_asc">Price: Low to High</option>
+            <option value="category">Category</option>
+            <option value="date_added">Recently Used</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Bulk Action Bar */}
+      {selectedForBulk.size >= 2 && (
+        <div className="bg-mint-400/10 border border-mint-400/30 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in slide-in-from-bottom-4">
+          <p className="text-mint-400 font-medium ml-2">{selectedForBulk.size} items selected</p>
+          <div className="flex gap-3 w-full sm:w-auto">
+            <button
+              onClick={() => setSelectedForBulk(new Set())}
+              className="text-slate-400 hover:text-white px-3 py-2 text-sm transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleBulkCancel}
+              disabled={bulkGenerating}
+              className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2.5 rounded-lg text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {bulkGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Generate {selectedForBulk.size} Cancellation Emails
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Subscriptions list */}
         <div className="space-y-4">
+          {activeDuplicateGroups.length > 0 && (
+            <div className="bg-navy-900 border border-amber-500/30 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-amber-500/10 rounded-lg flex items-center justify-center shrink-0">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="text-white font-medium text-sm">Possible Duplicate Subscriptions</p>
+                    <p className="text-slate-400 text-xs">{activeDuplicateGroups.length} provider{activeDuplicateGroups.length !== 1 ? 's' : ''} — review before merging</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDuplicateDetails(v => !v)}
+                  className="text-xs text-amber-400 hover:text-amber-300 underline whitespace-nowrap"
+                >
+                  {showDuplicateDetails ? 'Hide details' : 'Review duplicates'}
+                </button>
+              </div>
+
+              {showDuplicateDetails && (
+                <div className="space-y-3 mt-2">
+                  {activeDuplicateGroups.map((group) => {
+                    const sorted = [...group].sort((a, b) => rankForKeep(b) - rankForKeep(a) || b.amount - a.amount);
+                    const keep = sorted[0];
+                    const remove = sorted.slice(1);
+                    const groupKey = `${cleanMerchantName(group[0].provider_name).toLowerCase()}|${group[0].category}`;
+                    const overrideAmt = groupAmountOverrides[groupKey] ?? String(keep.amount);
+                    return (
+                      <div key={groupKey} className="bg-navy-950/80 border border-navy-700/50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-white text-sm font-semibold">{cleanMerchantName(keep.provider_name)}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDismissGroup(groupKey)}
+                              className="text-xs text-slate-500 hover:text-slate-300 px-2 py-1 rounded transition-colors"
+                              title="Not a duplicate — dismiss"
+                            >
+                              Dismiss
+                            </button>
+                            <button
+                              onClick={() => handleMergeDuplicates(group, groupKey)}
+                              disabled={mergingDuplicates}
+                              className="text-xs bg-amber-500 hover:bg-amber-600 text-navy-950 font-semibold px-3 py-1 rounded transition-colors disabled:opacity-50"
+                            >
+                              Merge
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2 text-xs flex-wrap">
+                            <span className="w-14 text-green-400 font-medium shrink-0">Keep:</span>
+                            <span className="text-slate-200">{keep.provider_name}</span>
+                            <span className="text-slate-500">at</span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-slate-400">£</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={overrideAmt}
+                                onChange={e => setGroupAmountOverrides(prev => ({ ...prev, [groupKey]: e.target.value }))}
+                                className="w-20 bg-navy-800 border border-navy-600 rounded px-1.5 py-0.5 text-white text-xs focus:outline-none focus:border-amber-400"
+                              />
+                              <span className="text-slate-500">/{keep.billing_cycle}</span>
+                            </span>
+                            {keep.source && <span className="text-slate-500">({keep.source})</span>}
+                          </div>
+                          {remove.map(r => (
+                            <div key={r.id} className="flex items-center gap-2 text-xs">
+                              <span className="w-14 text-red-400 font-medium shrink-0">Remove:</span>
+                              <span className="text-slate-400 line-through">{r.provider_name}</span>
+                              <span className="text-slate-500">— £{r.amount}/{r.billing_cycle}</span>
+                              {r.source && <span className="text-slate-500">({r.source})</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {activeDuplicateGroups.length > 1 && (
+                    <button
+                      onClick={() => handleMergeDuplicates()}
+                      disabled={mergingDuplicates}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-navy-950 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {mergingDuplicates ? 'Merging...' : `Merge all ${activeDuplicateGroups.reduce((acc, g) => acc + g.length - 1, 0)} duplicates`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {hiddenFinanceCount > 0 && (
             <div className="bg-navy-900/50 border border-navy-700/30 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
               <p className="text-slate-500 text-xs">{hiddenFinanceCount} loan/mortgage/credit card payment{hiddenFinanceCount !== 1 ? 's' : ''} hidden. These are tracked in your <a href="/dashboard/money-hub" className="text-mint-400 hover:text-mint-300">Money Hub</a>.</p>
@@ -928,40 +1241,74 @@ export default function SubscriptionsPage() {
                     .catch(() => {});
                 }}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      {sub.logo_url ? (
-                        <>
-                          <Image
-                            src={sub.logo_url}
-                            alt={sub.provider_name}
-                            width={24}
-                            height={24}
-                            className="rounded-md shrink-0"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
-                          />
-                          <span className="w-6 h-6 rounded-md bg-mint-400/20 text-mint-400 flex items-center justify-center text-xs font-bold shrink-0 hidden">
+                <div className="flex items-start">
+                  <div className="pt-1 pr-4" onClick={(e) => { e.stopPropagation(); handleToggleBulk(sub.id); }}>
+                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors cursor-pointer ${selectedForBulk.has(sub.id) ? 'bg-mint-400 border-mint-400' : 'border-slate-500 hover:border-mint-400'}`}>
+                      {selectedForBulk.has(sub.id) && <svg className="w-3.5 h-3.5 text-navy-950" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 flex flex-col md:flex-row md:items-start justify-between gap-4">
+                    <div className="flex-1 relative">
+                      <div className="flex items-center gap-3 mb-2">
+                        {sub.logo_url ? (
+                          <>
+                            <Image
+                              src={sub.logo_url}
+                              alt={sub.provider_name}
+                              width={24}
+                              height={24}
+                              className="rounded-md shrink-0"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                            />
+                            <span className="w-6 h-6 rounded-md bg-mint-400/20 text-mint-400 flex items-center justify-center text-xs font-bold shrink-0 hidden">
+                              {normaliseProviderName(sub.provider_name).charAt(0).toUpperCase()}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="w-6 h-6 rounded-md bg-mint-400/20 text-mint-400 flex items-center justify-center text-xs font-bold shrink-0">
                             {normaliseProviderName(sub.provider_name).charAt(0).toUpperCase()}
                           </span>
-                        </>
-                      ) : (
-                        <span className="w-6 h-6 rounded-md bg-mint-400/20 text-mint-400 flex items-center justify-center text-xs font-bold shrink-0">
-                          {normaliseProviderName(sub.provider_name).charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                      <h3 className="text-lg font-semibold text-white">{normaliseProviderName(sub.provider_name)}</h3>
-                      {getStatusBadge(sub.status)}
-                      {getSourceBadges(sub.source)}
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-slate-400">
-                      {sub.category && (
-                        <span className="capitalize bg-navy-800 px-2 py-0.5 rounded text-xs">{sub.category.replace('_', ' ')}</span>
-                      )}
-                      <span>{formatGBP(sub.amount)}/{sub.billing_cycle === 'one-time' ? 'once' : sub.billing_cycle}</span>
-                      {sub.next_billing_date && (
-                        <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
-                      )}
+                        )}
+                        <h3 className="text-lg font-semibold text-white">{normaliseProviderName(sub.provider_name)}</h3>
+                        {getStatusBadge(sub.status)}
+                        {getSourceBadges(sub.source)}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mb-2">
+                        <div className="relative group inline-block" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => setInlineRecatSub(inlineRecatSub === sub.id ? null : sub.id)}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors font-medium border ${sub.category ? `${getCategoryColor(sub.category)} ${getCategoryBgColor(sub.category)} border-transparent hover:border-opacity-30` : 'text-slate-400 bg-navy-800 border-navy-700 hover:border-navy-600'}`}
+                          >
+                            {(() => {
+                               const Icon = sub.category ? getCategoryIcon(sub.category) : MoreHorizontal;
+                               return <Icon className="w-3 h-3" />;
+                            })()}
+                            <span>{sub.category ? getCategoryLabel(sub.category) : 'Uncategorised'}</span>
+                          </button>
+                          {inlineRecatSub === sub.id && (
+                            <div className="absolute top-full left-0 mt-1 w-48 bg-navy-800 border border-navy-700 rounded-lg shadow-xl z-20 max-h-64 overflow-y-auto">
+                              {SORTED_CATEGORIES.map(cat => (
+                                <button
+                                  key={cat.value}
+                                  onClick={() => handleInlineRecategorise(sub, cat.value)}
+                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-navy-700 flex items-center gap-2 ${sub.category === cat.value ? 'text-mint-400 bg-mint-400/5' : 'text-slate-300'}`}
+                                >
+                                  {(() => {
+                                     const Icon = getCategoryIcon(cat.value);
+                                     return <Icon className="w-3.5 h-3.5 opacity-70" />;
+                                  })()}
+                                  {cat.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <span>{formatGBP(sub.amount)}/{sub.billing_cycle === 'one-time' ? 'once' : sub.billing_cycle}</span>
+                        {sub.next_billing_date && (
+                          <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
+                        )}
                       {sub.contract_end_date && (() => {
                         const daysLeft = Math.ceil((new Date(sub.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         const urgency = daysLeft <= 7 ? 'text-red-400 bg-red-500/10' : daysLeft <= 30 ? 'text-mint-400 bg-mint-400/10' : 'text-blue-400 bg-blue-500/10';
@@ -1001,7 +1348,7 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-col items-end gap-2 ml-4">
+                  <div className="flex flex-col items-end gap-2 shrink-0">
                     <div className="text-right">
                       <p className="text-xl font-bold text-white">{formatGBP(sub.amount)}</p>
                       <p className="text-xs text-slate-500">{sub.billing_cycle}</p>
@@ -1028,8 +1375,9 @@ export default function SubscriptionsPage() {
                     </button>
                   </div>
                 </div>
+              </div>
 
-                {sub.status === 'active' && (
+              {sub.status === 'active' && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
                     {isStatutoryService(sub.provider_name) ? (
                       <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">
