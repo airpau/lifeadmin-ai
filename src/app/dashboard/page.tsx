@@ -233,8 +233,11 @@ export default function DashboardPage() {
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
 
-        // Calculate real potential savings from price alerts
-        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => sum + (parseFloat(a.annual_impact) || 0), 0);
+        // Calculate real potential savings from price alerts (use actual price diff, not annual_impact which may be empty)
+        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
+          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+        }, 0);
         setPotentialSavings(priceAlertImpact);
 
       } catch (error) {
@@ -379,7 +382,10 @@ export default function DashboardPage() {
               <TrendingUp className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => sum + (parseFloat(a.annual_impact) || 0), 0))}/yr</p>
+              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => {
+                const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+                return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+              }, 0))}/yr</p>
               <p className="text-slate-400 text-xs">Price increase alerts</p>
             </div>
           </button>
