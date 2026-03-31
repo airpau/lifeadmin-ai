@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import { cleanMerchantName } from '@/lib/merchant-utils';
+import { FEATURE_FLAGS } from '@/lib/feature-flags';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ const EMOJI_GOAL_NAMES: Record<string, string> = {
 
 const TOUR_STEPS: TourStep[] = [
   { target: 'tour-header', title: 'Welcome to Money Hub', description: 'Your complete financial intelligence centre. Everything you need to understand and improve your finances is right here.' },
-  { target: 'tour-overview', title: 'Financial Overview', description: 'Your income and spending at a glance. See your net position and how far through the month you are.' },
+  { target: 'tour-overview', title: 'Financial Overview', description: 'Your income and spending at a glance. See your savings rate and how far through the month you are.' },
   { target: 'tour-income', title: 'Income Breakdown', description: 'See exactly where your money comes from — salary, freelance, benefits, investments and more.' },
   { target: 'tour-spending', title: 'Spending Intelligence', description: 'Understand where your money goes. Click any category to drill down into individual transactions and merchants.' },
   { target: 'tour-trends', title: 'Monthly Trends', description: 'Hover over months to compare income and outgoings. Spot patterns in your spending over time.' },
@@ -264,6 +265,9 @@ export default function MoneyHubPage() {
 
   // Tour
   const [tourStep, setTourStep] = useState<number | null>(null);
+  
+  // FCA Banner
+  const [showFcaBanner, setShowFcaBanner] = useState(false);
 
   // AI Chat (Pro)
   const [chatOpen, setChatOpen] = useState(false);
@@ -619,6 +623,11 @@ export default function MoneyHubPage() {
     try { localStorage.setItem('mh_tour_completed', 'true'); } catch { /* silent */ }
   };
 
+  const dismissFcaBanner = () => {
+    setShowFcaBanner(false);
+    try { localStorage.setItem('pb_fca_banner_dismissed', 'true'); } catch { /* silent */ }
+  };
+
   // Remove custom widget
   const removeWidget = (id: string) => {
     setCustomWidgets(prev => {
@@ -653,6 +662,13 @@ export default function MoneyHubPage() {
     try {
       if (!localStorage.getItem('mh_tour_completed')) {
         setTimeout(() => setTourStep(0), 1000);
+      }
+    } catch { /* silent */ }
+
+    // Check FCA Banner
+    try {
+      if (!localStorage.getItem('pb_fca_banner_dismissed')) {
+        setShowFcaBanner(true);
       }
     } catch { /* silent */ }
 
@@ -824,6 +840,21 @@ export default function MoneyHubPage() {
         </div>
       </div>
 
+      {/* FCA Compliance Banner */}
+      {showFcaBanner && (
+        <div className="bg-sky-500/10 border border-sky-400/20 rounded-xl p-3 flex items-start gap-3 relative">
+          <Shield className="h-5 w-5 text-sky-400 shrink-0 mt-0.5" />
+          <div className="flex-1 pr-6">
+            <p className="text-sky-300 text-sm">
+              Your financial data is powered by secure Open Banking transaction analysis. Bank balance display coming soon.
+            </p>
+          </div>
+          <button onClick={dismissFcaBanner} className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* ═══ SECTION 1: Financial Snapshot ═══ */}
       {(() => {
         // Calculate month-on-month changes from trends data
@@ -872,11 +903,25 @@ export default function MoneyHubPage() {
                 )}
               </div>
               <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-                <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
-                <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {data.overview.netPosition >= 0 ? '+' : '-'}£{fmt(Math.abs(data.overview.netPosition))}
-                </p>
-                <p className="text-slate-400 text-xs">Net position</p>
+                {(() => {
+                  const hasIncome = data.overview.monthlyIncome > 0;
+                  const savingsRate = hasIncome 
+                    ? ((data.overview.monthlyIncome - data.overview.monthlyOutgoings) / data.overview.monthlyIncome * 100)
+                    : 0;
+                  const isPositive = savingsRate >= 0;
+                  return (
+                    <>
+                      <div className="mb-2 w-5 h-5 rounded-full border-2 border-current flex items-center justify-center opacity-80" style={{ color: hasIncome ? (isPositive ? '#4ade80' : '#f87171') : '#64748b' }}>
+                        <div className="w-2.5 h-2.5 rounded-full bg-current opacity-80" />
+                      </div>
+                      <p className={`text-2xl font-bold ${hasIncome ? (isPositive ? 'text-green-400' : 'text-red-400') : 'text-slate-500'}`}>
+                        {hasIncome ? `${savingsRate.toFixed(1)}%` : 'N/A'}
+                      </p>
+                      <p className="text-slate-400 text-xs mt-1">Savings Rate</p>
+                      <p className="text-slate-500 text-[10px]">{hasIncome ? 'of income saved this month' : 'No income recorded'}</p>
+                    </>
+                  );
+                })()}
               </div>
               <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
                 <Calendar className="h-5 w-5 text-blue-400 mb-2" />
@@ -980,6 +1025,12 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 2: Bank Accounts ═══ */}
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        {/*
+          FCA COMPLIANCE: Do NOT add account balance display here.
+          Displaying bank account balances requires FCA agent registration.
+          Only show: bank name, connection status, last sync time.
+          Balance display can be added once FCA approval is obtained.
+        */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
             <Building2 className="h-5 w-5 text-purple-400" /> Bank Accounts
@@ -1002,6 +1053,10 @@ export default function MoneyHubPage() {
                 <div className="flex items-center gap-3">
                   <Building2 className="h-4 w-4 text-green-400" />
                   <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
+                  {/* Only fetch/display balance if FCA approved */}
+                  {FEATURE_FLAGS.SHOW_BANK_BALANCES && (
+                    <span className="text-emerald-400 font-bold ml-4">£---</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{acc.status}</span>
@@ -1292,7 +1347,7 @@ export default function MoneyHubPage() {
 
           {(data.netWorth.assetsList?.length || 0) === 0 && (data.netWorth.liabilitiesList?.length || 0) === 0 && (
             <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-6 mb-4 text-center">
-              <p className="text-sm text-slate-400">Complete Money Hub setup above to unlock Net Worth tracking.</p>
+              <p className="text-sm text-slate-400">Track your net worth by manually adding your assets and liabilities below. Auto-sync with bank balances coming soon.</p>
             </div>
           )}
 

@@ -243,25 +243,36 @@ IMPORTANT:
       }
     }
 
-    // Save opportunities to tasks table
+    // Filter out opportunities that already exist in the database (even if dismissed)
     if (opportunities.length > 0) {
-      const rows = opportunities.map((opp) => ({
-        user_id: user.id,
-        type: 'opportunity',
-        title: opp.title,
-        description: JSON.stringify(opp),
-        provider_name: opp.provider,
-        priority: opp.confidence >= 80 ? 'high' : opp.confidence >= 60 ? 'medium' : 'low',
-        status: 'pending_review',
-        source: 'imap_scan',
-      }));
+      const { data: existing } = await admin
+        .from('tasks')
+        .select('title')
+        .eq('user_id', user.id)
+        .eq('type', 'opportunity');
+        
+      const existingTitles = new Set((existing || []).map((t: any) => t.title));
+      opportunities = opportunities.filter((o) => !existingTitles.has(o.title));
 
-      const { error: insertErr } = await admin.from('tasks').upsert(rows, {
-        onConflict: 'user_id,title',
-        ignoreDuplicates: true,
-      });
-      if (insertErr) {
-        console.error('[email/scan] Task insert error:', insertErr);
+      if (opportunities.length > 0) {
+        const rows = opportunities.map((opp) => ({
+          user_id: user.id,
+          type: 'opportunity',
+          title: opp.title,
+          description: JSON.stringify(opp),
+          provider_name: opp.provider,
+          priority: opp.confidence >= 80 ? 'high' : opp.confidence >= 60 ? 'medium' : 'low',
+          status: 'pending_review',
+          source: 'imap_scan',
+        }));
+
+        const { error: insertErr } = await admin.from('tasks').upsert(rows, {
+          onConflict: 'user_id,title',
+          ignoreDuplicates: true,
+        });
+        if (insertErr) {
+          console.error('[email/scan] Task insert error:', insertErr);
+        }
       }
     }
 

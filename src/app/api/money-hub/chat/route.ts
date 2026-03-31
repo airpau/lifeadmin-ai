@@ -85,7 +85,7 @@ INCOME: £${income.toFixed(2)} total
 OUTGOINGS: £${outgoings.toFixed(2)} total
 - By category: ${catSummary || 'no spending data'}
 
-NET POSITION: £${(income - outgoings).toFixed(2)}
+SAVINGS RATE: ${income > 0 ? (((income - outgoings) / income) * 100).toFixed(1) + '%' : 'N/A'}
 SUBSCRIPTIONS: ${(subs.data || []).length} active (${subsSummary || 'none'})
 BUDGETS: ${budgetSummary || 'none set'}
 GOALS: ${goalsSummary || 'none'}

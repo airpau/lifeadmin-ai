@@ -118,5 +118,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create dispute' }, { status: 500 });
   }
 
+  // If this dispute originated from a price increase alert, update the alert status
+  if (body.alert_id) {
+    await supabase
+      .from('price_increase_alerts')
+      .update({ status: 'in_progress' })
+      .eq('id', body.alert_id)
+      .eq('user_id', user.id);
+  }
+
   return NextResponse.json(dispute, { status: 201 });
 }

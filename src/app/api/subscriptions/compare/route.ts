@@ -23,16 +23,18 @@ export async function GET(request: NextRequest) {
       // Fetch all saved comparisons for user's subscriptions
       const { data: subs } = await supabase
         .from('subscriptions')
-        .select('id')
+        .select('id, provider_name, category, provider_type')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .is('dismissed_at', null);
 
       if (!subs || subs.length === 0) {
-        return NextResponse.json({ comparisons: {} });
+        return NextResponse.json({ totalAnnualSaving: 0, count: 0, subscriptionsCompared: 0, subscriptions: [] });
       }
 
-      const subIds = subs.map(s => s.id);
+      const subIds = subs.map((s: any) => s.id);
+      const subMap = new Map((subs || []).map((s: any) => [s.id, s]));
+
       const { data: comps } = await supabase
         .from('subscription_comparisons')
         .select('*')
@@ -40,10 +42,16 @@ export async function GET(request: NextRequest) {
         .eq('dismissed', false)
         .order('annual_saving', { ascending: false });
 
-      // Group by subscription_id
       const grouped: Record<string, any[]> = {};
+      let totalAnnualSaving = 0;
+      let count = 0;
+
       for (const c of (comps || [])) {
-        if (!grouped[c.subscription_id]) grouped[c.subscription_id] = [];
+        if (!grouped[c.subscription_id]) {
+          grouped[c.subscription_id] = [];
+          count++; // unique subscriptions with a deal
+          totalAnnualSaving += parseFloat(String(c.annual_saving)); // only count best deal
+        }
         grouped[c.subscription_id].push({
           dealProvider: c.deal_provider,
           dealName: c.deal_name,
@@ -54,7 +62,23 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      return NextResponse.json({ comparisons: grouped });
+      const subscriptions = Object.keys(grouped).map(subId => {
+        const sub = subMap.get(subId);
+        return {
+          subscriptionId: subId,
+          subscriptionName: normaliseMerchantName(sub?.provider_name || 'Unknown'),
+          providerName: normaliseMerchantName(sub?.provider_name || 'Unknown'),
+          category: sub?.category || sub?.provider_type || '',
+          comparisons: grouped[subId] || [],
+        };
+      });
+
+      return NextResponse.json({
+        totalAnnualSaving,
+        count,
+        subscriptionsCompared: subIds.length,
+        subscriptions,
+      });
     }
 
     const subscriptionId = request.nextUrl.searchParams.get('subscriptionId');

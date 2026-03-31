@@ -13,10 +13,12 @@ import {
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
+import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
+  const [dealsLoading, setDealsLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [subscriptionCount, setSubscriptionCount] = useState(0);
   const [monthlySpend, setMonthlySpend] = useState(0);
@@ -33,6 +35,7 @@ export default function DashboardPage() {
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
   const [comparisonDeals, setComparisonDeals] = useState<Array<{ subscriptionName: string; currentPrice: number; dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string; category: string }>>([]);
+  const [activeSubscriptions, setActiveSubscriptions] = useState<any[]>([]);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -195,10 +198,12 @@ export default function DashboardPage() {
           if (s.billing_cycle === 'quarterly') return sum + amt * 4;
           return sum + amt * 12;
         }, 0);
-        setPotentialSavings(annualSpend * 0.15);
+
+        // potentialSavings will be calculated after all data loads (see below)
 
         const subsList = subs.data || [];
         setSubscriptionCount(subsList.length);
+        setActiveSubscriptions(subsList);
 
         // Calculate monthly spend
         const monthly = subsList.reduce((sum, s) => {
@@ -228,6 +233,10 @@ export default function DashboardPage() {
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
 
+        // Calculate real potential savings from price alerts
+        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => sum + (parseFloat(a.annual_impact) || 0), 0);
+        setPotentialSavings(priceAlertImpact);
+
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -236,7 +245,7 @@ export default function DashboardPage() {
 
       // Fetch subscription comparison data (non-blocking, runs after dashboard loads)
       try {
-        const compRes = await fetch('/api/subscriptions/compare', { method: 'POST' });
+        const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
         if (compRes.ok) {
           const compData = await compRes.json();
           setComparisonSaving(compData.totalAnnualSaving || 0);
@@ -257,8 +266,14 @@ export default function DashboardPage() {
             }
           }
           setComparisonDeals(dealsList);
+
+          // Update potential savings to include comparison deals
+          setPotentialSavings(prev => prev + (compData.totalAnnualSaving || 0));
         }
       } catch {} // Non-critical
+      finally {
+        setDealsLoading(false);
+      }
     };
     fetchData();
   }, [supabase]);
@@ -365,7 +380,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => sum + (parseFloat(a.annual_impact) || 0), 0))}/yr</p>
-              <p className="text-slate-400 text-xs">Price hikes detected</p>
+              <p className="text-slate-400 text-xs">Price increase alerts</p>
             </div>
           </button>
 
@@ -398,7 +413,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Savings Opportunity Widget */}
-      <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />
+      {dealsLoading ? <SavingsSkeleton /> : <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />}
 
       {/* Price Increase Alerts */}
       {priceAlerts.length > 0 && (
@@ -436,26 +451,26 @@ export default function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <CreditCard className="h-6 w-6 text-mint-400 mb-3" />
           <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
           <p className="text-slate-400 text-sm">Subscriptions tracked</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        </Link>
+        <Link href="/dashboard/money-hub" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
           <p className="text-slate-400 text-sm">Monthly spend</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        </Link>
+        <Link href="/dashboard/complaints" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <FileText className="h-6 w-6 text-blue-400 mb-3" />
           <p className="text-3xl font-bold text-white">{complaintsGenerated}</p>
           <p className="text-slate-400 text-sm">Disputes</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        </Link>
+        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <Building2 className="h-6 w-6 text-green-400 mb-3" />
           <p className="text-3xl font-bold text-white">{bankConnected ? 'Connected' : 'Not set up'}</p>
           <p className="text-slate-400 text-sm">Bank account</p>
-        </div>
+        </Link>
       </div>
 
       {/* Alerts */}
@@ -518,7 +533,16 @@ export default function DashboardPage() {
           return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, needsComplaint, needsDeal, needsSubscription };
         });
 
-        let filtered = processedTasks;
+        let filtered = processedTasks.filter((task) => {
+          if (task.needsSubscription && task.provider) {
+             const existing = activeSubscriptions.some(sub => 
+               (sub.provider_name || '').toLowerCase().includes(task.provider.toLowerCase()) || 
+               task.provider.toLowerCase().includes((sub.provider_name || '').toLowerCase())
+             );
+             if (existing) return false;
+          }
+          return true;
+        });
         if (taskFilter === 'disputes') filtered = filtered.filter(t => t.needsComplaint || t.isFlightDelay || t.isLoan);
         if (taskFilter === 'deals') filtered = filtered.filter(t => t.needsDeal);
         if (taskFilter === 'subscriptions') filtered = filtered.filter(t => t.needsSubscription);
@@ -578,11 +602,11 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
-                        {task.provider && <span className="text-slate-500 text-xs">{task.provider}</span>}
+                        {task.provider && <span className="text-slate-500 text-xs">{cleanMerchantName(task.provider)}</span>}
                         {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.descText}</p>
+                      <p className="text-slate-400 text-xs mt-1 line-clamp-2 first-letter:capitalize">{task.descText}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
@@ -603,7 +627,7 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {task.needsSubscription && (
-                      <Link href="/dashboard/subscriptions" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href={`/dashboard/subscriptions?new=1&provider=${encodeURIComponent(task.provider)}&amount=${task.amount || ''}&taskId=${task.id}`} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <CreditCard className="h-3 w-3" /> Track Subscription
                       </Link>
                     )}

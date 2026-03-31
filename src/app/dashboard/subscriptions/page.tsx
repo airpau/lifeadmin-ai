@@ -176,6 +176,26 @@ export default function SubscriptionsPage() {
   useEffect(() => {
     const cat = searchParams.get('category');
     if (cat) setFilterCategory(cat);
+
+    const isNew = searchParams.get('new');
+    if (isNew === '1') {
+      const provider = searchParams.get('provider');
+      const amount = searchParams.get('amount');
+      
+      setNewSub(prev => ({
+        ...prev,
+        provider_name: provider || '',
+        amount: amount || '',
+        category: 'streaming',
+      }));
+      setShowAddForm(true);
+      // Clean up the URL to prevent re-opening on refresh
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('new');
+      newUrl.searchParams.delete('provider');
+      newUrl.searchParams.delete('amount');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
   }, [searchParams]);
 
   // Update URL
@@ -426,6 +446,19 @@ export default function SubscriptionsPage() {
           current_tariff: '',
           source: 'manual',
         });
+        
+        // Auto-dismiss the task that triggered this
+        const taskId = searchParams.get('taskId');
+        if (taskId) {
+           await fetch('/api/tasks/dismiss', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ taskId })
+           });
+           const newUrl = new URL(window.location.href);
+           newUrl.searchParams.delete('taskId');
+           window.history.replaceState({}, '', newUrl.toString());
+        }
       }
     } catch (error) {
       console.error('Error adding subscription:', error);
