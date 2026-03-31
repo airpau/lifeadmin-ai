@@ -173,7 +173,17 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-navy-950 rounded-xl p-6 border border-navy-700/50 mb-4">
-            <pre className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">{content}</pre>
+            <pre
+              className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed"
+              onCopy={(e) => {
+                // Override browser's default rich-text copy (which carries white colour styling).
+                // Force plain text so the letter pastes correctly into Gmail, Outlook, etc.
+                const sel = window.getSelection();
+                if (!sel) return;
+                e.preventDefault();
+                e.clipboardData?.setData('text/plain', sel.toString());
+              }}
+            >{content}</pre>
           </div>
           {(rightsPills && rightsPills.length > 0 || legalRefs.length > 0) && (
             <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50 mb-3">

@@ -89,11 +89,20 @@ export async function GET(request: Request) {
 
     const spendingTxns = thisMonthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t));
 
+    // Generic auto-assigned categories that can be overridden by runtime categorisation.
+    // These are fallback values the old sync assigned when no keyword matched — they are
+    // NOT user corrections, so we allow the runtime categoriser to produce something more
+    // specific (e.g. mortgage transactions sitting in 'bills', groceries in 'shopping').
+    const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
+
     const categoryTotals: Record<string, number> = {};
     const merchantTotals: Record<string, number> = {};
     for (const t of spendingTxns) {
-      // Prefer user_category (set by user or Money Hub sync), fall back to auto-categorise
-      const cat = t.user_category || categorise(t.description || '', t.category || '');
+      // Prefer user_category unless it's a generic auto-assigned fallback
+      const rawCat = t.user_category || '';
+      const cat = (rawCat && !SOFT_CATEGORIES.has(rawCat))
+        ? rawCat
+        : (categorise(t.description || '', t.category || '') || rawCat || 'other');
       const amt = Math.abs(parseFloat(t.amount));
       categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
       const merchant = normaliseMerchantName(t.merchant_name || t.description || '');

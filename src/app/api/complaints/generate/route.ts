@@ -158,14 +158,25 @@ export async function POST(request: NextRequest) {
 
     const { data: legalRefs } = await supabase
       .from('legal_references')
-      .select('law_name, section, summary, source_url, escalation_body, strength')
+      .select('law_name, section, summary, source_url, escalation_body, strength, applies_to, category')
       .in('category', categories)
       .in('verification_status', ['current', 'updated'])
       .gte('confidence_score', 60);
 
+    // Filter out 'general' refs that have a sector-specific applies_to array which doesn't
+    // overlap with the current dispute's categories. This prevents gym/fitness legal refs
+    // (mislabelled as 'general') from appearing in broadband or energy letters.
+    const relevantRefs = (legalRefs || []).filter(r => {
+      if (r.category !== 'general') return true; // Non-general refs are already scoped correctly
+      const appliesTo: string[] = Array.isArray(r.applies_to) ? r.applies_to : [];
+      if (appliesTo.length === 0) return true; // Truly general — no sector restriction
+      // Only include if applies_to overlaps with the dispute's categories
+      return appliesTo.some((a: string) => categories.includes(a.toLowerCase()));
+    });
+
     let verifiedLegalRefs = '';
-    if (legalRefs && legalRefs.length > 0) {
-      verifiedLegalRefs = legalRefs.map(r =>
+    if (relevantRefs.length > 0) {
+      verifiedLegalRefs = relevantRefs.map(r =>
         `- ${r.law_name}${r.section ? `, ${r.section}` : ''}: ${r.summary}${r.escalation_body ? ` (Escalate to: ${r.escalation_body})` : ''} [Source: ${r.source_url}]`
       ).join('\n');
     }
