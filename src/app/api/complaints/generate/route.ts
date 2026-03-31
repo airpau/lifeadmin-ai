@@ -281,9 +281,10 @@ export async function POST(request: NextRequest) {
         .replace(/\[ACCOUNT NUMBER\]/gi, body.accountNumber || '[Account number not provided]');
     }
 
-    // Build rights pills — ONLY include refs that match what the AI actually cited in the letter
-    // This prevents irrelevant general refs (gym terms, goods quality, etc.) from showing.
-    const allFetchedRefs = legalRefs || [];
+    // Build rights pills — start from relevantRefs (already filtered by category/sector) so that
+    // gym, fitness, or other mislabelled 'general' refs never appear in unrelated dispute letters,
+    // then further narrow to what the AI actually cited.
+    const allFetchedRefs = relevantRefs.length > 0 ? relevantRefs : (legalRefs || []);
     let matchedRefs = allFetchedRefs;
 
     if (result.legalReferences && result.legalReferences.length > 0) {

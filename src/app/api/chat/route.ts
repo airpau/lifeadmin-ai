@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+// product-context.ts is the seed/fallback; runtime source of truth is product_features table
 import { PRODUCT_CONTEXT } from '@/lib/product-context';
 import { getToolDefinitions, executeTool } from './tools/registry';
 
@@ -18,9 +19,149 @@ function getAdmin() {
   );
 }
 
-const SYSTEM_PROMPT = `You are the Paybacker support assistant. You help users understand how Paybacker works and answer questions about UK consumer rights.
+// --- Product features cache (5-minute TTL per warm instance) ---
 
-${PRODUCT_CONTEXT}
+interface FeatureRow {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  tier_access: string[];
+  route_path: string | null;
+  is_active: boolean;
+  usage_count: number;
+}
+
+interface FeaturesCache {
+  features: FeatureRow[];
+  context: string;
+  ts: number;
+}
+
+let featureCache: FeaturesCache | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+const CATEGORY_LABELS: Record<string, string> = {
+  money_recovery: 'Money Recovery and Disputes',
+  financial_tracking: 'Financial Tracking and Budgeting',
+  ai_tools: 'AI-Powered Tools',
+  savings: 'Savings and Challenges',
+  deals: 'Deals and Comparison',
+  social: 'Community and Rewards',
+};
+
+function buildFeaturesContext(features: FeatureRow[]): string {
+  const grouped = new Map<string, FeatureRow[]>();
+  for (const f of features) {
+    if (!grouped.has(f.category)) grouped.set(f.category, []);
+    grouped.get(f.category)!.push(f);
+  }
+
+  const lines: string[] = [
+    'About Paybacker (paybacker.co.uk):',
+    'An AI-powered savings platform for UK consumers. We help people dispute unfair bills, track subscriptions, scan bank accounts and email inboxes, and take control of their finances.',
+    '',
+    'FEATURE CATALOGUE:',
+    '',
+  ];
+
+  let num = 1;
+  for (const [cat, feats] of grouped) {
+    const label = CATEGORY_LABELS[cat] || cat;
+    lines.push(`[${label}]`);
+    for (const f of feats) {
+      const tiers = f.tier_access.join(', ');
+      lines.push(`${num}. ${f.name} (${tiers}): ${f.description}`);
+      if (f.route_path) lines.push(`   Dashboard: ${f.route_path}`);
+      num++;
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+async function getFeatures(): Promise<FeaturesCache> {
+  if (featureCache && Date.now() - featureCache.ts < CACHE_TTL_MS) {
+    return featureCache;
+  }
+  try {
+    const admin = getAdmin();
+    const { data, error } = await admin
+      .from('product_features')
+      .select('id, name, description, category, tier_access, route_path, is_active, usage_count')
+      .eq('is_active', true)
+      .order('category')
+      .order('name');
+
+    if (error || !data || data.length === 0) {
+      console.warn('[chat] product_features fetch failed or empty, using static fallback:', error?.message);
+      featureCache = { features: [], context: PRODUCT_CONTEXT, ts: Date.now() };
+    } else {
+      featureCache = {
+        features: data,
+        context: buildFeaturesContext(data),
+        ts: Date.now(),
+      };
+    }
+  } catch (err) {
+    console.error('[chat] getFeatures threw, using static fallback:', err);
+    featureCache = { features: [], context: PRODUCT_CONTEXT, ts: Date.now() };
+  }
+  return featureCache!;
+}
+
+// Fire-and-forget: log a chatbot question with matched features and confidence
+async function logChatQuestion(
+  userId: string | null,
+  question: string,
+  response: string,
+  features: FeatureRow[]
+): Promise<void> {
+  try {
+    const admin = getAdmin();
+    const responseLower = response.toLowerCase();
+
+    // Which feature names appear in the bot's response?
+    const matchedFeatures = features
+      .filter(f => responseLower.includes(f.name.toLowerCase()))
+      .map(f => f.name);
+
+    // Detect low-confidence signals in the response
+    const LOW_CONF_SIGNALS = [
+      "i'm not sure", "i don't have", "i don't know", "not available",
+      "i cannot find", "i can't find", "unable to find", "i'm unable",
+      "not something i", "sorry, i", "i'm sorry, i", "i don't have information",
+      "i can't answer", "i cannot answer", "not in my knowledge",
+    ];
+    const hasLowConfidence = LOW_CONF_SIGNALS.some(s => responseLower.includes(s));
+
+    const confidence = hasLowConfidence ? 0.25 : (matchedFeatures.length > 0 ? 0.85 : 0.6);
+    const unanswered = hasLowConfidence && matchedFeatures.length === 0;
+
+    await admin.from('chatbot_question_log').insert({
+      user_id: userId,
+      question: question.slice(0, 1000), // cap length
+      matched_features: matchedFeatures,
+      confidence,
+      unanswered,
+    });
+
+    // Increment usage_count for each matched feature (atomic via SQL function)
+    for (const featureName of matchedFeatures) {
+      admin.rpc('increment_feature_usage', { p_feature_name: featureName })
+        .then(({ error }) => {
+          if (error) console.error('[chat] Feature usage increment failed:', error.message);
+        });
+    }
+  } catch (err) {
+    console.error('[chat] logChatQuestion failed:', err);
+  }
+}
+
+function buildSystemPrompt(featuresCtx: string): string {
+  return `You are the Paybacker support assistant. You help users understand how Paybacker works and answer questions about UK consumer rights.
+
+${featuresCtx}
 
 ## Dashboard Customisation
 Users can customise their dashboard layout through you. When they ask to show, hide, or rearrange widgets, include a dashboard command in your response:
@@ -128,6 +269,7 @@ When a user says "find me a better broadband deal", "complain about my energy bi
 - Use British English and £ symbols
 - NEVER use em dashes. Use commas, full stops, or colons instead.
 - End with a helpful follow-up question or suggestion where appropriate`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -149,6 +291,9 @@ export async function POST(request: NextRequest) {
     } catch (authErr: any) {
       console.error('[chat] Auth threw exception:', authErr.message);
     }
+
+    // Load product features from DB (cached 5 min)
+    const { features: featureList, context: featuresCtx } = await getFeatures();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages required' }, { status: 400 });
@@ -231,7 +376,7 @@ ${userTier === 'pro' ? `
       }
     }
 
-    const systemPrompt = SYSTEM_PROMPT + anonymousRules + tierContext + subscriptionContext;
+    const systemPrompt = buildSystemPrompt(featuresCtx) + anonymousRules + tierContext + subscriptionContext;
 
     // Only provide tools to logged-in users
     const tools: Anthropic.Messages.Tool[] = isLoggedIn
@@ -316,6 +461,12 @@ ${userTier === 'pro' ? `
       if (round === MAX_TOOL_ROUNDS - 1) {
         finalText = textBlocks.map((b) => b.text).join('\n') || 'I have completed the requested changes to your subscriptions.';
       }
+    }
+
+    // Log question to chatbot_question_log (fire-and-forget, non-blocking)
+    const lastUserMessage = [...messages].reverse().find((m: { role: string; content: string }) => m.role === 'user');
+    if (lastUserMessage && finalText) {
+      logChatQuestion(userId, lastUserMessage.content, finalText, featureList);
     }
 
     // Cost tracking -- Sonnet 4: input $3/1M, output $15/1M

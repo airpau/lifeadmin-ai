@@ -123,6 +123,14 @@
     {
       "path": "/api/cron/check-deal-prices",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/discover-features",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/analyze-chatbot-gaps",
+      "schedule": "0 6 * * 1"
     }
   ]
 }

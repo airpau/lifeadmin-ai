@@ -55,7 +55,12 @@ export async function GET(request: NextRequest) {
     query = query.lte('timestamp', until.toISOString());
   }
 
-  const { data: txns } = await query;
+  const [{ data: txns }, { data: overrideRows }] = await Promise.all([
+    query,
+    admin.from('money_hub_category_overrides')
+      .select('merchant_pattern, transaction_id')
+      .eq('user_id', user.id),
+  ]);
 
   // Load learned rules for learning-aware categorisation
   await loadLearnedRules();
@@ -63,13 +68,28 @@ export async function GET(request: NextRequest) {
   // Generic auto-assigned categories that can be overridden by runtime categorisation.
   // Allows mortgage transactions stored as 'bills' and groceries stored as 'shopping'
   // to be correctly re-categorised for drill-down without requiring a full re-sync.
+  // Exception: if the user explicitly recategorised the transaction, respect their choice.
   const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
+
+  const txnOverrideIds = new Set(
+    (overrideRows || []).filter(o => o.transaction_id).map(o => o.transaction_id as string)
+  );
+  const merchantOverridePatterns = (overrideRows || [])
+    .filter(o => !o.transaction_id && o.merchant_pattern !== 'txn_specific')
+    .map(o => (o.merchant_pattern as string).toLowerCase());
+
+  function isUserOverride(t: { id: string; merchant_name?: string; description?: string }): boolean {
+    if (txnOverrideIds.has(t.id)) return true;
+    const merchantLower = (t.merchant_name || '').toLowerCase();
+    const descLower = (t.description || '').toLowerCase();
+    return merchantOverridePatterns.some(p => p.length > 2 && (merchantLower.includes(p) || descLower.includes(p)));
+  }
 
   let filtered = (txns || []).map(t => ({
     ...t,
     spending_category: (() => {
       const rawCat = t.user_category || '';
-      if (rawCat && !SOFT_CATEGORIES.has(rawCat)) return rawCat;
+      if (rawCat && (!SOFT_CATEGORIES.has(rawCat) || isUserOverride(t))) return rawCat;
       return categorise(t.description || '', t.category || '', parseFloat(t.amount)) || rawCat || 'other';
     })(),
     amount: parseFloat(t.amount),
