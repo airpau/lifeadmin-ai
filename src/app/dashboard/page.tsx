@@ -681,7 +681,7 @@ export default function DashboardPage() {
           className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <Building2 className="h-8 w-8 text-purple-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">AI Letters</h3>
+          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Disputes</h3>
           <p className="text-slate-400 text-sm">Complaints, HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
           <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Start a dispute <ArrowRight className="h-3 w-3" /></span>
         </Link>

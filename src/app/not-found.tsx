@@ -28,6 +28,8 @@ export default function NotFound() {
           <Link href="/deals" className="hover:text-white transition-all">Deals</Link>
           <Link href="/blog" className="hover:text-white transition-all">Blog</Link>
           <Link href="/about" className="hover:text-white transition-all">About</Link>
+          <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy Policy</Link>
+          <Link href="/terms-of-service" className="hover:text-white transition-all">Terms of Service</Link>
         </div>
       </div>
     </div>

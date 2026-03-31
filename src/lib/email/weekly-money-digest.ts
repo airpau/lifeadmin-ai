@@ -143,14 +143,6 @@ export function buildWeeklyDigestEmail(
           </table>
         ` : ''}
 
-        <!-- Savings score -->
-        ${data.totalSaved > 0 ? `
-          <div style="background: #162544; border: 1px solid #34d399; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
-            <p style="color: #34d399; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 4px;">Money Recovery Score</p>
-            <p style="color: white; font-size: 24px; font-weight: bold; margin: 0;">£${Math.round(data.totalSaved)} saved</p>
-          </div>
-        ` : ''}
-
         <!-- CTA -->
         <div style="text-align: center; margin: 28px 0;">
           <a href="https://paybacker.co.uk/dashboard/money-hub" style="display: inline-block; background: #34d399; color: #0f172a; font-weight: bold; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-size: 15px;">

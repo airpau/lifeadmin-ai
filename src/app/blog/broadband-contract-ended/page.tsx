@@ -259,7 +259,7 @@ export default function BroadbandBlogPost() {
               Privacy Policy
             </Link>
             <Link
-              href="/legal/terms"
+              href="/terms-of-service"
               className="hover:text-white transition-all"
             >
               Terms of Service

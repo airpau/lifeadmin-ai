@@ -346,6 +346,10 @@ export default function PrivacyPolicyPage() {
         {/* 11. Contact */}
         <section>
           <h2 className="text-2xl font-bold text-white mb-4">11. Contact</h2>
+          <p className="text-slate-300 leading-relaxed mb-4">
+            Paybacker LTD is a company registered in England and Wales.<br/>
+            Registered Address: 71-75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom
+          </p>
           <p className="text-slate-300 leading-relaxed">
             If you have any questions about this privacy policy or how we handle
             your data, please contact us at{" "}
@@ -376,7 +380,7 @@ export default function PrivacyPolicyPage() {
               Privacy Policy
             </Link>
             <Link
-              href="/legal/terms"
+              href="/terms-of-service"
               className="hover:text-white transition-all"
             >
               Terms of Service

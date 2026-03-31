@@ -1481,8 +1481,8 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">AI Letters</h1>
-          <p className="text-slate-400 mt-1">Your complaints and compensation disputes</p>
+          <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">Disputes</h1>
+          <p className="text-slate-400 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
         </div>
         <button
           id="tour-new-btn"

@@ -175,7 +175,7 @@ export default function PrivacyPolicyPage() {
       <footer className="container mx-auto px-6 py-8 border-t border-slate-800 mt-16">
         <div className="flex flex-wrap gap-4 text-sm text-slate-500">
           <Link href="/" className="hover:text-white transition-all">Home</Link>
-          <Link href="/legal/terms" className="hover:text-white transition-all">Terms of Service</Link>
+          <Link href="/terms-of-service" className="hover:text-white transition-all">Terms of Service</Link>
           <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
         </div>
       </footer>
