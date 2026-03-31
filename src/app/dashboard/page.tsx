@@ -620,7 +620,7 @@ export default function DashboardPage() {
                     {/* Context-aware primary action */}
                     {task.needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Write Complaint Letter
+                        <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
                     {task.isFlightDelay && (
@@ -640,7 +640,7 @@ export default function DashboardPage() {
                     )}
                     {task.isLoan && (
                       <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Review and Dispute
+                        <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
                     {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (
@@ -655,7 +655,7 @@ export default function DashboardPage() {
                     )}
                     {!task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && !task.isAdmin && (
                       <Link href={complaintUrl} className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Take Action
+                        <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
 
