@@ -30,6 +30,7 @@ CREATE POLICY "Anyone can read active product_features"
 -- Service role manages everything
 CREATE POLICY "Service role can manage product_features"
   ON product_features FOR ALL
+  TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -80,6 +81,7 @@ CREATE POLICY "Users can read own question log"
 -- Service role reads all (analytics)
 CREATE POLICY "Service role can manage chatbot_question_log"
   ON chatbot_question_log FOR ALL
+  TO service_role
   USING (true)
   WITH CHECK (true);
 

@@ -38,9 +38,9 @@ export async function GET(request: Request) {
     // Parallel data fetching
     const [
       transactions, bankConns, subscriptions, budgets,
-      assets, liabilities, goals, alerts, tasks,
+      assets, liabilities, goals, alerts, tasks, overrides,
     ] = await Promise.all([
-      admin.from('bank_transactions').select('amount, description, category, timestamp, merchant_name, user_category, income_type')
+      admin.from('bank_transactions').select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
         .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }),
       admin.from('bank_connections').select('id, bank_name, status, last_synced_at').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
@@ -51,6 +51,7 @@ export async function GET(request: Request) {
       admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').order('created_at', { ascending: false }).limit(20),
       admin.from('tasks').select('id, title, type, status, provider_name, provider_type, disputed_amount, description, created_at')
         .eq('user_id', user.id).eq('type', 'opportunity').eq('status', 'pending_review').limit(10),
+      admin.from('money_hub_category_overrides').select('merchant_pattern, transaction_id').eq('user_id', user.id),
     ]);
 
     const txns = transactions.data || [];
@@ -93,14 +94,29 @@ export async function GET(request: Request) {
     // These are fallback values the old sync assigned when no keyword matched — they are
     // NOT user corrections, so we allow the runtime categoriser to produce something more
     // specific (e.g. mortgage transactions sitting in 'bills', groceries in 'shopping').
+    // Exception: if the user explicitly recategorised the transaction, respect their choice.
     const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
+
+    const overrideRows = overrides.data || [];
+    const txnOverrideIds = new Set(overrideRows.filter(o => o.transaction_id).map(o => o.transaction_id as string));
+    const merchantOverridePatterns = overrideRows
+      .filter(o => !o.transaction_id && o.merchant_pattern !== 'txn_specific')
+      .map(o => (o.merchant_pattern as string).toLowerCase());
+
+    function isUserOverride(t: { id?: string; merchant_name?: string; description?: string }): boolean {
+      if (t.id && txnOverrideIds.has(t.id)) return true;
+      const merchantLower = (t.merchant_name || '').toLowerCase();
+      const descLower = (t.description || '').toLowerCase();
+      return merchantOverridePatterns.some(p => p.length > 2 && (merchantLower.includes(p) || descLower.includes(p)));
+    }
 
     const categoryTotals: Record<string, number> = {};
     const merchantTotals: Record<string, number> = {};
     for (const t of spendingTxns) {
-      // Prefer user_category unless it's a generic auto-assigned fallback
+      // Prefer user_category unless it's a generic auto-assigned fallback that hasn't been
+      // explicitly set by the user (checked via money_hub_category_overrides).
       const rawCat = t.user_category || '';
-      const cat = (rawCat && !SOFT_CATEGORIES.has(rawCat))
+      const cat = (rawCat && (!SOFT_CATEGORIES.has(rawCat) || isUserOverride(t)))
         ? rawCat
         : (categorise(t.description || '', t.category || '') || rawCat || 'other');
       const amt = Math.abs(parseFloat(t.amount));

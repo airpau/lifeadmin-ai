@@ -95,10 +95,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: fetchErr.message }, { status: 500 });
   }
 
-  const knownRoutes = new Map<string, { id: string; name: string; is_active: boolean }>();
+  const knownRoutes = new Map<string, Array<{ id: string; name: string; is_active: boolean }>>();
   for (const f of knownFeatures || []) {
     if (f.route_path) {
-      knownRoutes.set(f.route_path, { id: f.id, name: f.name, is_active: f.is_active });
+      const existing = knownRoutes.get(f.route_path) ?? [];
+      existing.push({ id: f.id, name: f.name, is_active: f.is_active });
+      knownRoutes.set(f.route_path, existing);
     }
   }
 
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
   const removedRoutes: string[] = [];
   const reactivated: string[] = [];
 
-  // Find routes in filesystem but not in DB (or marked inactive)
+  // Find routes in filesystem but not in DB (or all features marked inactive)
   for (const route of discoveredRoutes) {
     const known = knownRoutes.get(route);
     if (!known) {
@@ -124,19 +126,24 @@ export async function GET(request: NextRequest) {
         route_path: route,
         is_active: false,
       });
-    } else if (!known.is_active) {
+    } else if (known.every(f => !f.is_active)) {
       reactivated.push(route);
     }
   }
 
-  // Find routes in DB but no longer in filesystem (mark inactive)
-  for (const [route, feature] of knownRoutes.entries()) {
-    if (!discoveredRoutes.includes(route) && feature.is_active) {
-      removedRoutes.push(route);
-      await supabase
-        .from('product_features')
-        .update({ is_active: false })
-        .eq('id', feature.id);
+  // Find routes in DB but no longer in filesystem (mark all features inactive)
+  for (const [route, features] of knownRoutes.entries()) {
+    if (!discoveredRoutes.includes(route)) {
+      const activeFeatures = features.filter(f => f.is_active);
+      if (activeFeatures.length > 0) {
+        removedRoutes.push(route);
+        for (const feature of activeFeatures) {
+          await supabase
+            .from('product_features')
+            .update({ is_active: false })
+            .eq('id', feature.id);
+        }
+      }
     }
   }
 
@@ -154,8 +161,9 @@ export async function GET(request: NextRequest) {
     alerts.push(
       `*Routes no longer found in codebase* (${removedRoutes.length}):\n` +
       removedRoutes.map(r => {
-        const f = knownRoutes.get(r);
-        return `  • \`${r}\` (${f?.name || 'unknown'}) — marked inactive`;
+        const features = knownRoutes.get(r) ?? [];
+        const names = features.map(f => f.name).join(', ') || 'unknown';
+        return `  • \`${r}\` (${names}) — marked inactive`;
       }).join('\n')
     );
   }
