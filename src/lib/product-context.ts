@@ -1,11 +1,17 @@
 /**
- * Single source of truth for product information used by:
- * - Website chatbot (/api/chat)
- * - Social media engagement (comments, DMs)
- * - Telegram bot (Charlie)
+ * FALLBACK AND SEED — not the runtime source of truth for the chatbot.
  *
- * Update this file when features change — the chatbot automatically picks up new descriptions.
- * Import this instead of hardcoding product info in each prompt.
+ * The chatbot (/api/chat) now reads product features at runtime from the
+ * `product_features` Supabase table (cached 5 minutes). That table is seeded
+ * from the migration 20260331000000_chatbot_self_learning.sql.
+ *
+ * This file is still used by:
+ * - Social media engagement agent (comments, DMs) — no DB connection
+ * - Telegram bot (Charlie) — uses simple prompt, not DB-aware
+ * - Fallback if the product_features table query fails
+ *
+ * To update chatbot knowledge: edit the product_features table directly via Supabase,
+ * or add a new migration. Do NOT rely on editing this file to update the chatbot.
  */
 
 export const PRODUCT_CONTEXT = `
