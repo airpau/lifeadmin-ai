@@ -55,10 +55,15 @@ export async function GET(request: Request) {
     ]);
 
     const txns = transactions.data || [];
-    // Use Date comparison to avoid timezone string format issues
+    // Use YYYY-MM prefix matching (proven working in monthlyTrends) as primary filter,
+    // with Date fallback for edge cases (different timestamp formats)
+    const viewMonthPrefix = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}`;
     const startDate = new Date(startOfMonth).getTime();
     const endDate = new Date(endOfMonth).getTime();
     const thisMonthTxns = txns.filter(t => {
+      // Primary: string prefix match (fast, works for ISO timestamps)
+      if (t.timestamp && t.timestamp.startsWith(viewMonthPrefix)) return true;
+      // Fallback: Date object comparison (handles timezone variations)
       const ts = new Date(t.timestamp).getTime();
       return ts >= startDate && ts <= endDate;
     });
