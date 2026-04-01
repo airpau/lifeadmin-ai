@@ -118,6 +118,11 @@ const MERCHANT_MAP: Record<string, string> = {
   'monzo': 'Monzo',
   'revolut': 'Revolut',
   'starling': 'Starling',
+  'paratus': 'Paratus AMC (Mortgage)',
+  'lendinvest': 'LendInvest (Mortgage)',
+  'funding circle': 'Funding Circle',
+  'skipton b': 'Skipton Building Society',
+  'creation': 'Creation (Finance)',
 
   // Software
   'adobe': 'Adobe',
@@ -248,8 +253,8 @@ export function normaliseMerchantName(raw: string): string {
  * Single source of truth to prevent mismatches between Money Hub and Spending page.
  */
 export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'mtg', 'lendinvest', 'skipton', 'nationwide', 'halifax', 'santander mtg', 'barclays mtg', 'natwest mtg', 'hsbc mtg', 'virgin mtg', 'coventry b.s', 'yorkshire b.s', 'kensington', 'bm solutions', 'accord mort', 'leeds b.s', 'leeds bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort'], category: 'mortgage' },
-  { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle'], category: 'loans' },
+  { keywords: ['mortgage', 'mtg', 'lendinvest', 'skipton', 'nationwide', 'halifax', 'santander mtg', 'barclays mtg', 'natwest mtg', 'hsbc mtg', 'virgin mtg', 'coventry b.s', 'yorkshire b.s', 'kensington', 'bm solutions', 'accord mort', 'leeds b.s', 'leeds bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort', 'paratus', 'pepper money', 'together money', 'shawbrook', 'precise mort', 'the mortgage lender', 'foundation home', 'molo', 'landbay', 'atom bank mort'], category: 'mortgage' },
+  { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'tide capital', 'starling loan', 'creation.co', 'creation '], category: 'loans' },
   { keywords: ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'capital one'], category: 'credit' },
   { keywords: ['council', 'winchester city', 'southampton city', 'l.b.'], category: 'council_tax' },
   { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'bulb', 'shell energy', 'utilita'], category: 'energy' },
@@ -294,7 +299,7 @@ export const BANK_CATEGORY_MAP: Record<string, string> = {
  * use categoriseWithLearning() or categoriseWithLearningSync() from
  * @/lib/learning-engine instead.
  */
-export function categoriseTransaction(description: string, bankCategory: string): string {
+export function categoriseTransaction(description: string, bankCategory: string, amount?: number): string {
   const d = description.toLowerCase();
   const bc = bankCategory ? bankCategory.toLowerCase() : '';
 
@@ -305,6 +310,20 @@ export function categoriseTransaction(description: string, bankCategory: string)
   // Keyword mapping from our manual rules
   for (const { keywords, category } of DESCRIPTION_CATEGORIES) {
     if (keywords.some(kw => d.includes(kw))) return category;
+  }
+
+  // Amount-based intelligence: high-value direct debits/standing orders
+  // are more likely to be mortgages or loans than generic "bills"
+  const absAmount = amount ? Math.abs(amount) : 0;
+  if (absAmount >= 500 && (bc === 'direct_debit' || bc === 'standing_order' || bc === 'debit')) {
+    // Check for financial company suffixes that suggest mortgage/loan
+    if (d.includes('amc') || d.includes('mortgage') || d.includes('b.s') || d.includes('bs ') ||
+        d.includes('building soc') || d.includes('home loans')) {
+      return 'mortgage';
+    }
+    if (d.includes('finance') || d.includes('loan') || d.includes('lending') || d.includes('credit')) {
+      return 'loans';
+    }
   }
   
   // Standard BANK_CATEGORY mapping

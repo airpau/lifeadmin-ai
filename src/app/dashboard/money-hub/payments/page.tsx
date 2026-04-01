@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   CreditCard, Repeat, ArrowUpRight, ChevronLeft, Loader2,
   AlertCircle, TrendingUp, TrendingDown, Calendar, Zap, FileText,
-  ExternalLink, Tag, X as XIcon,
+  ExternalLink, Tag, X as XIcon, ChevronDown, Check,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -27,11 +27,11 @@ const CYCLE_LABELS: Record<string, string> = {
   monthly: '/mo', weekly: '/wk', yearly: '/yr', quarterly: '/qtr',
 };
 
-import { getCategoryLabel } from '@/lib/category-config';
+import { SORTED_CATEGORIES, getCategoryLabel } from '@/lib/category-config';
 
 const PIE_COLORS = ['#a78bfa', '#3b82f6', '#34d399', '#f59e0b', '#ef4444', '#64748b'];
 
-const DD_CATEGORIES = new Set(['utility', 'broadband', 'mobile', 'insurance', 'mortgage', 'council_tax', 'loan', 'water']);
+const DD_CATEGORIES = new Set(['utility', 'broadband', 'mobile', 'insurance', 'mortgage', 'council_tax', 'loan', 'loans', 'water', 'energy', 'credit']);
 const APP_SUB_CATEGORIES = new Set(['streaming', 'software', 'fitness']);
 
 function annualCost(amount: number, cycle: string): number {
@@ -54,17 +54,21 @@ function formatDate(d: string | null) {
 }
 
 function cleanProviderName(raw: string): string {
-  // Strip common bank noise: reference numbers, payment prefixes, PayPal wrappers
   let clean = raw
     .replace(/^DD\s+/i, '')
     .replace(/^STO\s+/i, '')
     .replace(/^PAYPAL \*/i, '')
-    .replace(/\d{10,}/g, '') // long reference numbers
+    // Strip URLs / domain suffixes and anything after them
+    .replace(/\.co\.uk\b.*/i, '')
+    .replace(/\.com\b.*/i, '')
+    .replace(/\.org\b.*/i, '')
+    .replace(/\d{10,}/g, '')          // long reference numbers
+    .replace(/\s+\d{4,}\s*\d*/g, '')  // reference number blocks
     .replace(/\s+(LTD|LIMITED|PLC|UK|GB|CO)\s*$/i, '')
-    .replace(/\s+\d+\s*$/g, '') // trailing numbers
+    .replace(/\s+\d+\s*$/g, '')       // trailing numbers
     .trim();
 
-  // Title case
+  // Title case if all caps
   if (clean === clean.toUpperCase() && clean.length > 3) {
     clean = clean.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   }
@@ -82,16 +86,38 @@ function daysSince(d: string | null): number | null {
 }
 
 // ============================================================
-// Payment Card
+// Payment Card with recategorise dropdown
 // ============================================================
-function PaymentCard({ payment, type }: { payment: Payment; type: string }) {
+function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; type: string; onCategoryChange: (id: string, newCategory: string) => void }) {
   const name = cleanProviderName(payment.provider_name);
   const initials = getInitials(name);
   const lastUsedDays = daysSince(payment.last_used_date);
   const unusedWarning = type === 'subscription' && lastUsedDays != null && lastUsedDays > 30;
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const hasAmount = payment.amount && Math.abs(payment.amount) > 0;
+
+  const handleCategoryChange = async (newCategory: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/subscriptions/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: newCategory }),
+      });
+      if (res.ok) {
+        onCategoryChange(payment.id, newCategory);
+      }
+    } catch (e) {
+      console.error('Failed to update category:', e);
+    } finally {
+      setSaving(false);
+      setShowCategoryPicker(false);
+    }
+  };
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 hover:border-mint-400/30 transition-all">
+    <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 hover:border-mint-400/30 transition-all relative">
       <div className="flex items-start gap-3">
         {/* Logo / initials */}
         <div className="w-10 h-10 rounded-lg bg-navy-800 flex items-center justify-center text-sm font-bold text-slate-300 flex-shrink-0">
@@ -102,13 +128,52 @@ function PaymentCard({ payment, type }: { payment: Payment; type: string }) {
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-white font-semibold text-sm truncate">{name}</h3>
-              <span className="text-slate-500 text-xs">{getCategoryLabel(payment.category)}</span>
+              {/* Clickable category badge for recategorisation */}
+              <button
+                onClick={() => setShowCategoryPicker(!showCategoryPicker)}
+                className="flex items-center gap-1 text-slate-500 text-xs hover:text-mint-400 transition-all mt-0.5 group"
+                title="Click to change category"
+              >
+                <Tag className="h-3 w-3" />
+                {getCategoryLabel(payment.category)}
+                <ChevronDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
             </div>
             <div className="text-right flex-shrink-0 ml-2">
-              <p className="text-mint-400 font-bold">£{Math.abs(payment.amount).toFixed(2)}</p>
-              <p className="text-slate-500 text-[10px]">{CYCLE_LABELS[payment.billing_cycle] || payment.billing_cycle}</p>
+              {hasAmount ? (
+                <>
+                  <p className="text-mint-400 font-bold">£{Math.abs(payment.amount).toFixed(2)}</p>
+                  <p className="text-slate-500 text-[10px]">{CYCLE_LABELS[payment.billing_cycle] || payment.billing_cycle}</p>
+                </>
+              ) : (
+                <p className="text-slate-600 text-xs italic">Amount unknown</p>
+              )}
             </div>
           </div>
+
+          {/* Category picker dropdown */}
+          {showCategoryPicker && (
+            <div className="mt-2 bg-navy-950 border border-navy-700 rounded-lg p-2 max-h-48 overflow-y-auto">
+              <p className="text-xs text-slate-500 mb-1.5 px-1">Change category:</p>
+              <div className="grid grid-cols-2 gap-1">
+                {SORTED_CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => handleCategoryChange(cat)}
+                    disabled={saving}
+                    className={`text-left text-xs px-2 py-1.5 rounded transition-all flex items-center gap-1.5 ${
+                      payment.category === cat
+                        ? 'bg-mint-400/20 text-mint-400'
+                        : 'text-slate-400 hover:bg-navy-800 hover:text-white'
+                    }`}
+                  >
+                    {payment.category === cat && <Check className="h-3 w-3" />}
+                    {getCategoryLabel(cat)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Meta row */}
           <div className="flex items-center gap-3 text-xs text-slate-500 mt-2 flex-wrap">
@@ -117,7 +182,9 @@ function PaymentCard({ payment, type }: { payment: Payment; type: string }) {
                 <Calendar className="h-3 w-3" /> Next: {formatDate(payment.next_billing_date)}
               </span>
             )}
-            <span className="text-slate-600">£{annualCost(Math.abs(payment.amount), payment.billing_cycle).toFixed(0)}/year</span>
+            {hasAmount && (
+              <span className="text-slate-600">£{annualCost(Math.abs(payment.amount), payment.billing_cycle).toFixed(0)}/year</span>
+            )}
           </div>
 
           {/* Usage warning */}
@@ -178,12 +245,16 @@ export default function PaymentsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleCategoryChange = (id: string, newCategory: string) => {
+    setPayments(prev => prev.map(p => p.id === id ? { ...p, category: newCategory } : p));
+  };
+
   // All = everything from subscriptions table (matches subscriptions page count)
   const appSubs = payments.filter(p => APP_SUB_CATEGORIES.has(p.category));
   const directDebits = payments.filter(p => DD_CATEGORIES.has(p.category));
   const otherPayments = payments.filter(p => !APP_SUB_CATEGORIES.has(p.category) && !DD_CATEGORIES.has(p.category));
 
-  const totalMonthly = payments.reduce((sum, p) => sum + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0);
+  const totalMonthly = payments.reduce((sum, p) => sum + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0);
 
   const tabPayments = tab === 'subscriptions' ? payments // "All Payments" shows everything
     : tab === 'direct_debits' ? directDebits
@@ -191,9 +262,9 @@ export default function PaymentsPage() {
 
   // Pie chart data
   const pieData = [
-    { name: 'Apps & Streaming', value: Math.round(appSubs.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
-    { name: 'Bills & Utilities', value: Math.round(directDebits.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
-    { name: 'Other', value: Math.round(otherPayments.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount), p.billing_cycle), 0)) },
+    { name: 'Apps & Streaming', value: Math.round(appSubs.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0)) },
+    { name: 'Bills & Utilities', value: Math.round(directDebits.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0)) },
+    { name: 'Other', value: Math.round(otherPayments.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0)) },
   ].filter(d => d.value > 0);
 
   return (
@@ -204,7 +275,7 @@ export default function PaymentsPage() {
 
       <div className="mb-6">
         <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">Regular Payments</h1>
-        <p className="text-slate-400 mt-1">Every subscription, direct debit, and standing order in one place</p>
+        <p className="text-slate-400 mt-1">Every subscription, direct debit, and standing order in one place. Click a category badge to recategorise.</p>
       </div>
 
       {/* Overview with Pie Chart */}
@@ -298,9 +369,9 @@ export default function PaymentsPage() {
       ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           {tabPayments
-            .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+            .sort((a, b) => Math.abs(b.amount || 0) - Math.abs(a.amount || 0))
             .map(p => (
-              <PaymentCard key={p.id} payment={p} type={tab === 'subscriptions' ? 'subscription' : tab === 'direct_debits' ? 'direct_debit' : 'standing_order'} />
+              <PaymentCard key={p.id} payment={p} type={tab === 'subscriptions' ? 'subscription' : tab === 'direct_debits' ? 'direct_debit' : 'standing_order'} onCategoryChange={handleCategoryChange} />
             ))
           }
         </div>
@@ -311,7 +382,7 @@ export default function PaymentsPage() {
         <div className="mt-6 bg-navy-900/50 border border-navy-700/50 rounded-xl p-4 text-center">
           <p className="text-slate-400 text-sm">
             Annual cost: <span className="text-white font-bold">
-              £{tabPayments.reduce((s, p) => s + annualCost(Math.abs(p.amount), p.billing_cycle), 0).toFixed(0)}
+              £{tabPayments.reduce((s, p) => s + annualCost(Math.abs(p.amount || 0), p.billing_cycle), 0).toFixed(0)}
             </span>
           </p>
         </div>

@@ -70,9 +70,9 @@ function extractMerchantFromDescription(description: string): string | null {
 }
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  mortgage: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mortgage', 'nationwide bs', 'building society'],
+  mortgage: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mortgage', 'nationwide bs', 'building society', 'paratus', 'pepper money', 'together money', 'shawbrook', 'kensington', 'bm solutions', 'molo', 'landbay'],
   rent: ['rent', 'letting', 'openrent', 'estate agent'],
-  loan: ['auto finance', 'ca auto finance', 'car finance', 'natwest loan', 'santander loan', 'novuna', 'tesco bank', 'klarna', 'clearpay', 'afterpay'],
+  loan: ['auto finance', 'ca auto finance', 'car finance', 'natwest loan', 'santander loan', 'novuna', 'tesco bank', 'klarna', 'clearpay', 'afterpay', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap'],
   insurance: ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'zurich', 'legal & general'],
   utility: ['energy', 'electric', 'gas', 'water', 'eon', 'british gas', 'octopus', 'ovo', 'edf', 'scottish power', 'thames water', 'severn trent', 'united utilities'],
   broadband: ['broadband', 'bt broadband', 'bt fibre', 'sky broadband', 'virgin media', 'vodafone broadband', 'plusnet', 'talktalk', 'hyperoptic', 'communityfibre'],
