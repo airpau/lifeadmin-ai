@@ -903,8 +903,21 @@ export default function MoneyHubPage() {
 
   const isPaid = data.tier === 'essential' || data.tier === 'pro';
   const isPro = data.tier === 'pro';
-  const totalOpportunityValue = data.alerts.reduce((s, a: any) => s + (a.value_gbp || 0), 0) +
-    data.opportunities.reduce((s, o: any) => s + (o.amount || 0), 0);
+  // Only count genuinely actionable savings — exclude flight price alerts,
+  // generic trackers, and items without a concrete value
+  const genuineSavingsTypes = ['bill_review', 'subscription', 'compensation', 'refund', 'overcharge', 'better_deal', 'cancellation'];
+  const totalOpportunityValue = data.alerts
+    .filter((a: any) => genuineSavingsTypes.some(t => (a.alert_type || '').toLowerCase().includes(t) || (a.title || '').toLowerCase().includes(t)))
+    .reduce((s: number, a: any) => s + (a.value_gbp || 0), 0) +
+    data.opportunities
+    .filter((o: any) => {
+      const title = (o.title || '').toLowerCase();
+      // Exclude flight tracker price changes — not real savings
+      if (title.includes('flight') && title.includes('price')) return false;
+      if (title.includes('volatile')) return false;
+      return (o.amount || 0) > 0;
+    })
+    .reduce((s: number, o: any) => s + (o.amount || 0), 0);
 
   // Deduplicate income breakdown entries (merge duplicates by key)
   const rawIncomeBreakdown = data.overview.incomeBreakdown || {};
@@ -1489,8 +1502,8 @@ export default function MoneyHubPage() {
                 </button>
               )}
             </div>
-            <div className="space-y-2">
-              {visibleBills.slice(0, 15).map((bill, i) => {
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b #0f172a' }}>
+              {visibleBills.map((bill, i) => {
                 const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
                 return (
                   <div key={`v-${i}`} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30 group">
