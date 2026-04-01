@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getAccessToken, fetchAccounts, fetchCards, fetchTransactions, fetchPendingTransactions, fetchCardTransactions, fetchCardPendingTransactions, BankConnection } from '@/lib/truelayer';
-import { detectRecurring } from '@/lib/detect-recurring';
+import { extractMerchantFromDescription } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 
 export const maxDuration = 60;
@@ -155,7 +156,7 @@ export async function POST() {
             amount: tx.amount,
             currency: tx.currency || 'GBP',
             description: tx.description || null,
-            merchant_name: tx.merchant_name || null,
+            merchant_name: tx.merchant_name || extractMerchantFromDescription(tx.description || '') || null,
             category: tx.transaction_category || null,
             user_category: matchedCategory,
             timestamp: tx.timestamp,
@@ -203,7 +204,7 @@ export async function POST() {
             amount: tx.amount,
             currency: tx.currency || 'GBP',
             description: tx.description || null,
-            merchant_name: tx.merchant_name || null,
+            merchant_name: tx.merchant_name || extractMerchantFromDescription(tx.description || '') || null,
             category: tx.transaction_category || null,
             user_category: null,
             timestamp: tx.timestamp,
@@ -231,8 +232,13 @@ export async function POST() {
       .eq('id', connection.id);
   }
 
-  // Run recurring detection after all syncs
-  const recurringDetected = await detectRecurring(user.id, supabase);
+  // Fix EE-branded card merchant names across all connections
+  const adminClient = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  await adminClient.rpc('fix_ee_card_merchant_names', { p_user_id: user.id });
+
+  // Run recurring detection via DB function (scans all accounts, creates subscriptions)
+  const { data: recurringData } = await adminClient.rpc('detect_and_sync_recurring_transactions', { p_user_id: user.id });
+  const recurringDetected = typeof recurringData === 'number' ? recurringData : 0;
 
   return NextResponse.json({
     synced: totalSynced,

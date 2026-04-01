@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAccessToken, fetchAccounts, fetchTransactions, BankConnection } from '@/lib/truelayer';
-import { detectRecurring } from '@/lib/detect-recurring';
+import { extractMerchantFromDescription } from '@/lib/detect-recurring';
 
 export const maxDuration = 60;
 
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
               amount: tx.amount,
               currency: tx.currency || 'GBP',
               description: tx.description || null,
-              merchant_name: tx.merchant_name || null,
+              merchant_name: tx.merchant_name || extractMerchantFromDescription(tx.description || '') || null,
               category: tx.transaction_category || null,
               user_category: matchedCategory,
               timestamp: tx.timestamp,
@@ -145,8 +145,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Run recurring detection
-      const recurringDetected = await detectRecurring(connection.user_id, supabase);
+      // Fix EE-branded card merchant names (extracts real merchant from description)
+      await supabase.rpc('fix_ee_card_merchant_names', { p_user_id: connection.user_id });
+
+      // Run recurring detection via DB function (scans all accounts, creates subscriptions)
+      const { data: recurringData } = await supabase.rpc('detect_and_sync_recurring_transactions', { p_user_id: connection.user_id });
+      const recurringDetected = typeof recurringData === 'number' ? recurringData : 0;
 
       // Update last synced
       await supabase

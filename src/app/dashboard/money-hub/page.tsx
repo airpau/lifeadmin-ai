@@ -285,8 +285,10 @@ export default function MoneyHubPage() {
   };
 
   // Sparse month data
-  const [expectedBills, setExpectedBills] = useState<Array<{ name: string; expected_amount: number; category: string; paid: boolean }>>([]);
+  type ExpectedBill = { name: string; expected_amount: number; category: string; paid: boolean; source: string; expected_date?: string; billing_day?: number; occurrence_count?: number; is_subscription?: boolean; subscription_id?: string | null; bill_key?: string };
+  const [expectedBills, setExpectedBills] = useState<ExpectedBill[]>([]);
   const [expectedBillsTotal, setExpectedBillsTotal] = useState(0);
+  const [dismissedBillsList, setDismissedBillsList] = useState<ExpectedBill[]>([]);
   const [prevMonthData, setPrevMonthData] = useState<{
     monthName: string;
     totalIncome: number;
@@ -298,33 +300,85 @@ export default function MoneyHubPage() {
   } | null>(null);
   const [loadingPrevMonth, setLoadingPrevMonth] = useState(false);
 
-  // Dismissed expected bills (persisted in localStorage per month)
-  const [dismissedBills, setDismissedBills] = useState<Set<string>>(new Set());
+  // Dismissed expected bills (persisted in Supabase)
   const [showDismissedBills, setShowDismissedBills] = useState(false);
-  const dismissedBillsKey = `pb_dismissed_bills_${new Date().getFullYear()}_${new Date().getMonth() + 1}`;
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const dismissBill = (billName: string) => {
-    setDismissedBills(prev => {
-      const next = new Set(prev);
-      next.add(billName);
-      try { localStorage.setItem(dismissedBillsKey, JSON.stringify([...next])); } catch {}
-      return next;
-    });
-    showToast(`"${billName}" removed from expected bills`, 'info');
+  const fetchExpectedBills = async () => {
+    try {
+      const res = await fetch('/api/money-hub/expected-bills');
+      const d = await res.json();
+      if (!d.error && d.bills) {
+        setExpectedBills(d.bills);
+        setExpectedBillsTotal(d.totalExpected || 0);
+      }
+    } catch { /* silent */ }
   };
 
-  const restoreBill = (billName: string) => {
-    setDismissedBills(prev => {
-      const next = new Set(prev);
-      next.delete(billName);
-      try { localStorage.setItem(dismissedBillsKey, JSON.stringify([...next])); } catch {}
-      return next;
+  const dismissBill = async (bill: ExpectedBill) => {
+    if (!userId || !bill.bill_key) return;
+    const now = new Date();
+    await supabase.rpc('dismiss_expected_bill', {
+      p_user_id: userId,
+      p_bill_key: bill.bill_key,
+      p_year: now.getFullYear(),
+      p_month: now.getMonth() + 1,
     });
+    // Move from active to dismissed list
+    setExpectedBills(prev => prev.filter(b => b.bill_key !== bill.bill_key));
+    setDismissedBillsList(prev => [...prev, bill]);
+    setExpectedBillsTotal(prev => prev - bill.expected_amount);
+    showToast(`"${bill.name}" removed from expected bills`, 'info');
   };
 
-  const restoreAllBills = () => {
-    setDismissedBills(new Set());
-    try { localStorage.removeItem(dismissedBillsKey); } catch {}
+  const addBillAsSubscription = async (bill: ExpectedBill) => {
+    try {
+      const res = await fetch('/api/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_name: bill.name,
+          amount: bill.expected_amount,
+          billing_cycle: 'monthly',
+          status: 'active',
+          source: 'bank',
+          next_billing_date: bill.expected_date || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to add subscription');
+      await fetchExpectedBills();
+      showToast(`"${bill.name}" added to subscriptions`, 'success');
+    } catch {
+      showToast('Failed to add subscription', 'error');
+    }
+  };
+
+  const restoreBill = async (bill: ExpectedBill) => {
+    if (!userId || !bill.bill_key) return;
+    const now = new Date();
+    await supabase.rpc('restore_expected_bill', {
+      p_user_id: userId,
+      p_bill_key: bill.bill_key,
+      p_year: now.getFullYear(),
+      p_month: now.getMonth() + 1,
+    });
+    setDismissedBillsList(prev => prev.filter(b => b.bill_key !== bill.bill_key));
+    setExpectedBills(prev => [...prev, bill].sort((a, b) => (a.billing_day || 0) - (b.billing_day || 0)));
+    setExpectedBillsTotal(prev => prev + bill.expected_amount);
+  };
+
+  const restoreAllBills = async () => {
+    if (!userId) return;
+    const now = new Date();
+    const billMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    await supabase
+      .from('dismissed_expected_bills')
+      .delete()
+      .eq('user_id', userId)
+      .eq('bill_month', billMonth);
+    setExpectedBills(prev => [...prev, ...dismissedBillsList].sort((a, b) => (a.billing_day || 0) - (b.billing_day || 0)));
+    setExpectedBillsTotal(prev => prev + dismissedBillsList.reduce((s, b) => s + b.expected_amount, 0));
+    setDismissedBillsList([]);
     setShowDismissedBills(false);
   };
 
@@ -790,12 +844,13 @@ export default function MoneyHubPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
 
-    // Fetch expired bank connections
+    // Fetch user ID and expired bank connections
     (async () => {
       try {
         const sb = createClient();
         const { data: { user } } = await sb.auth.getUser();
         if (user) {
+          setUserId(user.id);
           const { data: conns } = await sb.from('bank_connections')
             .select('id, bank_name, status')
             .eq('user_id', user.id)
@@ -807,22 +862,8 @@ export default function MoneyHubPage() {
       } catch { /* silent */ }
     })();
 
-    // Fetch expected bills for sparse month display
-    fetch('/api/money-hub/expected-bills')
-      .then(r => r.json())
-      .then(d => {
-        if (!d.error && d.bills) {
-          setExpectedBills(d.bills);
-          setExpectedBillsTotal(d.totalExpected || 0);
-        }
-      })
-      .catch(() => {});
-
-    // Load dismissed bills from localStorage
-    try {
-      const saved = localStorage.getItem(`pb_dismissed_bills_${new Date().getFullYear()}_${new Date().getMonth() + 1}`);
-      if (saved) setDismissedBills(new Set(JSON.parse(saved)));
-    } catch {}
+    // Fetch expected bills (DB function handles deduplication & dismissed filtering)
+    fetchExpectedBills();
 
     // Fetch previous month data for recap
     setLoadingPrevMonth(true);
@@ -1330,9 +1371,7 @@ export default function MoneyHubPage() {
 
             {/* Savings-Focused Banner */}
             {(() => {
-              const visibleBillsTotal = expectedBills
-                .filter(b => !dismissedBills.has(b.name))
-                .reduce((s, b) => s + b.expected_amount, 0);
+              const visibleBillsTotal = expectedBillsTotal;
               const monthlySubCost = data.subscriptions.monthlyTotal || 0;
               const switchableSubs = data.subscriptions.list?.filter((s: any) =>
                 ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'water'].includes(s.category)
@@ -1347,7 +1386,7 @@ export default function MoneyHubPage() {
                         £{fmt(visibleBillsTotal)}
                       </p>
                       <p className="text-[10px] text-slate-500">
-                        {expectedBills.filter(b => !dismissedBills.has(b.name)).length} bills remaining · dismiss one-offs below to update
+                        {expectedBills.length} bills remaining · dismiss one-offs below to update
                       </p>
                     </div>
                   )}
@@ -1491,105 +1530,112 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ SPARSE MONTH: Expected Bills This Month ═══ */}
-      {showSparseMonthContent && isCurrentMonthView && expectedBills.length > 0 && (() => {
-        const visibleBills = expectedBills.filter(b => !dismissedBills.has(b.name));
-        const hiddenBills = expectedBills.filter(b => dismissedBills.has(b.name));
-        const visibleTotal = visibleBills.reduce((s, b) => s + b.expected_amount, 0);
+      {showSparseMonthContent && isCurrentMonthView && (expectedBills.length > 0 || dismissedBillsList.length > 0) && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
+              <FileText className="h-5 w-5 text-sky-400" />
+              Expected Bills for {currentMonthName}
+            </h2>
+            {dismissedBillsList.length > 0 && (
+              <button
+                onClick={() => setShowDismissedBills(!showDismissedBills)}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                {showDismissedBills ? 'Hide' : 'Show'} {dismissedBillsList.length} removed
+              </button>
+            )}
+          </div>
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b #0f172a' }}>
+            {expectedBills.map((bill, i) => {
+              const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
+              return (
+                <div key={`v-${i}`} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30 group">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm ${bill.paid ? 'text-green-400' : 'text-slate-500'}`}>
+                      {bill.paid ? '✓' : '☐'}
+                    </span>
+                    <span className="text-sm w-5">{info.icon}</span>
+                    <div className="flex flex-col">
+                      <span className={`text-sm ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>
+                        {cleanMerchantName(bill.name)}
+                      </span>
+                      {bill.billing_day && (
+                        <span className="text-[10px] text-slate-500">~{bill.billing_day}{bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'} of month</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-medium ${bill.paid ? 'text-green-400' : 'text-slate-300'}`}>
+                      ~£{fmt(bill.expected_amount)}
+                    </span>
+                    {bill.is_subscription === false && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addBillAsSubscription(bill); }}
+                        className="text-[10px] font-medium text-mint-400 hover:text-mint-300 bg-mint-400/10 hover:bg-mint-400/20 px-2 py-0.5 rounded-full border border-mint-400/30 transition-all whitespace-nowrap"
+                      >
+                        + Track
+                      </button>
+                    )}
+                    <button
+                      onClick={() => dismissBill(bill)}
+                      className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
+                      title="Remove — this was a one-off"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-        return (
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
-                <FileText className="h-5 w-5 text-sky-400" />
-                Expected Bills for {currentMonthName}
-              </h2>
-              {hiddenBills.length > 0 && (
+          {/* Dismissed bills (collapsible) */}
+          {showDismissedBills && dismissedBillsList.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-slate-500 text-xs">Removed (one-off payments)</p>
                 <button
-                  onClick={() => setShowDismissedBills(!showDismissedBills)}
-                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                  onClick={restoreAllBills}
+                  className="text-[10px] text-mint-400 hover:text-mint-300 font-medium"
                 >
-                  {showDismissedBills ? 'Hide' : 'Show'} {hiddenBills.length} removed
+                  Restore all
                 </button>
-              )}
-            </div>
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b #0f172a' }}>
-              {visibleBills.map((bill, i) => {
+              </div>
+              {dismissedBillsList.map((bill, i) => {
                 const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
                 return (
-                  <div key={`v-${i}`} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30 group">
+                  <div key={`d-${i}`} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-4 py-2 border border-navy-700/20 opacity-60">
                     <div className="flex items-center gap-3">
-                      <span className={`text-sm ${bill.paid ? 'text-green-400' : 'text-slate-500'}`}>
-                        {bill.paid ? '✓' : '☐'}
-                      </span>
                       <span className="text-sm w-5">{info.icon}</span>
-                      <span className={`text-sm ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>
+                      <span className="text-sm text-slate-500 line-through">
                         {cleanMerchantName(bill.name)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium ${bill.paid ? 'text-green-400' : 'text-slate-300'}`}>
-                        ~£{fmt(bill.expected_amount)}
-                      </span>
+                      <span className="text-sm text-slate-600 line-through">~£{fmt(bill.expected_amount)}</span>
                       <button
-                        onClick={() => dismissBill(bill.name)}
-                        className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
-                        title="Remove — this was a one-off"
+                        onClick={() => restoreBill(bill)}
+                        className="text-mint-400 hover:text-mint-300 text-xs font-medium"
                       >
-                        <X className="h-3.5 w-3.5" />
+                        Restore
                       </button>
                     </div>
                   </div>
                 );
               })}
             </div>
+          )}
 
-            {/* Dismissed bills (collapsible) */}
-            {showDismissedBills && hiddenBills.length > 0 && (
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-slate-500 text-xs">Removed (one-off payments)</p>
-                  <button
-                    onClick={restoreAllBills}
-                    className="text-[10px] text-mint-400 hover:text-mint-300 font-medium"
-                  >
-                    Restore all
-                  </button>
-                </div>
-                {hiddenBills.map((bill, i) => {
-                  const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
-                  return (
-                    <div key={`d-${i}`} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-4 py-2 border border-navy-700/20 opacity-60">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm w-5">{info.icon}</span>
-                        <span className="text-sm text-slate-500 line-through">
-                          {cleanMerchantName(bill.name)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-slate-600 line-through">~£{fmt(bill.expected_amount)}</span>
-                        <button
-                          onClick={() => restoreBill(bill.name)}
-                          className="text-mint-400 hover:text-mint-300 text-xs font-medium"
-                        >
-                          Restore
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
-              <span className="text-slate-400 text-sm">Total expected</span>
-              <span className="text-white font-bold text-sm">~£{fmt(visibleTotal)}</span>
-            </div>
-            <p className="text-slate-600 text-[10px] mt-2">
-              Based on recurring transactions and active subscriptions. Hover a bill and click ✕ to remove one-offs.
-            </p>
+          <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
+            <span className="text-slate-400 text-sm">Total expected</span>
+            <span className="text-white font-bold text-sm">~£{fmt(expectedBillsTotal)}</span>
           </div>
-        );
-      })()}
+          <p className="text-slate-600 text-[10px] mt-2">
+            Based on recurring transactions and active subscriptions. Hover to add as subscription (+) or remove one-offs (✕).
+          </p>
+        </div>
+      )}
 
       {/* ═══ SECTION 1b: Income Breakdown ═══ */}
       <div id="tour-income" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">

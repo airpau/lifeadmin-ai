@@ -42,7 +42,7 @@ interface Subscription {
   next_billing_date: string | null;
   last_used_date: string | null;
   usage_frequency: string | null;
-  status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired';
+  status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired' | 'dismissed';
   account_email: string | null;
   cancel_requested_at: string | null;
   source?: 'manual' | 'email' | 'bank' | 'bank_and_email';
@@ -60,6 +60,7 @@ interface Subscription {
   alert_before_days?: number;
   contract_end_source?: string | null;
   logo_url?: string | null;
+  needs_review?: boolean;
 }
 
 interface BankConnection {
@@ -1382,6 +1383,35 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Needs Review Banner */}
+      {(() => {
+        const reviewCount = baseSubscriptions.filter(s => s.needs_review && s.status === 'active').length;
+        if (reviewCount === 0) return null;
+        return (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-400" />
+                <div>
+                  <h2 className="text-white font-semibold">{reviewCount} new subscription{reviewCount > 1 ? 's' : ''} detected — review now</h2>
+                  <p className="text-slate-400 text-sm">Auto-detected from your bank transactions. Confirm they&apos;re yours or dismiss.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  // Scroll to first needs_review subscription
+                  const el = document.querySelector('[data-needs-review="true"]');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-medium px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap"
+              >
+                Review
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
@@ -1589,9 +1619,12 @@ export default function SubscriptionsPage() {
             displaySubscriptions.map((sub) => (
               <div
                 key={sub.id}
+                data-needs-review={sub.needs_review ? 'true' : undefined}
                 className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer ${
                   selectedSub?.id === sub.id
                     ? 'border-mint-400/50'
+                    : sub.needs_review
+                    ? 'border-amber-500/40 hover:border-amber-500/60'
                     : 'border-navy-700/50 hover:border-navy-700/50'
                 }`}
                 onClick={() => {
@@ -1636,6 +1669,11 @@ export default function SubscriptionsPage() {
                         <h3 className="text-lg font-semibold text-white">{normaliseProviderName(sub.provider_name)}</h3>
                         {getStatusBadge(sub.status)}
                         {getSourceBadges(sub.source)}
+                        {sub.needs_review && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            Needs review
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mb-2">
                         <div className="relative group inline-block" onClick={e => e.stopPropagation()}>
@@ -1744,7 +1782,61 @@ export default function SubscriptionsPage() {
                 </div>
               </div>
 
-              {sub.status === 'active' && (
+              {sub.needs_review && sub.status === 'active' && (
+                <div className="mt-4 pt-4 border-t border-amber-500/30 flex flex-wrap gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`/api/subscriptions/${sub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ needs_review: false }),
+                      }).then(() => {
+                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false } : s));
+                      });
+                    }}
+                    className="flex items-center gap-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 px-4 py-2 rounded-lg text-sm transition-all border border-green-500/30"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    This is mine
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`/api/subscriptions/${sub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ needs_review: false, status: 'dismissed', dismissed_at: new Date().toISOString() }),
+                      }).then(() => {
+                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false, status: 'dismissed' as const } : s));
+                      });
+                    }}
+                    className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition-all"
+                  >
+                    <X className="h-4 w-4" />
+                    Not a subscription
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open('https://www.actionfraud.police.uk/', '_blank');
+                      fetch(`/api/subscriptions/${sub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ needs_review: false, notes: 'Flagged as unrecognised — check with bank' }),
+                      }).then(() => {
+                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false } : s));
+                      });
+                    }}
+                    className="flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm transition-all border border-red-500/30"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    I don&apos;t recognise this
+                  </button>
+                </div>
+              )}
+
+              {sub.status === 'active' && !sub.needs_review && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
                     {isStatutoryService(sub.provider_name) ? (
                       <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">

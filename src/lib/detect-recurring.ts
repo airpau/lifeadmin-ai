@@ -20,7 +20,7 @@ const CYCLE_DAYS = {
  * - "CA AUTO FINANCE UK"
  * - "9384 17MAR26 WHOOP BOSTON US"
  */
-function extractMerchantFromDescription(description: string): string | null {
+export function extractMerchantFromDescription(description: string): string | null {
   if (!description) return null;
 
   let cleaned = description;

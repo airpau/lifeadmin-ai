@@ -8,6 +8,18 @@ function getAdmin() {
   return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
+/** Normalise a provider name for deduplication (strip references, suffixes, PayPal prefix). */
+function normaliseBillName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/paypal\s*\*/gi, '')
+    .replace(/\b(ltd|limited|plc|llp|inc|corp|co\.uk)\b/g, '')
+    .replace(/\d{5,}/g, '')
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function GET() {
   try {
     const supabase = await createClient();
@@ -15,83 +27,66 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const admin = getAdmin();
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
 
-    // Fetch recurring transactions from last 60 days
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    // Use the DB function for deduplicated expected bills
+    const { data: rawBills, error: rpcError } = await admin.rpc('get_expected_bills', {
+      p_user_id: user.id,
+      p_year: year,
+      p_month: month,
+    });
 
-    const { data: recurringTxns } = await admin
-      .from('bank_transactions')
-      .select('merchant_name, amount, user_category, description')
-      .eq('user_id', user.id)
-      .lt('amount', 0)
-      .gte('timestamp', sixtyDaysAgo.toISOString())
-      .order('merchant_name')
-      .order('timestamp', { ascending: false });
+    if (rpcError) {
+      console.error('get_expected_bills RPC error:', rpcError);
+      return NextResponse.json({ error: rpcError.message }, { status: 500 });
+    }
 
-    // Deduplicate by merchant - keep most recent
-    const merchantMap = new Map<string, { merchant_name: string; expected_amount: number; user_category: string }>();
-    for (const txn of recurringTxns || []) {
-      const merchant = (txn.merchant_name || txn.description || '').substring(0, 40).trim();
-      if (!merchant) continue;
-      if (!merchantMap.has(merchant)) {
-        merchantMap.set(merchant, {
-          merchant_name: merchant,
-          expected_amount: Math.abs(parseFloat(String(txn.amount))),
-          user_category: txn.user_category || 'other',
-        });
+    // Filter: remove low-confidence (<2 occurrences) and daily charges (>30 occurrences)
+    let bills = (rawBills || []).filter(
+      (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30
+    );
+
+    // Merge similar providers by normalised name (e.g. "COMMUNITYFIBRE LTD" + "Community Fibre")
+    const mergedMap = new Map<string, any>();
+    for (const bill of bills) {
+      const normKey = normaliseBillName(bill.provider_name);
+      if (!normKey) continue;
+      const existing = mergedMap.get(normKey);
+      if (existing) {
+        // Prefer subscription over non-subscription, then higher occurrence_count
+        if (bill.is_subscription && !existing.is_subscription) {
+          mergedMap.set(normKey, bill);
+        } else if (existing.is_subscription && !bill.is_subscription) {
+          // keep existing
+        } else if (bill.occurrence_count > existing.occurrence_count) {
+          mergedMap.set(normKey, bill);
+        }
+      } else {
+        mergedMap.set(normKey, bill);
+      }
+    }
+    bills = Array.from(mergedMap.values());
+
+    // Fetch subscription categories for enrichment
+    const subIds = bills
+      .filter((b: any) => b.subscription_id)
+      .map((b: any) => b.subscription_id);
+
+    const subCategories: Record<string, string> = {};
+    if (subIds.length > 0) {
+      const { data: subs } = await admin
+        .from('subscriptions')
+        .select('id, category')
+        .in('id', subIds);
+      for (const sub of subs || []) {
+        subCategories[sub.id] = sub.category || 'other';
       }
     }
 
-    // Fetch active subscriptions
-    const { data: subscriptions } = await admin
-      .from('subscriptions')
-      .select('name, amount, billing_cycle, next_billing_date, category')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .order('amount', { ascending: false });
-
-    // Combine and deduplicate
-    const allBills: Array<{
-      name: string;
-      expected_amount: number;
-      category: string;
-      source: 'recurring' | 'subscription';
-    }> = [];
-
-    // Add subscription-based predictions first
-    for (const sub of subscriptions || []) {
-      const amount = parseFloat(String(sub.amount)) || 0;
-      if (amount <= 0) continue;
-      allBills.push({
-        name: sub.name,
-        expected_amount: sub.billing_cycle === 'yearly' ? amount / 12 : sub.billing_cycle === 'quarterly' ? amount / 3 : amount,
-        category: sub.category || 'other',
-        source: 'subscription',
-      });
-    }
-
-    // Add recurring transaction predictions that aren't already covered by subscriptions
-    const subNames = new Set(allBills.map(b => b.name.toLowerCase()));
-    for (const [, bill] of merchantMap) {
-      const cleanName = bill.merchant_name.replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim();
-      if (subNames.has(cleanName.toLowerCase())) continue;
-      // Only include bills > £5 to filter noise
-      if (bill.expected_amount < 5) continue;
-      allBills.push({
-        name: cleanName,
-        expected_amount: bill.expected_amount,
-        category: bill.user_category,
-        source: 'recurring',
-      });
-    }
-
-    // Sort by amount descending
-    allBills.sort((a, b) => b.expected_amount - a.expected_amount);
-
-    // Get current month transactions to mark which bills have already been paid
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    // Check which bills have been paid this month
+    const startOfMonth = new Date(year, month - 1, 1).toISOString();
     const { data: currentMonthTxns } = await admin
       .from('bank_transactions')
       .select('merchant_name, description, amount')
@@ -99,21 +94,46 @@ export async function GET() {
       .lt('amount', 0)
       .gte('timestamp', startOfMonth);
 
-    const paidMerchants = new Set(
-      (currentMonthTxns || []).map(t =>
-        (t.merchant_name || t.description || '').substring(0, 40).trim().toLowerCase()
-      )
+    const paidMerchants = (currentMonthTxns || []).map(t =>
+      (t.merchant_name || t.description || '').substring(0, 40).trim().toLowerCase()
     );
 
-    const billsWithStatus = allBills.map(bill => ({
-      ...bill,
-      paid: paidMerchants.has(bill.name.toLowerCase()),
-    }));
+    // Transform to frontend format
+    const enrichedBills = bills.map((bill: any) => {
+      const category = bill.subscription_id
+        ? (subCategories[bill.subscription_id] || 'other')
+        : 'other';
 
-    const totalExpected = allBills.reduce((s, b) => s + b.expected_amount, 0);
+      const billNameNorm = normaliseBillName(bill.provider_name);
+      const paid = paidMerchants.some(pm => {
+        const pmNorm = normaliseBillName(pm);
+        if (!pmNorm || !billNameNorm) return false;
+        return pmNorm.includes(billNameNorm.substring(0, 8)) ||
+               billNameNorm.includes(pmNorm.substring(0, 8));
+      });
+
+      return {
+        name: bill.provider_name,
+        expected_amount: parseFloat(bill.expected_amount) || 0,
+        category,
+        source: bill.is_subscription ? 'subscription' as const : 'recurring' as const,
+        paid,
+        expected_date: bill.expected_date,
+        billing_day: bill.billing_day,
+        occurrence_count: bill.occurrence_count,
+        is_subscription: bill.is_subscription,
+        subscription_id: bill.subscription_id,
+        bill_key: bill.bill_key,
+      };
+    });
+
+    // Sort by billing day (when in the month the bill is expected)
+    enrichedBills.sort((a: any, b: any) => a.billing_day - b.billing_day);
+
+    const totalExpected = enrichedBills.reduce((s: number, b: any) => s + b.expected_amount, 0);
 
     return NextResponse.json({
-      bills: billsWithStatus,
+      bills: enrichedBills,
       totalExpected: parseFloat(totalExpected.toFixed(2)),
     });
   } catch (err: any) {
