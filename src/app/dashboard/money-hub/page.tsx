@@ -2332,7 +2332,7 @@ export default function MoneyHubPage() {
             {totalOpportunityValue > 0 && (
               <div className="text-right">
                 <p className="text-2xl font-bold text-mint-400">£{fmt(totalOpportunityValue)}</p>
-                <p className="text-slate-500 text-xs">potential savings</p>
+                <p className="text-slate-500 text-xs">actionable savings</p>
               </div>
             )}
           </div>
