@@ -267,35 +267,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Meet the Founder */}
-        <section className="py-16 md:py-20 border-b border-navy-700/30">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center sm:items-start gap-8">
-              <div className="shrink-0">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-mint-400/30 to-brand-400/30 border border-mint-400/30 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-mint-400">PA</span>
-                </div>
-              </div>
-              <div>
-                <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-2">Meet the Founder</p>
-                <h3 className="text-xl font-bold text-white mb-3 font-[family-name:var(--font-heading)]">Paul Airey</h3>
-                <p className="text-slate-300 text-sm leading-relaxed mb-4">
-                  Paul built Paybacker after being overcharged one too many times — a £400 energy bill he never should have paid, a gym contract he couldn't get out of, and three subscriptions he'd forgotten existed. He realised the tools to fight back existed in UK law, but most people didn't know how to use them. So he built Paybacker to do it automatically.
-                </p>
-                <a
-                  href="https://www.linkedin.com/in/paulairey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 text-mint-400 hover:text-mint-300 text-sm font-medium transition-all"
-                >
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
-                  Connect on LinkedIn
-                </a>
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* Feature Section 1: AI Complaint Letters */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
