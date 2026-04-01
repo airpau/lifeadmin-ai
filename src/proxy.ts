@@ -75,7 +75,10 @@ export async function proxy(request: NextRequest) {
 
   // Protect dashboard routes (non-waitlist or fallback)
   if (request.nextUrl.pathname.startsWith('/dashboard') && !user) {
-    return NextResponse.redirect(new URL('/auth/login', request.url));
+    const loginUrl = new URL('/auth/login', request.url);
+    const redirectPath = request.nextUrl.pathname + request.nextUrl.search;
+    loginUrl.searchParams.set('redirect', redirectPath);
+    return NextResponse.redirect(loginUrl);
   }
 
   // Redirect authenticated users away from auth pages
