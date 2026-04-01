@@ -135,7 +135,10 @@ export async function fetchTransactions(
   fromDate: Date
 ): Promise<TrueLayerTransaction[]> {
   const from = fromDate.toISOString().split('T')[0];
-  const to = new Date().toISOString().split('T')[0];
+  // TrueLayer 'to' is exclusive — add +1 day to include today's transactions
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const to = tomorrow.toISOString().split('T')[0];
 
   const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions?from=${from}&to=${to}`;
   const res = await fetch(url, {

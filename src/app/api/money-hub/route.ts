@@ -41,7 +41,7 @@ export async function GET(request: Request) {
       assets, liabilities, goals, alerts, tasks, overrides,
     ] = await Promise.all([
       admin.from('bank_transactions').select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
-        .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }),
+        .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(10000),
       admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
       admin.from('money_hub_budgets').select('*').eq('user_id', user.id),

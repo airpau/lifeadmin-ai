@@ -197,19 +197,19 @@ export async function findCheaperAlternatives(
   let comparisons: ComparisonResult[] = [];
 
   if (isComparisonOnly) {
-    // Estimated savings percentages by category (based on UK industry averages)
-    const savingsEstimates: Record<string, number> = {
-      'insurance': 0.20,     // 20% avg saving when switching insurer
-      'mortgages': 0.05,     // 5% saving on mortgage interest by remortgaging
-      'loans': 0.15,         // 15% saving by consolidating/switching loans
-      'credit-cards': 0.30,  // 30% saving by switching to 0% balance transfer
-      'car-finance': 0.15,   // 15% saving by refinancing
-      'travel': 0,
-      'water': 0.10,         // 10% saving with water meter
+    // Conservative estimated savings with hard caps to keep figures realistic
+    const savingsEstimates: Record<string, { pct: number; maxAnnual: number }> = {
+      'insurance': { pct: 0.15, maxAnnual: 120 },      // 15% capped at £120/yr
+      'mortgages': { pct: 0.02, maxAnnual: 200 },       // 2% capped at £200/yr (realistic broker savings)
+      'loans': { pct: 0.05, maxAnnual: 150 },           // 5% capped at £150/yr
+      'credit-cards': { pct: 0.10, maxAnnual: 100 },    // 10% capped at £100/yr
+      'car-finance': { pct: 0.05, maxAnnual: 100 },     // 5% capped at £100/yr
+      'travel': { pct: 0, maxAnnual: 0 },
+      'water': { pct: 0.05, maxAnnual: 50 },            // 5% capped at £50/yr
     };
-    const estimatedPct = savingsEstimates[dealCategory] || 0;
+    const est = savingsEstimates[dealCategory] || { pct: 0, maxAnnual: 0 };
     const annualCurrent = currentMonthly * 12;
-    const estimatedAnnualSaving = Math.round(annualCurrent * estimatedPct);
+    const estimatedAnnualSaving = Math.min(Math.round(annualCurrent * est.pct), est.maxAnnual);
 
     comparisons = deals
       .filter(d => d.provider.toLowerCase() !== sub.provider_name.toLowerCase())
@@ -219,8 +219,8 @@ export async function findCheaperAlternatives(
         dealName: d.headline,
         dealUrl: buildAwinUrl(d.awinMid, d.providerUrl),
         currentPrice: currentMonthly,
-        dealPrice: currentMonthly * (1 - estimatedPct),
-        annualSaving: i === 0 ? estimatedAnnualSaving : 0, // Only count savings once (best deal)
+        dealPrice: est.pct > 0 ? currentMonthly * (1 - est.pct) : 0,
+        annualSaving: i === 0 ? estimatedAnnualSaving : 0,
         awinMid: d.awinMid,
       }));
   } else {
