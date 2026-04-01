@@ -676,12 +676,22 @@ export default function MoneyHubPage() {
       });
       const d = await res.json();
       if (d.reply) {
-        const reply = d.reply;
-        const newMessages = [...updated, { role: 'assistant', content: reply }];
-        setChatMessages(newMessages);
+        const rawReply = d.reply;
 
-        // Check for widget commands
-        const widgetMatch = reply.match(/\[WIDGET:([\s\S]*?)\]/);
+        // Auto-refresh dashboard if the AI made data changes
+        if (d.toolsUsed || rawReply.includes(':::dashboard_refresh:::') || rawReply.includes('recategorised') || rawReply.includes('Recategorised') || rawReply.includes('Updated') || rawReply.includes('Dismissed')) {
+          refreshData();
+        }
+
+        // Strip directives before displaying
+        const cleanReply = rawReply
+          .replace(/:::dashboard_refresh:::/g, '')
+          .replace(/:::dashboard\s*\{[\s\S]*?\}\s*:::/g, '')
+          .replace(/:::chart\s*\{[\s\S]*?\}\s*:::/g, (m: string) => m) // keep chart blocks
+          .trim();
+
+        // Check for widget commands before stripping
+        const widgetMatch = rawReply.match(/\[WIDGET:([\s\S]*?)\]/);
         if (widgetMatch) {
           try {
             const widgetData = JSON.parse(widgetMatch[1]);
@@ -699,13 +709,13 @@ export default function MoneyHubPage() {
           } catch { /* invalid widget JSON, ignore */ }
         }
 
+        // Strip widget commands from display
+        const displayReply = cleanReply.replace(/\[WIDGET:[\s\S]*?\]/g, '').trim();
+        const newMessages = [...updated, { role: 'assistant', content: displayReply }];
+        setChatMessages(newMessages);
+
         // Save chat history
         try { localStorage.setItem('pb_moneyhub_chat_history', JSON.stringify(newMessages)); } catch { /* silent */ }
-
-        // Auto-refresh dashboard if the AI made data changes
-        if (d.toolsUsed || reply.includes(':::dashboard_refresh:::') || reply.includes('recategorised') || reply.includes('updated') || reply.includes('dismissed')) {
-          refreshData();
-        }
       } else if (d.error) {
         const errMessages = [...updated, { role: 'assistant', content: d.error }];
         setChatMessages(errMessages);
@@ -2231,22 +2241,29 @@ export default function MoneyHubPage() {
           ) : (
             <div className="space-y-3">
               {data.budgets.map((b: any) => {
-                const spent = deduplicatedSpending.find(c => c.category === b.category)?.total || 0;
-                const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
+                const spent = b.spent || 0;
+                const pct = b.percentage || (b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0);
                 const info = CATEGORY_LABELS[b.category] || CATEGORY_LABELS.other;
+                const isOverBudget = pct > 100;
+                const isWarning = pct > 80 && pct <= 100;
                 return (
                   <div key={b.id} className="relative">
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-white flex items-center gap-1">
                         {info.icon} {info.label}
-                        {pct > 100 && (
+                        {isOverBudget && (
                           <span className="bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ml-1">
                             Over budget!
                           </span>
                         )}
+                        {isWarning && (
+                          <span className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ml-1">
+                            ⚠️ {pct.toFixed(0)}% used
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-mint-400' : 'text-slate-400'}>
+                        <span className={isOverBudget ? 'text-red-400' : isWarning ? 'text-amber-400' : 'text-slate-400'}>
                           £{fmt(spent)} / £{fmt(b.monthly_limit)}
                         </span>
                         <button
@@ -2262,12 +2279,15 @@ export default function MoneyHubPage() {
                     </div>
                     <div className="w-full bg-navy-700 rounded-full h-2">
                       <div
-                        className={`h-2 rounded-full transition-all ${pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : pct > 60 ? 'bg-amber-400' : 'bg-green-500'}`}
+                        className={`h-2 rounded-full transition-all ${isOverBudget ? 'bg-red-500' : isWarning ? 'bg-amber-500' : pct > 60 ? 'bg-amber-400' : 'bg-green-500'}`}
                         style={{ width: `${Math.min(pct, 100)}%` }}
                       />
                     </div>
-                    <div className="flex justify-end mt-0.5">
-                      <span className={`text-[10px] ${pct > 100 ? 'text-red-400' : pct > 80 ? 'text-mint-400' : 'text-slate-500'}`}>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[10px] text-slate-500">
+                        {isOverBudget ? `Over by £${fmt(spent - b.monthly_limit)}` : `£${fmt(b.monthly_limit - spent)} remaining`}
+                      </span>
+                      <span className={`text-[10px] ${isOverBudget ? 'text-red-400' : isWarning ? 'text-amber-400' : 'text-slate-500'}`}>
                         {pct.toFixed(0)}%
                       </span>
                     </div>

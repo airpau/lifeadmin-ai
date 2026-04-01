@@ -296,7 +296,18 @@ export async function GET(request: Request) {
         assetsList: isPro ? (assets.data || []) : [],
         liabilitiesList: isPro ? (liabilities.data || []) : [],
       },
-      budgets: isPaid ? (budgets.data || []) : [],
+      budgets: isPaid ? (budgets.data || []).map((b: any) => {
+        const budgetCat = (b.category || '').toLowerCase();
+        const spent = categoryTotals[budgetCat] || 0;
+        const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
+        return {
+          ...b,
+          spent: parseFloat(spent.toFixed(2)),
+          percentage: parseFloat(pct.toFixed(1)),
+          remaining: parseFloat((b.monthly_limit - spent).toFixed(2)),
+          status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track',
+        };
+      }) : [],
       goals: isPaid ? (goals.data || []).slice(0, isPro ? 100 : 3) : [],
       alerts: (alerts.data || []).slice(0, isPaid ? 20 : 3),
       opportunities: (tasks.data || []).slice(0, isPaid ? 20 : 3).map((t: any) => {

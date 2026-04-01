@@ -6,8 +6,58 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { data } = await supabase.from('money_hub_budgets').select('*').eq('user_id', user.id);
-  return NextResponse.json(data || []);
+  const [budgetsRes, txnRes] = await Promise.all([
+    supabase.from('money_hub_budgets').select('*').eq('user_id', user.id),
+    supabase.from('bank_transactions')
+      .select('amount, description, category, user_category, merchant_name')
+      .eq('user_id', user.id)
+      .lt('amount', 0)
+      .gte('timestamp', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+      .limit(10000),
+  ]);
+
+  const budgets = budgetsRes.data || [];
+  const txns = txnRes.data || [];
+
+  if (budgets.length === 0) return NextResponse.json([]);
+
+  // Import the learning engine for runtime categorisation
+  const { loadLearnedRules, categoriseWithLearningSync: categorise } = await import('@/lib/learning-engine');
+  await loadLearnedRules();
+
+  // Build spending by category using the same logic as the main money-hub API
+  const categorySpend: Record<string, number> = {};
+  for (const t of txns) {
+    const rawCat = t.user_category || '';
+    const cat = rawCat || categorise(t.description || '', t.category || '') || 'other';
+    const amt = Math.abs(parseFloat(String(t.amount)));
+    categorySpend[cat] = (categorySpend[cat] || 0) + amt;
+  }
+
+  // Match budgets to spending (case-insensitive)
+  const result = budgets.map(b => {
+    const budgetCat = (b.category || '').toLowerCase();
+    // Direct match
+    let spent = categorySpend[budgetCat] || 0;
+    // Also check for case variations
+    if (spent === 0) {
+      for (const [cat, total] of Object.entries(categorySpend)) {
+        if (cat.toLowerCase() === budgetCat) {
+          spent += total;
+        }
+      }
+    }
+    const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
+    return {
+      ...b,
+      spent: parseFloat(spent.toFixed(2)),
+      percentage: parseFloat(pct.toFixed(1)),
+      remaining: parseFloat((b.monthly_limit - spent).toFixed(2)),
+      status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track',
+    };
+  });
+
+  return NextResponse.json(result);
 }
 
 export async function POST(request: NextRequest) {
