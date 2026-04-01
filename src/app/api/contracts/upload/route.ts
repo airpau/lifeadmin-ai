@@ -26,10 +26,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing file' }, { status: 400 });
   }
 
-  if (!disputeId && !subscriptionId) {
-    return NextResponse.json({ error: 'Must provide disputeId or subscriptionId' }, { status: 400 });
-  }
-
   if (file.size > 10 * 1024 * 1024) {
     return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 });
   }

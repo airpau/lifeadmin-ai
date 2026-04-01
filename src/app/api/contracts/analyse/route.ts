@@ -9,6 +9,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 /**
  * POST /api/contracts/analyse
  * Upload a contract (PDF or image) and extract key terms using Claude Vision.
+ * Optionally link to a dispute_id. Can also be used standalone (Contract Vault).
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -19,29 +20,33 @@ export async function POST(request: NextRequest) {
   const file = formData.get('file') as File | null;
   const disputeId = formData.get('disputeId') as string | null;
 
-  if (!file || !disputeId) {
-    return NextResponse.json({ error: 'Missing file or disputeId' }, { status: 400 });
+  if (!file) {
+    return NextResponse.json({ error: 'Missing file' }, { status: 400 });
   }
 
   if (file.size > 10 * 1024 * 1024) {
     return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 });
   }
 
-  // Verify dispute ownership
-  const { data: dispute } = await supabase
-    .from('disputes')
-    .select('id, provider_name')
-    .eq('id', disputeId)
-    .eq('user_id', user.id)
-    .single();
+  // Optionally look up provider name from the linked dispute
+  let providerName = '';
+  if (disputeId) {
+    const { data: dispute } = await supabase
+      .from('disputes')
+      .select('id, provider_name')
+      .eq('id', disputeId)
+      .eq('user_id', user.id)
+      .single();
 
-  if (!dispute) {
-    return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });
+    if (!dispute) {
+      return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });
+    }
+    providerName = dispute.provider_name || '';
   }
 
   // Upload file to Supabase Storage
   const ext = file.name.split('.').pop() || 'bin';
-  const storagePath = `contracts/${user.id}/${disputeId}/${Date.now()}.${ext}`;
+  const storagePath = `contracts/${user.id}/${disputeId || 'vault'}/${Date.now()}.${ext}`;
 
   const { data: upload, error: uploadError } = await supabase.storage
     .from('correspondence-files')
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
         fileBlock,
         {
           type: 'text',
-          text: `You are analysing a UK consumer contract or terms document for ${dispute.provider_name || 'a company'}.
+          text: `You are analysing a UK consumer contract or terms document${providerName ? ` for ${providerName}` : ''}.
 
 Extract the following key terms and return ONLY a JSON object:
 
@@ -121,23 +126,24 @@ If you can't find a particular term, set it to null. For unfair_clauses, flag an
   const { data: extraction, error: insertError } = await supabase
     .from('contract_extractions')
     .insert({
-      dispute_id: disputeId,
+      dispute_id: disputeId || null,
       user_id: user.id,
       file_url: urlData.publicUrl,
       file_name: file.name,
-      provider_name: result.provider_name || dispute.provider_name,
-      contract_start_date: result.contract_start_date,
-      contract_end_date: result.contract_end_date,
-      minimum_term: result.minimum_term,
-      notice_period: result.notice_period,
-      cancellation_fee: result.cancellation_fee,
-      early_exit_fee: result.early_exit_fee,
-      price_increase_clause: result.price_increase_clause,
-      auto_renewal: result.auto_renewal,
-      cooling_off_period: result.cooling_off_period,
+      file_type: file.type,
+      provider_name: result.provider_name || providerName || null,
+      contract_start_date: result.contract_start_date || null,
+      contract_end_date: result.contract_end_date || null,
+      minimum_term: result.minimum_term || null,
+      notice_period: result.notice_period || null,
+      cancellation_fee: result.cancellation_fee || null,
+      early_exit_fee: result.early_exit_fee || null,
+      price_increase_clause: result.price_increase_clause || null,
+      auto_renewal: result.auto_renewal || null,
+      cooling_off_period: result.cooling_off_period || null,
       extracted_terms: result,
       unfair_clauses: result.unfair_clauses || [],
-      raw_summary: result.summary,
+      raw_summary: result.summary || null,
     })
     .select()
     .single();
