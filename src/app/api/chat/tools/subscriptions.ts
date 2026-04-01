@@ -414,10 +414,131 @@ const dismissSubscription: ChatTool = {
   },
 };
 
+/**
+ * Convenience tool: recategorise a subscription by name.
+ * Users don't know UUIDs — they say "change Paratus to mortgage".
+ */
+const recategoriseSubscription: ChatTool = {
+  name: 'recategorise_subscription',
+  description:
+    'Recategorise a subscription by provider name. Use when the user says things like "change Paratus to mortgage" or "HMRC should be under tax". Finds the subscription by name and updates its category. Available categories: mortgage, rent, loan, insurance, utility, broadband, mobile, streaming, fitness, software, council_tax, tax, gambling, food, shopping, childcare, transport, healthcare, charity, education, pets, parking, travel, water, motoring, property_management, credit_monitoring, other.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider_name: {
+        type: 'string',
+        description: 'The provider/company name to find (fuzzy match)',
+      },
+      new_category: {
+        type: 'string',
+        description: 'The new category to assign',
+      },
+    },
+    required: ['provider_name', 'new_category'],
+  },
+  handler: async (args: { provider_name: string; new_category: string }, userId: string) => {
+    const admin = getAdmin();
+
+    // Find by fuzzy match
+    const { data } = await admin
+      .from('subscriptions')
+      .select('id, provider_name, category, amount')
+      .eq('user_id', userId)
+      .is('dismissed_at', null)
+      .ilike('provider_name', `%${args.provider_name}%`);
+
+    if (!data || data.length === 0) {
+      return { error: `No subscription found matching "${args.provider_name}".` };
+    }
+
+    // Update all matches (if "Paratus" matches 1 sub, update it; if "Virgin Media" matches 2, update both)
+    const results = [];
+    for (const sub of data) {
+      const { error } = await admin
+        .from('subscriptions')
+        .update({ category: args.new_category })
+        .eq('id', sub.id)
+        .eq('user_id', userId);
+
+      if (!error) {
+        results.push({
+          provider_name: sub.provider_name,
+          old_category: sub.category,
+          new_category: args.new_category,
+          amount: `£${Number(sub.amount).toFixed(2)}`,
+        });
+      }
+    }
+
+    return {
+      message: `Recategorised ${results.length} subscription(s) to "${args.new_category}".`,
+      updated: results,
+      dashboard_refresh: true,
+    };
+  },
+};
+
+/**
+ * Recategorise bank transactions by keyword.
+ * E.g. "categorise all Tesco transactions as groceries"
+ */
+const recategoriseTransactions: ChatTool = {
+  name: 'recategorise_transactions',
+  description:
+    'Recategorise bank transactions matching a description keyword. Use when the user says "categorise Tesco as groceries" or "my Costa transactions should be food". Only updates the user_category field on the user\'s own transactions.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      keyword: {
+        type: 'string',
+        description: 'Description keyword to match transactions (e.g. "Tesco", "Costa")',
+      },
+      new_category: {
+        type: 'string',
+        description: 'The new category to assign',
+      },
+    },
+    required: ['keyword', 'new_category'],
+  },
+  handler: async (args: { keyword: string; new_category: string }, userId: string) => {
+    const admin = getAdmin();
+
+    // Count matching transactions
+    const { data: matches } = await admin
+      .from('bank_transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .ilike('description', `%${args.keyword}%`);
+
+    if (!matches || matches.length === 0) {
+      return { error: `No transactions found matching "${args.keyword}".` };
+    }
+
+    // Update user_category for all matching transactions
+    const { error } = await admin
+      .from('bank_transactions')
+      .update({ user_category: args.new_category })
+      .eq('user_id', userId)
+      .ilike('description', `%${args.keyword}%`);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return {
+      message: `Updated ${matches.length} transaction(s) matching "${args.keyword}" to category "${args.new_category}".`,
+      count: matches.length,
+      dashboard_refresh: true,
+    };
+  },
+};
+
 export const subscriptionTools: ChatTool[] = [
   listSubscriptions,
   getSubscription,
   updateSubscription,
   createSubscription,
   dismissSubscription,
+  recategoriseSubscription,
+  recategoriseTransactions,
 ];

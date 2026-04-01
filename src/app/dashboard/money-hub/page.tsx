@@ -668,10 +668,11 @@ export default function MoneyHubPage() {
     setChatInput('');
     setChatLoading(true);
     try {
-      const res = await fetch('/api/money-hub/chat', {
+      // Use main chat API which has full tool support (recategorise, update, dismiss, etc.)
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: updated }),
+        body: JSON.stringify({ messages: updated, tier: 'pro' }),
       });
       const d = await res.json();
       if (d.reply) {
@@ -700,6 +701,11 @@ export default function MoneyHubPage() {
 
         // Save chat history
         try { localStorage.setItem('pb_moneyhub_chat_history', JSON.stringify(newMessages)); } catch { /* silent */ }
+
+        // Auto-refresh dashboard if the AI made data changes
+        if (d.toolsUsed || reply.includes(':::dashboard_refresh:::') || reply.includes('recategorised') || reply.includes('updated') || reply.includes('dismissed')) {
+          refreshData();
+        }
       } else if (d.error) {
         const errMessages = [...updated, { role: 'assistant', content: d.error }];
         setChatMessages(errMessages);
@@ -839,6 +845,13 @@ export default function MoneyHubPage() {
     document.body.dataset.hideChat = 'true';
     return () => { delete document.body.dataset.hideChat; };
   }, []);
+
+  // Listen for global chatbot refresh events
+  useEffect(() => {
+    const handler = () => refreshData();
+    window.addEventListener('paybacker:dashboard_refresh', handler);
+    return () => window.removeEventListener('paybacker:dashboard_refresh', handler);
+  }, [refreshData]);
 
   // Auto-scroll chat
   useEffect(() => {
