@@ -1227,6 +1227,22 @@ export default function MoneyHubPage() {
         </div>
       )}
 
+      {/* AI Assistant nudge — shown to users with spending data */}
+      {deduplicatedSpending.length > 0 && !isPro && (
+        <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 flex items-center gap-3">
+          <MessageCircle className="h-4 w-4 text-purple-400 shrink-0" />
+          <p className="text-slate-300 text-sm flex-1">
+            Not sure about a category? The AI assistant can recategorise transactions, find missing subscriptions, and answer spending questions through conversation.
+          </p>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('paybacker:open_chat'))}
+            className="text-purple-400 hover:text-purple-300 text-xs font-medium whitespace-nowrap transition-colors"
+          >
+            Ask the AI
+          </button>
+        </div>
+      )}
+
       {/* Toast notification */}
       {toast && (
         <div className={`fixed top-4 right-4 z-[100] max-w-sm px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-[slideIn_0.3s_ease] ${
@@ -2896,13 +2912,14 @@ export default function MoneyHubPage() {
                   {chatMessages.length === 0 && (
                     <div className="text-center py-6">
                       <MessageCircle className="h-8 w-8 text-purple-400/30 mx-auto mb-2" />
-                      <p className="text-slate-400 text-sm mb-3">Ask me about your finances</p>
+                      <p className="text-white text-sm font-medium mb-1">Your AI Financial Assistant</p>
+                      <p className="text-slate-400 text-xs mb-3">I can organise your data through conversation. Tell me a transaction is miscategorised, ask me to find missing subscriptions, or get a spending breakdown.</p>
                       <div className="space-y-1">
                         {[
-                          'How much did I spend on eating out?',
-                          'Show me a pie chart of spending',
+                          'Find my OneStream payments',
+                          'Show me a pie chart of my spending',
+                          'My Costa transactions should be food',
                           'What subscriptions could I cancel?',
-                          'Set a budget for groceries',
                         ].map(q => (
                           <button key={q} onClick={() => setChatInput(q)} className="block w-full text-left text-xs text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded px-3 py-1.5">
                             {q}

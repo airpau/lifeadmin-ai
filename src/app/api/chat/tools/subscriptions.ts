@@ -515,6 +515,19 @@ const recategoriseSubscription: ChatTool = {
       return { error: `No subscription or bank transactions found matching "${args.provider_name}".` };
     }
 
+    // Log the correction for future auto-categorisation improvement
+    try {
+      const originalCategory = results.length > 0 ? results[0].old_category : null;
+      await admin.from('chatbot_corrections').insert({
+        user_id: userId,
+        correction_type: 'category',
+        original_value: originalCategory,
+        corrected_value: args.new_category,
+        merchant_pattern: corePattern || pattern,
+        context: `Recategorised "${args.provider_name}" from "${originalCategory}" to "${args.new_category}"`,
+      });
+    } catch { /* non-critical */ }
+
     return {
       message: `Recategorised ${subUpdated} subscription(s) and ${txnsUpdated} transaction(s) to "${args.new_category}".`,
       updated: results.length > 0 ? results : { updated_transactions: txnsUpdated, new_category: args.new_category },
@@ -569,6 +582,18 @@ const recategoriseTransactions: ChatTool = {
     if (error) {
       return { error: error.message };
     }
+
+    // Log the correction for future auto-categorisation improvement
+    try {
+      await admin.from('chatbot_corrections').insert({
+        user_id: userId,
+        correction_type: 'category',
+        original_value: null,
+        corrected_value: args.new_category,
+        merchant_pattern: args.keyword.toLowerCase().trim(),
+        context: `Recategorised ${matches.length} transaction(s) matching "${args.keyword}" to "${args.new_category}"`,
+      });
+    } catch { /* non-critical */ }
 
     return {
       message: `Updated ${matches.length} transaction(s) matching "${args.keyword}" to category "${args.new_category}".`,

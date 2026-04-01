@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale, Users, CreditCard, Bell, Gift, Banknote, FileText, Zap, BarChart3, Building2, Check, X, ArrowRight, Star, ChevronRight } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale, Users, CreditCard, Bell, Gift, Banknote, FileText, Zap, BarChart3, Building2, Check, X, ArrowRight, Star, ChevronRight, MessageCircle } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
@@ -352,7 +352,76 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Feature Section 3: Find Better Deals */}
+        {/* Feature Section 3: AI Financial Assistant */}
+        <section className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
+            >
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-purple-400/10 px-3 py-1.5 text-xs text-purple-400 border border-purple-400/20 mb-6">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span>AI Financial Assistant</span>
+                </div>
+                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                  Manage your finances through conversation
+                </h2>
+                <p className="text-slate-400 text-lg leading-relaxed mb-6">
+                  The only platform where AI actively helps you organise, categorise, and fix your financial data. Just tell it what to do.
+                </p>
+                <ul className="space-y-3 mb-8">
+                  {[
+                    'Recategorise transactions by name: "OneStream should be broadband"',
+                    'Find missing subscriptions: "Find my Virgin Media payments"',
+                    'Get spending insights: "What\'s my biggest expense this month?"',
+                    'Every action confirmed before it\'s made, no surprises',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-purple-400 mt-0.5 shrink-0" />
+                      <span className="text-slate-300 text-sm">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                {ctaButton}
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700/50">
+                  <MessageCircle className="h-4 w-4 text-purple-400" />
+                  <span className="text-white text-sm font-medium">AI Financial Assistant</span>
+                  <span className="ml-auto w-2 h-2 bg-green-400 rounded-full" />
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-end">
+                    <div className="bg-purple-500 text-white rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[80%]">
+                      My OneStream direct debit keeps appearing as bills but it&apos;s broadband
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="bg-navy-800 text-slate-200 rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[80%] space-y-1">
+                      <p>I found 2 OneStream payments: £19.99/month. They&apos;re currently categorised as &quot;bills&quot;. I&apos;ll move them to &quot;broadband&quot; so they show correctly in your Money Hub. Shall I go ahead?</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <div className="bg-purple-500 text-white rounded-2xl rounded-br-sm px-4 py-2.5">
+                      Yes please
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="bg-navy-800 text-slate-200 rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[80%]">
+                      Done. OneStream is now under broadband and your spending dashboard has been updated.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Feature Section 4: Find Better Deals */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
             <motion.div

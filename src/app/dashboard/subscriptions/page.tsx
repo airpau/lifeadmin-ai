@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2 } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2, MessageCircle } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
@@ -1384,6 +1384,22 @@ export default function SubscriptionsPage() {
           </button>
         </div>
       </div>
+
+      {/* AI Assistant nudge */}
+      {subscriptions.length > 0 && (
+        <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+          <MessageCircle className="h-4 w-4 text-mint-400 shrink-0" />
+          <p className="text-slate-400 text-sm flex-1">
+            Think a subscription is missing or miscategorised? Ask the AI assistant to find and add it.
+          </p>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('paybacker:open_chat'))}
+            className="text-mint-400 hover:text-mint-300 text-xs font-medium whitespace-nowrap transition-colors"
+          >
+            Ask the AI
+          </button>
+        </div>
+      )}
 
       {/* Detected subscriptions from inbox */}
       {detectedSubs.length > 0 && (
