@@ -236,6 +236,9 @@ export async function POST() {
   const adminClient = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   await adminClient.rpc('fix_ee_card_merchant_names', { p_user_id: user.id });
 
+  // Auto-categorise new transactions using merchant_rules
+  await adminClient.rpc('auto_categorise_transactions', { p_user_id: user.id });
+
   // Run recurring detection via DB function (scans all accounts, creates subscriptions)
   const { data: recurringData } = await adminClient.rpc('detect_and_sync_recurring_transactions', { p_user_id: user.id });
   const recurringDetected = typeof recurringData === 'number' ? recurringData : 0;

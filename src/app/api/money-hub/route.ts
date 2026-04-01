@@ -82,7 +82,7 @@ export async function GET(request: Request) {
       return false;
     };
     const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
-    const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+    const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0 && !isXferTxn(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
 
     // Category breakdown - use learning-aware categorisation
     const { normaliseMerchantName } = await import('@/lib/merchant-normalise');
@@ -189,8 +189,8 @@ export async function GET(request: Request) {
         return false;
       };
       const inc = monthTxns.filter(t => parseFloat(t.amount) > 0 && !isXfer(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
-      // Match headline monthlyOutgoings: ALL debits (consistent with overview)
-      const out = monthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+      // Exclude transfers from outgoings (consistent with overview)
+      const out = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isXfer(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
       monthlyTrends.push({ month: monthStr, income: parseFloat(inc.toFixed(2)), outgoings: parseFloat(out.toFixed(2)) });
     }
 

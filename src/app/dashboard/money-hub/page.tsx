@@ -1796,6 +1796,12 @@ export default function MoneyHubPage() {
                 <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all categories</Link>
               </div>
             )}
+            {deduplicatedSpending.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
+                <span className="text-slate-400 text-sm font-medium">Total spending</span>
+                <span className="text-white font-bold text-sm">£{fmt(data.spending.totalSpent)}</span>
+              </div>
+            )}
           </div>
 
           {/* Top merchants (Pro only) */}
@@ -2333,147 +2339,6 @@ export default function MoneyHubPage() {
         <div id="tour-budgets"><LockedSection title="Budget Planner" /></div>
       )}
 
-      {/* ═══ SECTION 10: Financial Action Centre ═══ */}
-      <div id="tour-actions" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-mint-400 font-[family-name:var(--font-heading)] flex items-center gap-2">
-            <Zap className="h-5 w-5" /> Financial Action Centre
-          </h2>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={scanInbox}
-              disabled={scanning}
-              className="flex items-center gap-1.5 bg-mint-400/20 hover:bg-mint-400/30 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
-            >
-              {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-              {scanning ? 'Scanning inbox...' : 'Scan Inbox'}
-            </button>
-            {totalOpportunityValue > 0 && (
-              <div className="text-right">
-                <p className="text-2xl font-bold text-mint-400">£{fmt(totalOpportunityValue)}</p>
-                <p className="text-slate-500 text-xs">actionable savings</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {data.opportunities.length > 0 ? (
-          <div className="space-y-2">
-            {data.opportunities.slice(0, isPaid ? 20 : 3).map((opp: any) => {
-              // Determine action buttons based on opportunity type and suggested action
-              const suggestedAction = opp.suggested_action;
-              const oppType = opp.opp_type || '';
-              const oppCategory = opp.opp_category || '';
-              const providerName = opp.provider_name || '';
-
-              // Build complaint URL with pre-filled context
-              const complaintParams = new URLSearchParams();
-              if (providerName) complaintParams.set('provider', providerName);
-              if (opp.title) complaintParams.set('subject', opp.title);
-              if (opp.disputed_amount) complaintParams.set('amount', String(opp.disputed_amount));
-              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
-
-              // Type badge colour
-              const typeBadge: Record<string, { color: string; label: string }> = {
-                subscription: { color: 'bg-purple-500/20 text-purple-400', label: 'Subscription' },
-                utility_bill: { color: 'bg-blue-500/20 text-blue-400', label: 'Bill Review' },
-                flight_delay: { color: 'bg-sky-500/20 text-sky-400', label: 'Flight' },
-                renewal: { color: 'bg-orange-500/20 text-orange-400', label: 'Renewal' },
-                loan: { color: 'bg-red-500/20 text-red-400', label: 'Loan' },
-                overcharge: { color: 'bg-red-500/20 text-red-400', label: 'Overcharge' },
-                refund: { color: 'bg-green-500/20 text-green-400', label: 'Refund' },
-              };
-              const badge = typeBadge[oppType] || { color: 'bg-mint-400/20 text-mint-400', label: oppType.replace('_', ' ') || 'Opportunity' };
-
-              return (
-                <div key={opp.id} className="bg-navy-900 rounded-lg px-4 py-3 border border-navy-700/50">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-white text-sm font-medium truncate">{opp.title}</p>
-                        <span className={`${badge.color} text-[10px] px-1.5 py-0.5 rounded-full capitalize shrink-0`}>
-                          {badge.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        {providerName && <span>{providerName}</span>}
-                        {opp.amount > 0 && <span className="text-mint-400 font-medium">£{opp.amount}</span>}
-                        {opp.confidence && <span>({opp.confidence}% confidence)</span>}
-                      </div>
-                      {opp.description_text && (
-                        <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description_text}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-navy-700/50/50">
-                    {/* Smart action buttons based on type */}
-                    {(suggestedAction === 'switch_deal' || oppCategory === 'broadband' || oppCategory === 'energy' || oppCategory === 'mobile' || oppCategory === 'insurance') && (
-                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Compare Deals
-                      </Link>
-                    )}
-                    {(oppType === 'utility_bill' || oppType === 'overcharge' || oppType === 'refund' || suggestedAction === 'dispute') && (
-                      <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Write Complaint
-                      </Link>
-                    )}
-                    {oppType === 'flight_delay' && (
-                      <Link href="/dashboard/complaints?type=flight_compensation&new=1" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Claim Compensation
-                      </Link>
-                    )}
-                    {oppType === 'subscription' && (
-                      <Link href="/dashboard/subscriptions" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> View Subscriptions
-                      </Link>
-                    )}
-                    {oppType === 'loan' && (
-                      <Link href="/dashboard/deals" className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Compare Loan Rates
-                      </Link>
-                    )}
-                    {(suggestedAction === 'track' || suggestedAction === 'monitor') && !['subscription', 'loan'].includes(oppType) && (
-                      <Link href="/dashboard/contracts" className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Track This
-                      </Link>
-                    )}
-                    {/* Fallback if no specific action matched */}
-                    {!suggestedAction && !['subscription', 'loan', 'utility_bill', 'overcharge', 'refund', 'flight_delay'].includes(oppType) && (
-                      <Link href={complaintUrl} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Take Action
-                      </Link>
-                    )}
-                    <div className="flex-1" />
-                    <button
-                      onClick={async () => {
-                        await fetch('/api/tasks/dismiss', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ taskId: opp.id }),
-                        });
-                        setData((prev: any) => prev ? { ...prev, opportunities: prev.opportunities.filter((o: any) => o.id !== opp.id) } : prev);
-                      }}
-                      className="text-slate-600 hover:text-slate-400 text-xs transition-all px-2 py-1"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <p className="text-slate-400 text-sm">No pending actions. Scan your inbox to find opportunities.</p>
-          </div>
-        )}
-        {!isPaid && data.opportunities.length >= 3 && (
-          <div className="text-center pt-3 border-t border-mint-400/20 mt-3">
-            <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all actions</Link>
-          </div>
-        )}
-      </div>
-
       {/* ═══ SECTION 11: Savings Goals ═══ */}
       {isPaid ? (
         <div id="tour-goals" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
@@ -2640,6 +2505,147 @@ export default function MoneyHubPage() {
       ) : (
         <div id="tour-goals"><LockedSection title="Savings Goals" /></div>
       )}
+
+      {/* ═══ SECTION 10: Financial Action Centre ═══ */}
+      <div id="tour-actions" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-mint-400 font-[family-name:var(--font-heading)] flex items-center gap-2">
+            <Zap className="h-5 w-5" /> Financial Action Centre
+          </h2>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={scanInbox}
+              disabled={scanning}
+              className="flex items-center gap-1.5 bg-mint-400/20 hover:bg-mint-400/30 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
+            >
+              {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              {scanning ? 'Scanning inbox...' : 'Scan Inbox'}
+            </button>
+            {totalOpportunityValue > 0 && (
+              <div className="text-right">
+                <p className="text-2xl font-bold text-mint-400">£{fmt(totalOpportunityValue)}</p>
+                <p className="text-slate-500 text-xs">actionable savings</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {data.opportunities.length > 0 ? (
+          <div className="space-y-2">
+            {data.opportunities.slice(0, isPaid ? 20 : 3).map((opp: any) => {
+              // Determine action buttons based on opportunity type and suggested action
+              const suggestedAction = opp.suggested_action;
+              const oppType = opp.opp_type || '';
+              const oppCategory = opp.opp_category || '';
+              const providerName = opp.provider_name || '';
+
+              // Build complaint URL with pre-filled context
+              const complaintParams = new URLSearchParams();
+              if (providerName) complaintParams.set('provider', providerName);
+              if (opp.title) complaintParams.set('subject', opp.title);
+              if (opp.disputed_amount) complaintParams.set('amount', String(opp.disputed_amount));
+              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+
+              // Type badge colour
+              const typeBadge: Record<string, { color: string; label: string }> = {
+                subscription: { color: 'bg-purple-500/20 text-purple-400', label: 'Subscription' },
+                utility_bill: { color: 'bg-blue-500/20 text-blue-400', label: 'Bill Review' },
+                flight_delay: { color: 'bg-sky-500/20 text-sky-400', label: 'Flight' },
+                renewal: { color: 'bg-orange-500/20 text-orange-400', label: 'Renewal' },
+                loan: { color: 'bg-red-500/20 text-red-400', label: 'Loan' },
+                overcharge: { color: 'bg-red-500/20 text-red-400', label: 'Overcharge' },
+                refund: { color: 'bg-green-500/20 text-green-400', label: 'Refund' },
+              };
+              const badge = typeBadge[oppType] || { color: 'bg-mint-400/20 text-mint-400', label: oppType.replace('_', ' ') || 'Opportunity' };
+
+              return (
+                <div key={opp.id} className="bg-navy-900 rounded-lg px-4 py-3 border border-navy-700/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-white text-sm font-medium truncate">{opp.title}</p>
+                        <span className={`${badge.color} text-[10px] px-1.5 py-0.5 rounded-full capitalize shrink-0`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        {providerName && <span>{providerName}</span>}
+                        {opp.amount > 0 && <span className="text-mint-400 font-medium">£{opp.amount}</span>}
+                        {opp.confidence && <span>({opp.confidence}% confidence)</span>}
+                      </div>
+                      {opp.description_text && (
+                        <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description_text}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-navy-700/50/50">
+                    {/* Smart action buttons based on type */}
+                    {(suggestedAction === 'switch_deal' || oppCategory === 'broadband' || oppCategory === 'energy' || oppCategory === 'mobile' || oppCategory === 'insurance') && (
+                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Compare Deals
+                      </Link>
+                    )}
+                    {(oppType === 'utility_bill' || oppType === 'overcharge' || oppType === 'refund' || suggestedAction === 'dispute') && (
+                      <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Write Complaint
+                      </Link>
+                    )}
+                    {oppType === 'flight_delay' && (
+                      <Link href="/dashboard/complaints?type=flight_compensation&new=1" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Claim Compensation
+                      </Link>
+                    )}
+                    {oppType === 'subscription' && (
+                      <Link href="/dashboard/subscriptions" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> View Subscriptions
+                      </Link>
+                    )}
+                    {oppType === 'loan' && (
+                      <Link href="/dashboard/deals" className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Compare Loan Rates
+                      </Link>
+                    )}
+                    {(suggestedAction === 'track' || suggestedAction === 'monitor') && !['subscription', 'loan'].includes(oppType) && (
+                      <Link href="/dashboard/contracts" className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Track This
+                      </Link>
+                    )}
+                    {/* Fallback if no specific action matched */}
+                    {!suggestedAction && !['subscription', 'loan', 'utility_bill', 'overcharge', 'refund', 'flight_delay'].includes(oppType) && (
+                      <Link href={complaintUrl} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Take Action
+                      </Link>
+                    )}
+                    <div className="flex-1" />
+                    <button
+                      onClick={async () => {
+                        await fetch('/api/tasks/dismiss', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ taskId: opp.id }),
+                        });
+                        setData((prev: any) => prev ? { ...prev, opportunities: prev.opportunities.filter((o: any) => o.id !== opp.id) } : prev);
+                      }}
+                      className="text-slate-600 hover:text-slate-400 text-xs transition-all px-2 py-1"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-slate-400 text-sm">No pending actions. Scan your inbox to find opportunities.</p>
+          </div>
+        )}
+        {!isPaid && data.opportunities.length >= 3 && (
+          <div className="text-center pt-3 border-t border-mint-400/20 mt-3">
+            <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all actions</Link>
+          </div>
+        )}
+      </div>
 
       {/* ═══ Email Intelligence teaser (free) ═══ */}
       {!isPaid && (

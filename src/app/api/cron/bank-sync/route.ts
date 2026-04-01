@@ -148,6 +148,9 @@ export async function GET(request: NextRequest) {
       // Fix EE-branded card merchant names (extracts real merchant from description)
       await supabase.rpc('fix_ee_card_merchant_names', { p_user_id: connection.user_id });
 
+      // Auto-categorise new transactions using merchant_rules
+      await supabase.rpc('auto_categorise_transactions', { p_user_id: connection.user_id });
+
       // Run recurring detection via DB function (scans all accounts, creates subscriptions)
       const { data: recurringData } = await supabase.rpc('detect_and_sync_recurring_transactions', { p_user_id: connection.user_id });
       const recurringDetected = typeof recurringData === 'number' ? recurringData : 0;
