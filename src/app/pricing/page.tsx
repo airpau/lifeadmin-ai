@@ -531,7 +531,7 @@ export default function PricingPage() {
               <h4 className="text-white font-semibold text-sm mb-4">Legal</h4>
               <ul className="space-y-2 text-sm">
                 <li><Link href="/privacy-policy" className="text-slate-500 hover:text-white transition-all">Privacy Policy</Link></li>
-                <li><Link href="/legal/terms" className="text-slate-500 hover:text-white transition-all">Terms of Service</Link></li>
+                <li><Link href="/terms-of-service" className="text-slate-500 hover:text-white transition-all">Terms of Service</Link></li>
               </ul>
             </div>
             <div>
@@ -548,8 +548,7 @@ export default function PricingPage() {
               <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-2 text-slate-600 text-xs">
-              <span className="inline-block w-4 h-3 bg-gradient-to-b from-blue-600 via-white to-red-600 rounded-sm" />
-              Made in the UK
+              <span>🇬🇧 Made in the UK</span>
             </div>
           </div>
         </div>

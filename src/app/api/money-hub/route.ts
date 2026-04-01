@@ -41,8 +41,8 @@ export async function GET(request: Request) {
       assets, liabilities, goals, alerts, tasks, overrides,
     ] = await Promise.all([
       admin.from('bank_transactions').select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
-        .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }),
-      admin.from('bank_connections').select('id, bank_name, status, last_synced_at').eq('user_id', user.id),
+        .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(10000),
+      admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
       admin.from('money_hub_budgets').select('*').eq('user_id', user.id),
       admin.from('money_hub_assets').select('*').eq('user_id', user.id),
@@ -55,7 +55,18 @@ export async function GET(request: Request) {
     ]);
 
     const txns = transactions.data || [];
-    const thisMonthTxns = txns.filter(t => t.timestamp >= startOfMonth && t.timestamp <= endOfMonth);
+    // Use YYYY-MM prefix matching (proven working in monthlyTrends) as primary filter,
+    // with Date fallback for edge cases (different timestamp formats)
+    const viewMonthPrefix = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}`;
+    const startDate = new Date(startOfMonth).getTime();
+    const endDate = new Date(endOfMonth).getTime();
+    const thisMonthTxns = txns.filter(t => {
+      // Primary: string prefix match (fast, works for ISO timestamps)
+      if (t.timestamp && t.timestamp.startsWith(viewMonthPrefix)) return true;
+      // Fallback: Date object comparison (handles timezone variations)
+      const ts = new Date(t.timestamp).getTime();
+      return ts >= startDate && ts <= endDate;
+    });
 
     // Income vs outgoings — detect transfers between own accounts
     const isXferTxn = (t: any) => {
@@ -71,7 +82,7 @@ export async function GET(request: Request) {
       return false;
     };
     const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
-    const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+    const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0 && !isXferTxn(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
 
     // Category breakdown - use learning-aware categorisation
     const { normaliseMerchantName } = await import('@/lib/merchant-normalise');
@@ -178,7 +189,8 @@ export async function GET(request: Request) {
         return false;
       };
       const inc = monthTxns.filter(t => parseFloat(t.amount) > 0 && !isXfer(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
-      const out = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+      // Exclude transfers from outgoings (consistent with overview)
+      const out = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isXfer(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
       monthlyTrends.push({ month: monthStr, income: parseFloat(inc.toFixed(2)), outgoings: parseFloat(out.toFixed(2)) });
     }
 
@@ -241,7 +253,22 @@ export async function GET(request: Request) {
         daysInMonth,
         incomeBreakdown: incomeByType,
       },
-      accounts: bankConns.data || [],
+      // Flatten bank connections into individual accounts
+      accounts: (bankConns.data || []).flatMap((conn: any) => {
+        const accountIds = conn.account_ids || [];
+        const displayNames = conn.account_display_names || [];
+        if (accountIds.length <= 1) {
+          // Single account connection — return as-is
+          return [{ id: conn.id, bank_name: conn.bank_name || 'Bank', status: conn.status, last_synced_at: conn.last_synced_at }];
+        }
+        // Multi-account connection — expand into individual entries
+        return accountIds.map((accId: string, i: number) => ({
+          id: `${conn.id}_${accId}`,
+          bank_name: displayNames[i] || conn.bank_name || 'Bank',
+          status: conn.status,
+          last_synced_at: conn.last_synced_at,
+        }));
+      }),
       spending: {
         categories: isPaid ? categoryBreakdown : categoryBreakdown.slice(0, 5),
         topMerchants: isPro ? topMerchants : [],
@@ -269,7 +296,18 @@ export async function GET(request: Request) {
         assetsList: isPro ? (assets.data || []) : [],
         liabilitiesList: isPro ? (liabilities.data || []) : [],
       },
-      budgets: isPaid ? (budgets.data || []) : [],
+      budgets: isPaid ? (budgets.data || []).map((b: any) => {
+        const budgetCat = (b.category || '').toLowerCase();
+        const spent = categoryTotals[budgetCat] || 0;
+        const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
+        return {
+          ...b,
+          spent: parseFloat(spent.toFixed(2)),
+          percentage: parseFloat(pct.toFixed(1)),
+          remaining: parseFloat((b.monthly_limit - spent).toFixed(2)),
+          status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track',
+        };
+      }) : [],
       goals: isPaid ? (goals.data || []).slice(0, isPro ? 100 : 3) : [],
       alerts: (alerts.data || []).slice(0, isPaid ? 20 : 3),
       opportunities: (tasks.data || []).slice(0, isPaid ? 20 : 3).map((t: any) => {

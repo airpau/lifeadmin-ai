@@ -13,10 +13,12 @@ import {
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
+import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
+  const [dealsLoading, setDealsLoading] = useState(true);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [subscriptionCount, setSubscriptionCount] = useState(0);
   const [monthlySpend, setMonthlySpend] = useState(0);
@@ -30,9 +32,11 @@ export default function DashboardPage() {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
+  const [showAllTasks, setShowAllTasks] = useState(false);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
   const [comparisonDeals, setComparisonDeals] = useState<Array<{ subscriptionName: string; currentPrice: number; dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string; category: string }>>([]);
+  const [activeSubscriptions, setActiveSubscriptions] = useState<any[]>([]);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -147,13 +151,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      let hasBankConnection = false;
+      let hasStoredAlerts = false;
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
         const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).single(),
-          supabase.from('subscriptions').select('amount, billing_cycle, contract_end_date, status')
+          supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
@@ -169,7 +176,8 @@ export default function DashboardPage() {
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
-        setBankConnected((banks.count || 0) > 0);
+        hasBankConnection = (banks.count || 0) > 0;
+        setBankConnected(hasBankConnection);
 
         // Check trial status
         if (profile.data?.founding_member && profile.data?.founding_member_expires && !profile.data?.stripe_subscription_id) {
@@ -195,10 +203,12 @@ export default function DashboardPage() {
           if (s.billing_cycle === 'quarterly') return sum + amt * 4;
           return sum + amt * 12;
         }, 0);
-        setPotentialSavings(annualSpend * 0.15);
+
+        // potentialSavings will be calculated after all data loads (see below)
 
         const subsList = subs.data || [];
         setSubscriptionCount(subsList.length);
+        setActiveSubscriptions(subsList);
 
         // Calculate monthly spend
         const monthly = subsList.reduce((sum, s) => {
@@ -227,6 +237,14 @@ export default function DashboardPage() {
           .eq('status', 'active')
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
+        hasStoredAlerts = (priceAlertData || []).length > 0;
+
+        // Calculate real potential savings from price alerts (use actual price diff, not annual_impact which may be empty)
+        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
+          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+        }, 0);
+        setPotentialSavings(priceAlertImpact);
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -236,7 +254,7 @@ export default function DashboardPage() {
 
       // Fetch subscription comparison data (non-blocking, runs after dashboard loads)
       try {
-        const compRes = await fetch('/api/subscriptions/compare', { method: 'POST' });
+        const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
         if (compRes.ok) {
           const compData = await compRes.json();
           setComparisonSaving(compData.totalAnnualSaving || 0);
@@ -257,8 +275,66 @@ export default function DashboardPage() {
             }
           }
           setComparisonDeals(dealsList);
+
+          // Update potential savings to include comparison deals
+          setPotentialSavings(prev => prev + (compData.totalAnnualSaving || 0));
+
+          // If savings seem low relative to subscriptions, trigger a fresh comparison
+          const compared = compData.subscriptionsCompared || 0;
+          const withDeals = compData.count || 0;
+          const annualSaving = compData.totalAnnualSaving || 0;
+          // Trigger if: few deals compared, or savings seem stale (under £500 with 20+ subs)
+          if (compared > 0 && (withDeals < compared * 0.5 || (compared > 20 && annualSaving < 500))) {
+            fetch('/api/subscriptions/compare', { method: 'POST' })
+              .then(r => r.json())
+              .then(freshData => {
+                if (freshData.totalAnnualSaving && freshData.totalAnnualSaving !== annualSaving) {
+                  setComparisonSaving(freshData.totalAnnualSaving);
+                  setComparisonCount(freshData.count || 0);
+                  setPotentialSavings(prev => prev - annualSaving + freshData.totalAnnualSaving);
+                  // Update deals list
+                  const freshDeals: typeof comparisonDeals = [];
+                  for (const sub of (freshData.subscriptions || [])) {
+                    if (sub.comparisons?.length > 0) {
+                      const best = sub.comparisons[0];
+                      if (best.annualSaving > 0) {
+                        freshDeals.push({
+                          subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+                          currentPrice: best.currentPrice,
+                          dealProvider: best.dealProvider,
+                          dealPrice: best.dealPrice,
+                          annualSaving: best.annualSaving,
+                          dealUrl: best.dealUrl,
+                          category: sub.category || '',
+                        });
+                      }
+                    }
+                  }
+                  if (freshDeals.length > 0) setComparisonDeals(freshDeals);
+                }
+              })
+              .catch(() => {}); // Non-critical
+          }
         }
       } catch {} // Non-critical
+      finally {
+        setDealsLoading(false);
+      }
+
+      // On-demand price increase detection: if the user has bank data but no
+      // stored alerts yet, run detection immediately rather than waiting for
+      // the 8 AM daily cron. Deduplication in the endpoint prevents double inserts.
+      if (hasBankConnection && !hasStoredAlerts) {
+        try {
+          const detectRes = await fetch('/api/price-alerts/detect', { method: 'POST' });
+          if (detectRes.ok) {
+            const detectData = await detectRes.json();
+            if (detectData.alerts?.length > 0) {
+              setPriceAlerts(detectData.alerts);
+            }
+          }
+        } catch {} // Non-critical
+      }
     };
     fetchData();
   }, [supabase]);
@@ -364,8 +440,11 @@ export default function DashboardPage() {
               <TrendingUp className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => sum + (parseFloat(a.annual_impact) || 0), 0))}/yr</p>
-              <p className="text-slate-400 text-xs">Price hikes detected</p>
+              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => {
+                const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+                return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+              }, 0))}/yr</p>
+              <p className="text-slate-400 text-xs">Price increase alerts</p>
             </div>
           </button>
 
@@ -398,7 +477,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Savings Opportunity Widget */}
-      <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />
+      {dealsLoading ? <SavingsSkeleton /> : <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />}
 
       {/* Price Increase Alerts */}
       {priceAlerts.length > 0 && (
@@ -436,26 +515,26 @@ export default function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <CreditCard className="h-6 w-6 text-mint-400 mb-3" />
           <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
           <p className="text-slate-400 text-sm">Subscriptions tracked</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        </Link>
+        <Link href="/dashboard/money-hub" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
           <p className="text-slate-400 text-sm">Monthly spend</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        </Link>
+        <Link href="/dashboard/complaints" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <FileText className="h-6 w-6 text-blue-400 mb-3" />
           <p className="text-3xl font-bold text-white">{complaintsGenerated}</p>
           <p className="text-slate-400 text-sm">Disputes</p>
-        </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card]">
+        </Link>
+        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <Building2 className="h-6 w-6 text-green-400 mb-3" />
           <p className="text-3xl font-bold text-white">{bankConnected ? 'Connected' : 'Not set up'}</p>
           <p className="text-slate-400 text-sm">Bank account</p>
-        </div>
+        </Link>
       </div>
 
       {/* Alerts */}
@@ -518,7 +597,16 @@ export default function DashboardPage() {
           return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, needsComplaint, needsDeal, needsSubscription };
         });
 
-        let filtered = processedTasks;
+        let filtered = processedTasks.filter((task) => {
+          if (task.needsSubscription && task.provider) {
+             const existing = activeSubscriptions.some(sub => 
+               (sub.provider_name || '').toLowerCase().includes(task.provider.toLowerCase()) || 
+               task.provider.toLowerCase().includes((sub.provider_name || '').toLowerCase())
+             );
+             if (existing) return false;
+          }
+          return true;
+        });
         if (taskFilter === 'disputes') filtered = filtered.filter(t => t.needsComplaint || t.isFlightDelay || t.isLoan);
         if (taskFilter === 'deals') filtered = filtered.filter(t => t.needsDeal);
         if (taskFilter === 'subscriptions') filtered = filtered.filter(t => t.needsSubscription);
@@ -526,7 +614,7 @@ export default function DashboardPage() {
         const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
         filtered.sort((a, b) => (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0));
 
-        const displayTasks = filtered.slice(0, 5);
+        const displayTasks = showAllTasks ? filtered : filtered.slice(0, 5);
 
         return (
           <div className="mb-8">
@@ -569,6 +657,7 @@ export default function DashboardPage() {
                   if (task.provider) complaintParams.set('company', task.provider);
                   if (task.descText && task.descText.length < 500) complaintParams.set('issue', task.descText);
                   if (task.amount) complaintParams.set('amount', String(task.amount));
+                  complaintParams.set('new', '1');
                   const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
 
                   return (
@@ -578,18 +667,18 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
-                        {task.provider && <span className="text-slate-500 text-xs">{task.provider}</span>}
+                        {task.provider && <span className="text-slate-500 text-xs">{cleanMerchantName(task.provider)}</span>}
                         {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.descText}</p>
+                      <p className="text-slate-400 text-xs mt-1 line-clamp-2 first-letter:capitalize">{task.descText}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
                     {/* Context-aware primary action */}
                     {task.needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Write Complaint Letter
+                        <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
                     {task.isFlightDelay && (
@@ -603,13 +692,13 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {task.needsSubscription && (
-                      <Link href="/dashboard/subscriptions" className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href={`/dashboard/subscriptions?new=1&provider=${encodeURIComponent(task.provider)}&amount=${task.amount || ''}&taskId=${task.id}`} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <CreditCard className="h-3 w-3" /> Track Subscription
                       </Link>
                     )}
                     {task.isLoan && (
                       <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Review and Dispute
+                        <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
                     {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (
@@ -624,7 +713,7 @@ export default function DashboardPage() {
                     )}
                     {!task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && !task.isAdmin && (
                       <Link href={complaintUrl} className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Take Action
+                        <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
 
@@ -644,6 +733,14 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
+            )}
+            {filtered.length > 5 && (
+              <button
+                onClick={() => setShowAllTasks(prev => !prev)}
+                className="w-full mt-3 py-2 text-sm text-mint-400 hover:text-white bg-navy-900/50 hover:bg-navy-800 border border-navy-700/50 rounded-xl transition-all"
+              >
+                {showAllTasks ? `Show less` : `Show all ${filtered.length} items`}
+              </button>
             )}
           </div>
         );
@@ -681,7 +778,7 @@ export default function DashboardPage() {
           className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <Building2 className="h-8 w-8 text-purple-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">AI Letters</h3>
+          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Disputes</h3>
           <p className="text-slate-400 text-sm">Complaints, HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
           <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Start a dispute <ArrowRight className="h-3 w-3" /></span>
         </Link>

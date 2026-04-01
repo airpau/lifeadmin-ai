@@ -64,7 +64,7 @@ const TUTORIALS: Tutorial[] = [
   },
   {
     id: 'ai-letters',
-    title: 'AI Letters',
+    title: 'Disputes',
     subtitle: 'Tell us your problem in plain English. Our AI writes a complaint letter citing exact UK law.',
     icon: FileText,
     colour: 'text-mint-400',
@@ -201,7 +201,7 @@ export default function TutorialsPage() {
           <div>
             <p className="text-white font-medium text-sm">New here?</p>
             <p className="text-slate-400 text-sm mt-1">
-              Start with <strong className="text-white">AI Letters</strong> to write your first complaint letter in 30 seconds, or connect your bank in the <strong className="text-white">Scanner</strong> to find hidden savings.
+              Start with <strong className="text-white">Disputes</strong> to write your first complaint letter in 30 seconds, or connect your bank in the <strong className="text-white">Scanner</strong> to find hidden savings.
             </p>
           </div>
         </div>

@@ -240,7 +240,7 @@ export function buildDealAlertEmail(
         Paybacker LTD · UK Company<br>
         AI-powered money recovery · paybacker.co.uk<br><br>
         <a href="https://paybacker.co.uk/dashboard/profile" style="color: #64748b; text-decoration: underline;">Manage email preferences</a> ·
-        <a href="https://paybacker.co.uk/legal/privacy" style="color: #64748b; text-decoration: underline;">Privacy policy</a>
+        <a href="https://paybacker.co.uk/privacy-policy" style="color: #64748b; text-decoration: underline;">Privacy policy</a>
       </div>
     </div>
   </div>

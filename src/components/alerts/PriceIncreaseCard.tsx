@@ -44,7 +44,11 @@ export default function PriceIncreaseCard({ alert, onDismiss, onAction }: PriceI
   const cleanName = cleanMerchantName(alert.merchant_name || alert.merchant_normalized);
   const regulationHint = getRegulationHint(cleanName);
 
-  const complaintUrl = `/dashboard/complaints?company=${encodeURIComponent(cleanName)}&issue=${encodeURIComponent(`price increase from £${alert.old_amount.toFixed(2)} to £${alert.new_amount.toFixed(2)}`)}`;
+  const complaintUrl = `/dashboard/complaints?new=1&company=${encodeURIComponent(cleanName)}&issue=${encodeURIComponent(`price increase from £${alert.old_amount.toFixed(2)} to £${alert.new_amount.toFixed(2)}`)}&alertId=${alert.id}`;
+
+  const dealCategory = ENERGY_KEYWORDS.some(kw => cleanName.toLowerCase().includes(kw)) ? 'energy' : 
+                       BROADBAND_MOBILE_KEYWORDS.some(kw => cleanName.toLowerCase().includes(kw)) ? 'broadband' : 
+                       cleanName.toLowerCase().includes('card') ? 'credit' : 'all';
 
   return (
     <div className="bg-navy-900 border border-red-500/20 rounded-xl p-5">
@@ -102,7 +106,7 @@ export default function PriceIncreaseCard({ alert, onDismiss, onAction }: PriceI
           <FileText className="h-3 w-3" /> Write Complaint
         </Link>
         <Link
-          href="/dashboard/deals"
+          href={`/dashboard/deals?category=${dealCategory}`}
           className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
         >
           <ArrowRight className="h-3 w-3" /> Find Better Deal

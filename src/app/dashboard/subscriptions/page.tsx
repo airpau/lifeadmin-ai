@@ -3,7 +3,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, Shield, Phone, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
@@ -15,6 +16,23 @@ import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { SORTED_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 
+interface ContractAlert {
+  id: string;
+  subscription_id: string;
+  user_id: string;
+  provider_name: string;
+  category: string | null;
+  contract_end_date: string;
+  current_amount: number | null;
+  alert_type: string;
+  alert_channel: string;
+  status: string;
+  matched_deal_id: string | null;
+  potential_saving_monthly: number | null;
+  potential_saving_annual: number | null;
+  created_at: string;
+}
+
 interface Subscription {
   id: string;
   provider_name: string;
@@ -24,7 +42,7 @@ interface Subscription {
   next_billing_date: string | null;
   last_used_date: string | null;
   usage_frequency: string | null;
-  status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired';
+  status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired' | 'dismissed';
   account_email: string | null;
   cancel_requested_at: string | null;
   source?: 'manual' | 'email' | 'bank' | 'bank_and_email';
@@ -32,12 +50,17 @@ interface Subscription {
   notes?: string | null;
   contract_type?: string | null;
   contract_end_date?: string | null;
+  contract_start_date?: string | null;
   contract_term_months?: number | null;
   auto_renews?: boolean | null;
   early_exit_fee?: number | null;
   provider_type?: string | null;
   current_tariff?: string | null;
+  alerts_enabled?: boolean;
+  alert_before_days?: number;
+  contract_end_source?: string | null;
   logo_url?: string | null;
+  needs_review?: boolean;
 }
 
 interface BankConnection {
@@ -100,9 +123,14 @@ export default function SubscriptionsPage() {
     account_email: '',
     contract_type: '',
     contract_end_date: '',
+    contract_start_date: '',
+    contract_term_months: '' as string,
     auto_renews: true,
+    early_exit_fee: '' as string,
     provider_type: '',
     current_tariff: '',
+    alerts_enabled: true,
+    alert_before_days: '30',
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [newSub, setNewSub] = useState({
@@ -115,11 +143,23 @@ export default function SubscriptionsPage() {
     usage_frequency: 'sometimes',
     contract_type: '',
     contract_end_date: '',
+    contract_start_date: '',
+    contract_term_months: '' as string,
     auto_renews: true,
+    early_exit_fee: '' as string,
     provider_type: '',
     current_tariff: '',
+    alerts_enabled: true,
+    alert_before_days: '30',
     source: 'manual',
   });
+
+  // Contract alerts state
+  const [contractAlerts, setContractAlerts] = useState<ContractAlert[]>([]);
+  const [billUploadSubId, setBillUploadSubId] = useState<string | null>(null);
+  const [billFile, setBillFile] = useState<File | null>(null);
+  const [uploadingBill, setUploadingBill] = useState(false);
+  const [billToast, setBillToast] = useState<string | null>(null);
   const [shareModal, setShareModal] = useState<{ open: boolean; amount: number; provider: string }>({ open: false, amount: 0, provider: '' });
   const [creditWarning, setCreditWarning] = useState<{ open: boolean; productType: string; providerName: string; warningContent: string; sub: Subscription | null }>({ open: false, productType: '', providerName: '', warningContent: '', sub: null });
   const [bankConnections, setBankConnections] = useState<BankConnection[]>([]);
@@ -128,6 +168,19 @@ export default function SubscriptionsPage() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [bankToast, setBankToast] = useState<string | null>(null);
   const [subComparisons, setSubComparisons] = useState<Record<string, any[]>>({});
+
+  // Fetch contract renewal alerts
+  const fetchContractAlerts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/contract-alerts');
+      if (res.ok) {
+        const data = await res.json();
+        setContractAlerts(data);
+      }
+    } catch (e) {
+      console.error('Error fetching contract alerts:', e);
+    }
+  }, []);
 
   const fetchSubscriptions = useCallback(async () => {
     try {
@@ -179,6 +232,26 @@ export default function SubscriptionsPage() {
   useEffect(() => {
     const cat = searchParams.get('category');
     if (cat) setFilterCategory(cat);
+
+    const isNew = searchParams.get('new');
+    if (isNew === '1') {
+      const provider = searchParams.get('provider');
+      const amount = searchParams.get('amount');
+      
+      setNewSub(prev => ({
+        ...prev,
+        provider_name: provider || '',
+        amount: amount || '',
+        category: 'streaming',
+      }));
+      setShowAddForm(true);
+      // Clean up the URL to prevent re-opening on refresh
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('new');
+      newUrl.searchParams.delete('provider');
+      newUrl.searchParams.delete('amount');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
   }, [searchParams]);
 
   // Update URL
@@ -193,7 +266,8 @@ export default function SubscriptionsPage() {
     fetchSubscriptions();
     fetchBankConnection();
     fetchComparisons();
-  }, [fetchSubscriptions, fetchBankConnection, fetchComparisons]);
+    fetchContractAlerts();
+  }, [fetchSubscriptions, fetchBankConnection, fetchComparisons, fetchContractAlerts]);
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
@@ -382,9 +456,14 @@ export default function SubscriptionsPage() {
       usage_frequency: 'sometimes',
       contract_type: '',
       contract_end_date: '',
+      contract_start_date: '',
+      contract_term_months: '',
       auto_renews: true,
+      early_exit_fee: '',
       provider_type: '',
       current_tariff: '',
+      alerts_enabled: true,
+      alert_before_days: '30',
       source: 'email',
     });
     setDetectedSubs((prev) => prev.filter((s) => s.provider_name !== detected.provider_name));
@@ -399,15 +478,24 @@ export default function SubscriptionsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...newSub,
+          provider_name: newSub.provider_name,
+          category: newSub.category,
           amount: parseFloat(newSub.amount),
+          billing_cycle: newSub.billing_cycle,
+          usage_frequency: newSub.usage_frequency,
           next_billing_date: newSub.next_billing_date || null,
           account_email: newSub.account_email || null,
           contract_type: newSub.contract_type || null,
           contract_end_date: newSub.contract_end_date || null,
+          contract_start_date: newSub.contract_start_date || null,
+          contract_term_months: newSub.contract_term_months ? parseInt(newSub.contract_term_months) : null,
           auto_renews: newSub.auto_renews,
+          early_exit_fee: newSub.early_exit_fee ? parseFloat(newSub.early_exit_fee) : null,
           provider_type: newSub.provider_type || null,
           current_tariff: newSub.current_tariff || null,
+          alerts_enabled: newSub.alerts_enabled,
+          alert_before_days: parseInt(newSub.alert_before_days) || 30,
+          contract_end_source: newSub.contract_end_date ? 'manual' : null,
           source: newSub.source || 'manual',
         }),
       });
@@ -424,11 +512,29 @@ export default function SubscriptionsPage() {
           usage_frequency: 'sometimes',
           contract_type: '',
           contract_end_date: '',
+          contract_start_date: '',
+          contract_term_months: '',
           auto_renews: true,
+          early_exit_fee: '',
           provider_type: '',
           current_tariff: '',
+          alerts_enabled: true,
+          alert_before_days: '30',
           source: 'manual',
         });
+        
+        // Auto-dismiss the task that triggered this
+        const taskId = searchParams.get('taskId');
+        if (taskId) {
+           await fetch('/api/tasks/dismiss', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ taskId })
+           });
+           const newUrl = new URL(window.location.href);
+           newUrl.searchParams.delete('taskId');
+           window.history.replaceState({}, '', newUrl.toString());
+        }
       }
     } catch (error) {
       console.error('Error adding subscription:', error);
@@ -549,9 +655,14 @@ export default function SubscriptionsPage() {
       account_email: sub.account_email || '',
       contract_type: sub.contract_type || '',
       contract_end_date: sub.contract_end_date ? sub.contract_end_date.split('T')[0] : '',
+      contract_start_date: sub.contract_start_date ? sub.contract_start_date.split('T')[0] : '',
+      contract_term_months: sub.contract_term_months ? String(sub.contract_term_months) : '',
       auto_renews: sub.auto_renews !== false,
+      early_exit_fee: sub.early_exit_fee ? String(sub.early_exit_fee) : '',
       provider_type: sub.provider_type || '',
       current_tariff: sub.current_tariff || '',
+      alerts_enabled: sub.alerts_enabled !== false,
+      alert_before_days: String(sub.alert_before_days || 30),
     });
   };
 
@@ -572,9 +683,15 @@ export default function SubscriptionsPage() {
           account_email: editForm.account_email || null,
           contract_type: editForm.contract_type || null,
           contract_end_date: editForm.contract_end_date || null,
+          contract_start_date: editForm.contract_start_date || null,
+          contract_term_months: editForm.contract_term_months ? parseInt(editForm.contract_term_months) : null,
           auto_renews: editForm.auto_renews,
+          early_exit_fee: editForm.early_exit_fee ? parseFloat(editForm.early_exit_fee) : null,
           provider_type: editForm.provider_type || null,
           current_tariff: editForm.current_tariff || null,
+          alerts_enabled: editForm.alerts_enabled,
+          alert_before_days: parseInt(editForm.alert_before_days) || 30,
+          contract_end_source: editForm.contract_end_date ? 'manual' : null,
         }),
       });
       if (res.ok) {
@@ -771,6 +888,127 @@ export default function SubscriptionsPage() {
         return null;
     }
   };
+
+  // Contract badge component
+  const ContractBadge = ({ contractEndDate }: { contractEndDate: string | null | undefined }) => {
+    if (!contractEndDate) return null;
+    const daysLeft = Math.ceil((new Date(contractEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+    if (daysLeft < 0) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400">
+          Out of contract
+        </span>
+      );
+    }
+    if (daysLeft <= 7) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400">
+          <AlertTriangle className="h-3 w-3" /> {daysLeft}d left
+        </span>
+      );
+    }
+    if (daysLeft <= 30) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400">
+          {daysLeft}d left
+        </span>
+      );
+    }
+    if (daysLeft <= 90) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400">
+          {daysLeft}d left
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400">
+        In contract
+      </span>
+    );
+  };
+
+  // Handle bill upload for contract extraction
+  const handleBillUpload = async (subId: string) => {
+    if (!billFile) return;
+    setUploadingBill(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', billFile);
+      fd.append('subscriptionId', subId);
+
+      const res = await fetch('/api/contracts/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Upload failed');
+      }
+      const extraction = await res.json();
+      const endDate = extraction.contract_end_date;
+      setBillToast(endDate
+        ? `Contract end date extracted: ${new Date(endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+        : 'Contract uploaded and analysed successfully'
+      );
+      await fetchSubscriptions();
+      setBillUploadSubId(null);
+      setBillFile(null);
+      setTimeout(() => setBillToast(null), 5000);
+    } catch (err: any) {
+      setBillToast(`Upload failed: ${err.message}`);
+      setTimeout(() => setBillToast(null), 5000);
+    } finally {
+      setUploadingBill(false);
+    }
+  };
+
+  // Dismiss a contract renewal alert
+  const handleDismissAlert = async (alertId: string) => {
+    try {
+      await fetch('/api/contract-alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: alertId, status: 'dismissed' }),
+      });
+      setContractAlerts(prev => prev.filter(a => a.id !== alertId));
+    } catch (e) {
+      console.error('Failed to dismiss alert:', e);
+    }
+  };
+
+  // Track deal click from contract alert
+  const handleAlertDealClick = async (alertId: string) => {
+    try {
+      await fetch('/api/contract-alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: alertId, status: 'clicked' }),
+      });
+    } catch (e) {
+      console.error('Failed to track alert click:', e);
+    }
+  };
+
+  // Count of active subs without contract end date
+  const subsWithoutContractEnd = baseSubscriptions.filter(s => s.status === 'active' && !s.contract_end_date).length;
+  const hasAnyContractEndDate = baseSubscriptions.some(s => s.contract_end_date);
+
+  // Auto-calculate contract end date for edit form
+  useEffect(() => {
+    if (editForm.contract_start_date && editForm.contract_term_months && !editForm.contract_end_date) {
+      const start = new Date(editForm.contract_start_date);
+      start.setMonth(start.getMonth() + parseInt(editForm.contract_term_months));
+      setEditForm(prev => ({ ...prev, contract_end_date: start.toISOString().split('T')[0] }));
+    }
+  }, [editForm.contract_start_date, editForm.contract_term_months]);
+
+  // Auto-calculate contract end date for new sub form
+  useEffect(() => {
+    if (newSub.contract_start_date && newSub.contract_term_months && !newSub.contract_end_date) {
+      const start = new Date(newSub.contract_start_date);
+      start.setMonth(start.getMonth() + parseInt(newSub.contract_term_months));
+      setNewSub(prev => ({ ...prev, contract_end_date: start.toISOString().split('T')[0] }));
+    }
+  }, [newSub.contract_start_date, newSub.contract_term_months]);
 
   if (loading) {
     return (
@@ -994,6 +1232,132 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Bill upload toast */}
+      {billToast && (
+        <div className={`fixed top-6 right-6 z-50 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${billToast.toLowerCase().includes('fail') ? 'bg-red-600' : 'bg-green-500'}`}>
+          <CheckCircle className="h-5 w-5" />
+          {billToast}
+        </div>
+      )}
+
+      {/* In-app contract renewal alerts */}
+      {contractAlerts.length > 0 && (
+        <div className="mb-6 space-y-3">
+          {contractAlerts.map(alert => {
+            const daysLeft = Math.ceil((new Date(alert.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const timeLabel = daysLeft > 0 ? `in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}` : 'has expired';
+            return (
+              <div key={alert.id} className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-start justify-between">
+                <div className="flex items-start gap-3">
+                  <Bell className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-white text-sm">
+                      {alert.provider_name} contract ends {timeLabel}
+                    </p>
+                    <p className="text-slate-400 text-xs mt-0.5">
+                      Ends {new Date(alert.contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {alert.current_amount ? ` · ${formatGBP(alert.current_amount)}/mo` : ''}
+                    </p>
+                    {alert.potential_saving_monthly && alert.potential_saving_monthly > 0 && (
+                      <p className="text-sm text-green-400 mt-1">
+                        💰 We found a deal that could save you {formatGBP(alert.potential_saving_monthly)}/month
+                        <Link
+                          href={`/dashboard/deals${alert.category ? `?category=${alert.category}` : ''}`}
+                          className="ml-2 underline text-green-300 hover:text-green-200"
+                          onClick={() => handleAlertDealClick(alert.id)}
+                        >
+                          View deals →
+                        </Link>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => handleDismissAlert(alert.id)} className="text-slate-500 hover:text-slate-300 p-1 shrink-0">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Empty state: no contract end dates set */}
+      {!hasAnyContractEndDate && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
+        <div className="bg-blue-500/5 rounded-2xl p-6 text-center border border-blue-500/20 mb-6">
+          <CalendarClock className="h-10 w-10 text-blue-400 mx-auto mb-3 opacity-80" />
+          <h3 className="font-semibold text-white text-lg">Never miss a contract end date</h3>
+          <p className="text-slate-400 text-sm mt-1 max-w-md mx-auto">
+            Add your contract end dates and we&apos;ll alert you before they expire —
+            so you can switch to a better deal instead of being stuck on expensive out-of-contract rates.
+          </p>
+          <p className="text-slate-500 text-xs mt-2">
+            Upload a bill and we&apos;ll extract the dates automatically, or enter them manually via the edit button.
+          </p>
+        </div>
+      )}
+
+      {/* Bill upload modal */}
+      {billUploadSubId && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setBillUploadSubId(null); setBillFile(null); }} />
+          <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Upload className="h-5 w-5 text-mint-400" />
+                Upload Bill / Contract
+              </h2>
+              <button onClick={() => { setBillUploadSubId(null); setBillFile(null); }} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-slate-400 text-sm">
+                Upload a bill, contract, or letter and we&apos;ll extract the contract end date and key terms automatically.
+              </p>
+              <div>
+                {billFile ? (
+                  <div className="flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-mint-400" />
+                      <span className="text-mint-400 text-xs font-medium truncate max-w-[200px]">{billFile.name}</span>
+                    </div>
+                    <button onClick={() => setBillFile(null)} className="text-slate-500 hover:text-white text-xs">Remove</button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-3 w-full px-4 py-6 bg-navy-950 border-2 border-dashed border-mint-400/30 rounded-lg text-slate-400 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm text-center justify-center">
+                    <Upload className="h-6 w-6 text-mint-400" />
+                    <span>Drop your bill here or click to browse</span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="sr-only"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          if (f.size > 10 * 1024 * 1024) { alert('Maximum 10MB.'); return; }
+                          setBillFile(f);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                <p className="text-[11px] text-slate-600 mt-2">PDF, JPG, or PNG. We&apos;ll extract contract end date, early exit fee, and other key terms.</p>
+              </div>
+              <button
+                onClick={() => billUploadSubId && handleBillUpload(billUploadSubId)}
+                disabled={!billFile || uploadingBill}
+                className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {uploadingBill ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Extracting contract details...</>
+                ) : (
+                  <><FileText className="h-4 w-4" /> Upload and extract</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
@@ -1056,6 +1420,35 @@ export default function SubscriptionsPage() {
           </div>
         </div>
       )}
+
+      {/* Needs Review Banner */}
+      {(() => {
+        const reviewCount = baseSubscriptions.filter(s => s.needs_review && s.status === 'active').length;
+        if (reviewCount === 0) return null;
+        return (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-400" />
+                <div>
+                  <h2 className="text-white font-semibold">{reviewCount} new subscription{reviewCount > 1 ? 's' : ''} detected — review now</h2>
+                  <p className="text-slate-400 text-sm">Auto-detected from your bank transactions. Confirm they&apos;re yours or dismiss.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  // Scroll to first needs_review subscription
+                  const el = document.querySelector('[data-needs-review="true"]');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-medium px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap"
+              >
+                Review
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -1291,9 +1684,12 @@ export default function SubscriptionsPage() {
             displaySubscriptions.map((sub) => (
               <div
                 key={sub.id}
+                data-needs-review={sub.needs_review ? 'true' : undefined}
                 className={`bg-navy-900 backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer ${
                   selectedSub?.id === sub.id
                     ? 'border-mint-400/50'
+                    : sub.needs_review
+                    ? 'border-amber-500/40 hover:border-amber-500/60'
                     : 'border-navy-700/50 hover:border-navy-700/50'
                 }`}
                 onClick={() => {
@@ -1338,6 +1734,11 @@ export default function SubscriptionsPage() {
                         <h3 className="text-lg font-semibold text-white">{normaliseProviderName(sub.provider_name)}</h3>
                         {getStatusBadge(sub.status)}
                         {getSourceBadges(sub.source)}
+                        {sub.needs_review && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            Needs review
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mb-2">
                         <div className="relative group inline-block" onClick={e => e.stopPropagation()}>
@@ -1374,15 +1775,7 @@ export default function SubscriptionsPage() {
                         {sub.next_billing_date && (
                           <span>Next: {new Date(sub.next_billing_date).toLocaleDateString('en-GB')}</span>
                         )}
-                      {sub.contract_end_date && (() => {
-                        const daysLeft = Math.ceil((new Date(sub.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                        const urgency = daysLeft <= 7 ? 'text-red-400 bg-red-500/10' : daysLeft <= 30 ? 'text-mint-400 bg-mint-400/10' : 'text-blue-400 bg-blue-500/10';
-                        return (
-                          <span className={`${urgency} px-2 py-0.5 rounded text-xs font-medium`}>
-                            {daysLeft > 0 ? `Ends in ${daysLeft}d` : 'Expired'}
-                          </span>
-                        );
-                      })()}
+                      <ContractBadge contractEndDate={sub.contract_end_date} />
                       {sub.contract_type && sub.contract_type !== 'subscription' && (
                         <span className="text-xs bg-navy-700/50 text-slate-400 px-1.5 py-0.5 rounded capitalize">{sub.contract_type.replace('_', ' ')}</span>
                       )}
@@ -1418,31 +1811,97 @@ export default function SubscriptionsPage() {
                       <p className="text-xl font-bold text-white">{formatGBP(sub.amount)}</p>
                       <p className="text-xs text-slate-500">{sub.billing_cycle}</p>
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditModal(sub);
-                      }}
-                      className="text-slate-600 hover:text-mint-400 transition-all"
-                      title="Edit"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteSubscription(sub.id);
-                      }}
-                      className="text-slate-600 hover:text-red-400 transition-all"
-                      title="Delete"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBillUploadSubId(sub.id);
+                        }}
+                        className="text-slate-600 hover:text-purple-400 transition-all"
+                        title="Upload bill to extract contract dates"
+                      >
+                        <Upload className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(sub);
+                        }}
+                        className="text-slate-600 hover:text-mint-400 transition-all"
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSubscription(sub.id);
+                        }}
+                        className="text-slate-600 hover:text-red-400 transition-all"
+                        title="Delete"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {sub.status === 'active' && (
+              {sub.needs_review && sub.status === 'active' && (
+                <div className="mt-4 pt-4 border-t border-amber-500/30 flex flex-wrap gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`/api/subscriptions/${sub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ needs_review: false }),
+                      }).then(() => {
+                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false } : s));
+                      });
+                    }}
+                    className="flex items-center gap-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 px-4 py-2 rounded-lg text-sm transition-all border border-green-500/30"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    This is mine
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`/api/subscriptions/${sub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ needs_review: false, status: 'dismissed', dismissed_at: new Date().toISOString() }),
+                      }).then(() => {
+                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false, status: 'dismissed' as const } : s));
+                      });
+                    }}
+                    className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition-all"
+                  >
+                    <X className="h-4 w-4" />
+                    Not a subscription
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open('https://www.actionfraud.police.uk/', '_blank');
+                      fetch(`/api/subscriptions/${sub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ needs_review: false, notes: 'Flagged as unrecognised — check with bank' }),
+                      }).then(() => {
+                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false } : s));
+                      });
+                    }}
+                    className="flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm transition-all border border-red-500/30"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    I don&apos;t recognise this
+                  </button>
+                </div>
+              )}
+
+              {sub.status === 'active' && !sub.needs_review && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
                     {isStatutoryService(sub.provider_name) ? (
                       <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">
@@ -1815,7 +2274,7 @@ export default function SubscriptionsPage() {
       {/* Edit subscription modal */}
       {editSub && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-md">
+          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Edit Subscription</h2>
               <button onClick={() => setEditSub(null)} className="text-slate-400 hover:text-white transition-all">
@@ -1894,12 +2353,53 @@ export default function SubscriptionsPage() {
                 />
               </div>
 
-              {/* Contract details (collapsible) */}
-              <details className="border border-navy-700/50 rounded-lg">
-                <summary className="px-4 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white">
-                  Contract Details (optional)
+              {/* Contract Details Section */}
+              <details className="border border-navy-700/50 rounded-lg" open={!!editForm.contract_end_date}>
+                <summary className="px-4 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Contract Details
+                  <span className="text-xs text-slate-500 font-normal">(enables end-of-contract alerts)</span>
                 </summary>
                 <div className="px-4 pb-4 space-y-4">
+                  {/* Contract End Date — THE KEY FIELD */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Contract End Date</label>
+                    <input
+                      type="date"
+                      value={editForm.contract_end_date}
+                      onChange={(e) => setEditForm({ ...editForm, contract_end_date: e.target.value })}
+                      className="w-full px-4 py-3 bg-navy-950 border border-mint-400/30 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">We&apos;ll alert you before this date so you can switch to a better deal</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract Start Date</label>
+                      <input
+                        type="date"
+                        value={editForm.contract_start_date}
+                        onChange={(e) => setEditForm({ ...editForm, contract_start_date: e.target.value })}
+                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract Length</label>
+                      <select
+                        value={editForm.contract_term_months}
+                        onChange={(e) => setEditForm({ ...editForm, contract_term_months: e.target.value })}
+                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                      >
+                        <option value="">Not sure</option>
+                        <option value="1">1 month (rolling)</option>
+                        <option value="12">12 months</option>
+                        <option value="18">18 months</option>
+                        <option value="24">24 months</option>
+                        <option value="36">36 months</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Contract Type</label>
@@ -1924,37 +2424,88 @@ export default function SubscriptionsPage() {
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract End Date</label>
+
+                  {/* Current Tariff */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Current Plan/Tariff Name</label>
+                    <input
+                      type="text"
+                      value={editForm.current_tariff}
+                      onChange={(e) => setEditForm({ ...editForm, current_tariff: e.target.value })}
+                      className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
+                      placeholder="e.g. Sky Superfast 80Mbps"
+                    />
+                  </div>
+
+                  {/* Early Exit Fee */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Early Exit Fee</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-3.5 text-slate-500">£</span>
                       <input
-                        type="date"
-                        value={editForm.contract_end_date}
-                        onChange={(e) => setEditForm({ ...editForm, contract_end_date: e.target.value })}
-                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Current Tariff</label>
-                      <input
-                        type="text"
-                        value={editForm.current_tariff}
-                        onChange={(e) => setEditForm({ ...editForm, current_tariff: e.target.value })}
-                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
-                        placeholder="e.g. Standard Variable"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editForm.early_exit_fee}
+                        onChange={(e) => setEditForm({ ...editForm, early_exit_fee: e.target.value })}
+                        className="w-full pl-7 px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
+                        placeholder="0.00"
                       />
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  {/* Auto-renews */}
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-slate-300">Auto-renews?</label>
+                      <p className="text-xs text-slate-500">Most UK contracts auto-renew at a higher rate</p>
+                    </div>
                     <input
                       type="checkbox"
                       id="auto_renews_edit"
                       checked={editForm.auto_renews}
                       onChange={(e) => setEditForm({ ...editForm, auto_renews: e.target.checked })}
-                      className="w-4 h-4 rounded border-navy-700/50 bg-navy-950 text-mint-400 focus:ring-mint-400"
+                      className="w-5 h-5 rounded border-navy-700/50 bg-navy-950 text-mint-400 focus:ring-mint-400"
                     />
-                    <label htmlFor="auto_renews_edit" className="text-sm text-slate-300">Auto-renews at end of contract</label>
                   </div>
+
+                  {/* Alert preferences */}
+                  <div className="border-t border-navy-700/50 pt-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-slate-300">Contract end alerts</label>
+                        <p className="text-xs text-slate-500">Email me before this contract ends</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        id="alerts_enabled_edit"
+                        checked={editForm.alerts_enabled}
+                        onChange={(e) => setEditForm({ ...editForm, alerts_enabled: e.target.checked })}
+                        className="w-5 h-5 rounded border-navy-700/50 bg-navy-950 text-mint-400 focus:ring-mint-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Alert me this many days before</label>
+                      <select
+                        value={editForm.alert_before_days}
+                        onChange={(e) => setEditForm({ ...editForm, alert_before_days: e.target.value })}
+                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                      >
+                        <option value="14">14 days</option>
+                        <option value="30">30 days (recommended)</option>
+                        <option value="60">60 days</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Upload bill shortcut */}
+                  <button
+                    type="button"
+                    onClick={() => { setEditSub(null); setBillUploadSubId(editSub.id); }}
+                    className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 py-2.5 rounded-lg transition-all text-sm border border-purple-500/20"
+                  >
+                    <Upload className="h-4 w-4" /> Upload a bill to auto-fill contract dates
+                  </button>
                 </div>
               </details>
 
@@ -2090,12 +2641,53 @@ export default function SubscriptionsPage() {
                 />
               </div>
 
-              {/* Contract details (collapsible) */}
+              {/* Contract Details Section */}
               <details className="border border-navy-700/50 rounded-lg">
-                <summary className="px-4 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white">
-                  Contract Details (optional)
+                <summary className="px-4 py-3 text-sm font-medium text-slate-300 cursor-pointer hover:text-white flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Contract Details
+                  <span className="text-xs text-slate-500 font-normal">(enables end-of-contract alerts)</span>
                 </summary>
                 <div className="px-4 pb-4 space-y-4">
+                  {/* Contract End Date — THE KEY FIELD */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Contract End Date</label>
+                    <input
+                      type="date"
+                      value={newSub.contract_end_date}
+                      onChange={(e) => setNewSub({ ...newSub, contract_end_date: e.target.value })}
+                      className="w-full px-4 py-3 bg-navy-950 border border-mint-400/30 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">We&apos;ll alert you before this date so you can switch to a better deal</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract Start Date</label>
+                      <input
+                        type="date"
+                        value={newSub.contract_start_date}
+                        onChange={(e) => setNewSub({ ...newSub, contract_start_date: e.target.value })}
+                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract Length</label>
+                      <select
+                        value={newSub.contract_term_months}
+                        onChange={(e) => setNewSub({ ...newSub, contract_term_months: e.target.value })}
+                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                      >
+                        <option value="">Not sure</option>
+                        <option value="1">1 month (rolling)</option>
+                        <option value="12">12 months</option>
+                        <option value="18">18 months</option>
+                        <option value="24">24 months</option>
+                        <option value="36">36 months</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-2">Contract Type</label>
@@ -2120,36 +2712,75 @@ export default function SubscriptionsPage() {
                       </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Contract End Date</label>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Current Plan/Tariff Name</label>
+                    <input
+                      type="text"
+                      value={newSub.current_tariff}
+                      onChange={(e) => setNewSub({ ...newSub, current_tariff: e.target.value })}
+                      className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
+                      placeholder="e.g. Sky Superfast 80Mbps"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Early Exit Fee</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-3.5 text-slate-500">£</span>
                       <input
-                        type="date"
-                        value={newSub.contract_end_date}
-                        onChange={(e) => setNewSub({ ...newSub, contract_end_date: e.target.value })}
-                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Current Tariff</label>
-                      <input
-                        type="text"
-                        value={newSub.current_tariff}
-                        onChange={(e) => setNewSub({ ...newSub, current_tariff: e.target.value })}
-                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
-                        placeholder="e.g. Standard Variable"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={newSub.early_exit_fee}
+                        onChange={(e) => setNewSub({ ...newSub, early_exit_fee: e.target.value })}
+                        className="w-full pl-7 px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
+                        placeholder="0.00"
                       />
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  <div className="flex items-center justify-between py-2">
+                    <div>
+                      <label className="text-sm font-medium text-slate-300">Auto-renews?</label>
+                      <p className="text-xs text-slate-500">Most UK contracts auto-renew at a higher rate</p>
+                    </div>
                     <input
                       type="checkbox"
                       id="auto_renews_new"
                       checked={newSub.auto_renews}
                       onChange={(e) => setNewSub({ ...newSub, auto_renews: e.target.checked })}
-                      className="w-4 h-4 rounded border-navy-700/50 bg-navy-950 text-mint-400 focus:ring-mint-400"
+                      className="w-5 h-5 rounded border-navy-700/50 bg-navy-950 text-mint-400 focus:ring-mint-400"
                     />
-                    <label htmlFor="auto_renews_new" className="text-sm text-slate-300">Auto-renews at end of contract</label>
+                  </div>
+
+                  {/* Alert preferences */}
+                  <div className="border-t border-navy-700/50 pt-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="text-sm font-medium text-slate-300">Contract end alerts</label>
+                        <p className="text-xs text-slate-500">Email me before this contract ends</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        id="alerts_enabled_new"
+                        checked={newSub.alerts_enabled}
+                        onChange={(e) => setNewSub({ ...newSub, alerts_enabled: e.target.checked })}
+                        className="w-5 h-5 rounded border-navy-700/50 bg-navy-950 text-mint-400 focus:ring-mint-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Alert me this many days before</label>
+                      <select
+                        value={newSub.alert_before_days}
+                        onChange={(e) => setNewSub({ ...newSub, alert_before_days: e.target.value })}
+                        className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
+                      >
+                        <option value="14">14 days</option>
+                        <option value="30">30 days (recommended)</option>
+                        <option value="60">60 days</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </details>

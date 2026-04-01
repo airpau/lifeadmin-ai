@@ -414,10 +414,176 @@ const dismissSubscription: ChatTool = {
   },
 };
 
+/**
+ * Convenience tool: recategorise a subscription by name.
+ * Users don't know UUIDs — they say "change Paratus to mortgage".
+ */
+const recategoriseSubscription: ChatTool = {
+  name: 'recategorise_subscription',
+  description:
+    'Recategorise a subscription by provider name. Use when the user says things like "change Paratus to mortgage" or "HMRC should be under tax". Finds the subscription by name and updates its category. Available categories: mortgage, rent, loan, insurance, utility, broadband, mobile, streaming, fitness, software, council_tax, tax, gambling, food, shopping, childcare, transport, healthcare, charity, education, pets, parking, travel, water, motoring, property_management, credit_monitoring, other.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      provider_name: {
+        type: 'string',
+        description: 'The provider/company name to find (fuzzy match)',
+      },
+      new_category: {
+        type: 'string',
+        description: 'The new category to assign',
+      },
+    },
+    required: ['provider_name', 'new_category'],
+  },
+  handler: async (args: { provider_name: string; new_category: string }, userId: string) => {
+    const admin = getAdmin();
+
+    // 1. Update Subscriptions table
+    const { data } = await admin
+      .from('subscriptions')
+      .select('id, provider_name, category, amount')
+      .eq('user_id', userId)
+      .is('dismissed_at', null)
+      .ilike('provider_name', `%${args.provider_name}%`);
+
+    let subUpdated = 0;
+    const results = [];
+    if (data && data.length > 0) {
+      for (const sub of data) {
+        const { error } = await admin
+          .from('subscriptions')
+          .update({ category: args.new_category })
+          .eq('id', sub.id)
+          .eq('user_id', userId);
+
+        if (!error) {
+          subUpdated++;
+          results.push({
+            provider_name: sub.provider_name,
+            old_category: sub.category,
+            new_category: args.new_category,
+            amount: `£${Number(sub.amount).toFixed(2)}`,
+          });
+        }
+      }
+    }
+
+    // 2. Update Money Hub Bank Transactions and Overrides
+    const pattern = args.provider_name.toLowerCase().trim();
+    const corePattern = pattern
+      .replace(/^\d{4}\s+\d{2}[a-z]{3}\d{2}\s+/i, '')
+      .replace(/\s+(london|gb|uk|manchester|birmingham)\s*(gb|uk)?$/i, '')
+      .replace(/\s+fp\s+\d{2}\/\d{2}\/\d{2}.*$/i, '')
+      .trim();
+
+    await admin.from('money_hub_category_overrides').upsert({
+      user_id: userId,
+      merchant_pattern: corePattern || pattern,
+      user_category: args.new_category,
+    }, { onConflict: 'user_id,merchant_pattern' });
+
+    // Update historical bank_transactions matching this provider
+    const { data: matchingTxns } = await admin.from('bank_transactions')
+      .select('id, description, merchant_name')
+      .eq('user_id', userId);
+
+    let txnsUpdated = 0;
+    if (matchingTxns) {
+      for (const txn of matchingTxns) {
+        const merchantName = (txn.merchant_name || '').toLowerCase();
+        const desc = (txn.description || '').toLowerCase();
+        const txnCore = desc
+          .replace(/^\d{4}\s+\d{2}[a-z]{3}\d{2}\s+/i, '')
+          .replace(/\s+(london|gb|uk|manchester|birmingham)\s*(gb|uk)?$/i, '')
+          .replace(/\s+fp\s+\d{2}\/\d{2}\/\d{2}.*$/i, '')
+          .trim();
+
+        if (
+          merchantName === pattern || merchantName.includes(pattern) || desc.includes(pattern) ||
+          (corePattern.length > 3 && (txnCore.includes(corePattern) || txnCore.startsWith(corePattern)))
+        ) {
+          await admin.from('bank_transactions')
+            .update({ user_category: args.new_category })
+            .eq('id', txn.id);
+          txnsUpdated++;
+        }
+      }
+    }
+
+    if (subUpdated === 0 && txnsUpdated === 0) {
+      return { error: `No subscription or bank transactions found matching "${args.provider_name}".` };
+    }
+
+    return {
+      message: `Recategorised ${subUpdated} subscription(s) and ${txnsUpdated} transaction(s) to "${args.new_category}".`,
+      updated: results.length > 0 ? results : { updated_transactions: txnsUpdated, new_category: args.new_category },
+      dashboard_refresh: true,
+    };
+  },
+};
+
+/**
+ * Recategorise bank transactions by keyword.
+ * E.g. "categorise all Tesco transactions as groceries"
+ */
+const recategoriseTransactions: ChatTool = {
+  name: 'recategorise_transactions',
+  description:
+    'Recategorise bank transactions matching a description keyword. Use when the user says "categorise Tesco as groceries" or "my Costa transactions should be food". Only updates the user_category field on the user\'s own transactions.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      keyword: {
+        type: 'string',
+        description: 'Description keyword to match transactions (e.g. "Tesco", "Costa")',
+      },
+      new_category: {
+        type: 'string',
+        description: 'The new category to assign',
+      },
+    },
+    required: ['keyword', 'new_category'],
+  },
+  handler: async (args: { keyword: string; new_category: string }, userId: string) => {
+    const admin = getAdmin();
+
+    // Count matching transactions
+    const { data: matches } = await admin
+      .from('bank_transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .ilike('description', `%${args.keyword}%`);
+
+    if (!matches || matches.length === 0) {
+      return { error: `No transactions found matching "${args.keyword}".` };
+    }
+
+    // Update user_category for all matching transactions
+    const { error } = await admin
+      .from('bank_transactions')
+      .update({ user_category: args.new_category })
+      .eq('user_id', userId)
+      .ilike('description', `%${args.keyword}%`);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return {
+      message: `Updated ${matches.length} transaction(s) matching "${args.keyword}" to category "${args.new_category}".`,
+      count: matches.length,
+      dashboard_refresh: true,
+    };
+  },
+};
+
 export const subscriptionTools: ChatTool[] = [
   listSubscriptions,
   getSubscription,
   updateSubscription,
   createSubscription,
   dismissSubscription,
+  recategoriseSubscription,
+  recategoriseTransactions,
 ];

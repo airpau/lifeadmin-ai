@@ -118,6 +118,11 @@ const MERCHANT_MAP: Record<string, string> = {
   'monzo': 'Monzo',
   'revolut': 'Revolut',
   'starling': 'Starling',
+  'paratus': 'Paratus AMC (Mortgage)',
+  'lendinvest': 'LendInvest (Mortgage)',
+  'funding circle': 'Funding Circle',
+  'skipton b': 'Skipton Building Society',
+  'creation': 'Creation (Finance)',
 
   // Software
   'adobe': 'Adobe',
@@ -248,20 +253,23 @@ export function normaliseMerchantName(raw: string): string {
  * Single source of truth to prevent mismatches between Money Hub and Spending page.
  */
 export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'mtg', 'lendinvest', 'skipton', 'nationwide', 'halifax', 'santander mtg', 'barclays mtg', 'natwest mtg', 'hsbc mtg', 'virgin mtg', 'coventry b.s', 'yorkshire b.s', 'kensington', 'bm solutions', 'accord mort', 'leeds b.s', 'leeds bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort'], category: 'mortgage' },
-  { keywords: ['natwest loan', 'santander loans', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle'], category: 'loans' },
-  { keywords: ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'capital one'], category: 'credit' },
-  { keywords: ['council', 'winchester city', 'southampton city', 'l.b.'], category: 'council_tax' },
+  // IMPORTANT: More specific keywords MUST come before less specific ones.
+  // E.g. 'tesco bank' (loans) must be checked before 'tesco' (groceries).
+  // The order of CATEGORIES here determines match priority.
+  { keywords: ['mortgage', 'mtg', 'lendinvest', 'skipton', 'nationwide', 'halifax', 'santander mtg', 'barclays mtg', 'natwest mtg', 'hsbc mtg', 'virgin mtg', 'coventry b.s', 'yorkshire b.s', 'kensington', 'bm solutions', 'accord mort', 'leeds b.s', 'leeds bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort', 'paratus', 'pepper money', 'together money', 'shawbrook', 'precise mort', 'the mortgage lender', 'foundation home', 'molo', 'landbay', 'atom bank mort'], category: 'mortgage' },
+  { keywords: ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'capital one', 'santander credit', 'santander card', 'vanquis', 'aqua card', 'marbles', 'fluid card', 'thinkmoney'], category: 'credit' },
+  { keywords: ['natwest loan', 'santander loan', 'santander', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'tide capital', 'starling loan', 'creation.co', 'creation ', 'klarna', 'clearpay', 'laybuy'], category: 'loans' },
+  { keywords: ['council', 'winchester city', 'southampton city', 'l.b.', 'hounslow'], category: 'council_tax' },
   { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'bulb', 'shell energy', 'utilita'], category: 'energy' },
   { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
-  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'vodafone broad', 'talktalk', 'plusnet', 'hyperoptic', 'ee broadband'], category: 'broadband' },
+  { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'community fibre', 'vodafone broad', 'talktalk', 'plusnet', 'hyperoptic', 'ee broadband'], category: 'broadband' },
   { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'lebara', 'smarty', 'tesco mobile', 'id mobile', 'voxi'], category: 'mobile' },
   { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'now tv', 'youtube', 'dazn', 'plex', 'patreon', 'paramount', 'audible'], category: 'streaming' },
   { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton', 'strava', 'fitness first', 'nuffield', 'anytime fitness'], category: 'fitness' },
-  { keywords: ['tesco', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'co-op', 'ocado', 'iceland'], category: 'groceries' },
-  { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'starbucks', 'costa', 'pret', 'greggs', 'nando'], category: 'eating_out' },
+  { keywords: ['tesco store', 'tesco express', 'tesco extra', 'tesco metro', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'co-op', 'coop ', 'ocado', 'iceland', 'm&s food', 'marks spencer food', 'm & s simply food', 'marks & spencer food'], category: 'groceries' },
+  { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'starbucks', 'costa', 'pret', 'greggs', 'nando', 'wagamama', 'pizza', 'kfc', 'burger king', 'domino'], category: 'eating_out' },
   { keywords: ['petrol', 'shell ', 'bp ', 'esso', 'fuel', 'texaco'], category: 'fuel' },
-  { keywords: ['amazon', 'ebay', 'asos', 'argos', 'currys', 'john lewis'], category: 'shopping' },
+  { keywords: ['amazon', 'ebay', 'asos', 'argos', 'currys', 'john lewis', 'next ', 'primark', 'tk maxx'], category: 'shopping' },
   { keywords: ['insurance', 'admiral', 'aviva', 'direct line', 'hastings', 'churchill', 'axa'], category: 'insurance' },
   { keywords: ['dvla', 'trainline', 'tfl', 'uber', 'bolt', 'parking'], category: 'transport' },
   { keywords: ['bet365', 'betfair', 'paddy power', 'william hill', 'ladbrokes', 'coral', 'skybet', 'flutter'], category: 'gambling' },
@@ -273,6 +281,8 @@ export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: strin
   { keywords: ['hmrc'], category: 'tax' },
   { keywords: ['interest', 'a/c interest', 'arranged o/d', 'overdraft', 'bank charge', 'bank fee', 'unpaid item'], category: 'fees' },
   { keywords: ['solicitor', 'accountant', 'dentist', 'optician'], category: 'professional' },
+  // Catch-all for generic 'tesco' (matches 'tesco' without 'bank', 'mobile' etc already matched above)
+  { keywords: ['tesco'], category: 'groceries' },
 ];
 
 export const BANK_CATEGORY_MAP: Record<string, string> = {
@@ -294,7 +304,7 @@ export const BANK_CATEGORY_MAP: Record<string, string> = {
  * use categoriseWithLearning() or categoriseWithLearningSync() from
  * @/lib/learning-engine instead.
  */
-export function categoriseTransaction(description: string, bankCategory: string): string {
+export function categoriseTransaction(description: string, bankCategory: string, amount?: number): string {
   const d = description.toLowerCase();
   const bc = bankCategory ? bankCategory.toLowerCase() : '';
 
@@ -305,6 +315,20 @@ export function categoriseTransaction(description: string, bankCategory: string)
   // Keyword mapping from our manual rules
   for (const { keywords, category } of DESCRIPTION_CATEGORIES) {
     if (keywords.some(kw => d.includes(kw))) return category;
+  }
+
+  // Amount-based intelligence: high-value direct debits/standing orders
+  // are more likely to be mortgages or loans than generic "bills"
+  const absAmount = amount ? Math.abs(amount) : 0;
+  if (absAmount >= 500 && (bc === 'direct_debit' || bc === 'standing_order' || bc === 'debit')) {
+    // Check for financial company suffixes that suggest mortgage/loan
+    if (d.includes('amc') || d.includes('mortgage') || d.includes('b.s') || d.includes('bs ') ||
+        d.includes('building soc') || d.includes('home loans')) {
+      return 'mortgage';
+    }
+    if (d.includes('finance') || d.includes('loan') || d.includes('lending') || d.includes('credit')) {
+      return 'loans';
+    }
   }
   
   // Standard BANK_CATEGORY mapping

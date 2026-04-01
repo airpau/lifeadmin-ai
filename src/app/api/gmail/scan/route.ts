@@ -259,21 +259,19 @@ Return ONLY the JSON array.`,
 
     // Save opportunities to database for persistence
     if (opportunities.length > 0) {
-      // Get existing opportunity titles to avoid duplicates
+      // Get existing opportunity titles to avoid duplicates (across all statuses, so we don't recreate dismissed items)
       const { data: existing } = await admin
         .from('tasks')
         .select('title')
         .eq('user_id', user.id)
-        .eq('type', 'opportunity')
-        .in('status', ['pending_review', 'in_progress']);
+        .eq('type', 'opportunity');
 
       const existingTitles = new Set((existing || []).map((t: any) => t.title));
+      opportunities = opportunities.filter((o: any) => !existingTitles.has(o.title));
 
-      const newOpps = opportunities.filter((o: any) => !existingTitles.has(o.title));
-
-      if (newOpps.length > 0) {
+      if (opportunities.length > 0) {
         await admin.from('tasks').insert(
-          newOpps.map((o: any) => ({
+          opportunities.map((o: any) => ({
             user_id: user.id,
             type: 'opportunity',
             title: o.title,

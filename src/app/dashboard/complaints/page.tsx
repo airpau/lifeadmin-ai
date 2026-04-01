@@ -948,13 +948,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 // ============================================================
 function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const searchParams = useSearchParams();
+  const autoLaunch = !!(searchParams.get('alertId') && searchParams.get('company') && searchParams.get('issue'));
   const [formData, setFormData] = useState({
     issue_type: searchParams.get('type') || 'complaint',
     provider_name: searchParams.get('company') || '',
     issue_summary: searchParams.get('issue') || '',
-    desired_outcome: searchParams.get('outcome') || '',
+    desired_outcome: searchParams.get('outcome') || (autoLaunch ? 'Reverse the price increase or allow me to exit my contract without penalty' : ''),
     disputed_amount: searchParams.get('amount') || '',
     account_number: '',
+    alert_id: searchParams.get('alertId') || '',
   });
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -965,6 +967,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   const [uploadedBillName, setUploadedBillName] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [loadingCaption, setLoadingCaption] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const LOADING_CAPTIONS = [
     { icon: '📚', text: 'Reading up on UK consumer law...' },
@@ -990,6 +993,17 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
       .then((data) => { if (!data.error) setUsageInfo(data); })
       .catch(() => {});
   }, []);
+
+  // Auto-submit when coming from a price alert with all required fields pre-filled
+  useEffect(() => {
+    if (autoLaunch && formData.provider_name && formData.issue_summary && formData.desired_outcome && !saving) {
+      // Small delay so the user sees the form before it submits
+      const timer = setTimeout(() => {
+        formRef.current?.requestSubmit();
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1136,7 +1150,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         <h2 className="text-xl font-bold text-white mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
         <p className="text-slate-400 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">What type of issue?</label>
             <select
@@ -1481,8 +1495,8 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">AI Letters</h1>
-          <p className="text-slate-400 mt-1">Your complaints and compensation disputes</p>
+          <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">Disputes</h1>
+          <p className="text-slate-400 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
         </div>
         <button
           id="tour-new-btn"

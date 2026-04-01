@@ -79,7 +79,6 @@ function buildEmail(type: ChurnEmailType, name: string, data: Record<string, any
   if (type === 'pre_renewal') {
     const tier = data.tier || 'Essential';
     const renewalDate = data.renewalDate || 'soon';
-    const totalSaved = data.totalSaved ? `£${Math.round(data.totalSaved)}` : '£0';
     const lettersGenerated = data.lettersGenerated || 0;
     const subsTracked = data.subsTracked || 0;
 
@@ -88,10 +87,6 @@ function buildEmail(type: ChurnEmailType, name: string, data: Record<string, any
       <p style="color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;">Your ${tier} plan renews on ${renewalDate}. Here is what Paybacker has done for you:</p>
 
       <div style="text-align:center;margin:24px 0;">
-        <div style="display:inline-block;background:#162544;border:1px solid #34d399;border-radius:12px;padding:20px 24px;margin:4px;min-width:120px;">
-          <p style="color:#34d399;font-size:28px;font-weight:800;margin:0;">${totalSaved}</p>
-          <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Money saved</p>
-        </div>
         <div style="display:inline-block;background:#162544;border:1px solid #1e3a5f;border-radius:12px;padding:20px 24px;margin:4px;min-width:120px;">
           <p style="color:white;font-size:28px;font-weight:800;margin:0;">${lettersGenerated}</p>
           <p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Letters generated</p>
@@ -102,8 +97,8 @@ function buildEmail(type: ChurnEmailType, name: string, data: Record<string, any
         </div>
       </div>
 
-      ${parseFloat(String(data.totalSaved || 0)) > 0 ?
-        `<p style="color:#34d399;font-size:15px;text-align:center;margin:0 0 16px;font-weight:600;">Paybacker has already paid for itself this month.</p>` :
+      ${lettersGenerated > 0 ?
+        `<p style="color:#34d399;font-size:15px;text-align:center;margin:0 0 16px;font-weight:600;">You are actively taking charge of your finances.</p>` :
         `<p style="color:#94a3b8;font-size:15px;text-align:center;margin:0 0 16px;">Write your first complaint letter to start recovering money.</p>`
       }
 

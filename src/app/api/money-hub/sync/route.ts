@@ -14,8 +14,8 @@ function getAdmin() {
 
 // Smart categorisation rules
 const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
-  { keywords: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'nationwide b.s', 'nationwide bs', 'halifax mort', 'barclays mort', 'hsbc mort', 'santander mort', 'bm solutions', 'accord mort', 'virgin money mort', 'leeds b.s', 'leeds bs', 'yorkshire b.s', 'yorkshire bs', 'coventry b.s', 'coventry bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort'], category: 'mortgage' },
-  { keywords: ['natwest loan', 'santander loans', 'novuna personal', 'ca auto finance', 'tesco bank'], category: 'loans' },
+  { keywords: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'nationwide b.s', 'nationwide bs', 'halifax mort', 'barclays mort', 'hsbc mort', 'santander mort', 'bm solutions', 'accord mort', 'virgin money mort', 'leeds b.s', 'leeds bs', 'yorkshire b.s', 'yorkshire bs', 'coventry b.s', 'coventry bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort', 'paratus', 'pepper money', 'together money', 'shawbrook', 'precise mort', 'the mortgage lender', 'foundation home', 'molo', 'landbay'], category: 'mortgage' },
+  { keywords: ['natwest loan', 'santander loans', 'novuna personal', 'ca auto finance', 'tesco bank', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'zopa', 'starling loan', 'creation.co', 'creation '], category: 'loans' },
   { keywords: ['council', 'winchester city counci', 'hounslow', 'lbh'], category: 'council_tax' },
   { keywords: ['hmrc', 'hm revenue'], category: 'tax' },
   { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },

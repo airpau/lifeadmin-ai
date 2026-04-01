@@ -120,10 +120,14 @@ export async function POST(request: NextRequest) {
     if (body.disputeId) {
       const { data: disputeRow } = await supabase
         .from('disputes')
-        .select('provider_type')
+        .select('provider_type, description, desired_outcome, amount, status')
         .eq('id', body.disputeId)
         .single();
       disputeProviderType = disputeRow?.provider_type || null;
+      
+      if (disputeRow && threadContext) {
+        threadContext += `\n\nORIGINAL DISPUTE DETAILS:\nDescription: ${disputeRow.description || 'N/A'}\nDesired Outcome: ${disputeRow.desired_outcome || 'N/A'}\nDisputed Amount: £${disputeRow.amount || '0'}\n`;
+      }
     }
 
     const issueTypeToCategory: Record<string, string[]> = {
@@ -158,7 +162,7 @@ export async function POST(request: NextRequest) {
 
     const { data: legalRefs } = await supabase
       .from('legal_references')
-      .select('law_name, section, summary, source_url, escalation_body, strength, applies_to, category')
+      .select('category, law_name, section, summary, source_url, escalation_body, strength, applies_to')
       .in('category', categories)
       .in('verification_status', ['current', 'updated'])
       .gte('confidence_score', 60);
@@ -292,11 +296,17 @@ export async function POST(request: NextRequest) {
       const categorySpecific = allFetchedRefs.filter((r: any) => {
         const lawLower = r.law_name.toLowerCase();
         const sectionLower = (r.section || '').toLowerCase();
-        return citedLower.some((cited: string) =>
-          cited.includes(lawLower) ||
-          (sectionLower && cited.includes(sectionLower)) ||
-          lawLower.includes(cited.substring(0, 20))
-        );
+        return citedLower.some((cited: string) => {
+          if (sectionLower) {
+            return cited.includes(lawLower) && cited.includes(sectionLower);
+          }
+          return cited.includes(lawLower) || lawLower.includes(cited.substring(0, 20));
+        });
+      }).sort((a: any, b: any) => {
+        // prioritise category-specific over 'general'
+        if (a.category !== 'general' && b.category === 'general') return -1;
+        if (a.category === 'general' && b.category !== 'general') return 1;
+        return 0;
       });
       // Only filter if we matched at least 1 ref; otherwise fall back to all fetched
       if (categorySpecific.length > 0) {

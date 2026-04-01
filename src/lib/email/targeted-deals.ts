@@ -118,7 +118,7 @@ export function buildTargetedEmail(
       <div style="color: #334155; font-size: 11px; line-height: 1.8;">
         Paybacker LTD · paybacker.co.uk<br>
         <a href="https://paybacker.co.uk/dashboard/profile" style="color: #64748b; text-decoration: underline;">Manage preferences</a> ·
-        <a href="https://paybacker.co.uk/legal/privacy" style="color: #64748b; text-decoration: underline;">Privacy</a>
+        <a href="https://paybacker.co.uk/privacy-policy" style="color: #64748b; text-decoration: underline;">Privacy</a>
       </div>
     </div>
   </div>

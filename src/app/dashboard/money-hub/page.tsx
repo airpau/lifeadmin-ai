@@ -4,15 +4,18 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Wallet, TrendingUp, TrendingDown, CreditCard, BarChart3,
   AlertTriangle, Clock, Target, PiggyBank, FileText, Building2,
   ArrowRight, Loader2, Lock, RefreshCw, Plus, ChevronDown, ChevronUp,
   Shield, Zap, Mail, Calendar, DollarSign, X, Send, MessageCircle,
-  ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye,
+  ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye, CheckCircle2, Info,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import { cleanMerchantName } from '@/lib/merchant-utils';
+import { FEATURE_FLAGS } from '@/lib/feature-flags';
+import { createClient } from '@/lib/supabase/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,8 +94,17 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: stri
   travel: { label: 'Travel', color: '#7dd3fc', icon: '✈️' },
   gambling: { label: 'Gambling', color: '#fde047', icon: '🎲' },
   fee: { label: 'Fees', color: '#a3a3a3', icon: '💳' },
+  fees: { label: 'Fees', color: '#a3a3a3', icon: '💳' },
   loan: { label: 'Loans', color: '#ef4444', icon: '🏦' },
+  credit: { label: 'Credit Cards', color: '#f43f5e', icon: '💳' },
+  cash: { label: 'Cash Withdrawal', color: '#78716c', icon: '🏧' },
+  transfers: { label: 'Transfers', color: '#64748b', icon: '🔄' },
   utility: { label: 'Utilities', color: '#f59e0b', icon: '⚡' },
+  professional: { label: 'Professional', color: '#6366f1', icon: '👔' },
+  childcare: { label: 'Childcare', color: '#f472b6', icon: '👶' },
+  motoring: { label: 'Motoring', color: '#94a3b8', icon: '🚗' },
+  credit_monitoring: { label: 'Credit Monitoring', color: '#a78bfa', icon: '📊' },
+  property_management: { label: 'Property', color: '#d97706', icon: '🏠' },
   other: { label: 'Other', color: '#475569', icon: '📋' },
 };
 
@@ -130,7 +142,7 @@ const EMOJI_GOAL_NAMES: Record<string, string> = {
 
 const TOUR_STEPS: TourStep[] = [
   { target: 'tour-header', title: 'Welcome to Money Hub', description: 'Your complete financial intelligence centre. Everything you need to understand and improve your finances is right here.' },
-  { target: 'tour-overview', title: 'Financial Overview', description: 'Your income and spending at a glance. See your net position and how far through the month you are.' },
+  { target: 'tour-overview', title: 'Financial Overview', description: 'Your income and spending at a glance. See your savings rate and how far through the month you are.' },
   { target: 'tour-income', title: 'Income Breakdown', description: 'See exactly where your money comes from — salary, freelance, benefits, investments and more.' },
   { target: 'tour-spending', title: 'Spending Intelligence', description: 'Understand where your money goes. Click any category to drill down into individual transactions and merchants.' },
   { target: 'tour-trends', title: 'Monthly Trends', description: 'Hover over months to compare income and outgoings. Spot patterns in your spending over time.' },
@@ -256,6 +268,120 @@ export default function MoneyHubPage() {
   const [addMoneyGoalId, setAddMoneyGoalId] = useState<string | null>(null);
   const [addMoneyAmount, setAddMoneyAmount] = useState('');
 
+  // Router
+  const router = useRouter();
+  const supabase = createClient();
+
+  // Expired bank connections
+  const [expiredConnections, setExpiredConnections] = useState<Array<{ id: string; bank_name: string; status: string }>>([]);
+
+  // Toast notifications
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    setToast({ message, type });
+    toastTimeout.current = setTimeout(() => setToast(null), 5000);
+  };
+
+  // Sparse month data
+  type ExpectedBill = { name: string; expected_amount: number; category: string; paid: boolean; source: string; expected_date?: string; billing_day?: number; occurrence_count?: number; is_subscription?: boolean; subscription_id?: string | null; bill_key?: string };
+  const [expectedBills, setExpectedBills] = useState<ExpectedBill[]>([]);
+  const [expectedBillsTotal, setExpectedBillsTotal] = useState(0);
+  const [dismissedBillsList, setDismissedBillsList] = useState<ExpectedBill[]>([]);
+  const [prevMonthData, setPrevMonthData] = useState<{
+    monthName: string;
+    totalIncome: number;
+    totalSpent: number;
+    savingsRate: number;
+    txnCount: number;
+    categories: Array<{ category: string; total: number }>;
+    spendChange: number | null;
+  } | null>(null);
+  const [loadingPrevMonth, setLoadingPrevMonth] = useState(false);
+
+  // Dismissed expected bills (persisted in Supabase)
+  const [showDismissedBills, setShowDismissedBills] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const fetchExpectedBills = async () => {
+    try {
+      const res = await fetch('/api/money-hub/expected-bills');
+      const d = await res.json();
+      if (!d.error && d.bills) {
+        setExpectedBills(d.bills);
+        setExpectedBillsTotal(d.totalExpected || 0);
+      }
+    } catch { /* silent */ }
+  };
+
+  const dismissBill = async (bill: ExpectedBill) => {
+    if (!userId || !bill.bill_key) return;
+    const now = new Date();
+    await supabase.rpc('dismiss_expected_bill', {
+      p_user_id: userId,
+      p_bill_key: bill.bill_key,
+      p_year: now.getFullYear(),
+      p_month: now.getMonth() + 1,
+    });
+    // Move from active to dismissed list
+    setExpectedBills(prev => prev.filter(b => b.bill_key !== bill.bill_key));
+    setDismissedBillsList(prev => [...prev, bill]);
+    setExpectedBillsTotal(prev => prev - bill.expected_amount);
+    showToast(`"${bill.name}" removed from expected bills`, 'info');
+  };
+
+  const addBillAsSubscription = async (bill: ExpectedBill) => {
+    try {
+      const res = await fetch('/api/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_name: bill.name,
+          amount: bill.expected_amount,
+          billing_cycle: 'monthly',
+          status: 'active',
+          source: 'bank',
+          next_billing_date: bill.expected_date || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to add subscription');
+      await fetchExpectedBills();
+      showToast(`"${bill.name}" added to subscriptions`, 'success');
+    } catch {
+      showToast('Failed to add subscription', 'error');
+    }
+  };
+
+  const restoreBill = async (bill: ExpectedBill) => {
+    if (!userId || !bill.bill_key) return;
+    const now = new Date();
+    await supabase.rpc('restore_expected_bill', {
+      p_user_id: userId,
+      p_bill_key: bill.bill_key,
+      p_year: now.getFullYear(),
+      p_month: now.getMonth() + 1,
+    });
+    setDismissedBillsList(prev => prev.filter(b => b.bill_key !== bill.bill_key));
+    setExpectedBills(prev => [...prev, bill].sort((a, b) => (a.billing_day || 0) - (b.billing_day || 0)));
+    setExpectedBillsTotal(prev => prev + bill.expected_amount);
+  };
+
+  const restoreAllBills = async () => {
+    if (!userId) return;
+    const now = new Date();
+    const billMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    await supabase
+      .from('dismissed_expected_bills')
+      .delete()
+      .eq('user_id', userId)
+      .eq('bill_month', billMonth);
+    setExpectedBills(prev => [...prev, ...dismissedBillsList].sort((a, b) => (a.billing_day || 0) - (b.billing_day || 0)));
+    setExpectedBillsTotal(prev => prev + dismissedBillsList.reduce((s, b) => s + b.expected_amount, 0));
+    setDismissedBillsList([]);
+    setShowDismissedBills(false);
+  };
+
   // Month selector
   const [selectedMonth, setSelectedMonth] = useState('');
 
@@ -264,6 +390,9 @@ export default function MoneyHubPage() {
 
   // Tour
   const [tourStep, setTourStep] = useState<number | null>(null);
+  
+  // FCA Banner
+  const [showFcaBanner, setShowFcaBanner] = useState(false);
 
   // AI Chat (Pro)
   const [chatOpen, setChatOpen] = useState(false);
@@ -290,10 +419,67 @@ export default function MoneyHubPage() {
   const syncMoneyHub = async () => {
     setSyncing(true);
     try {
-      await fetch('/api/money-hub/sync', { method: 'POST' });
-      await refreshData();
-    } catch { /* silent */ }
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/bank-sync?trigger=manual`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (res.status === 429) {
+        const responseData = await res.json();
+        showToast(responseData.error || 'Rate limited. Try again later.', 'error');
+        setSyncing(false);
+        return;
+      }
+
+      if (res.status === 404) {
+        showToast('No active bank connections found. Connect your bank first.', 'error');
+        setSyncing(false);
+        return;
+      }
+
+      const responseData = await res.json();
+
+      if (responseData.summary?.token_expired > 0) {
+        const expired = (responseData.results || []).filter((r: any) => r.status === 'token_expired');
+        setExpiredConnections(expired.map((r: any) => ({ id: r.connection_id || '', bank_name: r.bank_name || 'Bank', status: 'expired' })));
+        showToast('Bank connection expired. Please reconnect your bank.', 'error');
+      } else if (responseData.summary?.synced > 0) {
+        showToast(`Synced ${responseData.summary.total_new || 0} new transactions`, 'success');
+        await refreshData();
+        router.refresh();
+      } else if (responseData.summary?.no_new_data > 0) {
+        showToast('No new transactions to sync', 'info');
+      } else if (responseData.summary?.errors > 0) {
+        showToast('Sync encountered errors. Please try again later.', 'error');
+      } else {
+        // Fallback — still refresh data after successful edge function call
+        await refreshData();
+      }
+    } catch (err) {
+      // Edge function not deployed yet — fall back to the local sync routes
+      try {
+        // Step 1: Pull fresh transactions from TrueLayer into DB
+        await fetch('/api/bank/sync', { method: 'POST' });
+        // Step 2: Categorise the new transactions
+        await fetch('/api/money-hub/sync', { method: 'POST' });
+        await refreshData();
+        showToast('Sync complete', 'success');
+      } catch {
+        showToast('Sync failed. Please try again.', 'error');
+      }
+    }
     setSyncing(false);
+  };
+
+  const handleReconnectBank = () => {
+    window.location.href = '/api/auth/truelayer';
   };
 
   // ─── Category drill-down ──────────────────────────────────────────────────
@@ -545,19 +731,30 @@ export default function MoneyHubPage() {
     setChatInput('');
     setChatLoading(true);
     try {
-      const res = await fetch('/api/money-hub/chat', {
+      // Use main chat API which has full tool support (recategorise, update, dismiss, etc.)
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: updated }),
+        body: JSON.stringify({ messages: updated, tier: 'pro' }),
       });
       const d = await res.json();
       if (d.reply) {
-        const reply = d.reply;
-        const newMessages = [...updated, { role: 'assistant', content: reply }];
-        setChatMessages(newMessages);
+        const rawReply = d.reply;
 
-        // Check for widget commands
-        const widgetMatch = reply.match(/\[WIDGET:([\s\S]*?)\]/);
+        // Auto-refresh dashboard if the AI made data changes
+        if (d.toolsUsed || rawReply.includes(':::dashboard_refresh:::') || rawReply.includes('recategorised') || rawReply.includes('Recategorised') || rawReply.includes('Updated') || rawReply.includes('Dismissed')) {
+          refreshData();
+        }
+
+        // Strip directives before displaying
+        const cleanReply = rawReply
+          .replace(/:::dashboard_refresh:::/g, '')
+          .replace(/:::dashboard\s*\{[\s\S]*?\}\s*:::/g, '')
+          .replace(/:::chart\s*\{[\s\S]*?\}\s*:::/g, (m: string) => m) // keep chart blocks
+          .trim();
+
+        // Check for widget commands before stripping
+        const widgetMatch = rawReply.match(/\[WIDGET:([\s\S]*?)\]/);
         if (widgetMatch) {
           try {
             const widgetData = JSON.parse(widgetMatch[1]);
@@ -574,6 +771,11 @@ export default function MoneyHubPage() {
             });
           } catch { /* invalid widget JSON, ignore */ }
         }
+
+        // Strip widget commands from display
+        const displayReply = cleanReply.replace(/\[WIDGET:[\s\S]*?\]/g, '').trim();
+        const newMessages = [...updated, { role: 'assistant', content: displayReply }];
+        setChatMessages(newMessages);
 
         // Save chat history
         try { localStorage.setItem('pb_moneyhub_chat_history', JSON.stringify(newMessages)); } catch { /* silent */ }
@@ -619,6 +821,11 @@ export default function MoneyHubPage() {
     try { localStorage.setItem('mh_tour_completed', 'true'); } catch { /* silent */ }
   };
 
+  const dismissFcaBanner = () => {
+    setShowFcaBanner(false);
+    try { localStorage.setItem('pb_fca_banner_dismissed', 'true'); } catch { /* silent */ }
+  };
+
   // Remove custom widget
   const removeWidget = (id: string) => {
     setCustomWidgets(prev => {
@@ -636,6 +843,37 @@ export default function MoneyHubPage() {
       .then(d => { if (!d.error) setData(d); })
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    // Fetch user ID and expired bank connections
+    (async () => {
+      try {
+        const sb = createClient();
+        const { data: { user } } = await sb.auth.getUser();
+        if (user) {
+          setUserId(user.id);
+          const { data: conns } = await sb.from('bank_connections')
+            .select('id, bank_name, status')
+            .eq('user_id', user.id)
+            .in('status', ['expired', 'token_expired']);
+          if (conns && conns.length > 0) {
+            setExpiredConnections(conns);
+          }
+        }
+      } catch { /* silent */ }
+    })();
+
+    // Fetch expected bills (DB function handles deduplication & dismissed filtering)
+    fetchExpectedBills();
+
+    // Fetch previous month data for recap
+    setLoadingPrevMonth(true);
+    fetch('/api/money-hub/prev-month')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error) setPrevMonthData(d);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPrevMonth(false));
 
     // Restore chat history
     try {
@@ -656,10 +894,24 @@ export default function MoneyHubPage() {
       }
     } catch { /* silent */ }
 
+    // Check FCA Banner
+    try {
+      if (!localStorage.getItem('pb_fca_banner_dismissed')) {
+        setShowFcaBanner(true);
+      }
+    } catch { /* silent */ }
+
     // Hide global ChatWidget for Pro users on Money Hub
     document.body.dataset.hideChat = 'true';
     return () => { delete document.body.dataset.hideChat; };
   }, []);
+
+  // Listen for global chatbot refresh events
+  useEffect(() => {
+    const handler = () => refreshData();
+    window.addEventListener('paybacker:dashboard_refresh', handler);
+    return () => window.removeEventListener('paybacker:dashboard_refresh', handler);
+  }, [refreshData]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -701,8 +953,21 @@ export default function MoneyHubPage() {
 
   const isPaid = data.tier === 'essential' || data.tier === 'pro';
   const isPro = data.tier === 'pro';
-  const totalOpportunityValue = data.alerts.reduce((s, a: any) => s + (a.value_gbp || 0), 0) +
-    data.opportunities.reduce((s, o: any) => s + (o.amount || 0), 0);
+  // Only count genuinely actionable savings — exclude flight price alerts,
+  // generic trackers, and items without a concrete value
+  const genuineSavingsTypes = ['bill_review', 'subscription', 'compensation', 'refund', 'overcharge', 'better_deal', 'cancellation'];
+  const totalOpportunityValue = data.alerts
+    .filter((a: any) => genuineSavingsTypes.some(t => (a.alert_type || '').toLowerCase().includes(t) || (a.title || '').toLowerCase().includes(t)))
+    .reduce((s: number, a: any) => s + (a.value_gbp || 0), 0) +
+    data.opportunities
+    .filter((o: any) => {
+      const title = (o.title || '').toLowerCase();
+      // Exclude flight tracker price changes — not real savings
+      if (title.includes('flight') && title.includes('price')) return false;
+      if (title.includes('volatile')) return false;
+      return (o.amount || 0) > 0;
+    })
+    .reduce((s: number, o: any) => s + (o.amount || 0), 0);
 
   // Deduplicate income breakdown entries (merge duplicates by key)
   const rawIncomeBreakdown = data.overview.incomeBreakdown || {};
@@ -727,6 +992,81 @@ export default function MoneyHubPage() {
   const trends = data.spending.monthlyTrends || [];
   const avgIncome = trends.length > 0 ? trends.reduce((s, t) => s + t.income, 0) / trends.length : 0;
   const avgOutgoings = trends.length > 0 ? trends.reduce((s, t) => s + t.outgoings, 0) / trends.length : 0;
+
+  // Sparse month detection
+  const isSparseMonth = data.overview.monthlyOutgoings === 0 && data.overview.monthlyIncome === 0 && deduplicatedSpending.length < 5;
+  const isFirstWeek = new Date().getDate() <= 7;
+  const isCurrentMonthView = !selectedMonth; // viewing current month
+  const showSparseMonthContent = (isSparseMonth || isFirstWeek) && isCurrentMonthView;
+  const hasNoCurrentMonthTxns = deduplicatedSpending.length === 0 && totalIncome === 0;
+  const hasFewCurrentMonthTxns = deduplicatedSpending.length > 0 && deduplicatedSpending.length < 5;
+
+  // Last synced timestamp (from most recent bank connection)
+  const lastSyncedAt = data.accounts.reduce((latest: string | null, acc: any) => {
+    if (!acc.last_synced_at) return latest;
+    if (!latest) return acc.last_synced_at;
+    return new Date(acc.last_synced_at) > new Date(latest) ? acc.last_synced_at : latest;
+  }, null as string | null);
+
+  const formatTimeAgo = (dateStr: string) => {
+    const mins = Math.round((Date.now() - new Date(dateStr).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return 'yesterday';
+    return `${days} days ago`;
+  };
+
+  // Sync tier info
+  const lastSyncMins = lastSyncedAt ? Math.round((Date.now() - new Date(lastSyncedAt).getTime()) / 60000) : null;
+  const canSync = (() => {
+    if (syncing) return false;
+    if (!lastSyncMins) return true; // never synced
+    switch (data.tier) {
+      case 'pro': return lastSyncMins >= 360; // 6 hours
+      case 'essential': return lastSyncMins >= 1440; // 24 hours
+      default: return lastSyncMins >= 1440; // 24 hours
+    }
+  })();
+  const syncCooldownText = (() => {
+    if (!lastSyncMins) return null;
+    switch (data.tier) {
+      case 'pro': {
+        if (lastSyncMins < 360) {
+          const remainingMins = 360 - lastSyncMins;
+          const remainingHours = Math.ceil(remainingMins / 60);
+          return `Next sync available in ${remainingHours} hour${remainingHours === 1 ? '' : 's'}`;
+        }
+        return null;
+      }
+      case 'essential': {
+        if (lastSyncMins < 1440) {
+          const remaining = 1440 - lastSyncMins;
+          return `Next sync available in ${remaining < 60 ? `${remaining} min${remaining === 1 ? '' : 's'}` : `${Math.ceil(remaining / 60)} hour${Math.ceil(remaining / 60) === 1 ? '' : 's'}`}`;
+        }
+        return null;
+      }
+      default: {
+        if (lastSyncMins < 1440) {
+          const remaining = 1440 - lastSyncMins;
+          return `Free plan allows one sync per day. Next sync in ${remaining < 60 ? `${remaining} mins` : `${Math.ceil(remaining / 60)} hours`}`;
+        }
+        return null;
+      }
+    }
+  })();
+  const syncTierText = (() => {
+    switch (data.tier) {
+      case 'pro': return `Auto-syncs up to 4x daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''} · Banks may take up to 24hrs to release transactions`;
+      case 'essential': return `Auto-syncs daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
+      default: return 'Manual sync · 1× per day';
+    }
+  })();
+
+  // Current month name for display
+  const currentMonthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -789,31 +1129,79 @@ export default function MoneyHubPage() {
           >
             <HelpCircle className="h-5 w-5" />
           </button>
-          <select
-            value={selectedMonth}
-            onChange={(e) => {
-              setSelectedMonth(e.target.value);
-              refreshData(e.target.value);
-            }}
-            className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
-          >
-            <option value="">This month</option>
-            {Array.from({ length: 6 }, (_, i) => {
-              const d = new Date();
-              d.setDate(1);
-              d.setMonth(d.getMonth() - (i + 1));
-              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-              const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-              return <option key={val} value={val}>{label}</option>;
-            })}
-          </select>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const months = Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date();
+                  d.setDate(1);
+                  d.setMonth(d.getMonth() - (i + 1));
+                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                });
+                const currentIdx = selectedMonth ? months.indexOf(selectedMonth) : -1;
+                const nextVal = currentIdx < months.length - 1 ? months[currentIdx + 1] : months[months.length - 1];
+                setSelectedMonth(nextVal);
+                refreshData(nextVal);
+              }}
+              className="text-slate-400 hover:text-white p-1.5 rounded transition-colors"
+              title="Previous month"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                refreshData(e.target.value);
+              }}
+              className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
+            >
+              <option value="">This month</option>
+              {Array.from({ length: 12 }, (_, i) => {
+                const d = new Date();
+                d.setDate(1);
+                d.setMonth(d.getMonth() - (i + 1));
+                const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+                return <option key={val} value={val}>{label}</option>;
+              })}
+            </select>
+            <button
+              onClick={() => {
+                if (!selectedMonth) return;
+                const months = ['', ...Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date();
+                  d.setDate(1);
+                  d.setMonth(d.getMonth() - (i + 1));
+                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                })];
+                const currentIdx = months.indexOf(selectedMonth);
+                if (currentIdx > 0) {
+                  const nextVal = months[currentIdx - 1];
+                  setSelectedMonth(nextVal);
+                  refreshData(nextVal);
+                }
+              }}
+              disabled={!selectedMonth}
+              className="text-slate-400 hover:text-white p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Next month"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
           <button
             onClick={syncMoneyHub}
-            disabled={syncing}
-            className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-all"
+            disabled={syncing || !canSync}
+            className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm transition-all relative group"
+            title={syncCooldownText || (syncing ? 'Syncing...' : 'Sync now')}
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Syncing...' : 'Sync'}
+            {syncCooldownText && !syncing && (
+              <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-navy-950 border border-navy-700 text-slate-400 text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                {syncCooldownText}
+              </span>
+            )}
           </button>
           <div className="text-right">
             <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-mint-400' : 'text-red-400'}`}>
@@ -822,6 +1210,86 @@ export default function MoneyHubPage() {
             <p className="text-slate-500 text-xs">Financial Health Score</p>
           </div>
         </div>
+      </div>
+
+      {/* FCA Compliance Banner */}
+      {showFcaBanner && (
+        <div className="bg-sky-500/10 border border-sky-400/20 rounded-xl p-3 flex items-start gap-3 relative">
+          <Shield className="h-5 w-5 text-sky-400 shrink-0 mt-0.5" />
+          <div className="flex-1 pr-6">
+            <p className="text-sky-300 text-sm">
+              Your financial data is powered by secure Open Banking transaction analysis. Bank balance display coming soon.
+            </p>
+          </div>
+          <button onClick={dismissFcaBanner} className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[100] max-w-sm px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-[slideIn_0.3s_ease] ${
+          toast.type === 'success' ? 'bg-green-500/20 border-green-500/30 text-green-300' :
+          toast.type === 'error' ? 'bg-red-500/20 border-red-500/30 text-red-300' :
+          'bg-blue-500/20 border-blue-500/30 text-blue-300'
+        }`}>
+          {toast.type === 'success' && <CheckCircle2 className="h-5 w-5 shrink-0" />}
+          {toast.type === 'error' && <AlertTriangle className="h-5 w-5 shrink-0" />}
+          {toast.type === 'info' && <Info className="h-5 w-5 shrink-0" />}
+          <p className="text-sm font-medium">{toast.message}</p>
+          <button onClick={() => setToast(null)} className="ml-auto text-current/60 hover:text-current">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ═══ Expired Bank Connection Banner ═══ */}
+      {expiredConnections.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="font-medium text-amber-200">
+                Bank connection expired
+              </p>
+              <p className="text-sm text-amber-300/70">
+                Your {expiredConnections.map(c => c.bank_name || 'bank').join(' and ')} connection{expiredConnections.length > 1 ? 's have' : ' has'} expired. Reconnect to resume automatic syncing.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleReconnectBank}
+            className="shrink-0 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 font-medium px-4 py-2 rounded-lg text-sm transition-all"
+          >
+            Reconnect Bank
+          </button>
+        </div>
+      )}
+
+      {/* ═══ Sync Tier Info ═══ */}
+      <div className="flex items-center justify-between bg-navy-900/50 border border-navy-700/30 rounded-lg px-4 py-2">
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span>{syncTierText}</span>
+          {data.tier === 'free' && (
+            <Link href="/pricing" className="text-mint-400 hover:text-mint-300 ml-1 font-medium">
+              Upgrade for auto-sync
+            </Link>
+          )}
+        </div>
+        {lastSyncedAt && (
+          <span className="text-xs text-slate-500 flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Last synced: {formatTimeAgo(lastSyncedAt)}
+          </span>
+        )}
+      </div>
+
+      {/* Learning indicator */}
+      <div className="flex items-center gap-2 text-[10px] text-slate-500 px-1">
+        <Zap className="h-3 w-3 text-mint-400/60" />
+        <span>Paybacker learns from your corrections — categorisation improves each time you recategorise a transaction.</span>
       </div>
 
       {/* ═══ SECTION 1: Financial Snapshot ═══ */}
@@ -872,11 +1340,25 @@ export default function MoneyHubPage() {
                 )}
               </div>
               <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-                <DollarSign className={`h-5 w-5 ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'} mb-2`} />
-                <p className={`text-2xl font-bold ${data.overview.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {data.overview.netPosition >= 0 ? '+' : '-'}£{fmt(Math.abs(data.overview.netPosition))}
-                </p>
-                <p className="text-slate-400 text-xs">Net position</p>
+                {(() => {
+                  const hasIncome = data.overview.monthlyIncome > 0;
+                  const savingsRate = hasIncome 
+                    ? ((data.overview.monthlyIncome - data.overview.monthlyOutgoings) / data.overview.monthlyIncome * 100)
+                    : 0;
+                  const isPositive = savingsRate >= 0;
+                  return (
+                    <>
+                      <div className="mb-2 w-5 h-5 rounded-full border-2 border-current flex items-center justify-center opacity-80" style={{ color: hasIncome ? (isPositive ? '#4ade80' : '#f87171') : '#64748b' }}>
+                        <div className="w-2.5 h-2.5 rounded-full bg-current opacity-80" />
+                      </div>
+                      <p className={`text-2xl font-bold ${hasIncome ? (isPositive ? 'text-green-400' : 'text-red-400') : 'text-slate-500'}`}>
+                        {hasIncome ? `${savingsRate.toFixed(1)}%` : 'N/A'}
+                      </p>
+                      <p className="text-slate-400 text-xs mt-1">Savings Rate</p>
+                      <p className="text-slate-500 text-[10px]">{hasIncome ? 'of income saved this month' : 'No income recorded'}</p>
+                    </>
+                  );
+                })()}
               </div>
               <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
                 <Calendar className="h-5 w-5 text-blue-400 mb-2" />
@@ -887,26 +1369,47 @@ export default function MoneyHubPage() {
               </div>
             </div>
 
-            {/* Forecast + Insight Banner */}
-            {(remainingDays > 0 || biggestChangeText) && (
-              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4 flex flex-col sm:flex-row gap-4">
-                {remainingDays > 0 && (
+            {/* Savings-Focused Banner */}
+            {(() => {
+              const visibleBillsTotal = expectedBillsTotal;
+              const monthlySubCost = data.subscriptions.monthlyTotal || 0;
+              const switchableSubs = data.subscriptions.list?.filter((s: any) =>
+                ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'water'].includes(s.category)
+              ).length || 0;
+
+              return (
+                <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4 flex flex-col sm:flex-row gap-4">
+                  {expectedBills.length > 0 && (
+                    <div className="flex-1">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Bills still to pay this month</p>
+                      <p className="text-sm font-semibold text-amber-400">
+                        £{fmt(visibleBillsTotal)}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {expectedBills.length} bills remaining · dismiss one-offs below to update
+                      </p>
+                    </div>
+                  )}
                   <div className="flex-1">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">End of month forecast</p>
-                    <p className={`text-sm font-semibold ${projectedNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {projectedNet >= 0 ? '+' : '-'}£{fmt(Math.abs(projectedNet))} projected net
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Regular payments</p>
+                    <p className="text-sm font-semibold text-white">
+                      £{fmt(monthlySubCost)}/mo <span className="text-slate-500 text-[10px]">(£{fmt(monthlySubCost * 12)}/yr)</span>
                     </p>
-                    <p className="text-[10px] text-slate-500">Based on £{fmt(dailyAvgSpend)}/day average spend x {remainingDays} days remaining</p>
+                    {switchableSubs > 0 && (
+                      <p className="text-[10px] text-mint-400">
+                        {switchableSubs} subscriptions could be switched for a better deal →
+                      </p>
+                    )}
                   </div>
-                )}
-                {biggestChangeText && (
-                  <div className="flex-1">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">This month&apos;s insight</p>
-                    <p className="text-sm text-slate-300">{biggestChangeText}</p>
-                  </div>
-                )}
-              </div>
-            )}
+                  {biggestChangeText && (
+                    <div className="flex-1">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">This month&apos;s insight</p>
+                      <p className="text-sm text-slate-300">{biggestChangeText}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Regular Payments Summary */}
             {data.subscriptions.count > 0 && (
@@ -932,6 +1435,207 @@ export default function MoneyHubPage() {
           </>
         );
       })()}
+
+      {/* ═══ SPARSE MONTH: "Month So Far" Section ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && hasNoCurrentMonthTxns && (
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 text-center">
+          <Calendar className="h-8 w-8 text-blue-400 mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-white">{currentMonthName} has just started</h3>
+          <p className="text-slate-400 mt-1 max-w-lg mx-auto">
+            Your transactions will appear here as they confirm with your bank.
+            {data.tier === 'pro' ? ' Auto-syncs up to 4 times daily. Banks may take up to 24hrs to release transactions.' :
+             data.tier === 'essential' ? ' Auto-syncing daily.' :
+             ' Sync manually or upgrade for automatic syncs.'}
+          </p>
+          <p className="text-xs text-slate-500 mt-2">
+            Last synced: {lastSyncedAt ? formatTimeAgo(lastSyncedAt) : 'Never'}
+          </p>
+        </div>
+      )}
+
+      {/* ═══ SPARSE MONTH: Previous Month Recap ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && prevMonthData && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
+            <BarChart3 className="h-5 w-5 text-purple-400" />
+            {prevMonthData.monthName} Summary
+            {prevMonthData.spendChange !== null && (
+              <span className={`text-xs font-normal ml-2 px-2 py-0.5 rounded-full ${
+                prevMonthData.spendChange <= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+              }`}>
+                {prevMonthData.spendChange <= 0 ? '↓' : '↑'} {Math.abs(prevMonthData.spendChange).toFixed(1)}% vs previous month
+              </span>
+            )}
+          </h2>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-3 gap-4 mb-5">
+            <div className="bg-navy-950/50 rounded-xl p-4 text-center border border-navy-700/30">
+              <p className="text-green-400 text-xl font-bold">£{fmt(prevMonthData.totalIncome)}</p>
+              <p className="text-slate-500 text-xs">Income</p>
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-4 text-center border border-navy-700/30">
+              <p className="text-red-400 text-xl font-bold">£{fmt(prevMonthData.totalSpent)}</p>
+              <p className="text-slate-500 text-xs">Spent</p>
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-4 text-center border border-navy-700/30">
+              <p className={`text-xl font-bold ${prevMonthData.savingsRate >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {prevMonthData.savingsRate.toFixed(1)}%
+              </p>
+              <p className="text-slate-500 text-xs">Savings Rate</p>
+            </div>
+          </div>
+
+          {/* Spending breakdown pie chart */}
+          {prevMonthData.categories.length > 0 && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-white text-sm font-semibold mb-3">Spending Breakdown</h3>
+                <PieChartWidget
+                  data={prevMonthData.categories.slice(0, 8).map(c => ({
+                    label: CATEGORY_LABELS[c.category]?.label || c.category,
+                    value: c.total,
+                    color: CATEGORY_LABELS[c.category]?.color || '#475569',
+                  }))}
+                />
+              </div>
+              <div>
+                <h3 className="text-white text-sm font-semibold mb-3">Top 5 Categories</h3>
+                <BarChartWidget
+                  data={prevMonthData.categories.slice(0, 5).map(c => ({
+                    label: `${CATEGORY_LABELS[c.category]?.icon || '📋'} ${CATEGORY_LABELS[c.category]?.label || c.category}`,
+                    value: c.total,
+                    color: CATEGORY_LABELS[c.category]?.color || '#475569',
+                  }))}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 pt-3 border-t border-navy-700/50 text-center">
+            <button
+              onClick={() => {
+                const prevDate = new Date();
+                prevDate.setMonth(prevDate.getMonth() - 1);
+                const val = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+                setSelectedMonth(val);
+                refreshData(val);
+              }}
+              className="text-mint-400 text-xs hover:text-mint-300 font-medium"
+            >
+              View full {prevMonthData.monthName} details →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ SPARSE MONTH: Expected Bills This Month ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && (expectedBills.length > 0 || dismissedBillsList.length > 0) && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
+              <FileText className="h-5 w-5 text-sky-400" />
+              Expected Bills for {currentMonthName}
+            </h2>
+            {dismissedBillsList.length > 0 && (
+              <button
+                onClick={() => setShowDismissedBills(!showDismissedBills)}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                {showDismissedBills ? 'Hide' : 'Show'} {dismissedBillsList.length} removed
+              </button>
+            )}
+          </div>
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b #0f172a' }}>
+            {expectedBills.map((bill, i) => {
+              const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
+              return (
+                <div key={`v-${i}`} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30 group">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm ${bill.paid ? 'text-green-400' : 'text-slate-500'}`}>
+                      {bill.paid ? '✓' : '☐'}
+                    </span>
+                    <span className="text-sm w-5">{info.icon}</span>
+                    <div className="flex flex-col">
+                      <span className={`text-sm ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>
+                        {cleanMerchantName(bill.name)}
+                      </span>
+                      {bill.billing_day && (
+                        <span className="text-[10px] text-slate-500">~{bill.billing_day}{bill.billing_day === 1 ? 'st' : bill.billing_day === 2 ? 'nd' : bill.billing_day === 3 ? 'rd' : 'th'} of month</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-medium ${bill.paid ? 'text-green-400' : 'text-slate-300'}`}>
+                      ~£{fmt(bill.expected_amount)}
+                    </span>
+                    {bill.is_subscription === false && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addBillAsSubscription(bill); }}
+                        className="text-[10px] font-medium text-mint-400 hover:text-mint-300 bg-mint-400/10 hover:bg-mint-400/20 px-2 py-0.5 rounded-full border border-mint-400/30 transition-all whitespace-nowrap"
+                      >
+                        + Track
+                      </button>
+                    )}
+                    <button
+                      onClick={() => dismissBill(bill)}
+                      className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
+                      title="Remove — this was a one-off"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Dismissed bills (collapsible) */}
+          {showDismissedBills && dismissedBillsList.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-slate-500 text-xs">Removed (one-off payments)</p>
+                <button
+                  onClick={restoreAllBills}
+                  className="text-[10px] text-mint-400 hover:text-mint-300 font-medium"
+                >
+                  Restore all
+                </button>
+              </div>
+              {dismissedBillsList.map((bill, i) => {
+                const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
+                return (
+                  <div key={`d-${i}`} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-4 py-2 border border-navy-700/20 opacity-60">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm w-5">{info.icon}</span>
+                      <span className="text-sm text-slate-500 line-through">
+                        {cleanMerchantName(bill.name)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-600 line-through">~£{fmt(bill.expected_amount)}</span>
+                      <button
+                        onClick={() => restoreBill(bill)}
+                        className="text-mint-400 hover:text-mint-300 text-xs font-medium"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
+            <span className="text-slate-400 text-sm">Total expected</span>
+            <span className="text-white font-bold text-sm">~£{fmt(expectedBillsTotal)}</span>
+          </div>
+          <p className="text-slate-600 text-[10px] mt-2">
+            Based on recurring transactions and active subscriptions. Hover to add as subscription (+) or remove one-offs (✕).
+          </p>
+        </div>
+      )}
 
       {/* ═══ SECTION 1b: Income Breakdown ═══ */}
       <div id="tour-income" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
@@ -980,6 +1684,12 @@ export default function MoneyHubPage() {
 
       {/* ═══ SECTION 2: Bank Accounts ═══ */}
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        {/*
+          FCA COMPLIANCE: Do NOT add account balance display here.
+          Displaying bank account balances requires FCA agent registration.
+          Only show: bank name, connection status, last sync time.
+          Balance display can be added once FCA approval is obtained.
+        */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
             <Building2 className="h-5 w-5 text-purple-400" /> Bank Accounts
@@ -1002,6 +1712,10 @@ export default function MoneyHubPage() {
                 <div className="flex items-center gap-3">
                   <Building2 className="h-4 w-4 text-green-400" />
                   <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
+                  {/* Only fetch/display balance if FCA approved */}
+                  {FEATURE_FLAGS.SHOW_BANK_BALANCES && (
+                    <span className="text-emerald-400 font-bold ml-4">£---</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{acc.status}</span>
@@ -1080,6 +1794,12 @@ export default function MoneyHubPage() {
             {!isPaid && deduplicatedSpending.length >= 5 && (
               <div className="text-center pt-2">
                 <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all categories</Link>
+              </div>
+            )}
+            {deduplicatedSpending.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
+                <span className="text-slate-400 text-sm font-medium">Total spending</span>
+                <span className="text-white font-bold text-sm">£{fmt(data.spending.totalSpent)}</span>
               </div>
             )}
           </div>
@@ -1292,7 +2012,7 @@ export default function MoneyHubPage() {
 
           {(data.netWorth.assetsList?.length || 0) === 0 && (data.netWorth.liabilitiesList?.length || 0) === 0 && (
             <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-6 mb-4 text-center">
-              <p className="text-sm text-slate-400">Complete Money Hub setup above to unlock Net Worth tracking.</p>
+              <p className="text-sm text-slate-400">Track your net worth by manually adding your assets and liabilities below. Auto-sync with bank balances coming soon.</p>
             </div>
           )}
 
@@ -1559,22 +2279,29 @@ export default function MoneyHubPage() {
           ) : (
             <div className="space-y-3">
               {data.budgets.map((b: any) => {
-                const spent = deduplicatedSpending.find(c => c.category === b.category)?.total || 0;
-                const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
+                const spent = b.spent || 0;
+                const pct = b.percentage || (b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0);
                 const info = CATEGORY_LABELS[b.category] || CATEGORY_LABELS.other;
+                const isOverBudget = pct > 100;
+                const isWarning = pct > 80 && pct <= 100;
                 return (
                   <div key={b.id} className="relative">
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-white flex items-center gap-1">
                         {info.icon} {info.label}
-                        {pct > 100 && (
+                        {isOverBudget && (
                           <span className="bg-red-500/20 text-red-400 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ml-1">
                             Over budget!
                           </span>
                         )}
+                        {isWarning && (
+                          <span className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ml-1">
+                            ⚠️ {pct.toFixed(0)}% used
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className={pct > 100 ? 'text-red-400' : pct > 80 ? 'text-mint-400' : 'text-slate-400'}>
+                        <span className={isOverBudget ? 'text-red-400' : isWarning ? 'text-amber-400' : 'text-slate-400'}>
                           £{fmt(spent)} / £{fmt(b.monthly_limit)}
                         </span>
                         <button
@@ -1590,12 +2317,15 @@ export default function MoneyHubPage() {
                     </div>
                     <div className="w-full bg-navy-700 rounded-full h-2">
                       <div
-                        className={`h-2 rounded-full transition-all ${pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : pct > 60 ? 'bg-amber-400' : 'bg-green-500'}`}
+                        className={`h-2 rounded-full transition-all ${isOverBudget ? 'bg-red-500' : isWarning ? 'bg-amber-500' : pct > 60 ? 'bg-amber-400' : 'bg-green-500'}`}
                         style={{ width: `${Math.min(pct, 100)}%` }}
                       />
                     </div>
-                    <div className="flex justify-end mt-0.5">
-                      <span className={`text-[10px] ${pct > 100 ? 'text-red-400' : pct > 80 ? 'text-mint-400' : 'text-slate-500'}`}>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[10px] text-slate-500">
+                        {isOverBudget ? `Over by £${fmt(spent - b.monthly_limit)}` : `£${fmt(b.monthly_limit - spent)} remaining`}
+                      </span>
+                      <span className={`text-[10px] ${isOverBudget ? 'text-red-400' : isWarning ? 'text-amber-400' : 'text-slate-500'}`}>
                         {pct.toFixed(0)}%
                       </span>
                     </div>
@@ -1608,147 +2338,6 @@ export default function MoneyHubPage() {
       ) : (
         <div id="tour-budgets"><LockedSection title="Budget Planner" /></div>
       )}
-
-      {/* ═══ SECTION 10: Financial Action Centre ═══ */}
-      <div id="tour-actions" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-mint-400 font-[family-name:var(--font-heading)] flex items-center gap-2">
-            <Zap className="h-5 w-5" /> Financial Action Centre
-          </h2>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={scanInbox}
-              disabled={scanning}
-              className="flex items-center gap-1.5 bg-mint-400/20 hover:bg-mint-400/30 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
-            >
-              {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-              {scanning ? 'Scanning inbox...' : 'Scan Inbox'}
-            </button>
-            {totalOpportunityValue > 0 && (
-              <div className="text-right">
-                <p className="text-2xl font-bold text-mint-400">£{fmt(totalOpportunityValue)}</p>
-                <p className="text-slate-500 text-xs">potential savings</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {data.opportunities.length > 0 ? (
-          <div className="space-y-2">
-            {data.opportunities.slice(0, isPaid ? 20 : 3).map((opp: any) => {
-              // Determine action buttons based on opportunity type and suggested action
-              const suggestedAction = opp.suggested_action;
-              const oppType = opp.opp_type || '';
-              const oppCategory = opp.opp_category || '';
-              const providerName = opp.provider_name || '';
-
-              // Build complaint URL with pre-filled context
-              const complaintParams = new URLSearchParams();
-              if (providerName) complaintParams.set('provider', providerName);
-              if (opp.title) complaintParams.set('subject', opp.title);
-              if (opp.disputed_amount) complaintParams.set('amount', String(opp.disputed_amount));
-              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
-
-              // Type badge colour
-              const typeBadge: Record<string, { color: string; label: string }> = {
-                subscription: { color: 'bg-purple-500/20 text-purple-400', label: 'Subscription' },
-                utility_bill: { color: 'bg-blue-500/20 text-blue-400', label: 'Bill Review' },
-                flight_delay: { color: 'bg-sky-500/20 text-sky-400', label: 'Flight' },
-                renewal: { color: 'bg-orange-500/20 text-orange-400', label: 'Renewal' },
-                loan: { color: 'bg-red-500/20 text-red-400', label: 'Loan' },
-                overcharge: { color: 'bg-red-500/20 text-red-400', label: 'Overcharge' },
-                refund: { color: 'bg-green-500/20 text-green-400', label: 'Refund' },
-              };
-              const badge = typeBadge[oppType] || { color: 'bg-mint-400/20 text-mint-400', label: oppType.replace('_', ' ') || 'Opportunity' };
-
-              return (
-                <div key={opp.id} className="bg-navy-900 rounded-lg px-4 py-3 border border-navy-700/50">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-white text-sm font-medium truncate">{opp.title}</p>
-                        <span className={`${badge.color} text-[10px] px-1.5 py-0.5 rounded-full capitalize shrink-0`}>
-                          {badge.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        {providerName && <span>{providerName}</span>}
-                        {opp.amount > 0 && <span className="text-mint-400 font-medium">£{opp.amount}</span>}
-                        {opp.confidence && <span>({opp.confidence}% confidence)</span>}
-                      </div>
-                      {opp.description_text && (
-                        <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description_text}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-navy-700/50/50">
-                    {/* Smart action buttons based on type */}
-                    {(suggestedAction === 'switch_deal' || oppCategory === 'broadband' || oppCategory === 'energy' || oppCategory === 'mobile' || oppCategory === 'insurance') && (
-                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Compare Deals
-                      </Link>
-                    )}
-                    {(oppType === 'utility_bill' || oppType === 'overcharge' || oppType === 'refund' || suggestedAction === 'dispute') && (
-                      <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Write Complaint
-                      </Link>
-                    )}
-                    {oppType === 'flight_delay' && (
-                      <Link href="/dashboard/complaints?type=flight_compensation&new=1" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Claim Compensation
-                      </Link>
-                    )}
-                    {oppType === 'subscription' && (
-                      <Link href="/dashboard/subscriptions" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> View Subscriptions
-                      </Link>
-                    )}
-                    {oppType === 'loan' && (
-                      <Link href="/dashboard/deals" className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Compare Loan Rates
-                      </Link>
-                    )}
-                    {(suggestedAction === 'track' || suggestedAction === 'monitor') && !['subscription', 'loan'].includes(oppType) && (
-                      <Link href="/dashboard/contracts" className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Track This
-                      </Link>
-                    )}
-                    {/* Fallback if no specific action matched */}
-                    {!suggestedAction && !['subscription', 'loan', 'utility_bill', 'overcharge', 'refund', 'flight_delay'].includes(oppType) && (
-                      <Link href={complaintUrl} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Take Action
-                      </Link>
-                    )}
-                    <div className="flex-1" />
-                    <button
-                      onClick={async () => {
-                        await fetch('/api/tasks/dismiss', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ taskId: opp.id }),
-                        });
-                        setData((prev: any) => prev ? { ...prev, opportunities: prev.opportunities.filter((o: any) => o.id !== opp.id) } : prev);
-                      }}
-                      className="text-slate-600 hover:text-slate-400 text-xs transition-all px-2 py-1"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <p className="text-slate-400 text-sm">No pending actions. Scan your inbox to find opportunities.</p>
-          </div>
-        )}
-        {!isPaid && data.opportunities.length >= 3 && (
-          <div className="text-center pt-3 border-t border-mint-400/20 mt-3">
-            <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all actions</Link>
-          </div>
-        )}
-      </div>
 
       {/* ═══ SECTION 11: Savings Goals ═══ */}
       {isPaid ? (
@@ -1916,6 +2505,147 @@ export default function MoneyHubPage() {
       ) : (
         <div id="tour-goals"><LockedSection title="Savings Goals" /></div>
       )}
+
+      {/* ═══ SECTION 10: Financial Action Centre ═══ */}
+      <div id="tour-actions" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-mint-400 font-[family-name:var(--font-heading)] flex items-center gap-2">
+            <Zap className="h-5 w-5" /> Financial Action Centre
+          </h2>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={scanInbox}
+              disabled={scanning}
+              className="flex items-center gap-1.5 bg-mint-400/20 hover:bg-mint-400/30 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50 transition-all"
+            >
+              {scanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              {scanning ? 'Scanning inbox...' : 'Scan Inbox'}
+            </button>
+            {totalOpportunityValue > 0 && (
+              <div className="text-right">
+                <p className="text-2xl font-bold text-mint-400">£{fmt(totalOpportunityValue)}</p>
+                <p className="text-slate-500 text-xs">actionable savings</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {data.opportunities.length > 0 ? (
+          <div className="space-y-2">
+            {data.opportunities.slice(0, isPaid ? 20 : 3).map((opp: any) => {
+              // Determine action buttons based on opportunity type and suggested action
+              const suggestedAction = opp.suggested_action;
+              const oppType = opp.opp_type || '';
+              const oppCategory = opp.opp_category || '';
+              const providerName = opp.provider_name || '';
+
+              // Build complaint URL with pre-filled context
+              const complaintParams = new URLSearchParams();
+              if (providerName) complaintParams.set('provider', providerName);
+              if (opp.title) complaintParams.set('subject', opp.title);
+              if (opp.disputed_amount) complaintParams.set('amount', String(opp.disputed_amount));
+              const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
+
+              // Type badge colour
+              const typeBadge: Record<string, { color: string; label: string }> = {
+                subscription: { color: 'bg-purple-500/20 text-purple-400', label: 'Subscription' },
+                utility_bill: { color: 'bg-blue-500/20 text-blue-400', label: 'Bill Review' },
+                flight_delay: { color: 'bg-sky-500/20 text-sky-400', label: 'Flight' },
+                renewal: { color: 'bg-orange-500/20 text-orange-400', label: 'Renewal' },
+                loan: { color: 'bg-red-500/20 text-red-400', label: 'Loan' },
+                overcharge: { color: 'bg-red-500/20 text-red-400', label: 'Overcharge' },
+                refund: { color: 'bg-green-500/20 text-green-400', label: 'Refund' },
+              };
+              const badge = typeBadge[oppType] || { color: 'bg-mint-400/20 text-mint-400', label: oppType.replace('_', ' ') || 'Opportunity' };
+
+              return (
+                <div key={opp.id} className="bg-navy-900 rounded-lg px-4 py-3 border border-navy-700/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-white text-sm font-medium truncate">{opp.title}</p>
+                        <span className={`${badge.color} text-[10px] px-1.5 py-0.5 rounded-full capitalize shrink-0`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        {providerName && <span>{providerName}</span>}
+                        {opp.amount > 0 && <span className="text-mint-400 font-medium">£{opp.amount}</span>}
+                        {opp.confidence && <span>({opp.confidence}% confidence)</span>}
+                      </div>
+                      {opp.description_text && (
+                        <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description_text}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-navy-700/50/50">
+                    {/* Smart action buttons based on type */}
+                    {(suggestedAction === 'switch_deal' || oppCategory === 'broadband' || oppCategory === 'energy' || oppCategory === 'mobile' || oppCategory === 'insurance') && (
+                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Compare Deals
+                      </Link>
+                    )}
+                    {(oppType === 'utility_bill' || oppType === 'overcharge' || oppType === 'refund' || suggestedAction === 'dispute') && (
+                      <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Write Complaint
+                      </Link>
+                    )}
+                    {oppType === 'flight_delay' && (
+                      <Link href="/dashboard/complaints?type=flight_compensation&new=1" className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Claim Compensation
+                      </Link>
+                    )}
+                    {oppType === 'subscription' && (
+                      <Link href="/dashboard/subscriptions" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> View Subscriptions
+                      </Link>
+                    )}
+                    {oppType === 'loan' && (
+                      <Link href="/dashboard/deals" className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Compare Loan Rates
+                      </Link>
+                    )}
+                    {(suggestedAction === 'track' || suggestedAction === 'monitor') && !['subscription', 'loan'].includes(oppType) && (
+                      <Link href="/dashboard/contracts" className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Track This
+                      </Link>
+                    )}
+                    {/* Fallback if no specific action matched */}
+                    {!suggestedAction && !['subscription', 'loan', 'utility_bill', 'overcharge', 'refund', 'flight_delay'].includes(oppType) && (
+                      <Link href={complaintUrl} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <FileText className="h-3 w-3" /> Take Action
+                      </Link>
+                    )}
+                    <div className="flex-1" />
+                    <button
+                      onClick={async () => {
+                        await fetch('/api/tasks/dismiss', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ taskId: opp.id }),
+                        });
+                        setData((prev: any) => prev ? { ...prev, opportunities: prev.opportunities.filter((o: any) => o.id !== opp.id) } : prev);
+                      }}
+                      className="text-slate-600 hover:text-slate-400 text-xs transition-all px-2 py-1"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-4">
+            <p className="text-slate-400 text-sm">No pending actions. Scan your inbox to find opportunities.</p>
+          </div>
+        )}
+        {!isPaid && data.opportunities.length >= 3 && (
+          <div className="text-center pt-3 border-t border-mint-400/20 mt-3">
+            <Link href="/pricing" className="text-mint-400 text-xs">Upgrade to see all actions</Link>
+          </div>
+        )}
+      </div>
 
       {/* ═══ Email Intelligence teaser (free) ═══ */}
       {!isPaid && (

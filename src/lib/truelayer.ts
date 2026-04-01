@@ -111,7 +111,7 @@ export async function refreshToken(connection: BankConnection): Promise<string> 
 }
 
 /**
- * Fetches all accounts for a connection.
+ * Fetches all current/savings accounts for a connection.
  */
 export async function fetchAccounts(accessToken: string): Promise<TrueLayerAccount[]> {
   const res = await fetch(`${TRUELAYER_API_URL}/data/v1/accounts`, {
@@ -127,6 +127,72 @@ export async function fetchAccounts(accessToken: string): Promise<TrueLayerAccou
 }
 
 /**
+ * Fetches all card accounts (debit/credit cards) for a connection.
+ * Cards sometimes have faster transaction updates than current accounts.
+ */
+export async function fetchCards(accessToken: string): Promise<TrueLayerAccount[]> {
+  try {
+    const res = await fetch(`${TRUELAYER_API_URL}/data/v1/cards`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      console.log(`Cards endpoint not available: ${res.status}`);
+      return [];
+    }
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetches transactions for a card account.
+ */
+export async function fetchCardTransactions(
+  accessToken: string,
+  cardId: string,
+  fromDate: Date
+): Promise<TrueLayerTransaction[]> {
+  const from = fromDate.toISOString().split('T')[0];
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const to = tomorrow.toISOString().split('T')[0];
+
+  try {
+    const url = `${TRUELAYER_API_URL}/data/v1/cards/${cardId}/transactions?from=${from}&to=${to}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetches pending card transactions (today's unsettled).
+ */
+export async function fetchCardPendingTransactions(
+  accessToken: string,
+  cardId: string
+): Promise<TrueLayerTransaction[]> {
+  try {
+    const url = `${TRUELAYER_API_URL}/data/v1/cards/${cardId}/transactions/pending`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.results || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Fetches transactions for a specific account from a given date.
  */
 export async function fetchTransactions(
@@ -135,7 +201,10 @@ export async function fetchTransactions(
   fromDate: Date
 ): Promise<TrueLayerTransaction[]> {
   const from = fromDate.toISOString().split('T')[0];
-  const to = new Date().toISOString().split('T')[0];
+  // TrueLayer 'to' is exclusive — add +1 day to include today's transactions
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const to = tomorrow.toISOString().split('T')[0];
 
   const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions?from=${from}&to=${to}`;
   const res = await fetch(url, {
@@ -148,4 +217,32 @@ export async function fetchTransactions(
 
   const data = await res.json();
   return data.results || [];
+}
+
+/**
+ * Fetches pending (unsettled) transactions for a specific account.
+ * These are today's transactions that haven't been settled yet by the bank.
+ */
+export async function fetchPendingTransactions(
+  accessToken: string,
+  accountId: string
+): Promise<TrueLayerTransaction[]> {
+  const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions/pending`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      // Pending endpoint may not be supported by all banks — non-fatal
+      console.log(`Pending transactions not available for account ${accountId}: ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    return data.results || [];
+  } catch (err) {
+    console.log(`Pending transactions fetch failed (non-fatal):`, err);
+    return [];
+  }
 }

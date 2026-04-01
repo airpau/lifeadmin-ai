@@ -197,17 +197,30 @@ export async function findCheaperAlternatives(
   let comparisons: ComparisonResult[] = [];
 
   if (isComparisonOnly) {
-    // For comparison-only categories, return deal links with estimated savings from deal page data
+    // Conservative estimated savings with hard caps to keep figures realistic
+    const savingsEstimates: Record<string, { pct: number; maxAnnual: number }> = {
+      'insurance': { pct: 0.15, maxAnnual: 120 },      // 15% capped at £120/yr
+      'mortgages': { pct: 0.02, maxAnnual: 200 },       // 2% capped at £200/yr (realistic broker savings)
+      'loans': { pct: 0.05, maxAnnual: 150 },           // 5% capped at £150/yr
+      'credit-cards': { pct: 0.10, maxAnnual: 100 },    // 10% capped at £100/yr
+      'car-finance': { pct: 0.05, maxAnnual: 100 },     // 5% capped at £100/yr
+      'travel': { pct: 0, maxAnnual: 0 },
+      'water': { pct: 0.05, maxAnnual: 50 },            // 5% capped at £50/yr
+    };
+    const est = savingsEstimates[dealCategory] || { pct: 0, maxAnnual: 0 };
+    const annualCurrent = currentMonthly * 12;
+    const estimatedAnnualSaving = Math.min(Math.round(annualCurrent * est.pct), est.maxAnnual);
+
     comparisons = deals
       .filter(d => d.provider.toLowerCase() !== sub.provider_name.toLowerCase())
       .slice(0, 3)
-      .map(d => ({
+      .map((d, i) => ({
         dealProvider: d.provider,
         dealName: d.headline,
         dealUrl: buildAwinUrl(d.awinMid, d.providerUrl),
         currentPrice: currentMonthly,
-        dealPrice: 0,
-        annualSaving: 0, // Unknown - these are comparison sites
+        dealPrice: est.pct > 0 ? currentMonthly * (1 - est.pct) : 0,
+        annualSaving: i === 0 ? estimatedAnnualSaving : 0,
         awinMid: d.awinMid,
       }));
   } else {

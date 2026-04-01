@@ -205,7 +205,8 @@ export default function AboutPage() {
             Company Information
           </h2>
           <p className="text-slate-300 leading-relaxed mb-2">
-            Paybacker LTD is a company registered in the United Kingdom.
+            Paybacker LTD is a company registered in England and Wales.<br/>
+            Registered Address: 71-75 Shelton Street, Covent Garden, London, WC2H 9JQ, United Kingdom
           </p>
           <p className="text-slate-300 leading-relaxed">
             For any questions, feedback or press enquiries, contact us at{" "}
@@ -236,7 +237,7 @@ export default function AboutPage() {
               Privacy Policy
             </Link>
             <Link
-              href="/legal/terms"
+              href="/terms-of-service"
               className="hover:text-white transition-all"
             >
               Terms of Service

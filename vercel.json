@@ -94,7 +94,7 @@
     },
     {
       "path": "/api/cron/compare-subscriptions",
-      "schedule": "0 7 * * 3"
+      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/cron/verify-challenges",
@@ -131,6 +131,10 @@
     {
       "path": "/api/cron/analyze-chatbot-gaps",
       "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/marketing-automation",
+      "schedule": "0 * * * *"
     }
   ]
 }
