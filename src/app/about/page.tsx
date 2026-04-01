@@ -144,6 +144,49 @@ export default function AboutPage() {
           </p>
         </section>
 
+        {/* Meet the Founder */}
+        <section className="mb-12">
+          <h2 className="text-2xl font-bold text-white mb-6 font-[family-name:var(--font-heading)]">
+            Meet the Founder
+          </h2>
+          <div className="bg-navy-900 border border-mint-400/20 rounded-2xl p-6">
+            <div className="flex flex-col sm:flex-row items-start gap-6 mb-6">
+              <div className="shrink-0">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-mint-400/30 to-brand-400/30 border border-mint-400/30 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-mint-400">PA</span>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white mb-1">Paul Airey</h3>
+                <p className="text-mint-400 text-sm font-medium mb-3">Founder &amp; CEO, Paybacker LTD</p>
+                <a
+                  href="https://www.linkedin.com/in/paulairey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-slate-400 hover:text-mint-400 text-sm transition-all"
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                  linkedin.com/in/paulairey
+                </a>
+              </div>
+            </div>
+            <div className="space-y-3 text-slate-300 leading-relaxed text-sm">
+              <p>
+                Paul is a UK consumer rights advocate who built Paybacker after being overcharged one too many times. A £400 energy bill that was never justified. A gym contract with a cancellation clause buried in paragraph 14. Three streaming subscriptions running on a card he barely used.
+              </p>
+              <p>
+                He knew the tools to fight back existed in UK law. The Consumer Rights Act 2015, Ofgem&apos;s billing codes, UK261 for flight delays. But most people don&apos;t have the time or legal knowledge to use them effectively. He built Paybacker to change that.
+              </p>
+              <p>
+                Paybacker scans your bills, finds where you&apos;re being overcharged, and generates the formal letters needed to get your money back — citing the exact legislation that applies to your case, in seconds.
+              </p>
+              <p className="text-slate-400">
+                &ldquo;I got tired of watching people pay more than they should because the system is deliberately confusing. Paybacker is the tool I wish I&apos;d had.&rdquo;
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Trust & Transparency */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle, Sparkles, TrendingUp, Shield, Mail, ScanSearch, ThumbsUp, Scale, Users, CreditCard, Bell, Gift, Banknote, FileText, Zap, BarChart3, Building2, Check, X, ArrowRight, Star, ChevronRight } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Scale, Users, CreditCard, Banknote, FileText, Check, X, ArrowRight, ChevronRight } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
@@ -21,6 +21,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [claimingFounder, setClaimingFounder] = useState(false);
   const [claimResult, setClaimResult] = useState<string | null>(null);
+  const [publicStats, setPublicStats] = useState<{ lettersGenerated: number; subscriptionsTracked: number; usersJoined: number; foundingSpots: number } | null>(null);
 
   useEffect(() => {
     // Check if user is logged in
@@ -40,6 +41,12 @@ export default function Home() {
     fetch('/api/founding-member')
       .then(r => r.json())
       .then(d => { if (d.active) setTrialActive(true); })
+      .catch(() => {});
+
+    // Fetch public stats for social proof and founding counter
+    fetch('/api/stats/public')
+      .then(r => r.json())
+      .then(d => setPublicStats(d))
       .catch(() => {});
 
     if (WAITLIST_MODE) {
@@ -95,16 +102,30 @@ export default function Home() {
     </Link>
   );
 
-  const foundingBanner = trialActive ? (
-    <div className="bg-gradient-to-r from-mint-400/10 to-mint-500/10 border border-mint-400/30 rounded-2xl px-6 py-4 mb-6 text-center">
-      <p className="text-mint-400 font-bold text-lg mb-1">
-        Try Pro FREE for 14 days
-      </p>
-      <p className="text-slate-400 text-sm">
-        Unlimited complaint letters, bank scanning, spending intelligence, renewal alerts, and more. No card required.
-      </p>
+  const spotsRemaining = publicStats?.foundingSpots ?? null;
+  const spotsColour = spotsRemaining !== null && spotsRemaining < 200 ? 'text-red-400' : spotsRemaining !== null && spotsRemaining < 500 ? 'text-amber-400' : 'text-mint-400';
+
+  const foundingBanner = (
+    <div className="space-y-3 mb-6">
+      {trialActive && (
+        <div className="bg-gradient-to-r from-mint-400/10 to-mint-500/10 border border-mint-400/30 rounded-2xl px-6 py-4 text-center">
+          <p className="text-mint-400 font-bold text-lg mb-1">
+            Try Pro FREE for 14 days
+          </p>
+          <p className="text-slate-400 text-sm">
+            Unlimited complaint letters, bank scanning, spending intelligence, renewal alerts, and more. No card required.
+          </p>
+        </div>
+      )}
+      {spotsRemaining !== null && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-6 py-3 text-center">
+          <p className="text-amber-400 text-sm font-semibold">
+            <span className={`font-bold text-base ${spotsColour}`}>{spotsRemaining.toLocaleString()}</span> of 1,000 founding member spots remaining — price increases after first 1,000 members
+          </p>
+        </div>
+      )}
     </div>
-  ) : null;
+  );
 
   const staggerContainer = {
     hidden: {},
@@ -125,13 +146,11 @@ export default function Home() {
 
       <main>
         {/* Founding member banner */}
-        {foundingBanner && (
-          <div className="container mx-auto px-4 md:px-6 pt-4">
-            <div className="max-w-4xl mx-auto">
-              {foundingBanner}
-            </div>
+        <div className="container mx-auto px-4 md:px-6 pt-4">
+          <div className="max-w-4xl mx-auto">
+            {foundingBanner}
           </div>
-        )}
+        </div>
 
         {/* Hero Section */}
         <section className="relative overflow-hidden">
@@ -207,6 +226,35 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Meet the Founder */}
+        <section className="py-16 md:py-20 border-b border-navy-700/30">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center sm:items-start gap-8">
+              <div className="shrink-0">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-mint-400/30 to-brand-400/30 border border-mint-400/30 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-mint-400">PA</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-500 text-xs uppercase tracking-wider font-semibold mb-2">Meet the Founder</p>
+                <h3 className="text-xl font-bold text-white mb-3 font-[family-name:var(--font-heading)]">Paul Airey</h3>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">
+                  Paul built Paybacker after being overcharged one too many times — a £400 energy bill he never should have paid, a gym contract he couldn't get out of, and three subscriptions he'd forgotten existed. He realised the tools to fight back existed in UK law, but most people didn't know how to use them. So he built Paybacker to do it automatically.
+                </p>
+                <a
+                  href="https://www.linkedin.com/in/paulairey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-mint-400 hover:text-mint-300 text-sm font-medium transition-all"
+                >
+                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                  Connect on LinkedIn
+                </a>
+              </div>
             </div>
           </div>
         </section>
@@ -403,6 +451,62 @@ export default function Home() {
           </div>
         </section>
 
+        {/* What Happens After Signup */}
+        <section className="py-20 md:py-28 bg-navy-900/30">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="text-center mb-12">
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">You&apos;re up and running in minutes</h2>
+              <p className="text-slate-400 text-lg">No forms, no phone calls, no waiting. Three steps and you&apos;re saving money.</p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {[
+                {
+                  step: '1',
+                  title: 'Generate your first letter — free, instant',
+                  desc: 'Describe your dispute and our AI produces a formal letter citing the exact UK law that applies. Takes 30 seconds. No account needed to try it.',
+                  cta: 'Try it now',
+                  href: WAITLIST_MODE ? '#waitlist' : '/auth/signup',
+                  colour: 'mint',
+                },
+                {
+                  step: '2',
+                  title: 'Connect your bank to find hidden costs',
+                  desc: 'Link your bank account securely via Open Banking. We automatically detect every subscription, direct debit, and forgotten recurring charge.',
+                  cta: 'Connect bank',
+                  href: WAITLIST_MODE ? '#waitlist' : '/auth/signup',
+                  colour: 'brand',
+                },
+                {
+                  step: '3',
+                  title: 'Get personalised savings recommendations',
+                  desc: 'Your dashboard shows exactly where you\'re overpaying, which contracts are about to renew, and the cheapest alternatives available right now.',
+                  cta: 'See your dashboard',
+                  href: WAITLIST_MODE ? '#waitlist' : '/auth/signup',
+                  colour: 'mint',
+                },
+              ].map((item, i) => (
+                <motion.div
+                  key={item.step}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: i * 0.12 }}
+                  className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 relative shadow-[--shadow-card]"
+                >
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-navy-950 mb-4 ${item.colour === 'mint' ? 'bg-mint-400' : 'bg-brand-400'}`}>
+                    {item.step}
+                  </div>
+                  <h3 className="text-white font-semibold mb-3 leading-snug">{item.title}</h3>
+                  <p className="text-slate-400 text-sm leading-relaxed mb-5">{item.desc}</p>
+                  <a href={item.href} className={`text-sm font-medium inline-flex items-center gap-1 ${item.colour === 'mint' ? 'text-mint-400 hover:text-mint-300' : 'text-brand-400 hover:text-brand-300'} transition-all`}>
+                    {item.cta} <ChevronRight className="h-3.5 w-3.5" />
+                  </a>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* Plan Comparison Table */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
@@ -436,28 +540,12 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Disputes', sub: 'Complaints, HMRC, council tax, flights, parking, debt, NHS, DVLA', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
-                    { label: 'Bill Upload + AI Scan', sub: 'Upload a bill, AI reads it and writes the letter', free: true, essential: true, pro: true },
-                    { label: 'AI Cancellation Emails', sub: 'Professional cancellation citing UK law', free: false, essential: true, pro: true },
-                    { label: 'Subscription Tracking', sub: 'Track every recurring payment', free: 'Manual add', essential: 'Auto-detect', pro: 'Auto-detect' },
-                    { label: 'Bank Account Scanning', sub: 'Find hidden subscriptions and charges', free: 'One-time scan', essential: '1 account, daily sync', pro: 'Unlimited accounts' },
-                    { label: 'Email Inbox Scanning', sub: 'Gmail, Outlook, Yahoo, or any email provider', free: 'One-time scan', essential: 'Monthly re-scans', pro: 'Unlimited scans' },
-                    { label: 'Spending Intelligence', sub: 'AI-categorised spending with self-learning', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
-                    { label: 'Budget Planner', sub: 'Set limits and get alerts', free: false, essential: true, pro: true },
-                    { label: 'Smart Bill Comparison', sub: 'Side-by-side cheaper alternatives', free: false, essential: true, pro: true },
-                    { label: 'Price Increase Alerts', sub: 'Detect when providers silently raise prices', free: false, essential: true, pro: true },
-                    { label: 'Energy Tariff Monitor', sub: 'Daily price checks, switch alerts', free: false, essential: true, pro: true },
-                    { label: 'Renewal Reminders', sub: '30, 14, and 7 days before contracts end', free: false, essential: true, pro: true },
-                    { label: 'Contract Tracking', sub: 'End dates, auto-renewal alerts, exit fees', free: false, essential: true, pro: true },
-                    { label: 'Deal Comparison', sub: '53+ deals across 9 categories', free: 'Browse only', essential: 'Personalised', pro: 'Personalised' },
-                    { label: 'Savings Challenges', sub: '12 gamified goals verified by bank data', free: false, essential: true, pro: true },
-                    { label: 'Weekly Money Digest', sub: 'Spending summary email every Monday', free: false, essential: true, pro: true },
-                    { label: 'AI Chatbot', sub: '18 tools: spending, budgets, deals, complaints', free: 'Basic', essential: 'Full', pro: 'Full + queries' },
-                    { label: 'Listen to Letters', sub: 'AI voice reads your complaint letter aloud', free: false, essential: true, pro: true },
-                    { label: 'Savings Goals', sub: 'Set targets, track progress', free: false, essential: false, pro: true },
-                    { label: 'Annual Financial Report', sub: 'PDF year-in-review with shareable stats', free: false, essential: false, pro: true },
+                    { label: 'AI Complaint Letters', sub: 'Energy, broadband, flights, parking, debt, HMRC', free: '3/month', essential: 'Unlimited', pro: 'Unlimited' },
+                    { label: 'Bank Accounts', sub: 'Auto-detect subscriptions and recurring charges', free: 'One-time scan', essential: '1 account, daily sync', pro: 'Unlimited accounts' },
+                    { label: 'Email Scanning', sub: 'Gmail, Outlook, Yahoo — find hidden costs', free: 'One-time scan', essential: 'Daily re-scans', pro: 'Daily re-scans' },
+                    { label: 'Money Hub & Budgets', sub: 'Spending intelligence, budget planner, goals', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
+                    { label: 'Contract AI Analysis', sub: 'Renewal reminders, price increase alerts', free: false, essential: true, pro: true },
                     { label: 'Priority Support', sub: 'Faster response times', free: false, essential: false, pro: true },
-                    { label: 'Money Recovery Score', sub: 'Track your total savings', free: true, essential: true, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-navy-700/20 hover:bg-navy-900/30 transition-colors">
                       <td className="py-3 px-3">
@@ -498,6 +586,11 @@ export default function Home() {
                     Get Pro
                   </Link>
                 </div>
+              </div>
+              <div className="text-center mt-4">
+                <Link href="/pricing" className="text-slate-500 hover:text-slate-300 text-sm transition-all inline-flex items-center gap-1">
+                  See full feature comparison <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
             </div>
           </div>
@@ -550,7 +643,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Testimonials */}
+        {/* Social Proof — Live Stats */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
             <motion.div
@@ -558,43 +651,52 @@ export default function Home() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6 }}
-              className="text-center mb-16"
+              className="text-center mb-12"
             >
-              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">What our users say</h2>
-              <p className="text-slate-400 text-lg">Real results from real UK consumers</p>
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">Real numbers, real savings</h2>
+              <p className="text-slate-400 text-lg">We&apos;re just getting started — here&apos;s where we are right now</p>
             </motion.div>
 
-            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6 max-w-3xl mx-auto mb-12">
               {[
-                { quote: 'I got £520 back from EasyJet for a flight delay I had forgotten about. The letter took 30 seconds to generate.', name: 'Sarah T.', location: 'Manchester', saved: '£520' },
-                { quote: 'Found three subscriptions I had completely forgotten about. Cancelled them all using the AI emails. Saving over £40 a month now.', name: 'James M.', location: 'London', saved: '£480/yr' },
-                { quote: 'Disputed my energy bill and got a £150 credit. The letter cited the exact Ofgem rules. The company responded within a week.', name: 'Rachel K.', location: 'Birmingham', saved: '£150' },
-              ].map((testimonial, i) => (
+                { value: publicStats ? `${publicStats.lettersGenerated.toLocaleString()}` : '...', label: 'Letters generated', sub: 'and counting' },
+                { value: publicStats ? `${publicStats.subscriptionsTracked.toLocaleString()}` : '...', label: 'Subscriptions tracked', sub: 'across all users' },
+                { value: publicStats ? `${publicStats.usersJoined.toLocaleString()}` : '...', label: 'Members joined', sub: 'founding member pricing active' },
+              ].map((stat, i) => (
                 <motion.div
-                  key={testimonial.name}
-                  initial={{ opacity: 0, y: 30 }}
+                  key={stat.label}
+                  initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: i * 0.1 }}
-                  className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:shadow-[--shadow-card-hover] transition-all duration-200"
+                  className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 text-center shadow-[--shadow-card]"
                 >
-                  <div className="flex gap-1 mb-4">
-                    {[1, 2, 3, 4, 5].map(s => (
-                      <Star key={s} className="h-4 w-4 text-mint-400 fill-mint-400" />
-                    ))}
-                  </div>
-                  <p className="text-slate-300 text-sm leading-relaxed mb-6">&ldquo;{testimonial.quote}&rdquo;</p>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-white text-sm font-medium">{testimonial.name}</p>
-                      <p className="text-slate-500 text-xs">{testimonial.location}</p>
-                    </div>
-                    <div className="bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-1">
-                      <p className="text-mint-400 text-sm font-bold">Saved {testimonial.saved}</p>
-                    </div>
-                  </div>
+                  <p className="text-3xl font-bold text-mint-400 mb-1 font-[family-name:var(--font-heading)]">{stat.value}</p>
+                  <p className="text-white text-sm font-medium mb-0.5">{stat.label}</p>
+                  <p className="text-slate-500 text-xs">{stat.sub}</p>
                 </motion.div>
               ))}
+            </div>
+
+            {/* Trustpilot placeholder */}
+            <div className="text-center">
+              <a
+                href="https://www.trustpilot.com/review/paybacker.co.uk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-3 bg-navy-900 border border-navy-700/50 rounded-2xl px-6 py-4 hover:border-mint-400/30 transition-all group"
+              >
+                <div className="flex gap-0.5">
+                  {[1,2,3,4,5].map(s => (
+                    <svg key={s} className="h-5 w-5 text-[#00b67a]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                  ))}
+                </div>
+                <div className="text-left">
+                  <p className="text-white text-sm font-semibold group-hover:text-mint-400 transition-all">See our reviews on Trustpilot</p>
+                  <p className="text-slate-500 text-xs">paybacker.co.uk</p>
+                </div>
+                <svg className="h-4 w-4 text-slate-600 group-hover:text-slate-400 transition-all ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </a>
             </div>
           </div>
         </section>
