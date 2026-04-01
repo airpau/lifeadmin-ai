@@ -202,18 +202,36 @@ export async function detectRecurring(
 
     const displayName = txs[0].extracted_name;
 
-    // Check if subscription already exists (any status)
+    // Check if subscription already exists (any status) — aggressive dedup
     const { data: allUserSubs } = await supabase
       .from('subscriptions')
       .select('id, provider_name, status, cancelled_at, dismissed_at')
       .eq('user_id', userId);
 
+    // Helper: extract significant words (3+ chars, no noise)
+    const sigWords = (s: string) => s.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length >= 3 && !['ltd', 'limited', 'plc', 'the', 'and', 'for'].includes(w));
+
     const matchingSub = (allUserSubs || []).find((sub) => {
-      const subNormalised = normaliseMerchant(sub.provider_name);
-      return sub.provider_name === displayName ||
-             subNormalised === normalisedName ||
-             subNormalised.includes(normalisedName) ||
-             normalisedName.includes(subNormalised);
+      const subNorm = normaliseMerchant(sub.provider_name);
+      // Exact or normalised match
+      if (sub.provider_name === displayName) return true;
+      if (subNorm === normalisedName) return true;
+      // Partial includes
+      if (subNorm.length >= 3 && normalisedName.length >= 3) {
+        if (subNorm.includes(normalisedName) || normalisedName.includes(subNorm)) return true;
+      }
+      // Keyword overlap: if 60%+ of significant words match, it's the same provider
+      const wordsA = sigWords(normalisedName);
+      const wordsB = sigWords(sub.provider_name);
+      if (wordsA.length > 0 && wordsB.length > 0) {
+        const overlap = wordsA.filter(w => wordsB.some(b => b.includes(w) || w.includes(b))).length;
+        const overlapRatio = overlap / Math.min(wordsA.length, wordsB.length);
+        if (overlapRatio >= 0.6) return true;
+      }
+      return false;
     });
 
     if (matchingSub) {

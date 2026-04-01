@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   CreditCard, Repeat, ArrowUpRight, ChevronLeft, Loader2,
-  AlertCircle, TrendingUp, TrendingDown, Calendar, Zap, FileText,
-  ExternalLink, Tag, X as XIcon, ChevronDown, Check,
+  AlertCircle, Calendar, Zap, Tag, X as XIcon, ChevronDown, Check, Edit3, Trash2,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -28,8 +27,6 @@ const CYCLE_LABELS: Record<string, string> = {
 };
 
 import { SORTED_CATEGORIES, getCategoryLabel } from '@/lib/category-config';
-
-const PIE_COLORS = ['#a78bfa', '#3b82f6', '#34d399', '#f59e0b', '#ef4444', '#64748b'];
 
 const DD_CATEGORIES = new Set(['utility', 'broadband', 'mobile', 'insurance', 'mortgage', 'council_tax', 'loan', 'loans', 'water', 'energy', 'credit']);
 const APP_SUB_CATEGORIES = new Set(['streaming', 'software', 'fitness']);
@@ -58,17 +55,15 @@ function cleanProviderName(raw: string): string {
     .replace(/^DD\s+/i, '')
     .replace(/^STO\s+/i, '')
     .replace(/^PAYPAL \*/i, '')
-    // Strip URLs / domain suffixes and anything after them
     .replace(/\.co\.uk\b.*/i, '')
     .replace(/\.com\b.*/i, '')
     .replace(/\.org\b.*/i, '')
-    .replace(/\d{10,}/g, '')          // long reference numbers
-    .replace(/\s+\d{4,}\s*\d*/g, '')  // reference number blocks
+    .replace(/\d{10,}/g, '')
+    .replace(/\s+\d{4,}\s*\d*/g, '')
     .replace(/\s+(LTD|LIMITED|PLC|UK|GB|CO)\s*$/i, '')
-    .replace(/\s+\d+\s*$/g, '')       // trailing numbers
+    .replace(/\s+\d+\s*$/g, '')
     .trim();
 
-  // Title case if all caps
   if (clean === clean.toUpperCase() && clean.length > 3) {
     clean = clean.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   }
@@ -86,15 +81,24 @@ function daysSince(d: string | null): number | null {
 }
 
 // ============================================================
-// Payment Card with recategorise dropdown
+// Payment Card with edit, recategorise, and delete
 // ============================================================
-function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; type: string; onCategoryChange: (id: string, newCategory: string) => void }) {
+function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange }: {
+  payment: Payment;
+  type: string;
+  onCategoryChange: (id: string, newCategory: string) => void;
+  onDelete: (id: string) => void;
+  onAmountChange: (id: string, newAmount: number) => void;
+}) {
   const name = cleanProviderName(payment.provider_name);
   const initials = getInitials(name);
   const lastUsedDays = daysSince(payment.last_used_date);
   const unusedWarning = type === 'subscription' && lastUsedDays != null && lastUsedDays > 30;
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingAmount, setEditingAmount] = useState(false);
+  const [amountInput, setAmountInput] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const hasAmount = payment.amount && Math.abs(payment.amount) > 0;
 
   const handleCategoryChange = async (newCategory: string) => {
@@ -105,9 +109,7 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: newCategory }),
       });
-      if (res.ok) {
-        onCategoryChange(payment.id, newCategory);
-      }
+      if (res.ok) onCategoryChange(payment.id, newCategory);
     } catch (e) {
       console.error('Failed to update category:', e);
     } finally {
@@ -116,10 +118,66 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
     }
   };
 
+  const handleAmountSave = async () => {
+    const val = parseFloat(amountInput);
+    if (isNaN(val) || val < 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/subscriptions/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: val }),
+      });
+      if (res.ok) onAmountChange(payment.id, val);
+    } catch (e) {
+      console.error('Failed to update amount:', e);
+    } finally {
+      setSaving(false);
+      setEditingAmount(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/subscriptions/${payment.id}`, { method: 'DELETE' });
+      if (res.ok) onDelete(payment.id);
+    } catch (e) {
+      console.error('Failed to delete:', e);
+    } finally {
+      setSaving(false);
+      setConfirmDelete(false);
+    }
+  };
+
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 hover:border-mint-400/30 transition-all relative">
+    <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 hover:border-mint-400/30 transition-all relative group/card">
+      {/* Delete (X) button */}
+      <button
+        onClick={() => setConfirmDelete(true)}
+        className="absolute top-2 right-2 opacity-0 group-hover/card:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 rounded"
+        title="Remove this payment"
+      >
+        <XIcon className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Delete confirmation overlay */}
+      {confirmDelete && (
+        <div className="absolute inset-0 bg-navy-950/95 rounded-xl flex flex-col items-center justify-center z-10 p-4">
+          <p className="text-white text-sm font-medium mb-1">Remove {name}?</p>
+          <p className="text-slate-400 text-xs mb-3 text-center">This will hide it from your payments. It won&apos;t be re-added on next sync.</p>
+          <div className="flex gap-2">
+            <button onClick={handleDelete} disabled={saving} className="bg-red-500/20 text-red-400 hover:bg-red-500/30 px-3 py-1.5 rounded text-xs font-medium transition-all">
+              {saving ? 'Removing...' : 'Yes, remove'}
+            </button>
+            <button onClick={() => setConfirmDelete(false)} className="bg-navy-800 text-slate-300 hover:bg-navy-700 px-3 py-1.5 rounded text-xs transition-all">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start gap-3">
-        {/* Logo / initials */}
         <div className="w-10 h-10 rounded-lg bg-navy-800 flex items-center justify-center text-sm font-bold text-slate-300 flex-shrink-0">
           {initials}
         </div>
@@ -128,7 +186,6 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
           <div className="flex items-start justify-between">
             <div>
               <h3 className="text-white font-semibold text-sm truncate">{name}</h3>
-              {/* Clickable category badge for recategorisation */}
               <button
                 onClick={() => setShowCategoryPicker(!showCategoryPicker)}
                 className="flex items-center gap-1 text-slate-500 text-xs hover:text-mint-400 transition-all mt-0.5 group"
@@ -140,18 +197,45 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
               </button>
             </div>
             <div className="text-right flex-shrink-0 ml-2">
-              {hasAmount ? (
-                <>
-                  <p className="text-mint-400 font-bold">£{Math.abs(payment.amount).toFixed(2)}</p>
-                  <p className="text-slate-500 text-[10px]">{CYCLE_LABELS[payment.billing_cycle] || payment.billing_cycle}</p>
-                </>
+              {editingAmount ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400 text-sm">£</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={amountInput}
+                    onChange={e => setAmountInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAmountSave(); if (e.key === 'Escape') setEditingAmount(false); }}
+                    autoFocus
+                    className="w-20 bg-navy-800 border border-navy-600 rounded px-1.5 py-0.5 text-white text-sm text-right focus:outline-none focus:border-mint-400"
+                  />
+                  <button onClick={handleAmountSave} disabled={saving} className="text-mint-400 hover:text-mint-300 p-0.5">
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ) : (
-                <p className="text-slate-600 text-xs italic">Amount unknown</p>
+                <button
+                  onClick={() => { setAmountInput(hasAmount ? Math.abs(payment.amount).toFixed(2) : ''); setEditingAmount(true); }}
+                  className="text-right group/amt cursor-pointer"
+                  title="Click to edit amount"
+                >
+                  {hasAmount ? (
+                    <>
+                      <p className="text-mint-400 font-bold group-hover/amt:text-mint-300 transition-colors">
+                        £{Math.abs(payment.amount).toFixed(2)}
+                      </p>
+                      <p className="text-slate-500 text-[10px]">{CYCLE_LABELS[payment.billing_cycle] || payment.billing_cycle}</p>
+                    </>
+                  ) : (
+                    <p className="text-amber-400/80 text-xs italic hover:text-amber-300">Set amount →</p>
+                  )}
+                </button>
               )}
             </div>
           </div>
 
-          {/* Category picker dropdown */}
+          {/* Category picker */}
           {showCategoryPicker && (
             <div className="mt-2 bg-navy-950 border border-navy-700 rounded-lg p-2 max-h-48 overflow-y-auto">
               <p className="text-xs text-slate-500 mb-1.5 px-1">Change category:</p>
@@ -175,7 +259,7 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
             </div>
           )}
 
-          {/* Meta row */}
+          {/* Meta */}
           <div className="flex items-center gap-3 text-xs text-slate-500 mt-2 flex-wrap">
             {payment.next_billing_date && (
               <span className="flex items-center gap-1">
@@ -187,7 +271,6 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
             )}
           </div>
 
-          {/* Usage warning */}
           {unusedWarning && (
             <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-400 bg-amber-500/10 rounded-lg px-2 py-1">
               <AlertCircle className="h-3 w-3" />
@@ -195,21 +278,9 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
             </div>
           )}
 
-          {/* Action buttons */}
           <div className="flex gap-2 mt-3">
-            {type === 'subscription' && (
-              <Link
-                href={`/dashboard/subscriptions`}
-                className="text-[10px] bg-navy-800 hover:bg-navy-700 text-slate-300 px-2 py-1 rounded transition-all"
-              >
-                View details
-              </Link>
-            )}
             {['energy', 'broadband', 'mobile', 'insurance', 'streaming', 'software'].includes(payment.category) && (
-              <Link
-                href={`/dashboard/deals`}
-                className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-1 rounded transition-all hover:bg-mint-400/20"
-              >
+              <Link href="/dashboard/deals" className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-1 rounded transition-all hover:bg-mint-400/20">
                 Switch & Save
               </Link>
             )}
@@ -249,18 +320,25 @@ export default function PaymentsPage() {
     setPayments(prev => prev.map(p => p.id === id ? { ...p, category: newCategory } : p));
   };
 
-  // All = everything from subscriptions table (matches subscriptions page count)
+  const handleDelete = (id: string) => {
+    setPayments(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleAmountChange = (id: string, newAmount: number) => {
+    setPayments(prev => prev.map(p => p.id === id ? { ...p, amount: newAmount } : p));
+  };
+
   const appSubs = payments.filter(p => APP_SUB_CATEGORIES.has(p.category));
   const directDebits = payments.filter(p => DD_CATEGORIES.has(p.category));
   const otherPayments = payments.filter(p => !APP_SUB_CATEGORIES.has(p.category) && !DD_CATEGORIES.has(p.category));
 
   const totalMonthly = payments.reduce((sum, p) => sum + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0);
 
-  const tabPayments = tab === 'subscriptions' ? payments // "All Payments" shows everything
+  const tabPayments = tab === 'subscriptions' ? payments
     : tab === 'direct_debits' ? directDebits
     : appSubs;
 
-  // Pie chart data — break down by actual category for a clear picture
+  // Per-category pie chart
   const categoryTotals: Record<string, number> = {};
   for (const p of payments) {
     const cat = p.category || 'other';
@@ -289,13 +367,12 @@ export default function PaymentsPage() {
 
       <div className="mb-6">
         <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">Regular Payments</h1>
-        <p className="text-slate-400 mt-1">Every subscription, direct debit, and standing order in one place. Click a category badge to recategorise.</p>
+        <p className="text-slate-400 mt-1">Click a category to recategorise, click an amount to edit, or hover and press ✕ to remove.</p>
       </div>
 
       {/* Overview with Pie Chart */}
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-center gap-6">
-          {/* Pie chart */}
           {pieData.length > 0 && (
             <div className="w-40 h-40 flex-shrink-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -315,7 +392,6 @@ export default function PaymentsPage() {
             </div>
           )}
 
-          {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1 w-full">
             <div>
               <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Total monthly</p>
@@ -336,7 +412,6 @@ export default function PaymentsPage() {
           </div>
         </div>
 
-        {/* Legend */}
         {pieData.length > 0 && (
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 justify-center">
             {pieData.map((d) => (
@@ -385,7 +460,14 @@ export default function PaymentsPage() {
           {tabPayments
             .sort((a, b) => Math.abs(b.amount || 0) - Math.abs(a.amount || 0))
             .map(p => (
-              <PaymentCard key={p.id} payment={p} type={tab === 'subscriptions' ? 'subscription' : tab === 'direct_debits' ? 'direct_debit' : 'standing_order'} onCategoryChange={handleCategoryChange} />
+              <PaymentCard
+                key={p.id}
+                payment={p}
+                type={tab === 'subscriptions' ? 'subscription' : tab === 'direct_debits' ? 'direct_debit' : 'standing_order'}
+                onCategoryChange={handleCategoryChange}
+                onDelete={handleDelete}
+                onAmountChange={handleAmountChange}
+              />
             ))
           }
         </div>
@@ -401,6 +483,12 @@ export default function PaymentsPage() {
           </p>
         </div>
       )}
+
+      {/* Learning indicator */}
+      <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-500 px-1">
+        <Zap className="h-3 w-3 text-mint-400/60" />
+        <span>Paybacker learns from your corrections — categorisation and amounts improve with every edit you make.</span>
+      </div>
     </div>
   );
 }
