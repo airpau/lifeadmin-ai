@@ -111,6 +111,36 @@ export async function POST(request: NextRequest) {
         if (unfairClauses) {
           threadContext += `\n\nPOTENTIALLY UNFAIR CLAUSES IN THEIR CONTRACT:\n${unfairClauses}`;
         }
+      } else if (body.companyName) {
+        // No personal contract uploaded — check collective provider intelligence as fallback
+        const normalisedName = body.companyName.trim().toLowerCase();
+        const { data: intel } = await supabase
+          .from('provider_intelligence')
+          .select('*')
+          .eq('provider_name_normalised', normalisedName)
+          .limit(1)
+          .maybeSingle();
+
+        if (intel && intel.sample_size >= 3) {
+          const intelParts = [
+            intel.common_notice_period && `Typical notice period: ${intel.common_notice_period}`,
+            intel.common_minimum_term && `Typical minimum term: ${intel.common_minimum_term}`,
+            intel.common_early_exit_fee && `Typical early exit fee: ${intel.common_early_exit_fee}`,
+            intel.avg_monthly_cost != null && `Average monthly cost seen: £${Number(intel.avg_monthly_cost).toFixed(2)}`,
+            intel.has_price_increase_clause_pct != null && intel.has_price_increase_clause_pct > 50 &&
+              `Price increase clause found in ${intel.has_price_increase_clause_pct}% of contracts — this is common for this provider`,
+            intel.auto_renewal_pct != null && intel.auto_renewal_pct > 50 &&
+              `Auto-renewal found in ${intel.auto_renewal_pct}% of contracts`,
+          ].filter(Boolean).join('\n');
+
+          if (intelParts) {
+            threadContext += `\n\nAGGREGATE PROVIDER INTELLIGENCE (based on analysis of ${intel.sample_size} contracts from ${body.companyName} users — no personal contract uploaded, use this as context):\n${intelParts}`;
+          }
+
+          if (intel.common_unfair_clauses && Array.isArray(intel.common_unfair_clauses) && intel.common_unfair_clauses.length > 0) {
+            threadContext += `\n\nCOMMONLY REPORTED UNFAIR CLAUSES FOR THIS PROVIDER:\n${(intel.common_unfair_clauses as string[]).map((uc: string) => `- ${uc}`).join('\n')}`;
+          }
+        }
       }
     }
 

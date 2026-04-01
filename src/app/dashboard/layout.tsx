@@ -23,6 +23,7 @@ import {
   Building2,
   Wallet,
   BookOpen,
+  FolderLock,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -31,6 +32,7 @@ const navItems = [
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Disputes', href: '/dashboard/complaints', icon: FileText },
+  { name: 'Contract Vault', href: '/dashboard/contracts', icon: FolderLock },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
