@@ -939,7 +939,7 @@ export default function MoneyHubPage() {
     if (syncing) return false;
     if (!lastSyncMins) return true; // never synced
     switch (data.tier) {
-      case 'pro': return lastSyncMins >= 360; // 6 hours
+      case 'pro': return lastSyncMins >= 60; // 1 hour
       case 'essential': return lastSyncMins >= 1440; // 24 hours
       default: return lastSyncMins >= 1440; // 24 hours
     }
@@ -948,9 +948,9 @@ export default function MoneyHubPage() {
     if (!lastSyncMins) return null;
     switch (data.tier) {
       case 'pro': {
-        if (lastSyncMins < 360) {
-          const remaining = 360 - lastSyncMins;
-          return `Next sync available in ${remaining < 60 ? `${remaining} min${remaining === 1 ? '' : 's'}` : `${Math.ceil(remaining / 60)} hour${Math.ceil(remaining / 60) === 1 ? '' : 's'}`}`;
+        if (lastSyncMins < 60) {
+          const remaining = 60 - lastSyncMins;
+          return `Next sync available in ${remaining} min${remaining === 1 ? '' : 's'}`;
         }
         return null;
       }
@@ -972,7 +972,7 @@ export default function MoneyHubPage() {
   })();
   const syncTierText = (() => {
     switch (data.tier) {
-      case 'pro': return `Auto-syncs every 6 hours${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
+      case 'pro': return `Syncs every hour${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''} · Banks may take up to 24hrs to release transactions`;
       case 'essential': return `Auto-syncs daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
       default: return 'Manual sync · 1× per day';
     }
@@ -1358,7 +1358,7 @@ export default function MoneyHubPage() {
           <h3 className="text-lg font-semibold text-white">{currentMonthName} has just started</h3>
           <p className="text-slate-400 mt-1 max-w-lg mx-auto">
             Your transactions will appear here as they confirm with your bank.
-            {data.tier === 'pro' ? ' Auto-syncing every 6 hours.' :
+            {data.tier === 'pro' ? ' Syncs every hour. Banks may take up to 24hrs to release transactions.' :
              data.tier === 'essential' ? ' Auto-syncing daily.' :
              ' Sync manually or upgrade for automatic syncs.'}
           </p>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAccessToken, fetchAccounts, fetchTransactions, fetchPendingTransactions, BankConnection } from '@/lib/truelayer';
+import { getAccessToken, fetchAccounts, fetchCards, fetchTransactions, fetchPendingTransactions, fetchCardTransactions, fetchCardPendingTransactions, BankConnection } from '@/lib/truelayer';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 
@@ -177,6 +177,49 @@ export async function POST() {
         console.error(`Error syncing account ${accountId} (non-fatal):`, err);
         accountResults.push({ accountId, fetched: 0, inserted: 0 });
       }
+    }
+
+    // Also sync card accounts (debit/credit cards — may have faster updates)
+    try {
+      const cards = await fetchCards(accessToken);
+      console.log(`Found ${cards.length} card accounts for connection ${connection.id}`);
+      for (const card of cards) {
+        const cardId = card.account_id;
+        try {
+          const cardSettled = await fetchCardTransactions(accessToken, cardId, twelveMonthsAgo);
+          const cardPending = await fetchCardPendingTransactions(accessToken, cardId);
+          const seenCardIds = new Set(cardSettled.map(t => t.transaction_id));
+          const uniqueCardPending = cardPending.filter(t => !seenCardIds.has(t.transaction_id));
+          const cardTxns = [...cardSettled, ...uniqueCardPending];
+          console.log(`Card ${card.display_name}: ${cardSettled.length} settled + ${uniqueCardPending.length} pending`);
+
+          if (cardTxns.length === 0) continue;
+
+          const cardRows = cardTxns.map((tx) => ({
+            user_id: user.id,
+            connection_id: connection.id,
+            transaction_id: tx.transaction_id,
+            account_id: cardId,
+            amount: tx.amount,
+            currency: tx.currency || 'GBP',
+            description: tx.description || null,
+            merchant_name: tx.merchant_name || null,
+            category: tx.transaction_category || null,
+            user_category: null,
+            timestamp: tx.timestamp,
+          }));
+
+          const { error } = await supabase
+            .from('bank_transactions')
+            .upsert(cardRows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+
+          if (!error) totalSynced += cardRows.length;
+        } catch (err) {
+          console.error(`Card sync error for ${cardId}:`, err);
+        }
+      }
+    } catch (err) {
+      console.log('Card accounts not available (non-fatal):', err);
     }
 
     await supabase
