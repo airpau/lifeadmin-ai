@@ -91,8 +91,8 @@ export async function GET() {
     const categoryTotals: Record<string, number> = {};
     for (const t of prevTxns.filter(t => parseFloat(String(t.amount)) < 0 && !isTransferSpend(t))) {
       // Use user override first, then runtime categoriser
-      const merchantName = t.merchant_name || t.description || '';
-      const cat = t.user_category || categorise(merchantName, t.description) || 'other';
+      // categorise() signature: (description, bankCategory)
+      const cat = t.user_category || categorise(t.description || '', t.category || '') || 'other';
       const amt = Math.abs(parseFloat(String(t.amount)));
       categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
     }
