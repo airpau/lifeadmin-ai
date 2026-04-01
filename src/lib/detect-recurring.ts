@@ -70,22 +70,23 @@ function extractMerchantFromDescription(description: string): string | null {
 }
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  mortgage: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mortgage', 'nationwide bs', 'building society', 'paratus', 'pepper money', 'together money', 'shawbrook', 'kensington', 'bm solutions', 'molo', 'landbay'],
+  mortgage: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mortgage', 'nationwide bs', 'building society', 'paratus', 'paratus amc', 'pepper money', 'together money', 'shawbrook', 'kensington', 'bm solutions', 'molo', 'landbay'],
   rent: ['rent', 'letting', 'openrent', 'estate agent'],
-  loan: ['auto finance', 'ca auto finance', 'car finance', 'natwest loan', 'santander loan', 'novuna', 'tesco bank', 'klarna', 'clearpay', 'afterpay', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap'],
+  loan: ['auto finance', 'ca auto finance', 'car finance', 'natwest loan', 'santander loan', 'novuna', 'tesco bank', 'klarna', 'clearpay', 'afterpay', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'creation.co', 'creation financial'],
   insurance: ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'zurich', 'legal & general'],
   utility: ['energy', 'electric', 'gas', 'water', 'eon', 'british gas', 'octopus', 'ovo', 'edf', 'scottish power', 'thames water', 'severn trent', 'united utilities'],
-  broadband: ['broadband', 'bt broadband', 'bt fibre', 'sky broadband', 'virgin media', 'vodafone broadband', 'plusnet', 'talktalk', 'hyperoptic', 'communityfibre'],
+  broadband: ['broadband', 'bt broadband', 'bt fibre', 'sky broadband', 'virgin media', 'vodafone broadband', 'plusnet', 'talktalk', 'hyperoptic', 'communityfibre', 'community fibre'],
   mobile: ['mobile', 'ee ', 'three', 'o2 ', 'giffgaff', 'id mobile', 'smarty', 'lebara', 'tesco mobile'],
   streaming: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple tv', 'paramount', 'now tv', 'youtube', 'dazn', 'crunchyroll'],
-  fitness: ['gym', 'fitness', 'puregym', 'david lloyd', 'nuffield', 'anytime fitness', 'the gym', 'whoop', 'peloton', 'strava'],
+  fitness: ['gym', 'fitness', 'puregym', 'david lloyd', 'nuffield', 'anytime fitness', 'the gym', 'whoop', 'peloton', 'strava', 'gym iq'],
   software: ['adobe', 'microsoft', 'google', 'apple', 'icloud', 'dropbox', 'notion', 'slack', 'zoom', 'canva', 'openai', 'anthropic', 'github', 'figma', 'experian'],
   council_tax: ['council tax', 'council'],
+  tax: ['hmrc', 'hm revenue', 'self assessment', 'paye', 'corporation tax', 'vat payment', 'tax payment'],
   gambling: ['betfair', 'bet365', 'paddy power', 'william hill', 'coral', 'ladbrokes', 'sky bet', 'betway'],
   food: ['deliveroo', 'just eat', 'uber eats', 'gousto', 'hello fresh', 'mindful chef'],
   shopping: ['amazon', 'ebay', 'asos', 'next'],
-  childcare: ['childcare', 'nursery', 'school'],
-  transport: ['transport', 'tfl', 'oyster', 'rail', 'train'],
+  childcare: ['childcare', 'nursery', 'school', 'bright horizons', 'kidsunlimited'],
+  transport: ['transport', 'tfl', 'oyster', 'rail', 'train', 'dvla'],
 };
 
 function categoriseTransaction(merchantName: string, description: string | null): string {
@@ -289,6 +290,33 @@ export async function detectRecurring(
     }
   }
 
-  console.log(`detectRecurring: processed ${transactions.length} transactions, found ${newRecurringCount} new recurring payments`);
+  // ── Recategorise stale 'other'/'bills' subscriptions ──
+  // Re-run keyword matcher on existing subs that are still generic 'other' or 'bills'
+  const { data: staleSubs } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, category, bank_description')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .in('category', ['other', 'bills']);
+
+  let recategorised = 0;
+  for (const sub of staleSubs || []) {
+    // Check merchant rules first
+    const subNorm = normaliseMerchant(sub.provider_name);
+    const rule = rulesMap.get(subNorm) ||
+      [...rulesMap.entries()].find(([key]) => subNorm.includes(key) || key.includes(subNorm))?.[1];
+
+    const newCat = rule?.category || categoriseTransaction(sub.provider_name, sub.bank_description);
+    if (newCat && newCat !== 'other' && newCat !== sub.category) {
+      await supabase
+        .from('subscriptions')
+        .update({ category: newCat })
+        .eq('id', sub.id);
+      recategorised++;
+      console.log(`Recategorised: ${sub.provider_name} ${sub.category} → ${newCat}`);
+    }
+  }
+
+  console.log(`detectRecurring: processed ${transactions.length} transactions, found ${newRecurringCount} new recurring, recategorised ${recategorised} existing`);
   return newRecurringCount;
 }
