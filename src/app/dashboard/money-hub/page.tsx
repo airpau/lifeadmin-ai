@@ -289,6 +289,36 @@ export default function MoneyHubPage() {
   } | null>(null);
   const [loadingPrevMonth, setLoadingPrevMonth] = useState(false);
 
+  // Dismissed expected bills (persisted in localStorage per month)
+  const [dismissedBills, setDismissedBills] = useState<Set<string>>(new Set());
+  const [showDismissedBills, setShowDismissedBills] = useState(false);
+  const dismissedBillsKey = `pb_dismissed_bills_${new Date().getFullYear()}_${new Date().getMonth() + 1}`;
+
+  const dismissBill = (billName: string) => {
+    setDismissedBills(prev => {
+      const next = new Set(prev);
+      next.add(billName);
+      try { localStorage.setItem(dismissedBillsKey, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+    showToast(`"${billName}" removed from expected bills`, 'info');
+  };
+
+  const restoreBill = (billName: string) => {
+    setDismissedBills(prev => {
+      const next = new Set(prev);
+      next.delete(billName);
+      try { localStorage.setItem(dismissedBillsKey, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
+  const restoreAllBills = () => {
+    setDismissedBills(new Set());
+    try { localStorage.removeItem(dismissedBillsKey); } catch {}
+    setShowDismissedBills(false);
+  };
+
   // Month selector
   const [selectedMonth, setSelectedMonth] = useState('');
 
@@ -759,6 +789,12 @@ export default function MoneyHubPage() {
         }
       })
       .catch(() => {});
+
+    // Load dismissed bills from localStorage
+    try {
+      const saved = localStorage.getItem(`pb_dismissed_bills_${new Date().getFullYear()}_${new Date().getMonth() + 1}`);
+      if (saved) setDismissedBills(new Set(JSON.parse(saved)));
+    } catch {}
 
     // Fetch previous month data for recap
     setLoadingPrevMonth(true);
@@ -1335,42 +1371,105 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ SPARSE MONTH: Expected Bills This Month ═══ */}
-      {showSparseMonthContent && isCurrentMonthView && expectedBills.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
-            <FileText className="h-5 w-5 text-sky-400" />
-            Expected Bills for {currentMonthName}
-          </h2>
-          <div className="space-y-2">
-            {expectedBills.slice(0, 15).map((bill, i) => {
-              const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
-              return (
-                <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30">
-                  <div className="flex items-center gap-3">
-                    <span className={`text-sm ${bill.paid ? 'text-green-400' : 'text-slate-500'}`}>
-                      {bill.paid ? '✓' : '☐'}
-                    </span>
-                    <span className="text-sm w-5">{info.icon}</span>
-                    <span className={`text-sm ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>
-                      {cleanMerchantName(bill.name)}
-                    </span>
+      {showSparseMonthContent && isCurrentMonthView && expectedBills.length > 0 && (() => {
+        const visibleBills = expectedBills.filter(b => !dismissedBills.has(b.name));
+        const hiddenBills = expectedBills.filter(b => dismissedBills.has(b.name));
+        const visibleTotal = visibleBills.reduce((s, b) => s + b.expected_amount, 0);
+
+        return (
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
+                <FileText className="h-5 w-5 text-sky-400" />
+                Expected Bills for {currentMonthName}
+              </h2>
+              {hiddenBills.length > 0 && (
+                <button
+                  onClick={() => setShowDismissedBills(!showDismissedBills)}
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  {showDismissedBills ? 'Hide' : 'Show'} {hiddenBills.length} removed
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {visibleBills.slice(0, 15).map((bill, i) => {
+                const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
+                return (
+                  <div key={`v-${i}`} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30 group">
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm ${bill.paid ? 'text-green-400' : 'text-slate-500'}`}>
+                        {bill.paid ? '✓' : '☐'}
+                      </span>
+                      <span className="text-sm w-5">{info.icon}</span>
+                      <span className={`text-sm ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>
+                        {cleanMerchantName(bill.name)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-medium ${bill.paid ? 'text-green-400' : 'text-slate-300'}`}>
+                        ~£{fmt(bill.expected_amount)}
+                      </span>
+                      <button
+                        onClick={() => dismissBill(bill.name)}
+                        className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
+                        title="Remove — this was a one-off"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <span className={`text-sm font-medium ${bill.paid ? 'text-green-400' : 'text-slate-300'}`}>
-                    ~£{fmt(bill.expected_amount)}
-                  </span>
+                );
+              })}
+            </div>
+
+            {/* Dismissed bills (collapsible) */}
+            {showDismissedBills && hiddenBills.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-slate-500 text-xs">Removed (one-off payments)</p>
+                  <button
+                    onClick={restoreAllBills}
+                    className="text-[10px] text-mint-400 hover:text-mint-300 font-medium"
+                  >
+                    Restore all
+                  </button>
                 </div>
-              );
-            })}
+                {hiddenBills.map((bill, i) => {
+                  const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
+                  return (
+                    <div key={`d-${i}`} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-4 py-2 border border-navy-700/20 opacity-60">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm w-5">{info.icon}</span>
+                        <span className="text-sm text-slate-500 line-through">
+                          {cleanMerchantName(bill.name)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600 line-through">~£{fmt(bill.expected_amount)}</span>
+                        <button
+                          onClick={() => restoreBill(bill.name)}
+                          className="text-mint-400 hover:text-mint-300 text-xs font-medium"
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
+              <span className="text-slate-400 text-sm">Total expected</span>
+              <span className="text-white font-bold text-sm">~£{fmt(visibleTotal)}</span>
+            </div>
+            <p className="text-slate-600 text-[10px] mt-2">
+              Based on recurring transactions and active subscriptions. Hover a bill and click ✕ to remove one-offs.
+            </p>
           </div>
-          <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
-            <span className="text-slate-400 text-sm">Total expected</span>
-            <span className="text-white font-bold text-sm">~£{fmt(expectedBillsTotal)}</span>
-          </div>
-          <p className="text-slate-600 text-[10px] mt-2">
-            Based on recurring transactions and active subscriptions. Bills get checked off (✓) as they come through.
-          </p>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ SPARSE MONTH: Budget Forecast ═══ */}
       {showSparseMonthContent && isCurrentMonthView && data.budgets.length > 0 && prevMonthData && prevMonthData.categories.length > 0 && (
