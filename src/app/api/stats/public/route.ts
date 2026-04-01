@@ -10,14 +10,16 @@ function getAdmin() {
   );
 }
 
+const ZEROED = {
+  lettersGenerated: 0,
+  subscriptionsTracked: 0,
+  usersJoined: 0,
+  foundingSpots: 1000,
+};
+
 export async function GET() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    return NextResponse.json({
-      lettersGenerated: 0,
-      subscriptionsTracked: 0,
-      usersJoined: 0,
-      foundingSpots: 1000,
-    });
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return NextResponse.json(ZEROED);
   }
 
   const supabase = getAdmin();
