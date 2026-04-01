@@ -4,6 +4,8 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
+import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
+import UpgradeTrigger from '@/components/UpgradeTrigger';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -386,32 +388,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Onboarding checklist - only show for new users who haven't completed all steps */}
-      {(() => {
-        const steps = [
-          { num: 1, label: 'Connect your bank', href: '/dashboard/subscriptions', done: bankConnected },
-          { num: 2, label: 'Review your subscriptions', href: '/dashboard/subscriptions', done: subscriptionCount > 0 },
-          { num: 3, label: 'Generate your first complaint letter', href: '/dashboard/complaints', done: complaintsGenerated > 0 },
-          { num: 4, label: 'Start a savings challenge', href: '/dashboard/rewards', done: false },
-        ];
-        const allDone = steps.filter(s => s.num !== 4).every(s => s.done);
-        if (allDone) return null;
-        return (
-          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Welcome to Paybacker! Get started:</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {steps.map(step => (
-                <Link key={step.href + step.num} href={step.href} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${step.done ? 'bg-green-500/10 border border-green-500/20' : 'bg-navy-800/50 border border-navy-700/50 hover:border-mint-400/30'}`}>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done ? 'bg-green-500 text-white' : 'bg-navy-700 text-slate-400'}`}>
-                    {step.done ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{step.num}</span>}
-                  </div>
-                  <span className={`text-sm ${step.done ? 'text-green-400' : 'text-white'}`}>{step.label}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Onboarding flow — value-first, shows right card at right time */}
+      <OnboardingFlow
+        hasLetter={complaintsGenerated > 0}
+        bankConnected={bankConnected}
+        subscriptionCount={subscriptionCount}
+        tier={userTier}
+      />
 
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
@@ -567,6 +550,18 @@ export default function DashboardPage() {
           </Link>
         </div>
       )}
+
+      {/* Upgrade trigger: price increases detected */}
+      <UpgradeTrigger
+        type="price_increase"
+        priceIncreaseCount={priceAlerts.length}
+        priceIncreaseAnnual={priceAlerts.reduce((sum, a) => {
+          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+        }, 0)}
+        userTier={userTier}
+        className="mb-6"
+      />
 
       {/* Action Items */}
       {(() => {

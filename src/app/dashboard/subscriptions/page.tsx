@@ -8,6 +8,7 @@ import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, L
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
+import UpgradeTrigger from '@/components/UpgradeTrigger';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
@@ -15,6 +16,7 @@ import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { SORTED_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
+import { createClient } from '@/lib/supabase/client';
 
 interface ContractAlert {
   id: string;
@@ -100,6 +102,7 @@ export default function SubscriptionsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [userTier, setUserTier] = useState('free');
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
   const [fraudStep, setFraudStep] = useState<'initial' | 'fraud_guidance'>('initial');
   const [loading, setLoading] = useState(true);
@@ -267,6 +270,13 @@ export default function SubscriptionsPage() {
     fetchBankConnection();
     fetchComparisons();
     fetchContractAlerts();
+    // Fetch tier for upgrade trigger
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('profiles').select('subscription_tier').eq('id', user.id).single()
+        .then(({ data }) => { if (data?.subscription_tier) setUserTier(data.subscription_tier); });
+    });
   }, [fetchSubscriptions, fetchBankConnection, fetchComparisons, fetchContractAlerts]);
 
   useEffect(() => {
@@ -1230,6 +1240,17 @@ export default function SubscriptionsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Upgrade trigger: bank scan found subscriptions */}
+      {bankConnections.length > 0 && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
+        <UpgradeTrigger
+          type="bank_scan"
+          subscriptionCount={baseSubscriptions.filter(s => s.status === 'active').length}
+          monthlyCost={flexibleTotalMonthly + statutoryTotalMonthly}
+          userTier={userTier}
+          className="mb-6"
+        />
       )}
 
       {/* Bill upload toast */}
