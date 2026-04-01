@@ -273,6 +273,23 @@ export default function DashboardPage() {
 
           // Update potential savings to include comparison deals
           setPotentialSavings(prev => prev + (compData.totalAnnualSaving || 0));
+
+          // If many subscriptions haven't been compared yet, trigger a fresh comparison
+          const compared = compData.subscriptionsCompared || 0;
+          const withDeals = compData.count || 0;
+          if (compared > 0 && withDeals < compared * 0.5) {
+            // Less than half have been compared — run a background comparison
+            fetch('/api/subscriptions/compare', { method: 'POST' })
+              .then(r => r.json())
+              .then(freshData => {
+                if (freshData.totalAnnualSaving > (compData.totalAnnualSaving || 0)) {
+                  setComparisonSaving(freshData.totalAnnualSaving);
+                  setComparisonCount(freshData.count || 0);
+                  setPotentialSavings(prev => prev - (compData.totalAnnualSaving || 0) + freshData.totalAnnualSaving);
+                }
+              })
+              .catch(() => {}); // Non-critical
+          }
         }
       } catch {} // Non-critical
       finally {

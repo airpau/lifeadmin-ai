@@ -400,8 +400,11 @@ export default function MoneyHubPage() {
         await refreshData();
       }
     } catch (err) {
-      // Edge function not deployed yet — fall back to the local sync route
+      // Edge function not deployed yet — fall back to the local sync routes
       try {
+        // Step 1: Pull fresh transactions from TrueLayer into DB
+        await fetch('/api/bank/sync', { method: 'POST' });
+        // Step 2: Categorise the new transactions
         await fetch('/api/money-hub/sync', { method: 'POST' });
         await refreshData();
         showToast('Sync complete', 'success');
