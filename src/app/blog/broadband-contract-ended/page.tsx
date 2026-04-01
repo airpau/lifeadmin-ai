@@ -235,10 +235,10 @@ export default function BroadbandBlogPost() {
             find you a better deal. It takes two minutes.
           </p>
           <Link
-            href="/auth/signup"
+            href="/dashboard/complaints?type=broadband_complaint&new=1"
             className="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all"
           >
-            Get Started Free
+            Generate Your Broadband Complaint Letter Free
           </Link>
         </div>
       </main>

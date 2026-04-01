@@ -219,10 +219,10 @@ export default function EnergyBlogPost() {
             minutes and could save you hundreds.
           </p>
           <Link
-            href="/auth/signup"
+            href="/dashboard/complaints?type=energy_dispute&new=1"
             className="inline-block bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all"
           >
-            Get Started Free
+            Generate Your Energy Dispute Letter Free
           </Link>
         </div>
       </main>
