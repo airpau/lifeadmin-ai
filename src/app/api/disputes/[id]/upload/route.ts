@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { extractAndSaveEndDates } from '@/lib/contract-extraction';
+
+export const maxDuration = 60;
 
 // POST /api/disputes/[id]/upload — upload a file attachment for correspondence
 export async function POST(
@@ -54,11 +57,27 @@ export async function POST(
     .from('correspondence-files')
     .getPublicUrl(upload.path);
 
+  // Best-effort contract extraction for PDFs and images — does not block upload response
+  let extraction = null;
+  const isPdfOrImage = file.type.includes('pdf') || file.type.startsWith('image/');
+  if (isPdfOrImage) {
+    extraction = await extractAndSaveEndDates(supabase, user.id, urlData.publicUrl, {
+      linkedDisputeId: disputeId,
+      fileName: file.name,
+      mimeType: file.type,
+    });
+    if (extraction.error) {
+      // Log but do not surface extraction errors to the user
+      console.error('Dispute upload extraction error:', extraction.error);
+    }
+  }
+
   return NextResponse.json({
     url: urlData.publicUrl,
     filename: file.name,
     type: file.type,
     size: file.size,
     path: upload.path,
+    extraction: extraction?.isContract ? extraction : null,
   });
 }
