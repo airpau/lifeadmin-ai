@@ -165,8 +165,8 @@ export default function FlightDelayCompensationPost() {
               <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/20 rounded-2xl p-8 my-10 text-center">
                 <h2 className="text-2xl font-bold text-white mb-3">Generate your flight compensation claim in 30 seconds</h2>
                 <p className="text-slate-400 mb-6">Our AI writes a formal claim letter citing UK261 regulations with the exact compensation amount you are owed. Free to use.</p>
-                <Link href="/auth/signup" className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-lg">
-                  Generate Your Claim Letter Free
+                <Link href="/dashboard/complaints?type=flight_compensation&new=1" className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-lg">
+                  Generate Your Flight Claim Letter Free
                 </Link>
                 <p className="text-slate-600 text-xs mt-3">No credit card required. 3 free letters per month.</p>
               </div>
