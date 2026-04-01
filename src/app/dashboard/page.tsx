@@ -4,6 +4,8 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
+import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
+import UpgradeTrigger from '@/components/UpgradeTrigger';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -229,7 +231,7 @@ export default function DashboardPage() {
         ).length;
         setExpiringContracts(expiring);
 
-        // Fetch active price increase alerts
+        // Fetch active price increase alerts for display
         const { data: priceAlertData } = await supabase
           .from('price_increase_alerts')
           .select('*')
@@ -237,7 +239,15 @@ export default function DashboardPage() {
           .eq('status', 'active')
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
-        hasStoredAlerts = (priceAlertData || []).length > 0;
+
+        // Check if ANY alerts exist (active, dismissed, or actioned) to prevent
+        // re-running detection when all alerts have been dismissed by the user.
+        const { count: anyAlertsCount } = await supabase
+          .from('price_increase_alerts')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('status', ['active', 'dismissed', 'actioned']);
+        hasStoredAlerts = (anyAlertsCount || 0) > 0;
 
         // Calculate real potential savings from price alerts (use actual price diff, not annual_impact which may be empty)
         const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
@@ -386,32 +396,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Onboarding checklist - only show for new users who haven't completed all steps */}
-      {(() => {
-        const steps = [
-          { num: 1, label: 'Connect your bank', href: '/dashboard/subscriptions', done: bankConnected },
-          { num: 2, label: 'Review your subscriptions', href: '/dashboard/subscriptions', done: subscriptionCount > 0 },
-          { num: 3, label: 'Generate your first complaint letter', href: '/dashboard/complaints', done: complaintsGenerated > 0 },
-          { num: 4, label: 'Start a savings challenge', href: '/dashboard/rewards', done: false },
-        ];
-        const allDone = steps.filter(s => s.num !== 4).every(s => s.done);
-        if (allDone) return null;
-        return (
-          <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Welcome to Paybacker! Get started:</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {steps.map(step => (
-                <Link key={step.href + step.num} href={step.href} className={`flex items-center gap-3 p-3 rounded-lg transition-all ${step.done ? 'bg-green-500/10 border border-green-500/20' : 'bg-navy-800/50 border border-navy-700/50 hover:border-mint-400/30'}`}>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step.done ? 'bg-green-500 text-white' : 'bg-navy-700 text-slate-400'}`}>
-                    {step.done ? <CheckCircle2 className="h-4 w-4" /> : <span className="text-xs">{step.num}</span>}
-                  </div>
-                  <span className={`text-sm ${step.done ? 'text-green-400' : 'text-white'}`}>{step.label}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Onboarding flow — value-first, shows right card at right time */}
+      <OnboardingFlow
+        hasLetter={complaintsGenerated > 0}
+        bankConnected={bankConnected}
+        subscriptionCount={subscriptionCount}
+        tier={userTier}
+      />
 
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
@@ -432,21 +423,27 @@ export default function DashboardPage() {
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-          <button
-            onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
-            className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
-          >
-            <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => {
-                const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-                return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-              }, 0))}/yr</p>
-              <p className="text-slate-400 text-xs">Price increase alerts</p>
-            </div>
-          </button>
+          {(() => {
+            const alertTotal = priceAlerts.reduce((sum, a) => {
+              const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+              return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+            }, 0);
+            if (alertTotal <= 0) return null;
+            return (
+              <button
+                onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
+                className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
+              >
+                <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-white font-semibold">{formatGBP(alertTotal)}/yr</p>
+                  <p className="text-slate-400 text-xs">Price increase alerts</p>
+                </div>
+              </button>
+            );
+          })()}
 
           <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
             <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-400 h-10 w-10 flex items-center justify-center shrink-0">
@@ -567,6 +564,18 @@ export default function DashboardPage() {
           </Link>
         </div>
       )}
+
+      {/* Upgrade trigger: price increases detected */}
+      <UpgradeTrigger
+        type="price_increase"
+        priceIncreaseCount={priceAlerts.length}
+        priceIncreaseAnnual={priceAlerts.reduce((sum, a) => {
+          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+        }, 0)}
+        userTier={userTier}
+        className="mb-6"
+      />
 
       {/* Action Items */}
       {(() => {
@@ -697,8 +706,8 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {task.isLoan && (
-                      <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Start Dispute
+                      <Link href="/dashboard/deals" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Review Terms
                       </Link>
                     )}
                     {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (

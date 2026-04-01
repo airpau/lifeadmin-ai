@@ -4,10 +4,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2 } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2, MessageCircle } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
+import UpgradeTrigger from '@/components/UpgradeTrigger';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
@@ -15,6 +16,7 @@ import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { SORTED_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
+import { createClient } from '@/lib/supabase/client';
 
 interface ContractAlert {
   id: string;
@@ -100,6 +102,7 @@ export default function SubscriptionsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [userTier, setUserTier] = useState('free');
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
   const [fraudStep, setFraudStep] = useState<'initial' | 'fraud_guidance'>('initial');
   const [loading, setLoading] = useState(true);
@@ -267,6 +270,13 @@ export default function SubscriptionsPage() {
     fetchBankConnection();
     fetchComparisons();
     fetchContractAlerts();
+    // Fetch tier for upgrade trigger
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('profiles').select('subscription_tier').eq('id', user.id).single()
+        .then(({ data }) => { if (data?.subscription_tier) setUserTier(data.subscription_tier); });
+    });
   }, [fetchSubscriptions, fetchBankConnection, fetchComparisons, fetchContractAlerts]);
 
   useEffect(() => {
@@ -416,6 +426,17 @@ export default function SubscriptionsPage() {
     }, 0);
 
   const totalMonthly = statutoryTotalMonthly + flexibleTotalMonthly;
+
+  // Total across ALL subscriptions (including hidden finance payments) for annual cost
+  const allActiveMonthly = subscriptions
+    .filter(s => s.status === 'active')
+    .reduce((sum, s) => {
+      let monthlyAmt = parseFloat(String(s.amount)) || 0;
+      if (s.billing_cycle === 'yearly') monthlyAmt = monthlyAmt / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = monthlyAmt / 3;
+      return sum + monthlyAmt;
+    }, 0);
+  const allActiveCount = subscriptions.filter(s => s.status === 'active').length;
 
   const handleToggleBulk = (id: string) => {
     const newSet = new Set(selectedForBulk);
@@ -1232,6 +1253,17 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Upgrade trigger: bank scan found subscriptions */}
+      {bankConnections.length > 0 && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
+        <UpgradeTrigger
+          type="bank_scan"
+          subscriptionCount={baseSubscriptions.filter(s => s.status === 'active').length}
+          monthlyCost={flexibleTotalMonthly + statutoryTotalMonthly}
+          userTier={userTier}
+          className="mb-6"
+        />
+      )}
+
       {/* Bill upload toast */}
       {billToast && (
         <div className={`fixed top-6 right-6 z-50 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${billToast.toLowerCase().includes('fail') ? 'bg-red-600' : 'bg-green-500'}`}>
@@ -1385,6 +1417,22 @@ export default function SubscriptionsPage() {
         </div>
       </div>
 
+      {/* AI Assistant nudge */}
+      {subscriptions.length > 0 && (
+        <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+          <MessageCircle className="h-4 w-4 text-mint-400 shrink-0" />
+          <p className="text-slate-400 text-sm flex-1">
+            Think a subscription is missing or miscategorised? Ask the AI assistant to find and add it.
+          </p>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('paybacker:open_chat'))}
+            className="text-mint-400 hover:text-mint-300 text-xs font-medium whitespace-nowrap transition-colors"
+          >
+            Ask the AI
+          </button>
+        </div>
+      )}
+
       {/* Detected subscriptions from inbox */}
       {detectedSubs.length > 0 && (
         <div className="bg-mint-400/5 border border-mint-400/30 rounded-2xl p-6 mb-8">
@@ -1468,13 +1516,13 @@ export default function SubscriptionsPage() {
           <div>
             <p className="text-slate-400 text-xs mb-1">Active Subscriptions</p>
             <h3 className="text-2xl font-bold text-white">
-              {displaySubscriptions.filter((s) => s.status === 'active').length}
+              {allActiveCount}
             </h3>
-            <p className="text-slate-500 text-xs mt-1">Tracked active payments</p>
+            <p className="text-slate-500 text-xs mt-1">All tracked payments</p>
           </div>
           <div className="text-right">
              <p className="text-slate-400 text-xs mb-1">Total Annual Cost</p>
-             <h3 className="text-2xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{formatGBP(totalMonthly * 12)}</h3>
+             <h3 className="text-2xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{formatGBP(allActiveMonthly * 12)}</h3>
           </div>
         </div>
       </div>
@@ -1901,7 +1949,7 @@ export default function SubscriptionsPage() {
                 </div>
               )}
 
-              {sub.status === 'active' && !sub.needs_review && (
+              {sub.status === 'active' && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
                     {isStatutoryService(sub.provider_name) ? (
                       <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">

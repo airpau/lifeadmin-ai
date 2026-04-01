@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle, Sparkles, TrendingUp, Scale, Users, CreditCard, Banknote, FileText, Check, X, ArrowRight, ChevronRight } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Scale, Users, CreditCard, Banknote, FileText, Check, X, ArrowRight, ChevronRight, MessageCircle } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
@@ -22,6 +22,13 @@ export default function Home() {
   const [claimingFounder, setClaimingFounder] = useState(false);
   const [claimResult, setClaimResult] = useState<string | null>(null);
   const [publicStats, setPublicStats] = useState<{ lettersGenerated: number; subscriptionsTracked: number; usersJoined: number; foundingSpots: number } | null>(null);
+
+  // Try-before-signup letter generator state
+  const [previewCategory, setPreviewCategory] = useState('energy');
+  const [previewDescription, setPreviewDescription] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if user is logged in
@@ -126,6 +133,36 @@ export default function Home() {
       )}
     </div>
   );
+
+  const handlePreviewGenerate = async () => {
+    if (!previewCategory) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewResult(null);
+    capture('preview_generate_click', { category: previewCategory });
+    try {
+      const res = await fetch('/api/complaints/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: previewCategory, description: previewDescription }),
+      });
+      if (res.status === 429) {
+        setPreviewError('You have reached the preview limit. Sign up free to generate unlimited letters.');
+        return;
+      }
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      setPreviewResult(data.preview || '');
+      // Store in session so it's waiting after signup
+      try {
+        sessionStorage.setItem('pb_preview_letter', JSON.stringify({ category: previewCategory, preview: data.preview }));
+      } catch {}
+    } catch {
+      setPreviewError('Something went wrong. Try again or sign up to generate.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   const staggerContainer = {
     hidden: {},
@@ -348,6 +385,123 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Try Before Signup: Letter Generator */}
+        <section className="py-16 md:py-24 bg-navy-900/50 border-y border-navy-700/50">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="max-w-2xl mx-auto text-center mb-8">
+              <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20 mb-4">
+                <Sparkles className="h-4 w-4" />
+                <span>Try it free — no account needed</span>
+              </div>
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white mb-3">
+                Generate a complaint letter now
+              </h2>
+              <p className="text-slate-400">
+                See the quality of our AI letters in 30 seconds. No sign up required.
+              </p>
+            </div>
+
+            <div className="max-w-xl mx-auto">
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-xl">
+                {!previewResult ? (
+                  <>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-slate-300 mb-2">What&apos;s the issue?</label>
+                      <select
+                        value={previewCategory}
+                        onChange={e => setPreviewCategory(e.target.value)}
+                        className="w-full bg-navy-800 border border-navy-700/50 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-mint-400/50"
+                      >
+                        <option value="energy">Energy bill too high</option>
+                        <option value="broadband">Broadband / internet issues</option>
+                        <option value="flight_delay">Flight delay compensation</option>
+                        <option value="subscription">Subscription won&apos;t cancel</option>
+                        <option value="refund">Refund request</option>
+                        <option value="council_tax">Council tax band challenge</option>
+                        <option value="mobile">Mobile contract dispute</option>
+                        <option value="parking">Parking charge appeal</option>
+                        <option value="insurance">Insurance claim dispute</option>
+                      </select>
+                    </div>
+                    <div className="mb-5">
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Brief description <span className="text-slate-500">(optional — for a personalised letter)</span></label>
+                      <textarea
+                        value={previewDescription}
+                        onChange={e => setPreviewDescription(e.target.value)}
+                        placeholder="e.g. My energy bill went up 40% with no warning in January..."
+                        rows={3}
+                        className="w-full bg-navy-800 border border-navy-700/50 text-white rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:border-mint-400/50 placeholder-slate-600"
+                      />
+                    </div>
+                    {previewError && (
+                      <p className="text-red-400 text-sm mb-4 bg-red-400/10 rounded-lg px-3 py-2">{previewError}</p>
+                    )}
+                    <button
+                      onClick={handlePreviewGenerate}
+                      disabled={previewLoading}
+                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-slate-950 font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                    >
+                      {previewLoading ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Generating your letter...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          Generate free preview
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <CheckCircle className="h-5 w-5 text-green-400" />
+                      <p className="text-white font-semibold text-sm">Your letter is ready</p>
+                    </div>
+                    {/* First paragraph visible */}
+                    <div className="bg-navy-800 rounded-xl p-4 mb-3 text-sm text-slate-300 leading-relaxed border border-navy-700/50">
+                      {previewResult}
+                    </div>
+                    {/* Rest blurred */}
+                    <div className="relative rounded-xl overflow-hidden mb-4">
+                      <div className="bg-navy-800 p-4 text-sm text-slate-300 leading-relaxed border border-navy-700/50 select-none">
+                        <p className="blur-sm">I therefore request that you investigate this matter and respond within 14 days with either a full refund of the overcharged amount, or a detailed written explanation of why the charges are justified under the terms of our agreement. I draw your attention to my statutory rights under the Consumer Rights Act 2015 and remind you that the Financial Ombudsman Service may be notified if this matter is not resolved satisfactorily.</p>
+                        <p className="blur-sm mt-2">If I do not receive a satisfactory response within 14 days, I will escalate this matter to the relevant regulatory body, including Ofgem, Ofcom, the Financial Conduct Authority, or the appropriate ombudsman service as applicable. I retain the right to seek further remedies, including through the courts.</p>
+                        <p className="blur-sm mt-2">Yours faithfully,<br />[Your Name]<br />[Your Address]<br />[Date]</p>
+                      </div>
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-navy-950/50 to-navy-950 flex items-end justify-center pb-4">
+                        <Link
+                          href="/auth/signup"
+                          onClick={() => capture('preview_signup_cta_click', { category: previewCategory })}
+                          className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-bold px-6 py-3 rounded-xl transition-all text-sm shadow-lg shadow-mint-400/20"
+                        >
+                          Sign up free to see the full letter
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setPreviewResult(null); setPreviewDescription(''); }}
+                      className="text-slate-500 hover:text-slate-300 text-xs transition-colors"
+                    >
+                      Try a different issue
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-center text-slate-500 text-xs mt-4">
+                Free users get 3 letters/month. Essential (£4.99/mo) gives unlimited letters.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Feature Section 2: Smart Subscription Tracking */}
         <section className="py-20 md:py-28 bg-navy-900/30">
           <div className="container mx-auto px-4 md:px-6">
@@ -409,7 +563,76 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Feature Section 3: Find Better Deals */}
+        {/* Feature Section 3: AI Financial Assistant */}
+        <section className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
+            >
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-purple-400/10 px-3 py-1.5 text-xs text-purple-400 border border-purple-400/20 mb-6">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span>AI Financial Assistant</span>
+                </div>
+                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                  Manage your finances through conversation
+                </h2>
+                <p className="text-slate-400 text-lg leading-relaxed mb-6">
+                  The only platform where AI actively helps you organise, categorise, and fix your financial data. Just tell it what to do.
+                </p>
+                <ul className="space-y-3 mb-8">
+                  {[
+                    'Recategorise transactions by name: "OneStream should be broadband"',
+                    'Find missing subscriptions: "Find my Virgin Media payments"',
+                    'Get spending insights: "What\'s my biggest expense this month?"',
+                    'Every action confirmed before it\'s made, no surprises',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-purple-400 mt-0.5 shrink-0" />
+                      <span className="text-slate-300 text-sm">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                {ctaButton}
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700/50">
+                  <MessageCircle className="h-4 w-4 text-purple-400" />
+                  <span className="text-white text-sm font-medium">AI Financial Assistant</span>
+                  <span className="ml-auto w-2 h-2 bg-green-400 rounded-full" />
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-end">
+                    <div className="bg-purple-500 text-white rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[80%]">
+                      My OneStream direct debit keeps appearing as bills but it&apos;s broadband
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="bg-navy-800 text-slate-200 rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[80%] space-y-1">
+                      <p>I found 2 OneStream payments: £19.99/month. They&apos;re currently categorised as &quot;bills&quot;. I&apos;ll move them to &quot;broadband&quot; so they show correctly in your Money Hub. Shall I go ahead?</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <div className="bg-purple-500 text-white rounded-2xl rounded-br-sm px-4 py-2.5">
+                      Yes please
+                    </div>
+                  </div>
+                  <div className="flex justify-start">
+                    <div className="bg-navy-800 text-slate-200 rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[80%]">
+                      Done. OneStream is now under broadband and your spending dashboard has been updated.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Feature Section 4: Find Better Deals */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
             <motion.div

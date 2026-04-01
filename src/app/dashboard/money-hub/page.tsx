@@ -938,13 +938,85 @@ export default function MoneyHubPage() {
 
   if (!data) {
     return (
-      <div className="max-w-7xl text-center py-16">
-        <Wallet className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Connect your bank to get started</h2>
-        <p className="text-slate-400 mb-6">The Money Hub analyses your bank transactions to give you a complete financial picture.</p>
-        <Link href="/dashboard/subscriptions" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-lg">
-          Connect Bank Account
-        </Link>
+      <div className="max-w-7xl">
+        {/* Hero empty state */}
+        <div className="text-center py-10 mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-mint-400/10 border border-mint-400/20 mb-4">
+            <Wallet className="h-8 w-8 text-mint-400" />
+          </div>
+          <h2 className="text-3xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">
+            Connect your bank to unlock Money Hub
+          </h2>
+          <p className="text-slate-400 max-w-md mx-auto mb-6">
+            We analyse your transactions and give you a complete financial picture — spending, income, subscriptions, budgets, and savings goals.
+          </p>
+          <a
+            href="/api/auth/truelayer"
+            className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all"
+          >
+            <Building2 className="h-5 w-5" />
+            Connect Bank Account
+          </a>
+          <p className="text-slate-500 text-xs mt-3">FCA regulated via TrueLayer · Read-only access · Takes 2 minutes</p>
+        </div>
+
+        {/* Demo preview tiles (blurred) */}
+        <p className="text-slate-500 text-xs uppercase tracking-wider mb-3 text-center">Preview — your data will look like this</p>
+        <div className="relative rounded-2xl overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-navy-950/60 to-navy-950 z-10 pointer-events-none" />
+          <div className="blur-sm pointer-events-none select-none">
+            {/* Demo stat row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+              {[
+                { label: 'Monthly income', value: '£3,200', color: 'text-green-400' },
+                { label: 'Monthly outgoings', value: '£2,140', color: 'text-red-400' },
+                { label: 'Net position', value: '+£1,060', color: 'text-mint-400' },
+                { label: 'Subscriptions', value: '£127/mo', color: 'text-amber-400' },
+              ].map(item => (
+                <div key={item.label} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+                  <p className={`text-3xl font-bold ${item.color}`}>{item.value}</p>
+                  <p className="text-slate-400 text-sm mt-1">{item.label}</p>
+                </div>
+              ))}
+            </div>
+            {/* Demo spending categories */}
+            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+              <h3 className="text-white font-semibold mb-4">Spending by category this month</h3>
+              <div className="space-y-3">
+                {[
+                  { label: 'Groceries', pct: 24, amount: '£514', color: 'bg-green-400' },
+                  { label: 'Eating Out', pct: 16, amount: '£342', color: 'bg-orange-400' },
+                  { label: 'Subscriptions', pct: 12, amount: '£257', color: 'bg-purple-400' },
+                  { label: 'Transport', pct: 10, amount: '£214', color: 'bg-blue-400' },
+                  { label: 'Shopping', pct: 9, amount: '£193', color: 'bg-pink-400' },
+                ].map(c => (
+                  <div key={c.label} className="flex items-center gap-3">
+                    <span className="text-slate-300 text-sm w-28 flex-shrink-0">{c.label}</span>
+                    <div className="flex-1 bg-navy-800 rounded-full h-2">
+                      <div className={`${c.color} rounded-full h-2`} style={{ width: `${c.pct}%` }} />
+                    </div>
+                    <span className="text-slate-400 text-sm w-16 text-right">{c.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Feature list */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+          {[
+            { icon: '📊', title: '20+ spending categories', desc: 'See exactly where your money goes each month' },
+            { icon: '🔔', title: 'Price increase alerts', desc: 'Know the moment any bill goes up' },
+            { icon: '🎯', title: 'Budget planner', desc: 'Set limits and get alerts when approaching them' },
+          ].map(f => (
+            <div key={f.title} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4">
+              <span className="text-2xl">{f.icon}</span>
+              <p className="text-white font-semibold text-sm mt-2">{f.title}</p>
+              <p className="text-slate-400 text-xs mt-1">{f.desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -1223,6 +1295,22 @@ export default function MoneyHubPage() {
           </div>
           <button onClick={dismissFcaBanner} className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors">
             <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* AI Assistant nudge — shown to users with spending data */}
+      {deduplicatedSpending.length > 0 && !isPro && (
+        <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 flex items-center gap-3">
+          <MessageCircle className="h-4 w-4 text-purple-400 shrink-0" />
+          <p className="text-slate-300 text-sm flex-1">
+            Not sure about a category? The AI assistant can recategorise transactions, find missing subscriptions, and answer spending questions through conversation.
+          </p>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('paybacker:open_chat'))}
+            className="text-purple-400 hover:text-purple-300 text-xs font-medium whitespace-nowrap transition-colors"
+          >
+            Ask the AI
           </button>
         </div>
       )}
@@ -1986,7 +2074,7 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ SECTION 8: Net Worth Tracker ═══ */}
-      {isPaid ? (
+      {isPaid && (data.netWorth.assets > 0 || data.netWorth.liabilities > 0 || data.netWorth.assetsList?.length > 0 || data.netWorth.liabilitiesList?.length > 0) ? (
         <div id="tour-networth" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
             <Shield className="h-5 w-5 text-emerald-400" /> Net Worth
@@ -2896,13 +2984,14 @@ export default function MoneyHubPage() {
                   {chatMessages.length === 0 && (
                     <div className="text-center py-6">
                       <MessageCircle className="h-8 w-8 text-purple-400/30 mx-auto mb-2" />
-                      <p className="text-slate-400 text-sm mb-3">Ask me about your finances</p>
+                      <p className="text-white text-sm font-medium mb-1">Your AI Financial Assistant</p>
+                      <p className="text-slate-400 text-xs mb-3">I can organise your data through conversation. Tell me a transaction is miscategorised, ask me to find missing subscriptions, or get a spending breakdown.</p>
                       <div className="space-y-1">
                         {[
-                          'How much did I spend on eating out?',
-                          'Show me a pie chart of spending',
+                          'Find my OneStream payments',
+                          'Show me a pie chart of my spending',
+                          'My Costa transactions should be food',
                           'What subscriptions could I cancel?',
-                          'Set a budget for groceries',
                         ].map(q => (
                           <button key={q} onClick={() => setChatInput(q)} className="block w-full text-left text-xs text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 rounded px-3 py-1.5">
                             {q}

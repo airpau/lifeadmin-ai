@@ -30,12 +30,13 @@ export async function POST() {
   const increases = await detectPriceIncreases(user.id);
 
   if (increases.length > 0) {
-    // Fetch existing active alerts to prevent duplicate inserts
+    // Fetch ALL existing alerts (active, dismissed, actioned) to prevent duplicate inserts.
+    // Without this, dismissed alerts get recreated on the next detection run.
     const { data: existing } = await admin
       .from('price_increase_alerts')
       .select('merchant_normalized')
       .eq('user_id', user.id)
-      .eq('status', 'active');
+      .in('status', ['active', 'dismissed', 'actioned']);
 
     const existingMerchants = new Set((existing || []).map((a: { merchant_normalized: string }) => a.merchant_normalized));
     const newAlerts = increases.filter(i => !existingMerchants.has(i.merchantNormalized));

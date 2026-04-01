@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     // Parallel data fetching
     const [
       transactions, bankConns, subscriptions, budgets,
-      assets, liabilities, goals, alerts, tasks, overrides,
+      assets, liabilities, goals, alerts, tasks,
     ] = await Promise.all([
       admin.from('bank_transactions').select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
         .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(10000),
@@ -51,7 +51,6 @@ export async function GET(request: Request) {
       admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').order('created_at', { ascending: false }).limit(20),
       admin.from('tasks').select('id, title, type, status, provider_name, provider_type, disputed_amount, description, created_at')
         .eq('user_id', user.id).eq('type', 'opportunity').eq('status', 'pending_review').limit(10),
-      admin.from('money_hub_category_overrides').select('merchant_pattern, transaction_id').eq('user_id', user.id),
     ]);
 
     const txns = transactions.data || [];
@@ -68,131 +67,80 @@ export async function GET(request: Request) {
       return ts >= startDate && ts <= endDate;
     });
 
-    // Income vs outgoings — detect transfers between own accounts
-    const isXferTxn = (t: any) => {
-      const desc = (t.description || '').toLowerCase();
-      const cat = (t.category || '').toUpperCase();
-      // Bank-level transfer category
-      if (cat === 'TRANSFER') return true;
-      // Description-based transfer detection
-      if (desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
-          desc.includes('internal') || desc.includes('between accounts') || desc.includes('via online - pymt')) return true;
-      // Income type tagged as transfer
-      if (t.income_type === 'transfer') return true;
-      return false;
-    };
-    const monthlyIncome = thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
-    const monthlyOutgoings = thisMonthTxns.filter(t => parseFloat(t.amount) < 0 && !isXferTxn(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+    // ── Income & Spending via DB RPCs (accurate transfer exclusion) ──
+    const viewYear = viewDate.getFullYear();
+    const viewMonth = viewDate.getMonth() + 1;
 
-    // Category breakdown - use learning-aware categorisation
+    // Parallel RPC calls for current month totals + breakdowns
+    const [incomeTotalRes, spendingTotalRes, spendingBreakdownRes, incomeBreakdownRes] = await Promise.all([
+      admin.rpc('get_monthly_income_total', { p_user_id: user.id, p_year: viewYear, p_month: viewMonth }),
+      admin.rpc('get_monthly_spending_total', { p_user_id: user.id, p_year: viewYear, p_month: viewMonth }),
+      admin.rpc('get_monthly_spending', { p_user_id: user.id, p_year: viewYear, p_month: viewMonth }),
+      admin.rpc('get_monthly_income', { p_user_id: user.id, p_year: viewYear, p_month: viewMonth }),
+    ]);
+
+    const monthlyIncome = parseFloat(incomeTotalRes.data) || 0;
+    const monthlyOutgoings = parseFloat(spendingTotalRes.data) || 0;
+
+    // Category breakdown from DB (already excludes transfers)
+    const spendingRows = (spendingBreakdownRes.data || []) as Array<{ category: string; category_total: string; transaction_count: number }>;
+    const categoryBreakdown = spendingRows
+      .map(r => ({ category: r.category, total: parseFloat(r.category_total) || 0 }))
+      .sort((a, b) => b.total - a.total);
+    // Lookup map for budget calculations
+    const categoryTotals: Record<string, number> = {};
+    for (const r of spendingRows) {
+      categoryTotals[r.category] = parseFloat(r.category_total) || 0;
+    }
+
+    // Top merchants (still computed client-side from transactions)
     const { normaliseMerchantName } = await import('@/lib/merchant-normalise');
-    const { loadLearnedRules, categoriseWithLearningSync: categorise } = await import('@/lib/learning-engine');
-    await loadLearnedRules();
-
-    // Filter out transfers for spending analysis
     const isTransfer = (t: any) => {
       const cat = (t.category || '').toUpperCase();
       const desc = (t.description || '').toLowerCase();
       if (cat === 'TRANSFER') return true;
-      if (desc.includes('personal transfer') || desc.includes('to a/c ') || desc.includes('via mobile xfer')) return true;
-      if (desc.includes('barclaycard') || desc.includes('mbna') || desc.includes('halifax credit') || desc.includes('hsbc bank visa')) return true;
+      if (t.income_type === 'transfer' || t.user_category === 'transfers') return true;
+      if (desc.includes('personal transfer') || desc.includes('to a/c ') || desc.includes('from a/c') ||
+          desc.includes('via mobile xfer') || desc.includes('internal') || desc.includes('between accounts')) return true;
       return false;
     };
-
-    const spendingTxns = thisMonthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t));
-
-    // Generic auto-assigned categories that can be overridden by runtime categorisation.
-    // These are fallback values the old sync assigned when no keyword matched — they are
-    // NOT user corrections, so we allow the runtime categoriser to produce something more
-    // specific (e.g. mortgage transactions sitting in 'bills', groceries in 'shopping').
-    // Exception: if the user explicitly recategorised the transaction, respect their choice.
-    const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
-
-    const overrideRows = overrides.data || [];
-    const txnOverrideIds = new Set(overrideRows.filter(o => o.transaction_id).map(o => o.transaction_id as string));
-    const merchantOverridePatterns = overrideRows
-      .filter(o => !o.transaction_id && o.merchant_pattern !== 'txn_specific')
-      .map(o => (o.merchant_pattern as string).toLowerCase());
-
-    function isUserOverride(t: { id?: string; merchant_name?: string; description?: string }): boolean {
-      if (t.id && txnOverrideIds.has(t.id)) return true;
-      const merchantLower = (t.merchant_name || '').toLowerCase();
-      const descLower = (t.description || '').toLowerCase();
-      return merchantOverridePatterns.some(p => p.length > 2 && (merchantLower.includes(p) || descLower.includes(p)));
-    }
-
-    const categoryTotals: Record<string, number> = {};
     const merchantTotals: Record<string, number> = {};
-    for (const t of spendingTxns) {
-      // Prefer user_category unless it's a generic auto-assigned fallback that hasn't been
-      // explicitly set by the user (checked via money_hub_category_overrides).
-      const rawCat = t.user_category || '';
-      const cat = (rawCat && (!SOFT_CATEGORIES.has(rawCat) || isUserOverride(t)))
-        ? rawCat
-        : (categorise(t.description || '', t.category || '') || rawCat || 'other');
-      const amt = Math.abs(parseFloat(t.amount));
-      categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
+    for (const t of thisMonthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t))) {
       const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
-      merchantTotals[merchant] = (merchantTotals[merchant] || 0) + amt;
+      merchantTotals[merchant] = (merchantTotals[merchant] || 0) + Math.abs(parseFloat(t.amount));
     }
-
-    // Merge similar "other" category keys into one
-    const otherKeys = Object.keys(categoryTotals).filter(k => ['other', 'Other', 'unknown', 'uncategorised', ''].includes(k));
-    if (otherKeys.length > 1) {
-      let merged = 0;
-      for (const k of otherKeys) { merged += categoryTotals[k]; delete categoryTotals[k]; }
-      categoryTotals['other'] = merged;
-    }
-
-    const categoryBreakdown = Object.entries(categoryTotals)
-      .map(([cat, total]) => ({ category: cat, total: parseFloat(total.toFixed(2)) }))
-      .sort((a, b) => b.total - a.total);
-
     const topMerchants = Object.entries(merchantTotals)
       .map(([name, total]) => ({ merchant: name, total: parseFloat(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
-    // Income breakdown by type
+    // Income breakdown from DB
     const incomeByType: Record<string, number> = {};
-    for (const t of thisMonthTxns.filter(t => parseFloat(t.amount) > 0 && !isXferTxn(t))) {
-      const type = t.income_type || 'other';
-      incomeByType[type] = (incomeByType[type] || 0) + parseFloat(t.amount);
+    for (const row of (incomeBreakdownRes.data || []) as Array<{ source: string; source_total: string }>) {
+      incomeByType[row.source] = parseFloat(row.source_total) || 0;
     }
 
-    // Merge 'other', 'unknown', 'uncategorised', and empty income types into a single 'Other' entry
-    const mergeAsOther = ['other', 'unknown', 'uncategorised', ''];
-    let otherTotal = 0;
-    for (const key of Object.keys(incomeByType)) {
-      if (mergeAsOther.includes(key.toLowerCase())) {
-        otherTotal += incomeByType[key];
-        delete incomeByType[key];
-      }
-    }
-    if (otherTotal > 0) {
-      incomeByType['other'] = (incomeByType['other'] || 0) + otherTotal;
-    }
-
-    // Monthly trends (last 6 months)
-    const monthlyTrends: Array<{ month: string; income: number; outgoings: number }> = [];
+    // Monthly trends via DB RPCs (accurate transfer exclusion for all months)
+    const trendMonths: Array<{ year: number; month: number; monthStr: string }> = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const monthTxns = txns.filter(t => t.timestamp.startsWith(monthStr));
-      const isXfer = (t: any) => {
-        const desc = (t.description || '').toLowerCase();
-        const cat = (t.category || '').toUpperCase();
-        if (cat === 'TRANSFER') return true;
-        if (desc.includes('personal transfer') || desc.includes('from a/c') || desc.includes('via mobile xfer') ||
-            desc.includes('internal') || desc.includes('between accounts') || desc.includes('via online - pymt')) return true;
-        if (t.income_type === 'transfer') return true;
-        return false;
-      };
-      const inc = monthTxns.filter(t => parseFloat(t.amount) > 0 && !isXfer(t)).reduce((s, t) => s + parseFloat(t.amount), 0);
-      // Exclude transfers from outgoings (consistent with overview)
-      const out = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isXfer(t)).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
-      monthlyTrends.push({ month: monthStr, income: parseFloat(inc.toFixed(2)), outgoings: parseFloat(out.toFixed(2)) });
+      trendMonths.push({
+        year: d.getFullYear(),
+        month: d.getMonth() + 1,
+        monthStr: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      });
     }
+    const trendResults = await Promise.all(
+      trendMonths.map(m => Promise.all([
+        admin.rpc('get_monthly_income_total', { p_user_id: user.id, p_year: m.year, p_month: m.month }),
+        admin.rpc('get_monthly_spending_total', { p_user_id: user.id, p_year: m.year, p_month: m.month }),
+      ]))
+    );
+    const monthlyTrends = trendMonths.map((m, i) => ({
+      month: m.monthStr,
+      income: parseFloat(trendResults[i][0].data) || 0,
+      outgoings: parseFloat(trendResults[i][1].data) || 0,
+    }));
 
     // Net worth
     const bankBalances = 0; // TrueLayer balance would come from a separate API call

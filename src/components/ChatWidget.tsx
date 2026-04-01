@@ -129,6 +129,13 @@ export default function ChatWidget() {
     return () => observer.disconnect();
   }, []);
 
+  // Listen for external open requests (e.g. from nudge banners)
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener('paybacker:open_chat', handler);
+    return () => window.removeEventListener('paybacker:open_chat', handler);
+  }, []);
+
   // Persist chat history to localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && messages.length > 0) {
@@ -319,12 +326,25 @@ export default function ChatWidget() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
-              <div className="text-center py-8">
+              <div className="text-center py-6">
                 <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="rounded-lg mx-auto mb-3" />
                 <p className="text-white font-medium mb-1">Hi there!</p>
-                <p className="text-slate-400 text-sm mb-4">Ask me anything about Paybacker, UK consumer rights, or how to save money.</p>
+                <p className="text-slate-400 text-sm mb-3">I can help you organise your finances through conversation. Try asking me to recategorise transactions, find missing subscriptions, check your spending, or dispute a bill.</p>
                 <div className="space-y-2">
-                  {['How can Paybacker help me?', 'What are my consumer rights?', 'How do I cancel a subscription?', 'I have a feature suggestion'].map((q) => (
+                  {((userTier === 'essential' || userTier === 'pro')
+                    ? [
+                        'Show my subscriptions',
+                        'Find my OneStream payments',
+                        "What's my biggest expense category?",
+                        'Help me dispute a bill',
+                      ]
+                    : [
+                        'How can Paybacker help me?',
+                        'What are my consumer rights?',
+                        'How do I cancel a subscription?',
+                        'Help me dispute a bill',
+                      ]
+                  ).map((q) => (
                     <button
                       key={q}
                       onClick={() => { setInput(q); }}
