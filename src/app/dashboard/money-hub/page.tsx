@@ -4,16 +4,18 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Wallet, TrendingUp, TrendingDown, CreditCard, BarChart3,
   AlertTriangle, Clock, Target, PiggyBank, FileText, Building2,
   ArrowRight, Loader2, Lock, RefreshCw, Plus, ChevronDown, ChevronUp,
   Shield, Zap, Mail, Calendar, DollarSign, X, Send, MessageCircle,
-  ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye,
+  ArrowLeft, Edit3, Trash2, HelpCircle, Search, Eye, CheckCircle2, Info,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
+import { createClient } from '@/lib/supabase/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -257,6 +259,36 @@ export default function MoneyHubPage() {
   const [addMoneyGoalId, setAddMoneyGoalId] = useState<string | null>(null);
   const [addMoneyAmount, setAddMoneyAmount] = useState('');
 
+  // Router
+  const router = useRouter();
+  const supabase = createClient();
+
+  // Expired bank connections
+  const [expiredConnections, setExpiredConnections] = useState<Array<{ id: string; bank_name: string; status: string }>>([]);
+
+  // Toast notifications
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    setToast({ message, type });
+    toastTimeout.current = setTimeout(() => setToast(null), 5000);
+  };
+
+  // Sparse month data
+  const [expectedBills, setExpectedBills] = useState<Array<{ name: string; expected_amount: number; category: string; paid: boolean }>>([]);
+  const [expectedBillsTotal, setExpectedBillsTotal] = useState(0);
+  const [prevMonthData, setPrevMonthData] = useState<{
+    monthName: string;
+    totalIncome: number;
+    totalSpent: number;
+    savingsRate: number;
+    txnCount: number;
+    categories: Array<{ category: string; total: number }>;
+    spendChange: number | null;
+  } | null>(null);
+  const [loadingPrevMonth, setLoadingPrevMonth] = useState(false);
+
   // Month selector
   const [selectedMonth, setSelectedMonth] = useState('');
 
@@ -294,10 +326,64 @@ export default function MoneyHubPage() {
   const syncMoneyHub = async () => {
     setSyncing(true);
     try {
-      await fetch('/api/money-hub/sync', { method: 'POST' });
-      await refreshData();
-    } catch { /* silent */ }
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/bank-sync?trigger=manual`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (res.status === 429) {
+        const responseData = await res.json();
+        showToast(responseData.error || 'Rate limited. Try again later.', 'error');
+        setSyncing(false);
+        return;
+      }
+
+      if (res.status === 404) {
+        showToast('No active bank connections found. Connect your bank first.', 'error');
+        setSyncing(false);
+        return;
+      }
+
+      const responseData = await res.json();
+
+      if (responseData.summary?.token_expired > 0) {
+        const expired = (responseData.results || []).filter((r: any) => r.status === 'token_expired');
+        setExpiredConnections(expired.map((r: any) => ({ id: r.connection_id || '', bank_name: r.bank_name || 'Bank', status: 'expired' })));
+        showToast('Bank connection expired. Please reconnect your bank.', 'error');
+      } else if (responseData.summary?.synced > 0) {
+        showToast(`Synced ${responseData.summary.total_new || 0} new transactions`, 'success');
+        await refreshData();
+        router.refresh();
+      } else if (responseData.summary?.no_new_data > 0) {
+        showToast('No new transactions to sync', 'info');
+      } else if (responseData.summary?.errors > 0) {
+        showToast('Sync encountered errors. Please try again later.', 'error');
+      } else {
+        // Fallback — still refresh data after successful edge function call
+        await refreshData();
+      }
+    } catch (err) {
+      // Edge function not deployed yet — fall back to the local sync route
+      try {
+        await fetch('/api/money-hub/sync', { method: 'POST' });
+        await refreshData();
+        showToast('Sync complete', 'success');
+      } catch {
+        showToast('Sync failed. Please try again.', 'error');
+      }
+    }
     setSyncing(false);
+  };
+
+  const handleReconnectBank = () => {
+    window.location.href = '/api/auth/truelayer';
   };
 
   // ─── Category drill-down ──────────────────────────────────────────────────
@@ -646,6 +732,44 @@ export default function MoneyHubPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
 
+    // Fetch expired bank connections
+    (async () => {
+      try {
+        const sb = createClient();
+        const { data: { user } } = await sb.auth.getUser();
+        if (user) {
+          const { data: conns } = await sb.from('bank_connections')
+            .select('id, bank_name, status')
+            .eq('user_id', user.id)
+            .in('status', ['expired', 'token_expired']);
+          if (conns && conns.length > 0) {
+            setExpiredConnections(conns);
+          }
+        }
+      } catch { /* silent */ }
+    })();
+
+    // Fetch expected bills for sparse month display
+    fetch('/api/money-hub/expected-bills')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error && d.bills) {
+          setExpectedBills(d.bills);
+          setExpectedBillsTotal(d.totalExpected || 0);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch previous month data for recap
+    setLoadingPrevMonth(true);
+    fetch('/api/money-hub/prev-month')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error) setPrevMonthData(d);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingPrevMonth(false));
+
     // Restore chat history
     try {
       const saved = localStorage.getItem('pb_moneyhub_chat_history');
@@ -744,6 +868,44 @@ export default function MoneyHubPage() {
   const avgIncome = trends.length > 0 ? trends.reduce((s, t) => s + t.income, 0) / trends.length : 0;
   const avgOutgoings = trends.length > 0 ? trends.reduce((s, t) => s + t.outgoings, 0) / trends.length : 0;
 
+  // Sparse month detection
+  const isSparseMonth = data.overview.monthlyOutgoings === 0 && data.overview.monthlyIncome === 0 && deduplicatedSpending.length < 5;
+  const isFirstWeek = new Date().getDate() <= 7;
+  const isCurrentMonthView = !selectedMonth; // viewing current month
+  const showSparseMonthContent = (isSparseMonth || isFirstWeek) && isCurrentMonthView;
+  const hasNoCurrentMonthTxns = deduplicatedSpending.length === 0 && totalIncome === 0;
+  const hasFewCurrentMonthTxns = deduplicatedSpending.length > 0 && deduplicatedSpending.length < 5;
+
+  // Last synced timestamp (from most recent bank connection)
+  const lastSyncedAt = data.accounts.reduce((latest: string | null, acc: any) => {
+    if (!acc.last_synced_at) return latest;
+    if (!latest) return acc.last_synced_at;
+    return new Date(acc.last_synced_at) > new Date(latest) ? acc.last_synced_at : latest;
+  }, null as string | null);
+
+  const formatTimeAgo = (dateStr: string) => {
+    const mins = Math.round((Date.now() - new Date(dateStr).getTime()) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return 'yesterday';
+    return `${days} days ago`;
+  };
+
+  // Sync tier info
+  const syncTierText = (() => {
+    switch (data.tier) {
+      case 'pro': return `Auto-syncs every 6 hours${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
+      case 'essential': return `Auto-syncs daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
+      default: return 'Manual sync · 1× per day';
+    }
+  })();
+
+  // Current month name for display
+  const currentMonthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -805,24 +967,66 @@ export default function MoneyHubPage() {
           >
             <HelpCircle className="h-5 w-5" />
           </button>
-          <select
-            value={selectedMonth}
-            onChange={(e) => {
-              setSelectedMonth(e.target.value);
-              refreshData(e.target.value);
-            }}
-            className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
-          >
-            <option value="">This month</option>
-            {Array.from({ length: 6 }, (_, i) => {
-              const d = new Date();
-              d.setDate(1);
-              d.setMonth(d.getMonth() - (i + 1));
-              const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-              const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-              return <option key={val} value={val}>{label}</option>;
-            })}
-          </select>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const months = Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date();
+                  d.setDate(1);
+                  d.setMonth(d.getMonth() - (i + 1));
+                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                });
+                const currentIdx = selectedMonth ? months.indexOf(selectedMonth) : -1;
+                const nextVal = currentIdx < months.length - 1 ? months[currentIdx + 1] : months[months.length - 1];
+                setSelectedMonth(nextVal);
+                refreshData(nextVal);
+              }}
+              className="text-slate-400 hover:text-white p-1.5 rounded transition-colors"
+              title="Previous month"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                refreshData(e.target.value);
+              }}
+              className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
+            >
+              <option value="">This month</option>
+              {Array.from({ length: 12 }, (_, i) => {
+                const d = new Date();
+                d.setDate(1);
+                d.setMonth(d.getMonth() - (i + 1));
+                const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const label = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+                return <option key={val} value={val}>{label}</option>;
+              })}
+            </select>
+            <button
+              onClick={() => {
+                if (!selectedMonth) return;
+                const months = ['', ...Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date();
+                  d.setDate(1);
+                  d.setMonth(d.getMonth() - (i + 1));
+                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                })];
+                const currentIdx = months.indexOf(selectedMonth);
+                if (currentIdx > 0) {
+                  const nextVal = months[currentIdx - 1];
+                  setSelectedMonth(nextVal);
+                  refreshData(nextVal);
+                }
+              }}
+              disabled={!selectedMonth}
+              className="text-slate-400 hover:text-white p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Next month"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
           <button
             onClick={syncMoneyHub}
             disabled={syncing}
@@ -854,6 +1058,65 @@ export default function MoneyHubPage() {
           </button>
         </div>
       )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[100] max-w-sm px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-[slideIn_0.3s_ease] ${
+          toast.type === 'success' ? 'bg-green-500/20 border-green-500/30 text-green-300' :
+          toast.type === 'error' ? 'bg-red-500/20 border-red-500/30 text-red-300' :
+          'bg-blue-500/20 border-blue-500/30 text-blue-300'
+        }`}>
+          {toast.type === 'success' && <CheckCircle2 className="h-5 w-5 shrink-0" />}
+          {toast.type === 'error' && <AlertTriangle className="h-5 w-5 shrink-0" />}
+          {toast.type === 'info' && <Info className="h-5 w-5 shrink-0" />}
+          <p className="text-sm font-medium">{toast.message}</p>
+          <button onClick={() => setToast(null)} className="ml-auto text-current/60 hover:text-current">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ═══ Expired Bank Connection Banner ═══ */}
+      {expiredConnections.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="font-medium text-amber-200">
+                Bank connection expired
+              </p>
+              <p className="text-sm text-amber-300/70">
+                Your {expiredConnections.map(c => c.bank_name || 'bank').join(' and ')} connection{expiredConnections.length > 1 ? 's have' : ' has'} expired. Reconnect to resume automatic syncing.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleReconnectBank}
+            className="shrink-0 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 font-medium px-4 py-2 rounded-lg text-sm transition-all"
+          >
+            Reconnect Bank
+          </button>
+        </div>
+      )}
+
+      {/* ═══ Sync Tier Info ═══ */}
+      <div className="flex items-center justify-between bg-navy-900/50 border border-navy-700/30 rounded-lg px-4 py-2">
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span>{syncTierText}</span>
+          {data.tier === 'free' && (
+            <Link href="/pricing" className="text-mint-400 hover:text-mint-300 ml-1 font-medium">
+              Upgrade for auto-sync
+            </Link>
+          )}
+        </div>
+        {lastSyncedAt && (
+          <span className="text-xs text-slate-500 flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            Last synced: {formatTimeAgo(lastSyncedAt)}
+          </span>
+        )}
+      </div>
 
       {/* ═══ SECTION 1: Financial Snapshot ═══ */}
       {(() => {
@@ -977,6 +1240,174 @@ export default function MoneyHubPage() {
           </>
         );
       })()}
+
+      {/* ═══ SPARSE MONTH: "Month So Far" Section ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && hasNoCurrentMonthTxns && (
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 text-center">
+          <Calendar className="h-8 w-8 text-blue-400 mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-white">{currentMonthName} has just started</h3>
+          <p className="text-slate-400 mt-1 max-w-lg mx-auto">
+            Your transactions will appear here as they confirm with your bank.
+            {data.tier === 'pro' ? ' Auto-syncing every 6 hours.' :
+             data.tier === 'essential' ? ' Auto-syncing daily.' :
+             ' Sync manually or upgrade for automatic syncs.'}
+          </p>
+          <p className="text-xs text-slate-500 mt-2">
+            Last synced: {lastSyncedAt ? formatTimeAgo(lastSyncedAt) : 'Never'}
+          </p>
+        </div>
+      )}
+
+      {/* ═══ SPARSE MONTH: Previous Month Recap ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && prevMonthData && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
+            <BarChart3 className="h-5 w-5 text-purple-400" />
+            {prevMonthData.monthName} Summary
+            {prevMonthData.spendChange !== null && (
+              <span className={`text-xs font-normal ml-2 px-2 py-0.5 rounded-full ${
+                prevMonthData.spendChange <= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+              }`}>
+                {prevMonthData.spendChange <= 0 ? '↓' : '↑'} {Math.abs(prevMonthData.spendChange).toFixed(1)}% vs previous month
+              </span>
+            )}
+          </h2>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-3 gap-4 mb-5">
+            <div className="bg-navy-950/50 rounded-xl p-4 text-center border border-navy-700/30">
+              <p className="text-green-400 text-xl font-bold">£{fmt(prevMonthData.totalIncome)}</p>
+              <p className="text-slate-500 text-xs">Income</p>
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-4 text-center border border-navy-700/30">
+              <p className="text-red-400 text-xl font-bold">£{fmt(prevMonthData.totalSpent)}</p>
+              <p className="text-slate-500 text-xs">Spent</p>
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-4 text-center border border-navy-700/30">
+              <p className={`text-xl font-bold ${prevMonthData.savingsRate >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {prevMonthData.savingsRate.toFixed(1)}%
+              </p>
+              <p className="text-slate-500 text-xs">Savings Rate</p>
+            </div>
+          </div>
+
+          {/* Spending breakdown pie chart */}
+          {prevMonthData.categories.length > 0 && (
+            <div className="grid md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-white text-sm font-semibold mb-3">Spending Breakdown</h3>
+                <PieChartWidget
+                  data={prevMonthData.categories.slice(0, 8).map(c => ({
+                    label: CATEGORY_LABELS[c.category]?.label || c.category,
+                    value: c.total,
+                    color: CATEGORY_LABELS[c.category]?.color || '#475569',
+                  }))}
+                />
+              </div>
+              <div>
+                <h3 className="text-white text-sm font-semibold mb-3">Top 5 Categories</h3>
+                <BarChartWidget
+                  data={prevMonthData.categories.slice(0, 5).map(c => ({
+                    label: `${CATEGORY_LABELS[c.category]?.icon || '📋'} ${CATEGORY_LABELS[c.category]?.label || c.category}`,
+                    value: c.total,
+                    color: CATEGORY_LABELS[c.category]?.color || '#475569',
+                  }))}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 pt-3 border-t border-navy-700/50 text-center">
+            <button
+              onClick={() => {
+                const prevDate = new Date();
+                prevDate.setMonth(prevDate.getMonth() - 1);
+                const val = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+                setSelectedMonth(val);
+                refreshData(val);
+              }}
+              className="text-mint-400 text-xs hover:text-mint-300 font-medium"
+            >
+              View full {prevMonthData.monthName} details →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ SPARSE MONTH: Expected Bills This Month ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && expectedBills.length > 0 && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
+            <FileText className="h-5 w-5 text-sky-400" />
+            Expected Bills for {currentMonthName}
+          </h2>
+          <div className="space-y-2">
+            {expectedBills.slice(0, 15).map((bill, i) => {
+              const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
+              return (
+                <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm ${bill.paid ? 'text-green-400' : 'text-slate-500'}`}>
+                      {bill.paid ? '✓' : '☐'}
+                    </span>
+                    <span className="text-sm w-5">{info.icon}</span>
+                    <span className={`text-sm ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>
+                      {cleanMerchantName(bill.name)}
+                    </span>
+                  </div>
+                  <span className={`text-sm font-medium ${bill.paid ? 'text-green-400' : 'text-slate-300'}`}>
+                    ~£{fmt(bill.expected_amount)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
+            <span className="text-slate-400 text-sm">Total expected</span>
+            <span className="text-white font-bold text-sm">~£{fmt(expectedBillsTotal)}</span>
+          </div>
+          <p className="text-slate-600 text-[10px] mt-2">
+            Based on recurring transactions and active subscriptions. Bills get checked off (✓) as they come through.
+          </p>
+        </div>
+      )}
+
+      {/* ═══ SPARSE MONTH: Budget Forecast ═══ */}
+      {showSparseMonthContent && isCurrentMonthView && data.budgets.length > 0 && prevMonthData && prevMonthData.categories.length > 0 && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
+            <Target className="h-5 w-5 text-purple-400" />
+            {currentMonthName} Budget Forecast
+            <span className="text-slate-500 text-xs font-normal ml-1">(based on {prevMonthData.monthName} actuals)</span>
+          </h2>
+          <div className="space-y-3">
+            {data.budgets.map((b: any) => {
+              const prevCatSpend = prevMonthData.categories.find(c => c.category === b.category)?.total || 0;
+              const info = CATEGORY_LABELS[b.category] || CATEGORY_LABELS.other;
+              const overBudget = prevCatSpend > b.monthly_limit;
+              const diff = Math.abs(prevCatSpend - b.monthly_limit);
+              return (
+                <div key={b.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/30">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{info.icon}</span>
+                    <span className="text-white text-sm font-medium">{info.label}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-slate-400">{prevMonthData.monthName.split(' ')[0]} spent £{fmt(prevCatSpend)}</span>
+                    <span className="text-slate-600">→</span>
+                    <span className="text-slate-300">Budget £{fmt(b.monthly_limit)}</span>
+                    <span className={`font-medium px-2 py-0.5 rounded-full ${
+                      overBudget ? 'bg-red-500/15 text-red-400' : 'bg-green-500/15 text-green-400'
+                    }`}>
+                      {overBudget ? `⚠️ Over by £${fmt(diff)}` : `✅ Under budget`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ═══ SECTION 1b: Income Breakdown ═══ */}
       <div id="tour-income" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
