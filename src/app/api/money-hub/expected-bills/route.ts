@@ -48,6 +48,30 @@ export async function GET() {
       (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30
     );
 
+    // M6: Filter out self-transfers (inter-account transfers appearing as expected bills)
+    const transferPatterns = [
+      /\bto a\/c\b/i, /\bfrom a\/c\b/i, /\bpersonal transfer\b/i,
+      /\bvia mobile\s*-?\s*pymt\b/i, /\bvia online\s*-?\s*pymt\b/i,
+      /\bbetween accounts\b/i, /\binternal\b/i,
+      /\b(airey|airprop|jpg operatio)\b/i, /\bjohn airey\b/i, /\bp a airey\b/i,
+    ];
+    bills = bills.filter((b: any) => {
+      const name = (b.provider_name || '').toLowerCase();
+      const key = (b.bill_key || '').toLowerCase();
+      return !transferPatterns.some(p => p.test(name) || p.test(key));
+    });
+
+    // M7: Clean garbled provider names (strip bank reference suffixes)
+    for (const bill of bills) {
+      if (bill.provider_name) {
+        // Strip patterns like "LLAIR0012/0001/BIS26VIA" or long alphanumeric suffixes
+        bill.provider_name = bill.provider_name
+          .replace(/\s+[A-Z]{2,}[\d\/]+[A-Z]*\d*$/i, '')
+          .replace(/\s+\d{8,}.*$/, '')
+          .trim();
+      }
+    }
+
     // Merge similar providers by normalised name (e.g. "COMMUNITYFIBRE LTD" + "Community Fibre")
     const mergedMap = new Map<string, any>();
     for (const bill of bills) {

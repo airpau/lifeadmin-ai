@@ -417,6 +417,17 @@ export default function SubscriptionsPage() {
 
   const totalMonthly = statutoryTotalMonthly + flexibleTotalMonthly;
 
+  // Total across ALL subscriptions (including hidden finance payments) for annual cost
+  const allActiveMonthly = subscriptions
+    .filter(s => s.status === 'active')
+    .reduce((sum, s) => {
+      let monthlyAmt = parseFloat(String(s.amount)) || 0;
+      if (s.billing_cycle === 'yearly') monthlyAmt = monthlyAmt / 12;
+      else if (s.billing_cycle === 'quarterly') monthlyAmt = monthlyAmt / 3;
+      return sum + monthlyAmt;
+    }, 0);
+  const allActiveCount = subscriptions.filter(s => s.status === 'active').length;
+
   const handleToggleBulk = (id: string) => {
     const newSet = new Set(selectedForBulk);
     if (newSet.has(id)) newSet.delete(id);
@@ -1484,13 +1495,13 @@ export default function SubscriptionsPage() {
           <div>
             <p className="text-slate-400 text-xs mb-1">Active Subscriptions</p>
             <h3 className="text-2xl font-bold text-white">
-              {displaySubscriptions.filter((s) => s.status === 'active').length}
+              {allActiveCount}
             </h3>
-            <p className="text-slate-500 text-xs mt-1">Tracked active payments</p>
+            <p className="text-slate-500 text-xs mt-1">All tracked payments</p>
           </div>
           <div className="text-right">
              <p className="text-slate-400 text-xs mb-1">Total Annual Cost</p>
-             <h3 className="text-2xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{formatGBP(totalMonthly * 12)}</h3>
+             <h3 className="text-2xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{formatGBP(allActiveMonthly * 12)}</h3>
           </div>
         </div>
       </div>
@@ -1917,7 +1928,7 @@ export default function SubscriptionsPage() {
                 </div>
               )}
 
-              {sub.status === 'active' && !sub.needs_review && (
+              {sub.status === 'active' && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
                     {isStatutoryService(sub.provider_name) ? (
                       <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">

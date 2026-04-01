@@ -440,21 +440,27 @@ export default function DashboardPage() {
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-          <button
-            onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
-            className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
-          >
-            <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-white font-semibold">{formatGBP(priceAlerts.reduce((sum, a) => {
-                const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-                return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-              }, 0))}/yr</p>
-              <p className="text-slate-400 text-xs">Price increase alerts</p>
-            </div>
-          </button>
+          {(() => {
+            const alertTotal = priceAlerts.reduce((sum, a) => {
+              const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+              return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+            }, 0);
+            if (alertTotal <= 0) return null;
+            return (
+              <button
+                onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
+                className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
+              >
+                <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-white font-semibold">{formatGBP(alertTotal)}/yr</p>
+                  <p className="text-slate-400 text-xs">Price increase alerts</p>
+                </div>
+              </button>
+            );
+          })()}
 
           <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
             <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-400 h-10 w-10 flex items-center justify-center shrink-0">
@@ -705,8 +711,8 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {task.isLoan && (
-                      <Link href={complaintUrl} className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Start Dispute
+                      <Link href="/dashboard/deals" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Review Terms
                       </Link>
                     )}
                     {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (

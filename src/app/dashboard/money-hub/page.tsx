@@ -2002,7 +2002,7 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ SECTION 8: Net Worth Tracker ═══ */}
-      {isPaid ? (
+      {isPaid && (data.netWorth.assets > 0 || data.netWorth.liabilities > 0 || data.netWorth.assetsList?.length > 0 || data.netWorth.liabilitiesList?.length > 0) ? (
         <div id="tour-networth" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
             <Shield className="h-5 w-5 text-emerald-400" /> Net Worth

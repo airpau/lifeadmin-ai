@@ -1415,7 +1415,7 @@ function GuidedTour({ onComplete }: { onComplete: () => void }) {
           transition={{ duration: 0.2 }}
           className="absolute z-[101] bg-navy-800 border border-mint-400/30 rounded-xl p-4 shadow-2xl max-w-[280px]"
           style={{
-            top: rect.bottom + 12,
+            top: rect.bottom + 12 + 200 > window.innerHeight ? rect.top - 120 : rect.bottom + 12,
             left: Math.min(Math.max(rect.left, 16), window.innerWidth - 296),
           }}
         >
