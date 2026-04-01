@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAccessToken, fetchAccounts, fetchTransactions, BankConnection } from '@/lib/truelayer';
+import { getAccessToken, fetchAccounts, fetchTransactions, fetchPendingTransactions, BankConnection } from '@/lib/truelayer';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 
@@ -105,11 +105,31 @@ export async function POST() {
       }
     }
 
+    const accountResults: Array<{ accountId: string; fetched: number; inserted: number }> = [];
     for (const accountId of accountIds) {
       try {
-        const transactions = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+        console.log(`Fetching transactions for account ${accountId} from ${twelveMonthsAgo.toISOString().split('T')[0]}`);
+        const settledTxns = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+        console.log(`TrueLayer returned ${settledTxns.length} settled transactions for account ${accountId}`);
 
-        if (transactions.length === 0) continue;
+        // Also fetch pending (today's unsettled) transactions
+        const pendingTxns = await fetchPendingTransactions(accessToken, accountId);
+        console.log(`TrueLayer returned ${pendingTxns.length} pending transactions for account ${accountId}`);
+
+        // Merge settled + pending, deduplicating by transaction_id
+        const seenIds = new Set(settledTxns.map(t => t.transaction_id));
+        const uniquePending = pendingTxns.filter(t => !seenIds.has(t.transaction_id));
+        const transactions = [...settledTxns, ...uniquePending];
+        console.log(`Total: ${transactions.length} transactions (${settledTxns.length} settled + ${uniquePending.length} pending)`);
+
+        if (transactions.length === 0) {
+          accountResults.push({ accountId, fetched: 0, inserted: 0 });
+          continue;
+        }
+
+        // Log date range of returned transactions
+        const timestamps = transactions.map(t => t.timestamp).sort();
+        console.log(`Transaction date range: ${timestamps[0]} to ${timestamps[timestamps.length - 1]}`);
 
         const rows = transactions.map((tx) => {
           const desc = (tx.description || '').toLowerCase();
@@ -148,11 +168,14 @@ export async function POST() {
 
         if (upsertError) {
           console.error('Error upserting transactions:', upsertError);
+          accountResults.push({ accountId, fetched: transactions.length, inserted: 0 });
         } else {
           totalSynced += rows.length;
+          accountResults.push({ accountId, fetched: transactions.length, inserted: rows.length });
         }
       } catch (err) {
         console.error(`Error syncing account ${accountId} (non-fatal):`, err);
+        accountResults.push({ accountId, fetched: 0, inserted: 0 });
       }
     }
 
@@ -168,5 +191,9 @@ export async function POST() {
   // Run recurring detection after all syncs
   const recurringDetected = await detectRecurring(user.id, supabase);
 
-  return NextResponse.json({ synced: totalSynced, recurring_detected: recurringDetected });
+  return NextResponse.json({
+    synced: totalSynced,
+    recurring_detected: recurringDetected,
+    connections: connections.length,
+  });
 }

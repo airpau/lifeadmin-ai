@@ -152,3 +152,31 @@ export async function fetchTransactions(
   const data = await res.json();
   return data.results || [];
 }
+
+/**
+ * Fetches pending (unsettled) transactions for a specific account.
+ * These are today's transactions that haven't been settled yet by the bank.
+ */
+export async function fetchPendingTransactions(
+  accessToken: string,
+  accountId: string
+): Promise<TrueLayerTransaction[]> {
+  const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions/pending`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      // Pending endpoint may not be supported by all banks — non-fatal
+      console.log(`Pending transactions not available for account ${accountId}: ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    return data.results || [];
+  } catch (err) {
+    console.log(`Pending transactions fetch failed (non-fatal):`, err);
+    return [];
+  }
+}
