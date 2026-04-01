@@ -158,17 +158,17 @@ function PaymentCard({ payment, type, onCategoryChange }: { payment: Payment; ty
               <div className="grid grid-cols-2 gap-1">
                 {SORTED_CATEGORIES.map(cat => (
                   <button
-                    key={cat}
-                    onClick={() => handleCategoryChange(cat)}
+                    key={cat.value}
+                    onClick={() => handleCategoryChange(cat.value)}
                     disabled={saving}
                     className={`text-left text-xs px-2 py-1.5 rounded transition-all flex items-center gap-1.5 ${
-                      payment.category === cat
+                      payment.category === cat.value
                         ? 'bg-mint-400/20 text-mint-400'
                         : 'text-slate-400 hover:bg-navy-800 hover:text-white'
                     }`}
                   >
-                    {payment.category === cat && <Check className="h-3 w-3" />}
-                    {getCategoryLabel(cat)}
+                    {payment.category === cat.value && <Check className="h-3 w-3" />}
+                    {cat.label}
                   </button>
                 ))}
               </div>
@@ -260,12 +260,26 @@ export default function PaymentsPage() {
     : tab === 'direct_debits' ? directDebits
     : appSubs;
 
-  // Pie chart data
-  const pieData = [
-    { name: 'Apps & Streaming', value: Math.round(appSubs.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0)) },
-    { name: 'Bills & Utilities', value: Math.round(directDebits.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0)) },
-    { name: 'Other', value: Math.round(otherPayments.reduce((s, p) => s + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle), 0)) },
-  ].filter(d => d.value > 0);
+  // Pie chart data — break down by actual category for a clear picture
+  const categoryTotals: Record<string, number> = {};
+  for (const p of payments) {
+    const cat = p.category || 'other';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + monthlyEquiv(Math.abs(p.amount || 0), p.billing_cycle);
+  }
+  const PIE_CATEGORY_COLORS: Record<string, string> = {
+    mortgage: '#8b5cf6', loans: '#ef4444', energy: '#f59e0b', broadband: '#3b82f6',
+    mobile: '#a855f7', insurance: '#14b8a6', water: '#06b6d4', council_tax: '#6366f1',
+    streaming: '#ec4899', software: '#818cf8', fitness: '#10b981', credit: '#f97316',
+    other: '#64748b', shopping: '#a78bfa', gambling: '#fde047', bills: '#94a3b8',
+  };
+  const pieData = Object.entries(categoryTotals)
+    .map(([cat, value]) => ({
+      name: getCategoryLabel(cat),
+      value: Math.round(value),
+      color: PIE_CATEGORY_COLORS[cat] || '#64748b',
+    }))
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value);
 
   return (
     <div className="max-w-5xl">
@@ -287,8 +301,8 @@ export default function PaymentsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={65} paddingAngle={3} dataKey="value">
-                    {pieData.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    {pieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -324,10 +338,10 @@ export default function PaymentsPage() {
 
         {/* Legend */}
         {pieData.length > 0 && (
-          <div className="flex gap-4 mt-4 justify-center">
-            {pieData.map((d, i) => (
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 justify-center">
+            {pieData.map((d) => (
               <div key={d.name} className="flex items-center gap-1.5 text-xs text-slate-400">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
                 {d.name}: £{d.value}/mo
               </div>
             ))}

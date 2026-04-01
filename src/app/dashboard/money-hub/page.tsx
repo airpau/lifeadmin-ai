@@ -934,6 +934,42 @@ export default function MoneyHubPage() {
   };
 
   // Sync tier info
+  const lastSyncMins = lastSyncedAt ? Math.round((Date.now() - new Date(lastSyncedAt).getTime()) / 60000) : null;
+  const canSync = (() => {
+    if (syncing) return false;
+    if (!lastSyncMins) return true; // never synced
+    switch (data.tier) {
+      case 'pro': return lastSyncMins >= 360; // 6 hours
+      case 'essential': return lastSyncMins >= 1440; // 24 hours
+      default: return lastSyncMins >= 1440; // 24 hours
+    }
+  })();
+  const syncCooldownText = (() => {
+    if (!lastSyncMins) return null;
+    switch (data.tier) {
+      case 'pro': {
+        if (lastSyncMins < 360) {
+          const remaining = 360 - lastSyncMins;
+          return `Next sync available in ${remaining < 60 ? `${remaining} min${remaining === 1 ? '' : 's'}` : `${Math.ceil(remaining / 60)} hour${Math.ceil(remaining / 60) === 1 ? '' : 's'}`}`;
+        }
+        return null;
+      }
+      case 'essential': {
+        if (lastSyncMins < 1440) {
+          const remaining = 1440 - lastSyncMins;
+          return `Next sync available in ${remaining < 60 ? `${remaining} min${remaining === 1 ? '' : 's'}` : `${Math.ceil(remaining / 60)} hour${Math.ceil(remaining / 60) === 1 ? '' : 's'}`}`;
+        }
+        return null;
+      }
+      default: {
+        if (lastSyncMins < 1440) {
+          const remaining = 1440 - lastSyncMins;
+          return `Free plan allows one sync per day. Next sync in ${remaining < 60 ? `${remaining} mins` : `${Math.ceil(remaining / 60)} hours`}`;
+        }
+        return null;
+      }
+    }
+  })();
   const syncTierText = (() => {
     switch (data.tier) {
       case 'pro': return `Auto-syncs every 6 hours${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
@@ -1068,11 +1104,17 @@ export default function MoneyHubPage() {
           </div>
           <button
             onClick={syncMoneyHub}
-            disabled={syncing}
-            className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm transition-all"
+            disabled={syncing || !canSync}
+            className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm transition-all relative group"
+            title={syncCooldownText || (syncing ? 'Syncing...' : 'Sync now')}
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Syncing...' : 'Sync'}
+            {syncCooldownText && !syncing && (
+              <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-navy-950 border border-navy-700 text-slate-400 text-[10px] px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                {syncCooldownText}
+              </span>
+            )}
           </button>
           <div className="text-right">
             <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-mint-400' : 'text-red-400'}`}>
@@ -1155,6 +1197,12 @@ export default function MoneyHubPage() {
             Last synced: {formatTimeAgo(lastSyncedAt)}
           </span>
         )}
+      </div>
+
+      {/* Learning indicator */}
+      <div className="flex items-center gap-2 text-[10px] text-slate-500 px-1">
+        <Zap className="h-3 w-3 text-mint-400/60" />
+        <span>Paybacker learns from your corrections — categorisation improves each time you recategorise a transaction.</span>
       </div>
 
       {/* ═══ SECTION 1: Financial Snapshot ═══ */}
