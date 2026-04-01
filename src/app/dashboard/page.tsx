@@ -229,7 +229,7 @@ export default function DashboardPage() {
         ).length;
         setExpiringContracts(expiring);
 
-        // Fetch active price increase alerts
+        // Fetch active price increase alerts for display
         const { data: priceAlertData } = await supabase
           .from('price_increase_alerts')
           .select('*')
@@ -237,7 +237,15 @@ export default function DashboardPage() {
           .eq('status', 'active')
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
-        hasStoredAlerts = (priceAlertData || []).length > 0;
+
+        // Check if ANY alerts exist (active, dismissed, or actioned) to prevent
+        // re-running detection when all alerts have been dismissed by the user.
+        const { count: anyAlertsCount } = await supabase
+          .from('price_increase_alerts')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('status', ['active', 'dismissed', 'actioned']);
+        hasStoredAlerts = (anyAlertsCount || 0) > 0;
 
         // Calculate real potential savings from price alerts (use actual price diff, not annual_impact which may be empty)
         const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
