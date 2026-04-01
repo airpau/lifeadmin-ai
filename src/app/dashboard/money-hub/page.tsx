@@ -1282,26 +1282,49 @@ export default function MoneyHubPage() {
               </div>
             </div>
 
-            {/* Forecast + Insight Banner */}
-            {(remainingDays > 0 || biggestChangeText) && (
-              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4 flex flex-col sm:flex-row gap-4">
-                {remainingDays > 0 && (
+            {/* Savings-Focused Banner */}
+            {(() => {
+              const visibleBillsTotal = expectedBills
+                .filter(b => !dismissedBills.has(b.name))
+                .reduce((s, b) => s + b.expected_amount, 0);
+              const monthlySubCost = data.subscriptions.monthlyTotal || 0;
+              const switchableSubs = data.subscriptions.list?.filter((s: any) =>
+                ['energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'water'].includes(s.category)
+              ).length || 0;
+
+              return (
+                <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4 flex flex-col sm:flex-row gap-4">
+                  {expectedBills.length > 0 && (
+                    <div className="flex-1">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Bills still to pay this month</p>
+                      <p className="text-sm font-semibold text-amber-400">
+                        £{fmt(visibleBillsTotal)}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {expectedBills.filter(b => !dismissedBills.has(b.name)).length} bills remaining · dismiss one-offs below to update
+                      </p>
+                    </div>
+                  )}
                   <div className="flex-1">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">End of month forecast</p>
-                    <p className={`text-sm font-semibold ${projectedNet >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {projectedNet >= 0 ? '+' : '-'}£{fmt(Math.abs(projectedNet))} projected net
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Regular payments</p>
+                    <p className="text-sm font-semibold text-white">
+                      £{fmt(monthlySubCost)}/mo <span className="text-slate-500 text-[10px]">(£{fmt(monthlySubCost * 12)}/yr)</span>
                     </p>
-                    <p className="text-[10px] text-slate-500">Based on £{fmt(dailyAvgSpend)}/day average spend x {remainingDays} days remaining</p>
+                    {switchableSubs > 0 && (
+                      <p className="text-[10px] text-mint-400">
+                        {switchableSubs} subscriptions could be switched for a better deal →
+                      </p>
+                    )}
                   </div>
-                )}
-                {biggestChangeText && (
-                  <div className="flex-1">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">This month&apos;s insight</p>
-                    <p className="text-sm text-slate-300">{biggestChangeText}</p>
-                  </div>
-                )}
-              </div>
-            )}
+                  {biggestChangeText && (
+                    <div className="flex-1">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">This month&apos;s insight</p>
+                      <p className="text-sm text-slate-300">{biggestChangeText}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Regular Payments Summary */}
             {data.subscriptions.count > 0 && (
