@@ -2,8 +2,8 @@
 
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, Shield, Phone, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
@@ -75,7 +75,10 @@ const PROVIDER_TYPES = ['energy', 'broadband', 'mobile', 'tv', 'insurance', 'mor
 
 export default function SubscriptionsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
+  const [fraudStep, setFraudStep] = useState<'initial' | 'fraud_guidance'>('initial');
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
   const [cancelInfo, setCancelInfo] = useState<{ email?: string; phone?: string; url?: string; method: string; tips?: string } | null>(null);
@@ -588,11 +591,14 @@ export default function SubscriptionsPage() {
   const handleDeleteSubscription = async (id: string) => {
     try {
       await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      // Optimistic update for instant UI feedback
       setSubscriptions((prev) => prev.filter((s) => s.id !== id));
       if (selectedSub?.id === id) {
         setSelectedSub(null);
         setCancellationEmail(null);
       }
+      // Refetch to ensure totals and all derived state are consistent
+      await fetchSubscriptions();
     } catch (error) {
       console.error('Error deleting subscription:', error);
     }
@@ -681,6 +687,38 @@ export default function SubscriptionsPage() {
     }
     setBulkResults(results);
     setBulkGenerating(false);
+    setSelectedForBulk(new Set());
+    await fetchSubscriptions();
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedForBulk);
+    for (const id of ids) {
+      await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+    }
+    setSelectedForBulk(new Set());
+    await fetchSubscriptions();
+  };
+
+  const handleBulkMarkCancelled = async () => {
+    for (const id of Array.from(selectedForBulk)) {
+      const sub = subscriptions.find(s => s.id === id);
+      if (!sub) continue;
+      const monthlyAmt = sub.billing_cycle === 'yearly'
+        ? parseFloat(String(sub.amount)) / 12
+        : sub.billing_cycle === 'quarterly'
+          ? parseFloat(String(sub.amount)) / 3
+          : parseFloat(String(sub.amount)) || 0;
+      await fetch(`/api/subscriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          money_saved: parseFloat(monthlyAmt.toFixed(2)),
+        }),
+      });
+    }
     setSelectedForBulk(new Set());
     await fetchSubscriptions();
   };
@@ -1086,23 +1124,50 @@ export default function SubscriptionsPage() {
       </div>
 
       {/* Bulk Action Bar */}
-      {selectedForBulk.size >= 2 && (
+      {selectedForBulk.size >= 1 && (
         <div className="bg-mint-400/10 border border-mint-400/30 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in slide-in-from-bottom-4">
-          <p className="text-mint-400 font-medium ml-2">{selectedForBulk.size} items selected</p>
-          <div className="flex gap-3 w-full sm:w-auto">
+          <p className="text-mint-400 font-medium ml-2">{selectedForBulk.size} selected</p>
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
             <button
               onClick={() => setSelectedForBulk(new Set())}
               className="text-slate-400 hover:text-white px-3 py-2 text-sm transition-colors"
             >
-              Cancel
+              Deselect
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-4 py-2 rounded-lg text-sm transition-all font-medium"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove
+            </button>
+            <button
+              onClick={handleBulkMarkCancelled}
+              className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition-all font-medium"
+            >
+              <CheckCircle className="h-3.5 w-3.5" />
+              Mark Cancelled
+            </button>
+            <button
+              onClick={() => {
+                const ids = Array.from(selectedForBulk);
+                const sub = subscriptions.find(s => s.id === ids[0]);
+                if (sub) {
+                  router.push(`/dashboard/complaints?new=1&company=${encodeURIComponent(sub.provider_name)}&type=complaint&issue=${encodeURIComponent(`Unrecognised or disputed charges from ${ids.length > 1 ? `${ids.length} subscriptions` : sub.provider_name}`)}&outcome=${encodeURIComponent('Refund of disputed charges')}`);
+                }
+              }}
+              className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition-all font-medium"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              Dispute
             </button>
             <button
               onClick={handleBulkCancel}
               disabled={bulkGenerating}
-              className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2.5 rounded-lg text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2.5 rounded-lg text-sm transition-all disabled:opacity-50"
             >
-              {bulkGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Generate {selectedForBulk.size} Cancellation Emails
+              {bulkGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+              Cancel Emails
             </button>
           </div>
         </div>
@@ -1418,6 +1483,19 @@ export default function SubscriptionsPage() {
                         Find Better Deal
                       </a>
                     )}
+                    {(sub.source === 'bank' || sub.source === 'bank_and_email') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setUnrecognisedSub(sub);
+                          setFraudStep('initial');
+                        }}
+                        className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-4 py-2 rounded-lg transition-all text-sm border border-amber-500/20"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        I don&apos;t recognise this
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1592,6 +1670,147 @@ export default function SubscriptionsPage() {
           )}
         </div>
       </div>
+
+      {/* "I don't recognise this" modal */}
+      {unrecognisedSub && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 w-full max-w-lg">
+            {fraudStep === 'initial' ? (
+              <>
+                <div className="flex items-start justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
+                      <AlertTriangle className="h-5 w-5 text-amber-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Don&apos;t recognise this?</h2>
+                      <p className="text-slate-400 text-sm">{normaliseProviderName(unrecognisedSub.provider_name)} &middot; {formatGBP(unrecognisedSub.amount)}/{unrecognisedSub.billing_cycle}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setUnrecognisedSub(null)} className="text-slate-400 hover:text-white transition-colors p-1">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="bg-navy-950 rounded-xl p-4 border border-navy-700/50 mb-5">
+                  <p className="text-sm text-slate-300 mb-3">Banks often show unfamiliar merchant names on statements. Common examples:</p>
+                  <div className="space-y-1.5 text-xs font-mono">
+                    {[
+                      ['CRV*GOOGLE', 'Google subscription (e.g. Google One, YouTube)'],
+                      ['AMZN*Mktp', 'Amazon purchase or Prime'],
+                      ['PAY.APPLE.COM', 'Apple subscription (iCloud, App Store)'],
+                      ['PAYPAL*NETFLIX', 'Netflix via PayPal'],
+                      ['KLARNA*', 'Klarna instalment payment'],
+                      ['DD*SPOTIFY', 'Spotify subscription'],
+                    ].map(([code, desc]) => (
+                      <div key={code} className="flex gap-3">
+                        <span className="text-mint-400 shrink-0 w-36">{code}</span>
+                        <span className="text-slate-400">{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {unrecognisedSub.bank_description && (
+                    <div className="mt-3 pt-3 border-t border-navy-700/50">
+                      <p className="text-xs text-slate-500">Bank description for this payment:</p>
+                      <p className="text-sm text-white font-mono mt-0.5">{unrecognisedSub.bank_description}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setUnrecognisedSub(null)}
+                    className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all text-sm"
+                  >
+                    Actually, I recognise it now
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUnrecognisedSub(null);
+                      router.push(
+                        `/dashboard/complaints?new=1` +
+                        `&company=${encodeURIComponent(unrecognisedSub.provider_name)}` +
+                        `&type=complaint` +
+                        `&issue=${encodeURIComponent(`Unrecognised payment of ${formatGBP(unrecognisedSub.amount)} appearing on my bank statement as "${unrecognisedSub.bank_description || unrecognisedSub.provider_name}". I do not recognise this charge.`)}` +
+                        `&amount=${unrecognisedSub.amount}` +
+                        `&outcome=${encodeURIComponent('Full refund of the unrecognised charge')}`
+                      );
+                    }}
+                    className="w-full bg-navy-800 hover:bg-navy-700 text-white font-medium py-3 rounded-xl transition-all text-sm"
+                  >
+                    I still don&apos;t recognise it &mdash; dispute this charge
+                  </button>
+                  <button
+                    onClick={() => setFraudStep('fraud_guidance')}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-medium py-3 rounded-xl transition-all text-sm"
+                  >
+                    This might be fraud
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
+                      <Shield className="h-5 w-5 text-red-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Reporting a fraudulent payment</h2>
+                      <p className="text-slate-400 text-sm">{formatGBP(unrecognisedSub.amount)} &middot; {unrecognisedSub.bank_description || unrecognisedSub.provider_name}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setUnrecognisedSub(null)} className="text-slate-400 hover:text-white transition-colors p-1">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 mb-5">
+                  <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-white mb-1">1. Contact your bank immediately</p>
+                    <p className="text-sm text-slate-300">Call the fraud team using the number on the back of your card or in your banking app. Tell them the payment is unauthorised and ask them to block further transactions from this merchant. They must investigate within 15 business days under the Payment Services Regulations 2017.</p>
+                  </div>
+                  <div className="bg-navy-950 border border-navy-700/50 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-white mb-2">2. Report to Action Fraud</p>
+                    <div className="flex flex-col gap-1.5">
+                      <a href="tel:03001232040" className="flex items-center gap-2 text-sm text-mint-400 hover:text-mint-300">
+                        <Phone className="h-4 w-4" />
+                        0300 123 2040
+                      </a>
+                      <a href="https://www.actionfraud.police.uk" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-mint-400 hover:text-mint-300">
+                        <Shield className="h-4 w-4" />
+                        actionfraud.police.uk
+                      </a>
+                    </div>
+                  </div>
+                  <div className="bg-navy-950 border border-navy-700/50 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-white mb-1">3. Your rights</p>
+                    <div className="space-y-2 text-sm text-slate-300">
+                      <p><span className="text-white font-medium">Credit card:</span> Section 75 of the Consumer Credit Act 1974 gives you the right to claim a refund from your card provider for purchases between £100 and £30,000 where the merchant fails to deliver or commits fraud.</p>
+                      <p><span className="text-white font-medium">Debit card:</span> Ask your bank about chargeback rights. Under Visa/Mastercard rules your bank can reverse the transaction within 120 days.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setFraudStep('initial')}
+                    className="flex-1 bg-navy-800 hover:bg-navy-700 text-white font-medium py-3 rounded-xl transition-all text-sm"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={() => setUnrecognisedSub(null)}
+                    className="flex-1 bg-navy-800 hover:bg-navy-700 text-slate-300 font-medium py-3 rounded-xl transition-all text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Edit subscription modal */}
       {editSub && (
