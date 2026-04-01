@@ -274,18 +274,38 @@ export default function DashboardPage() {
           // Update potential savings to include comparison deals
           setPotentialSavings(prev => prev + (compData.totalAnnualSaving || 0));
 
-          // If many subscriptions haven't been compared yet, trigger a fresh comparison
+          // If savings seem low relative to subscriptions, trigger a fresh comparison
           const compared = compData.subscriptionsCompared || 0;
           const withDeals = compData.count || 0;
-          if (compared > 0 && withDeals < compared * 0.5) {
-            // Less than half have been compared — run a background comparison
+          const annualSaving = compData.totalAnnualSaving || 0;
+          // Trigger if: few deals compared, or savings seem stale (under £500 with 20+ subs)
+          if (compared > 0 && (withDeals < compared * 0.5 || (compared > 20 && annualSaving < 500))) {
             fetch('/api/subscriptions/compare', { method: 'POST' })
               .then(r => r.json())
               .then(freshData => {
-                if (freshData.totalAnnualSaving > (compData.totalAnnualSaving || 0)) {
+                if (freshData.totalAnnualSaving && freshData.totalAnnualSaving !== annualSaving) {
                   setComparisonSaving(freshData.totalAnnualSaving);
                   setComparisonCount(freshData.count || 0);
-                  setPotentialSavings(prev => prev - (compData.totalAnnualSaving || 0) + freshData.totalAnnualSaving);
+                  setPotentialSavings(prev => prev - annualSaving + freshData.totalAnnualSaving);
+                  // Update deals list
+                  const freshDeals: typeof comparisonDeals = [];
+                  for (const sub of (freshData.subscriptions || [])) {
+                    if (sub.comparisons?.length > 0) {
+                      const best = sub.comparisons[0];
+                      if (best.annualSaving > 0) {
+                        freshDeals.push({
+                          subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+                          currentPrice: best.currentPrice,
+                          dealProvider: best.dealProvider,
+                          dealPrice: best.dealPrice,
+                          annualSaving: best.annualSaving,
+                          dealUrl: best.dealUrl,
+                          category: sub.category || '',
+                        });
+                      }
+                    }
+                  }
+                  if (freshDeals.length > 0) setComparisonDeals(freshDeals);
                 }
               })
               .catch(() => {}); // Non-critical

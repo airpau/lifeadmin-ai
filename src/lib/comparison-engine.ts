@@ -197,17 +197,30 @@ export async function findCheaperAlternatives(
   let comparisons: ComparisonResult[] = [];
 
   if (isComparisonOnly) {
-    // For comparison-only categories, return deal links with estimated savings from deal page data
+    // Estimated savings percentages by category (based on UK industry averages)
+    const savingsEstimates: Record<string, number> = {
+      'insurance': 0.20,     // 20% avg saving when switching insurer
+      'mortgages': 0.05,     // 5% saving on mortgage interest by remortgaging
+      'loans': 0.15,         // 15% saving by consolidating/switching loans
+      'credit-cards': 0.30,  // 30% saving by switching to 0% balance transfer
+      'car-finance': 0.15,   // 15% saving by refinancing
+      'travel': 0,
+      'water': 0.10,         // 10% saving with water meter
+    };
+    const estimatedPct = savingsEstimates[dealCategory] || 0;
+    const annualCurrent = currentMonthly * 12;
+    const estimatedAnnualSaving = Math.round(annualCurrent * estimatedPct);
+
     comparisons = deals
       .filter(d => d.provider.toLowerCase() !== sub.provider_name.toLowerCase())
       .slice(0, 3)
-      .map(d => ({
+      .map((d, i) => ({
         dealProvider: d.provider,
         dealName: d.headline,
         dealUrl: buildAwinUrl(d.awinMid, d.providerUrl),
         currentPrice: currentMonthly,
-        dealPrice: 0,
-        annualSaving: 0, // Unknown - these are comparison sites
+        dealPrice: currentMonthly * (1 - estimatedPct),
+        annualSaving: i === 0 ? estimatedAnnualSaving : 0, // Only count savings once (best deal)
         awinMid: d.awinMid,
       }));
   } else {
