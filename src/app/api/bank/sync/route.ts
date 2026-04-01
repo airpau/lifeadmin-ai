@@ -68,7 +68,8 @@ export async function POST() {
 
     // Fetch accounts and extract bank name
     let accountIds = connection.account_ids || [];
-    if (accountIds.length === 0 || !connection.bank_name) {
+    // Always try to resolve accounts (accounts may have been added since initial connection)
+    {
       try {
         const accounts = await fetchAccounts(accessToken);
         console.log('TrueLayer accounts response:', JSON.stringify(accounts.map(a => ({
