@@ -439,7 +439,7 @@ const recategoriseSubscription: ChatTool = {
   handler: async (args: { provider_name: string; new_category: string }, userId: string) => {
     const admin = getAdmin();
 
-    // Find by fuzzy match
+    // 1. Update Subscriptions table
     const { data } = await admin
       .from('subscriptions')
       .select('id, provider_name, category, amount')
@@ -447,32 +447,77 @@ const recategoriseSubscription: ChatTool = {
       .is('dismissed_at', null)
       .ilike('provider_name', `%${args.provider_name}%`);
 
-    if (!data || data.length === 0) {
-      return { error: `No subscription found matching "${args.provider_name}".` };
-    }
-
-    // Update all matches (if "Paratus" matches 1 sub, update it; if "Virgin Media" matches 2, update both)
+    let subUpdated = 0;
     const results = [];
-    for (const sub of data) {
-      const { error } = await admin
-        .from('subscriptions')
-        .update({ category: args.new_category })
-        .eq('id', sub.id)
-        .eq('user_id', userId);
+    if (data && data.length > 0) {
+      for (const sub of data) {
+        const { error } = await admin
+          .from('subscriptions')
+          .update({ category: args.new_category })
+          .eq('id', sub.id)
+          .eq('user_id', userId);
 
-      if (!error) {
-        results.push({
-          provider_name: sub.provider_name,
-          old_category: sub.category,
-          new_category: args.new_category,
-          amount: `£${Number(sub.amount).toFixed(2)}`,
-        });
+        if (!error) {
+          subUpdated++;
+          results.push({
+            provider_name: sub.provider_name,
+            old_category: sub.category,
+            new_category: args.new_category,
+            amount: `£${Number(sub.amount).toFixed(2)}`,
+          });
+        }
       }
     }
 
+    // 2. Update Money Hub Bank Transactions and Overrides
+    const pattern = args.provider_name.toLowerCase().trim();
+    const corePattern = pattern
+      .replace(/^\d{4}\s+\d{2}[a-z]{3}\d{2}\s+/i, '')
+      .replace(/\s+(london|gb|uk|manchester|birmingham)\s*(gb|uk)?$/i, '')
+      .replace(/\s+fp\s+\d{2}\/\d{2}\/\d{2}.*$/i, '')
+      .trim();
+
+    await admin.from('money_hub_category_overrides').upsert({
+      user_id: userId,
+      merchant_pattern: corePattern || pattern,
+      user_category: args.new_category,
+    }, { onConflict: 'user_id,merchant_pattern' });
+
+    // Update historical bank_transactions matching this provider
+    const { data: matchingTxns } = await admin.from('bank_transactions')
+      .select('id, description, merchant_name')
+      .eq('user_id', userId);
+
+    let txnsUpdated = 0;
+    if (matchingTxns) {
+      for (const txn of matchingTxns) {
+        const merchantName = (txn.merchant_name || '').toLowerCase();
+        const desc = (txn.description || '').toLowerCase();
+        const txnCore = desc
+          .replace(/^\d{4}\s+\d{2}[a-z]{3}\d{2}\s+/i, '')
+          .replace(/\s+(london|gb|uk|manchester|birmingham)\s*(gb|uk)?$/i, '')
+          .replace(/\s+fp\s+\d{2}\/\d{2}\/\d{2}.*$/i, '')
+          .trim();
+
+        if (
+          merchantName === pattern || merchantName.includes(pattern) || desc.includes(pattern) ||
+          (corePattern.length > 3 && (txnCore.includes(corePattern) || txnCore.startsWith(corePattern)))
+        ) {
+          await admin.from('bank_transactions')
+            .update({ user_category: args.new_category })
+            .eq('id', txn.id);
+          txnsUpdated++;
+        }
+      }
+    }
+
+    if (subUpdated === 0 && txnsUpdated === 0) {
+      return { error: `No subscription or bank transactions found matching "${args.provider_name}".` };
+    }
+
     return {
-      message: `Recategorised ${results.length} subscription(s) to "${args.new_category}".`,
-      updated: results,
+      message: `Recategorised ${subUpdated} subscription(s) and ${txnsUpdated} transaction(s) to "${args.new_category}".`,
+      updated: results.length > 0 ? results : { updated_transactions: txnsUpdated, new_category: args.new_category },
       dashboard_refresh: true,
     };
   },

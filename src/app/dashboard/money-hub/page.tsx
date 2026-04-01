@@ -94,8 +94,17 @@ const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: stri
   travel: { label: 'Travel', color: '#7dd3fc', icon: '✈️' },
   gambling: { label: 'Gambling', color: '#fde047', icon: '🎲' },
   fee: { label: 'Fees', color: '#a3a3a3', icon: '💳' },
+  fees: { label: 'Fees', color: '#a3a3a3', icon: '💳' },
   loan: { label: 'Loans', color: '#ef4444', icon: '🏦' },
+  credit: { label: 'Credit Cards', color: '#f43f5e', icon: '💳' },
+  cash: { label: 'Cash Withdrawal', color: '#78716c', icon: '🏧' },
+  transfers: { label: 'Transfers', color: '#64748b', icon: '🔄' },
   utility: { label: 'Utilities', color: '#f59e0b', icon: '⚡' },
+  professional: { label: 'Professional', color: '#6366f1', icon: '👔' },
+  childcare: { label: 'Childcare', color: '#f472b6', icon: '👶' },
+  motoring: { label: 'Motoring', color: '#94a3b8', icon: '🚗' },
+  credit_monitoring: { label: 'Credit Monitoring', color: '#a78bfa', icon: '📊' },
+  property_management: { label: 'Property', color: '#d97706', icon: '🏠' },
   other: { label: 'Other', color: '#475569', icon: '📋' },
 };
 
@@ -975,7 +984,7 @@ export default function MoneyHubPage() {
     if (syncing) return false;
     if (!lastSyncMins) return true; // never synced
     switch (data.tier) {
-      case 'pro': return lastSyncMins >= 60; // 1 hour
+      case 'pro': return lastSyncMins >= 360; // 6 hours
       case 'essential': return lastSyncMins >= 1440; // 24 hours
       default: return lastSyncMins >= 1440; // 24 hours
     }
@@ -984,9 +993,10 @@ export default function MoneyHubPage() {
     if (!lastSyncMins) return null;
     switch (data.tier) {
       case 'pro': {
-        if (lastSyncMins < 60) {
-          const remaining = 60 - lastSyncMins;
-          return `Next sync available in ${remaining} min${remaining === 1 ? '' : 's'}`;
+        if (lastSyncMins < 360) {
+          const remainingMins = 360 - lastSyncMins;
+          const remainingHours = Math.ceil(remainingMins / 60);
+          return `Next sync available in ${remainingHours} hour${remainingHours === 1 ? '' : 's'}`;
         }
         return null;
       }
@@ -1008,7 +1018,7 @@ export default function MoneyHubPage() {
   })();
   const syncTierText = (() => {
     switch (data.tier) {
-      case 'pro': return `Syncs every hour${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''} · Banks may take up to 24hrs to release transactions`;
+      case 'pro': return `Auto-syncs up to 4x daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''} · Banks may take up to 24hrs to release transactions`;
       case 'essential': return `Auto-syncs daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
       default: return 'Manual sync · 1× per day';
     }
@@ -1394,7 +1404,7 @@ export default function MoneyHubPage() {
           <h3 className="text-lg font-semibold text-white">{currentMonthName} has just started</h3>
           <p className="text-slate-400 mt-1 max-w-lg mx-auto">
             Your transactions will appear here as they confirm with your bank.
-            {data.tier === 'pro' ? ' Syncs every hour. Banks may take up to 24hrs to release transactions.' :
+            {data.tier === 'pro' ? ' Auto-syncs up to 4 times daily. Banks may take up to 24hrs to release transactions.' :
              data.tier === 'essential' ? ' Auto-syncing daily.' :
              ' Sync manually or upgrade for automatic syncs.'}
           </p>
@@ -1580,43 +1590,6 @@ export default function MoneyHubPage() {
           </div>
         );
       })()}
-
-      {/* ═══ SPARSE MONTH: Budget Forecast ═══ */}
-      {showSparseMonthContent && isCurrentMonthView && data.budgets.length > 0 && prevMonthData && prevMonthData.categories.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2 mb-4">
-            <Target className="h-5 w-5 text-purple-400" />
-            {currentMonthName} Budget Forecast
-            <span className="text-slate-500 text-xs font-normal ml-1">(based on {prevMonthData.monthName} actuals)</span>
-          </h2>
-          <div className="space-y-3">
-            {data.budgets.map((b: any) => {
-              const prevCatSpend = prevMonthData.categories.find(c => c.category === b.category)?.total || 0;
-              const info = CATEGORY_LABELS[b.category] || CATEGORY_LABELS.other;
-              const overBudget = prevCatSpend > b.monthly_limit;
-              const diff = Math.abs(prevCatSpend - b.monthly_limit);
-              return (
-                <div key={b.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/30">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{info.icon}</span>
-                    <span className="text-white text-sm font-medium">{info.label}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-slate-400">{prevMonthData.monthName.split(' ')[0]} spent £{fmt(prevCatSpend)}</span>
-                    <span className="text-slate-600">→</span>
-                    <span className="text-slate-300">Budget £{fmt(b.monthly_limit)}</span>
-                    <span className={`font-medium px-2 py-0.5 rounded-full ${
-                      overBudget ? 'bg-red-500/15 text-red-400' : 'bg-green-500/15 text-green-400'
-                    }`}>
-                      {overBudget ? `⚠️ Over by £${fmt(diff)}` : `✅ Under budget`}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ═══ SECTION 1b: Income Breakdown ═══ */}
       <div id="tour-income" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
