@@ -82,9 +82,15 @@ export async function POST(request: NextRequest) {
         status: 'active',
         contract_type: body.contract_type || null,
         contract_end_date: body.contract_end_date || null,
+        contract_start_date: body.contract_start_date || null,
+        contract_term_months: body.contract_term_months || null,
         auto_renews: body.auto_renews !== undefined ? body.auto_renews : true,
+        early_exit_fee: body.early_exit_fee || null,
         provider_type: body.provider_type || null,
         current_tariff: body.current_tariff || null,
+        alerts_enabled: body.alerts_enabled !== undefined ? body.alerts_enabled : true,
+        alert_before_days: body.alert_before_days || 30,
+        contract_end_source: body.contract_end_source || (body.contract_end_date ? 'manual' : null),
         source: body.source || 'manual',
       })
       .select()

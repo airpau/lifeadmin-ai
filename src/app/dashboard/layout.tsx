@@ -30,7 +30,7 @@ const navItems = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
-  { name: 'AI Letters', href: '/dashboard/complaints', icon: FileText },
+  { name: 'Disputes', href: '/dashboard/complaints', icon: FileText },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
@@ -249,7 +249,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {[
           { name: 'Home', href: '/dashboard', icon: LayoutDashboard },
           { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
-          { name: 'Letters', href: '/dashboard/complaints', icon: FileText },
+          { name: 'Disputes', href: '/dashboard/complaints', icon: FileText },
           { name: 'Deals', href: '/dashboard/deals', icon: Tag },
           { name: 'Subs', href: '/dashboard/subscriptions', icon: CreditCard },
         ].map((item) => {

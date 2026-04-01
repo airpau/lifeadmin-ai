@@ -43,7 +43,7 @@ export function cleanMerchantName(
   merchantRuleDisplayName?: string | null,
 ): string {
   if (!rawName) return '';
-  const upperRaw = rawName.toUpperCase();
+  const upperRaw = rawName.trim().toUpperCase();
 
   // 1. Static synchronous overrides matching our DB inserts
   for (const [pattern, display] of Object.entries(HARDCODED_MERCHANT_RULES)) {

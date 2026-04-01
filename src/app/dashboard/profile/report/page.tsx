@@ -169,8 +169,10 @@ export default function AnnualReportPage() {
             <p className="text-xl font-bold text-red-400">{formatGBP(data.totalOutgoings)}</p>
           </div>
           <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/30 text-center">
-            <p className="text-[11px] text-slate-400 mb-1">Net Position</p>
-            <p className={`text-xl font-bold ${data.netPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatGBP(data.netPosition)}</p>
+            <p className="text-[11px] text-slate-400 mb-1">Savings Rate</p>
+            <p className={`text-xl font-bold ${data.totalIncome > 0 && data.totalIncome >= data.totalOutgoings ? 'text-green-400' : data.totalIncome > 0 ? 'text-red-400' : 'text-slate-500'}`}>
+              {data.totalIncome > 0 ? `${(((data.totalIncome - data.totalOutgoings) / data.totalIncome) * 100).toFixed(1)}%` : 'N/A'}
+            </p>
           </div>
         </div>
         {trendData.length > 0 && (

@@ -201,8 +201,17 @@ export default function ChatWidget() {
         }
       }
 
-      // Strip dashboard commands from displayed message
-      const cleanReply = reply.replace(/:::dashboard\s*\{[\s\S]*?\}\s*:::/g, '').trim();
+      // Handle dashboard_refresh directive — triggers page data reload
+      if (reply.includes(':::dashboard_refresh:::') || data.toolsUsed) {
+        // Dispatch custom event that dashboard pages listen for
+        window.dispatchEvent(new CustomEvent('paybacker:dashboard_refresh'));
+      }
+
+      // Strip dashboard commands and refresh directives from displayed message
+      const cleanReply = reply
+        .replace(/:::dashboard\s*\{[\s\S]*?\}\s*:::/g, '')
+        .replace(/:::dashboard_refresh:::/g, '')
+        .trim();
 
       setMessages([...updatedMessages, { role: 'assistant', content: cleanReply }]);
       if (data.escalated && data.ticketNumber) {

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAccessToken, fetchAccounts, fetchTransactions, BankConnection } from '@/lib/truelayer';
-import { detectRecurring } from '@/lib/detect-recurring';
+import { createClient as createAdmin } from '@supabase/supabase-js';
+import { getAccessToken, fetchAccounts, fetchCards, fetchTransactions, fetchPendingTransactions, fetchCardTransactions, fetchCardPendingTransactions, BankConnection } from '@/lib/truelayer';
+import { extractMerchantFromDescription } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 
 export const maxDuration = 60;
@@ -68,7 +69,8 @@ export async function POST() {
 
     // Fetch accounts and extract bank name
     let accountIds = connection.account_ids || [];
-    if (accountIds.length === 0 || !connection.bank_name) {
+    // Always try to resolve accounts (accounts may have been added since initial connection)
+    {
       try {
         const accounts = await fetchAccounts(accessToken);
         console.log('TrueLayer accounts response:', JSON.stringify(accounts.map(a => ({
@@ -104,11 +106,31 @@ export async function POST() {
       }
     }
 
+    const accountResults: Array<{ accountId: string; fetched: number; inserted: number }> = [];
     for (const accountId of accountIds) {
       try {
-        const transactions = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+        console.log(`Fetching transactions for account ${accountId} from ${twelveMonthsAgo.toISOString().split('T')[0]}`);
+        const settledTxns = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+        console.log(`TrueLayer returned ${settledTxns.length} settled transactions for account ${accountId}`);
 
-        if (transactions.length === 0) continue;
+        // Also fetch pending (today's unsettled) transactions
+        const pendingTxns = await fetchPendingTransactions(accessToken, accountId);
+        console.log(`TrueLayer returned ${pendingTxns.length} pending transactions for account ${accountId}`);
+
+        // Merge settled + pending, deduplicating by transaction_id
+        const seenIds = new Set(settledTxns.map(t => t.transaction_id));
+        const uniquePending = pendingTxns.filter(t => !seenIds.has(t.transaction_id));
+        const transactions = [...settledTxns, ...uniquePending];
+        console.log(`Total: ${transactions.length} transactions (${settledTxns.length} settled + ${uniquePending.length} pending)`);
+
+        if (transactions.length === 0) {
+          accountResults.push({ accountId, fetched: 0, inserted: 0 });
+          continue;
+        }
+
+        // Log date range of returned transactions
+        const timestamps = transactions.map(t => t.timestamp).sort();
+        console.log(`Transaction date range: ${timestamps[0]} to ${timestamps[timestamps.length - 1]}`);
 
         const rows = transactions.map((tx) => {
           const desc = (tx.description || '').toLowerCase();
@@ -134,7 +156,7 @@ export async function POST() {
             amount: tx.amount,
             currency: tx.currency || 'GBP',
             description: tx.description || null,
-            merchant_name: tx.merchant_name || null,
+            merchant_name: tx.merchant_name || extractMerchantFromDescription(tx.description || '') || null,
             category: tx.transaction_category || null,
             user_category: matchedCategory,
             timestamp: tx.timestamp,
@@ -147,12 +169,58 @@ export async function POST() {
 
         if (upsertError) {
           console.error('Error upserting transactions:', upsertError);
+          accountResults.push({ accountId, fetched: transactions.length, inserted: 0 });
         } else {
           totalSynced += rows.length;
+          accountResults.push({ accountId, fetched: transactions.length, inserted: rows.length });
         }
       } catch (err) {
         console.error(`Error syncing account ${accountId} (non-fatal):`, err);
+        accountResults.push({ accountId, fetched: 0, inserted: 0 });
       }
+    }
+
+    // Also sync card accounts (debit/credit cards — may have faster updates)
+    try {
+      const cards = await fetchCards(accessToken);
+      console.log(`Found ${cards.length} card accounts for connection ${connection.id}`);
+      for (const card of cards) {
+        const cardId = card.account_id;
+        try {
+          const cardSettled = await fetchCardTransactions(accessToken, cardId, twelveMonthsAgo);
+          const cardPending = await fetchCardPendingTransactions(accessToken, cardId);
+          const seenCardIds = new Set(cardSettled.map(t => t.transaction_id));
+          const uniqueCardPending = cardPending.filter(t => !seenCardIds.has(t.transaction_id));
+          const cardTxns = [...cardSettled, ...uniqueCardPending];
+          console.log(`Card ${card.display_name}: ${cardSettled.length} settled + ${uniqueCardPending.length} pending`);
+
+          if (cardTxns.length === 0) continue;
+
+          const cardRows = cardTxns.map((tx) => ({
+            user_id: user.id,
+            connection_id: connection.id,
+            transaction_id: tx.transaction_id,
+            account_id: cardId,
+            amount: tx.amount,
+            currency: tx.currency || 'GBP',
+            description: tx.description || null,
+            merchant_name: tx.merchant_name || extractMerchantFromDescription(tx.description || '') || null,
+            category: tx.transaction_category || null,
+            user_category: null,
+            timestamp: tx.timestamp,
+          }));
+
+          const { error } = await supabase
+            .from('bank_transactions')
+            .upsert(cardRows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+
+          if (!error) totalSynced += cardRows.length;
+        } catch (err) {
+          console.error(`Card sync error for ${cardId}:`, err);
+        }
+      }
+    } catch (err) {
+      console.log('Card accounts not available (non-fatal):', err);
     }
 
     await supabase
@@ -164,8 +232,20 @@ export async function POST() {
       .eq('id', connection.id);
   }
 
-  // Run recurring detection after all syncs
-  const recurringDetected = await detectRecurring(user.id, supabase);
+  // Fix EE-branded card merchant names across all connections
+  const adminClient = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  await adminClient.rpc('fix_ee_card_merchant_names', { p_user_id: user.id });
 
-  return NextResponse.json({ synced: totalSynced, recurring_detected: recurringDetected });
+  // Auto-categorise new transactions using merchant_rules
+  await adminClient.rpc('auto_categorise_transactions', { p_user_id: user.id });
+
+  // Run recurring detection via DB function (scans all accounts, creates subscriptions)
+  const { data: recurringData } = await adminClient.rpc('detect_and_sync_recurring_transactions', { p_user_id: user.id });
+  const recurringDetected = typeof recurringData === 'number' ? recurringData : 0;
+
+  return NextResponse.json({
+    synced: totalSynced,
+    recurring_detected: recurringDetected,
+    connections: connections.length,
+  });
 }

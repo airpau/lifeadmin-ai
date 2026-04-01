@@ -622,7 +622,7 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* Receipt scanning is now integrated into the AI Letters tab */}
+      {/* Receipt scanning is now integrated into the Disputes tab */}
 
       {/* Quick links */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">

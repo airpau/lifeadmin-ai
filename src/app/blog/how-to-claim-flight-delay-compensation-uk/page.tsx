@@ -200,7 +200,7 @@ export default function FlightDelayCompensationPost() {
             <div className="flex gap-4 text-slate-500 text-sm">
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
               <Link href="/about" className="hover:text-white transition-all">About</Link>
-              <Link href="/legal/privacy" className="hover:text-white transition-all">Privacy</Link>
+              <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy</Link>
             </div>
           </div>
         </footer>

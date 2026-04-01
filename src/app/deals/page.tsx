@@ -56,7 +56,7 @@ export default function PublicDealsPage() {
             <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
             <div className="flex items-center gap-6 text-sm">
               <Link href="/privacy-policy" className="text-slate-500 hover:text-white transition-all">Privacy Policy</Link>
-              <Link href="/legal/terms" className="text-slate-500 hover:text-white transition-all">Terms of Service</Link>
+              <Link href="/terms-of-service" className="text-slate-500 hover:text-white transition-all">Terms of Service</Link>
               <a href="mailto:hello@paybacker.co.uk" className="text-slate-500 hover:text-white transition-all">Contact</a>
             </div>
           </div>
