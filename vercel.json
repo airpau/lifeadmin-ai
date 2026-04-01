@@ -109,6 +109,10 @@
       "schedule": "0 6 * * 0"
     },
     {
+      "path": "/api/cron/legal-updates",
+      "schedule": "0 6 * * 1"
+    },
+    {
       "path": "/api/cron/contract-expiry",
       "schedule": "0 7 * * *"
     },
