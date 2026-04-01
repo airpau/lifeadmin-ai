@@ -14,7 +14,7 @@ import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers
 import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
-import { SORTED_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
+import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 
 interface ContractAlert {
   id: string;
@@ -308,7 +308,21 @@ export default function SubscriptionsPage() {
     let result = [...baseSubscriptions];
 
     if (filterCategory !== 'All') {
-      result = result.filter(s => s.category === filterCategory);
+      const group = SUBSCRIPTION_FILTER_CATEGORIES.find(g => g.value === filterCategory);
+      if (group) {
+        if (group.matches.length === 0) {
+          // 'other' catch-all: everything not covered by named groups
+          const allGroupedCategories = SUBSCRIPTION_FILTER_CATEGORIES
+            .filter(g => g.matches.length > 0)
+            .flatMap(g => g.matches);
+          result = result.filter(s => !s.category || !allGroupedCategories.includes(s.category));
+        } else {
+          result = result.filter(s => s.category != null && group.matches.includes(s.category));
+        }
+      } else {
+        // Fallback: exact category match (e.g. legacy URL params)
+        result = result.filter(s => s.category === filterCategory);
+      }
     }
 
     result.sort((a, b) => {
@@ -1488,15 +1502,15 @@ export default function SubscriptionsPage() {
           >
             All
           </button>
-          {SORTED_CATEGORIES.map(cat => (
+          {SUBSCRIPTION_FILTER_CATEGORIES.map(cat => (
             <button
               key={cat.value}
               onClick={() => setFilterCategory(cat.value)}
               className={`flex items-center gap-1.5 whitespace-nowrap px-4 py-2 rounded-full text-sm transition-all ${filterCategory === cat.value ? 'bg-mint-400 text-navy-950 font-semibold' : 'bg-navy-800 text-slate-300 hover:bg-navy-700'}`}
             >
               {(() => {
-                 const Icon = getCategoryIcon(cat.value);
-                 return <Icon className="w-3.5 h-3.5 opacity-70" />;
+                const Icon = cat.icon;
+                return <Icon className="w-3.5 h-3.5 opacity-70" />;
               })()}
               {cat.label}
             </button>

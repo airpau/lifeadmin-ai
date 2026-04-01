@@ -123,7 +123,12 @@ Set terms to null if not found. For unfair_clauses, flag anything one-sided, hid
     return NextResponse.json({ error: 'Could not parse contract analysis' }, { status: 500 });
   }
 
-  const result = JSON.parse(jsonMatch[0]);
+  let result: any;
+  try {
+    result = JSON.parse(jsonMatch[0]);
+  } catch {
+    return NextResponse.json({ error: 'Could not parse contract analysis' }, { status: 500 });
+  }
 
   // Save to database
   const { data: extraction, error: insertError } = await supabase
@@ -166,11 +171,11 @@ Set terms to null if not found. For unfair_clauses, flag anything one-sided, hid
     if (result.contract_start_date) syncFields.contract_start_date = result.contract_start_date;
     if (result.contract_end_date) syncFields.contract_end_date = result.contract_end_date;
     if (result.minimum_term) {
-      const months = parseInt(result.minimum_term);
-      if (!isNaN(months)) syncFields.term_months = months;
+      const months = parseInt(String(result.minimum_term));
+      if (!isNaN(months)) syncFields.contract_term_months = months;
     }
-    if (result.auto_renewal != null) syncFields.auto_renews = result.auto_renewal?.toLowerCase?.()?.includes('yes') || result.auto_renewal === true;
-    if (result.early_exit_fee) syncFields.early_exit_fee = parseFloat(result.early_exit_fee.replace(/[^0-9.]/g, '')) || null;
+    if (result.auto_renewal != null) syncFields.auto_renews = String(result.auto_renewal).toLowerCase().includes('yes') || result.auto_renewal === true;
+    if (result.early_exit_fee) syncFields.early_exit_fee = parseFloat(String(result.early_exit_fee).replace(/[^0-9.]/g, '')) || null;
     if (result.contract_type) syncFields.contract_type = result.contract_type;
 
     if (Object.keys(syncFields).length > 0) {
