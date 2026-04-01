@@ -19,14 +19,17 @@ export default function LoginPage() {
   const [useMagicLink, setUseMagicLink] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/dashboard';
+  const rawRedirect = searchParams.get('redirect');
+  const redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
+    ? rawRedirect
+    : '/dashboard';
 
   const supabase = createClient();
 
   // Redirect to dashboard if already logged in
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) router.replace('/dashboard');
+      if (user) router.replace(redirectTo);
     });
   }, []);
 
@@ -179,7 +182,10 @@ export default function LoginPage() {
               <div className="mt-6 text-center">
                 <p className="text-slate-400 text-sm">
                   Don't have an account?{' '}
-                  <Link href="/auth/signup" className="text-mint-400 hover:text-mint-300 font-medium">
+                  <Link
+                    href={redirectTo !== '/dashboard' ? `/auth/signup?redirect=${encodeURIComponent(redirectTo)}` : '/auth/signup'}
+                    className="text-mint-400 hover:text-mint-300 font-medium"
+                  >
                     Sign up
                   </Link>
                 </p>

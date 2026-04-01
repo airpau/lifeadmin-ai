@@ -95,6 +95,23 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
   nhs_complaint: 'NHS Complaint',
 };
 
+// Maps ?category= aliases (e.g. from OnboardingFlow chips) to issue_type keys
+const CATEGORY_ALIAS: Record<string, string> = {
+  energy_bill: 'energy_dispute',
+  energy: 'energy_dispute',
+  broadband: 'broadband_complaint',
+  mobile: 'broadband_complaint',
+  flight: 'flight_compensation',
+  flights: 'flight_compensation',
+  parking: 'parking_appeal',
+  debt: 'debt_dispute',
+  refund: 'refund_request',
+  hmrc: 'hmrc_tax_rebate',
+  council_tax: 'council_tax_band',
+  dvla: 'dvla_vehicle',
+  nhs: 'nhs_complaint',
+};
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   open: { label: 'Open', className: 'bg-blue-500/10 text-blue-400' },
   awaiting_response: { label: 'Waiting for reply', className: 'bg-purple-500/10 text-purple-400' },
@@ -949,14 +966,30 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const searchParams = useSearchParams();
   const autoLaunch = !!(searchParams.get('alertId') && searchParams.get('company') && searchParams.get('issue'));
-  const [formData, setFormData] = useState({
-    issue_type: searchParams.get('type') || 'complaint',
-    provider_name: searchParams.get('company') || '',
-    issue_summary: searchParams.get('issue') || '',
-    desired_outcome: searchParams.get('outcome') || (autoLaunch ? 'Reverse the price increase or allow me to exit my contract without penalty' : ''),
-    disputed_amount: searchParams.get('amount') || '',
-    account_number: '',
-    alert_id: searchParams.get('alertId') || '',
+  const [formData, setFormData] = useState(() => {
+    // Resolve issue_type: ?type= > ?category= (aliased) > sessionStorage pb_preview_letter > default
+    const typeParam = searchParams.get('type');
+    const catParam = searchParams.get('category');
+    let resolvedType = typeParam || (catParam ? (CATEGORY_ALIAS[catParam] || catParam) : null);
+    if (!resolvedType && typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('pb_preview_letter');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          resolvedType = parsed.type || null;
+          sessionStorage.removeItem('pb_preview_letter');
+        }
+      } catch {}
+    }
+    return {
+      issue_type: resolvedType || 'complaint',
+      provider_name: searchParams.get('company') || '',
+      issue_summary: searchParams.get('issue') || '',
+      desired_outcome: searchParams.get('outcome') || (autoLaunch ? 'Reverse the price increase or allow me to exit my contract without penalty' : ''),
+      disputed_amount: searchParams.get('amount') || '',
+      account_number: '',
+      alert_id: searchParams.get('alertId') || '',
+    };
   });
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -1596,9 +1629,13 @@ function ComplaintsPageInner() {
   const [view, setView] = useState<'list' | 'new' | 'detail'>('list');
   const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
 
-  // If URL has ?new=1, open new dispute form
+  // If URL has ?new=1 or sessionStorage has pb_preview_letter, open new dispute form
   useEffect(() => {
-    if (searchParams.get('new') === '1') setView('new');
+    if (searchParams.get('new') === '1') {
+      setView('new');
+    } else if (typeof window !== 'undefined' && sessionStorage.getItem('pb_preview_letter')) {
+      setView('new');
+    }
   }, [searchParams]);
 
   if (view === 'new') {

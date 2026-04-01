@@ -24,6 +24,10 @@ export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const rawRedirect = searchParams.get('redirect');
+  const redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
+    ? rawRedirect
+    : null;
 
   useEffect(() => {
     if (WAITLIST_MODE) {
@@ -32,7 +36,7 @@ export default function SignupPage() {
     }
     // Redirect to dashboard if already logged in
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) router.replace('/dashboard');
+      if (user) router.replace(redirectTo || '/dashboard');
     });
     if (searchParams.get('verify') === 'true') setVerifyMode(true);
   }, [searchParams, router]);
@@ -148,7 +152,10 @@ export default function SignupPage() {
         if (awinAwc) sessionStorage.setItem('awin_awc', awinAwc);
         sessionStorage.setItem('awin_ref', `signup-${data.user!.id}`);
 
-        router.push('/dashboard?signup=1');
+        const destination = redirectTo
+          ? `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}signup=1`
+          : '/dashboard?signup=1';
+        router.push(destination);
         router.refresh();
       } else {
         capture('user_signup_verify', { email });
@@ -289,7 +296,10 @@ export default function SignupPage() {
           <div className="mt-6 text-center">
             <p className="text-slate-400 text-sm">
               Already have an account?{' '}
-              <Link href="/auth/login" className="text-mint-400 hover:text-mint-300 font-medium">
+              <Link
+                href={redirectTo ? `/auth/login?redirect=${encodeURIComponent(redirectTo)}` : '/auth/login'}
+                className="text-mint-400 hover:text-mint-300 font-medium"
+              >
                 Sign in
               </Link>
             </p>
