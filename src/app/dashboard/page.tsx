@@ -151,6 +151,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      let hasBankConnection = false;
+      let hasStoredAlerts = false;
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
@@ -173,7 +176,8 @@ export default function DashboardPage() {
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
-        setBankConnected((banks.count || 0) > 0);
+        hasBankConnection = (banks.count || 0) > 0;
+        setBankConnected(hasBankConnection);
 
         // Check trial status
         if (profile.data?.founding_member && profile.data?.founding_member_expires && !profile.data?.stripe_subscription_id) {
@@ -233,6 +237,7 @@ export default function DashboardPage() {
           .eq('status', 'active')
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
+        hasStoredAlerts = (priceAlertData || []).length > 0;
 
         // Calculate real potential savings from price alerts (use actual price diff, not annual_impact which may be empty)
         const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
@@ -314,6 +319,21 @@ export default function DashboardPage() {
       } catch {} // Non-critical
       finally {
         setDealsLoading(false);
+      }
+
+      // On-demand price increase detection: if the user has bank data but no
+      // stored alerts yet, run detection immediately rather than waiting for
+      // the 8 AM daily cron. Deduplication in the endpoint prevents double inserts.
+      if (hasBankConnection && !hasStoredAlerts) {
+        try {
+          const detectRes = await fetch('/api/price-alerts/detect', { method: 'POST' });
+          if (detectRes.ok) {
+            const detectData = await detectRes.json();
+            if (detectData.alerts?.length > 0) {
+              setPriceAlerts(detectData.alerts);
+            }
+          }
+        } catch {} // Non-critical
       }
     };
     fetchData();
