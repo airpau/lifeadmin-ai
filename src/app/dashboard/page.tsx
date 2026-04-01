@@ -147,6 +147,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      let hasBankConnection = false;
+      let hasStoredAlerts = false;
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
@@ -169,7 +172,8 @@ export default function DashboardPage() {
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
-        setBankConnected((banks.count || 0) > 0);
+        hasBankConnection = (banks.count || 0) > 0;
+        setBankConnected(hasBankConnection);
 
         // Check trial status
         if (profile.data?.founding_member && profile.data?.founding_member_expires && !profile.data?.stripe_subscription_id) {
@@ -227,6 +231,7 @@ export default function DashboardPage() {
           .eq('status', 'active')
           .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
+        hasStoredAlerts = (priceAlertData || []).length > 0;
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -259,6 +264,21 @@ export default function DashboardPage() {
           setComparisonDeals(dealsList);
         }
       } catch {} // Non-critical
+
+      // On-demand price increase detection: if the user has bank data but no
+      // stored alerts yet, run detection immediately rather than waiting for
+      // the 8 AM daily cron. Deduplication in the endpoint prevents double inserts.
+      if (hasBankConnection && !hasStoredAlerts) {
+        try {
+          const detectRes = await fetch('/api/price-alerts/detect', { method: 'POST' });
+          if (detectRes.ok) {
+            const detectData = await detectRes.json();
+            if (detectData.alerts?.length > 0) {
+              setPriceAlerts(detectData.alerts);
+            }
+          }
+        } catch {} // Non-critical
+      }
     };
     fetchData();
   }, [supabase]);
