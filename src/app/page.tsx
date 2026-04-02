@@ -3,20 +3,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle, Sparkles, TrendingUp, Scale, Users, CreditCard, Banknote, FileText, Check, X, ArrowRight, ChevronRight, MessageCircle, Zap, FileEdit, Bell, BadgeCheck, Shield } from 'lucide-react';
-import { WAITLIST_MODE } from '@/lib/config';
+import { CheckCircle, Sparkles, TrendingUp, Scale, CreditCard, Banknote, Check, X, ArrowRight, ChevronRight, MessageCircle, Zap, FileEdit, Bell, BadgeCheck, Shield } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
 import PublicNavbar from '@/components/PublicNavbar';
 import { createClient } from '@/lib/supabase/client';
 
 export default function Home() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
   const [trialActive, setTrialActive] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [claimingFounder, setClaimingFounder] = useState(false);
@@ -56,54 +49,9 @@ export default function Home() {
       .then(d => setPublicStats(d))
       .catch(() => {});
 
-    if (WAITLIST_MODE) {
-      fetch('/api/waitlist')
-        .then((res) => res.json())
-        .then((data) => { setWaitlistCount(data.count ?? 0); })
-        .catch(() => { setWaitlistCount(0); });
-    }
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to join waitlist');
-      }
-
-      const data = await res.json();
-      if (data.count) setWaitlistCount(data.count);
-      setSuccess(true);
-      capture('waitlist_signup', { email, count: data.count });
-      // Awin lead conversion tracking
-      if (typeof window !== 'undefined') {
-        const img = new window.Image();
-        img.src = `https://www.awin1.com/sread.php?tt=ns&tv=2&merchant=125502&amount=0.00&ch=aw&parts=DEFAULT:0.00&ref=waitlist-${Date.now()}&vc=&cr=GBP&testmode=0`;
-      }
-      setName('');
-      setEmail('');
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const ctaButton = WAITLIST_MODE ? (
-    <a href="#waitlist" className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg">
-      Join the Waitlist — Get Early Access
-    </a>
-  ) : (
+  const ctaButton = (
     <Link href="/auth/signup" className="w-full sm:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-amber-500/25 text-center text-lg">
       {trialActive ? `Start Free 14-Day Pro Trial` : 'Create Free Account'}
     </Link>
@@ -224,17 +172,22 @@ export default function Home() {
                 variants={staggerContainer}
                 initial="hidden"
                 animate="show"
-                className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto"
+                className="flex flex-wrap items-center justify-center gap-3"
               >
                 {[
-                  { value: 'Disputes Centre', label: 'AI letters citing UK law' },
-                  { value: 'Money Hub', label: 'Open banking intelligence' },
-                  { value: 'Subscription Finder', label: 'Scan, track & cancel' },
-                  { value: 'Deals Checker', label: 'Compare & switch to save' },
-                ].map((stat) => (
-                  <motion.div key={stat.label} variants={fadeUp} className="bg-navy-900/50 border border-navy-700/50 rounded-xl p-4 text-center hover:border-mint-400/30 transition-all">
-                    <p className="text-lg font-bold text-mint-400 mb-1">{stat.value}</p>
-                    <p className="text-slate-400 text-xs">{stat.label}</p>
+                  { icon: Scale, label: 'Disputes Centre', desc: 'AI letters citing UK law' },
+                  { icon: Banknote, label: 'Money Hub', desc: 'Open banking intelligence' },
+                  { icon: CreditCard, label: 'Subscription Finder', desc: 'Scan, track & cancel' },
+                  { icon: TrendingUp, label: 'Deals Checker', desc: 'Compare & switch to save' },
+                ].map((item) => (
+                  <motion.div
+                    key={item.label}
+                    variants={fadeUp}
+                    className="flex items-center gap-2 bg-navy-900/60 border border-navy-700/40 rounded-full px-4 py-2 hover:border-mint-400/30 transition-all"
+                  >
+                    <item.icon className="h-3.5 w-3.5 text-mint-400 shrink-0" />
+                    <span className="text-slate-300 text-xs font-medium">{item.label}</span>
+                    <span className="text-slate-600 text-xs hidden sm:inline">&mdash; {item.desc}</span>
                   </motion.div>
                 ))}
               </motion.div>
@@ -478,15 +431,9 @@ export default function Home() {
                     </li>
                   ))}
                 </ul>
-                {WAITLIST_MODE ? (
-                  <a href="#waitlist" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
-                    Generate Your Letter <ChevronRight className="h-4 w-4" />
-                  </a>
-                ) : (
-                  <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
-                    Generate Your Letter <ChevronRight className="h-4 w-4" />
-                  </Link>
-                )}
+                <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
+                  Generate Your Letter <ChevronRight className="h-4 w-4" />
+                </Link>
               </div>
               <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
                 <div className="flex items-center gap-2 mb-4">
@@ -833,7 +780,7 @@ export default function Home() {
         </section>
 
         {/* What Happens After Signup */}
-        <section className="py-20 md:py-28 bg-navy-900/30">
+        <section id="how-it-works" className="py-20 md:py-28 bg-navy-900/30 scroll-mt-16">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-12">
               <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">You&apos;re up and running in minutes</h2>
@@ -846,7 +793,7 @@ export default function Home() {
                   title: 'Generate your first letter — free, instant',
                   desc: 'Describe your dispute and our AI produces a formal letter citing the exact UK law that applies. Takes 30 seconds. No account needed to try it.',
                   cta: 'Try it now',
-                  href: WAITLIST_MODE ? '#waitlist' : '/auth/signup',
+                  href: '/auth/signup',
                   colour: 'mint',
                 },
                 {
@@ -854,7 +801,7 @@ export default function Home() {
                   title: 'Connect your bank to find hidden costs',
                   desc: 'Link your bank account securely via Open Banking. We automatically detect every subscription, direct debit, and forgotten recurring charge.',
                   cta: 'Connect bank',
-                  href: WAITLIST_MODE ? '#waitlist' : '/auth/signup',
+                  href: '/auth/signup',
                   colour: 'brand',
                 },
                 {
@@ -862,7 +809,7 @@ export default function Home() {
                   title: 'Get personalised savings recommendations',
                   desc: 'Your dashboard shows exactly where you\'re overpaying, which contracts are about to renew, and the cheapest alternatives available right now.',
                   cta: 'See your dashboard',
-                  href: WAITLIST_MODE ? '#waitlist' : '/auth/signup',
+                  href: '/auth/signup',
                   colour: 'mint',
                 },
               ].map((item, i) => (
@@ -885,101 +832,6 @@ export default function Home() {
                 </motion.div>
               ))}
             </div>
-          </div>
-        </section>
-
-        {/* Pocket Agent & WhatsApp Integration */}
-        <section className="py-20 md:py-28 relative overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent" />
-          <div className="container mx-auto px-4 md:px-6 relative">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <div className="text-center mb-12">
-                <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-6">
-                  <Sparkles className="h-4 w-4" />
-                  <span>Available Now for Pro Members</span>
-                </div>
-                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                  Meet{' '}
-                  <span className="bg-gradient-to-r from-amber-400 to-amber-500 bg-clip-text text-transparent">
-                    Pocket Agent
-                  </span>
-                </h2>
-                <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
-                  Your AI financial assistant, right inside Telegram. Check your spending, track disputes, get alerts, and draft complaint letters — all from your phone.
-                </p>
-              </div>
-
-              {/* Messenger platform badges */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-                <div className="flex items-center gap-4 bg-navy-900 border border-navy-700/50 hover:border-[#2AABEE]/40 rounded-2xl px-8 py-5 shadow-[--shadow-card] transition-all">
-                  <svg className="h-10 w-10 shrink-0" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                      <linearGradient id="tg-grad" x1="120" y1="0" x2="120" y2="240" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#2AABEE"/>
-                        <stop offset="1" stopColor="#229ED9"/>
-                      </linearGradient>
-                    </defs>
-                    <circle cx="120" cy="120" r="120" fill="url(#tg-grad)"/>
-                    <path d="M51.5 120.3c36.5-16 60.8-26.6 72.8-31.8 34.7-14.4 41.9-16.9 46.6-17 1 0 3.3.3 4.8 1.4 1.3.9 1.6 2.2 1.8 3.1.2.9.4 2.9.2 4.5-1.8 19-9.7 65.2-13.7 86.5-1.7 9-5 12-8.3 12.3-7 .6-12.4-4.6-19.2-9.1-10.7-7-16.7-11.3-27-18.1-12-7.9-4.2-12.2 2.6-19.3 1.8-1.9 33.2-30.4 33.8-33 .1-.3.1-.6-.1-.9s-.6-.2-.9-.1c-.4.1-6.8 4.3-19.2 12.6-18.2 12.3-36.4 24.4-36.4 24.4s-8.2 5.1-23.4 1.4z" fill="white"/>
-                  </svg>
-                  <div>
-                    <p className="text-white font-semibold">Pocket Agent on Telegram</p>
-                    <p className="text-mint-400 text-xs font-medium">Live now</p>
-                  </div>
-                </div>
-
-                <span className="text-slate-700 font-light text-xl hidden sm:block">+</span>
-
-                <div className="flex items-center gap-4 bg-navy-900 border border-navy-700/50 hover:border-[#25D366]/40 rounded-2xl px-8 py-5 shadow-[--shadow-card] transition-all relative">
-                  <svg className="h-10 w-10 shrink-0" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="256" height="256" rx="56" fill="#25D366"/>
-                    <path d="M128 37C77.9 37 37 77.9 37 128c0 19.9 6 38.3 16.2 53.5L38.4 218l38.3-14.7C90.4 212.4 108.6 219 128 219c50.1 0 91-40.9 91-91s-40.9-91-91-91zm0 166.4c-17 0-32.8-5-46-13.5l-3.3-2-24.1 7.8 8-23.3-2.2-3.4C52.6 155.2 47 141.9 47 128c0-44.7 36.3-81 81-81s81 36.3 81 81-36.3 81-81 81zm44.5-60.8c-2.4-1.2-14.4-7.1-16.6-7.9-2.2-.8-3.8-1.2-5.4 1.2-1.6 2.4-6.2 7.9-7.6 9.5-1.4 1.6-2.8 1.8-5.2.6-2.4-1.2-10.2-3.8-19.4-12-7.2-6.4-12-14.3-13.4-16.7-1.4-2.4-.2-3.7 1-5 1.1-1.1 2.4-2.8 3.6-4.2 1.2-1.4 1.6-2.4 2.4-4 .8-1.6.4-3-.2-4.2-.6-1.2-5.4-13.1-7.4-17.9-2-4.7-4-4.1-5.4-4.2-1.4-.1-3-.1-4.6-.1-1.6 0-4.2.6-6.4 3-2.2 2.4-8.4 8.2-8.4 20s8.6 23.2 9.8 24.8c1.2 1.6 16.8 25.6 40.6 35.9 5.7 2.4 10.1 3.9 13.5 5 5.7 1.8 10.8 1.6 14.9.9 4.5-.7 14.4-5.9 16.4-11.6 2-5.7 2-10.6 1.4-11.6-.6-1-2.2-1.6-4.6-2.8z" fill="white"/>
-                  </svg>
-                  <div>
-                    <p className="text-white font-semibold">WhatsApp</p>
-                    <p className="text-amber-400 text-xs">Coming soon</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Feature cards */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-                {[
-                  { icon: '💬', title: 'Ask about your spending', desc: 'Check balances, top categories, and subscriptions in a single message.' },
-                  { icon: '🔔', title: 'Proactive alerts', desc: 'Contract expiry, budget warnings, and renewal reminders sent straight to your phone.' },
-                  { icon: '📝', title: 'Draft letters on the go', desc: 'Describe a dispute and get a full UK legal complaint letter back in seconds.' },
-                  { icon: '📋', title: 'Track your disputes', desc: 'Check open complaint status and correspondence history without opening the app.' },
-                ].map((item, i) => (
-                  <motion.div
-                    key={item.title}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.4, delay: i * 0.1 }}
-                    className="bg-navy-900 border border-navy-700/50 hover:border-amber-500/30 rounded-2xl p-5 transition-all shadow-[--shadow-card]"
-                  >
-                    <span className="text-2xl mb-3 block">{item.icon}</span>
-                    <h3 className="text-white font-semibold text-sm mb-2">{item.title}</h3>
-                    <p className="text-slate-400 text-xs leading-relaxed">{item.desc}</p>
-                  </motion.div>
-                ))}
-              </div>
-
-              <div className="text-center">
-                <a
-                  href="#pricing"
-                  className="inline-flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:border-amber-500/50 font-semibold px-6 py-3 rounded-xl transition-all text-sm"
-                >
-                  Get Pocket Agent with Pro <ChevronRight className="h-4 w-4" />
-                </a>
-              </div>
-            </motion.div>
           </div>
         </section>
 
@@ -1078,53 +930,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* How It Works */}
-        <section id="how-it-works" className="py-20 md:py-28 bg-navy-900/30 scroll-mt-16">
-          <div className="container mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-16"
-            >
-              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">How it works</h2>
-              <p className="text-slate-400 text-lg">Three simple steps to start saving money</p>
-            </motion.div>
-
-            <div className="max-w-4xl mx-auto overflow-visible">
-              <div className="grid md:grid-cols-3 gap-8 relative overflow-visible">
-                {/* Connecting line (desktop only) */}
-                <div className="hidden md:block absolute top-12 left-[20%] right-[20%] h-0.5 bg-gradient-to-r from-mint-400/50 via-brand-400/50 to-mint-400/50 pointer-events-none" />
-
-                {[
-                  { num: '1', title: 'Describe your issue', desc: 'Tell us what happened. Energy overcharge, flight delay, unfair bill - any consumer dispute.', icon: FileText },
-                  { num: '2', title: 'AI generates your letter', desc: 'Our AI writes a formal complaint letter citing the exact UK legislation that applies to your case.', icon: Sparkles },
-                  { num: '3', title: 'Send and get your money back', desc: 'Copy your letter, send it to the company, and let the law do the heavy lifting.', icon: Banknote },
-                ].map((step, i) => (
-                  <motion.div
-                    key={step.num}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: i * 0.15 }}
-                    className="relative text-center"
-                  >
-                    <div className="bg-mint-400 text-navy-950 w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg mx-auto mb-6 relative z-10 shadow-[--shadow-glow-mint]">
-                      {step.num}
-                    </div>
-                    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:shadow-[--shadow-card-hover] transition-all duration-200">
-                      <step.icon className="h-8 w-8 text-mint-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-white mb-2">{step.title}</h3>
-                      <p className="text-slate-400 text-sm leading-relaxed">{step.desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* Social Proof — Live Stats */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
@@ -1183,88 +988,6 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Waitlist Form */}
-        <div id="waitlist" className="scroll-mt-24">
-          <section className="py-20 md:py-28 bg-navy-900/30">
-            <div className="container mx-auto px-4 md:px-6">
-              <div className="max-w-xl mx-auto">
-                <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-8 shadow-[--shadow-card]">
-                  {WAITLIST_MODE && (
-                    <div className="flex items-center justify-center gap-2 mb-6 text-sm text-slate-400">
-                      <Users className="h-4 w-4 text-mint-400" />
-                      {waitlistCount && waitlistCount > 0 ? (
-                        <span>Join <span className="text-white font-semibold">{waitlistCount.toLocaleString()}</span> {waitlistCount === 1 ? 'other' : 'others'} on the waitlist</span>
-                      ) : (
-                        <span>Be the first on the waitlist</span>
-                      )}
-                    </div>
-                  )}
-
-                  {success ? (
-                    <div className="text-center py-8">
-                      <div className="bg-mint-400/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <CheckCircle className="h-8 w-8 text-mint-400" />
-                      </div>
-                      <h3 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-white mb-2">You&apos;re on the list!</h3>
-                      <p className="text-slate-400">We&apos;ll email you when we launch. Get ready to get your money back.</p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                      {WAITLIST_MODE && (
-                        <div className="text-center mb-2">
-                          <h3 className="font-[family-name:var(--font-heading)] text-xl font-bold text-white mb-1">Get early access</h3>
-                          <p className="text-slate-400 text-sm">Be first in line when we launch. No spam, ever.</p>
-                        </div>
-                      )}
-
-                      <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-2">Full name</label>
-                        <input type="text" id="name" required value={name} onChange={(e) => setName(e.target.value)}
-                          className="w-full px-4 py-3 bg-navy-950 border border-navy-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400 transition-all"
-                          placeholder="Enter your name" />
-                      </div>
-
-                      <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">Email address</label>
-                        <input type="email" id="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                          className="w-full px-4 py-3 bg-navy-950 border border-navy-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400 transition-all"
-                          placeholder="you@example.com" />
-                      </div>
-
-                      {error && <p className="text-red-400 text-sm">{error}</p>}
-
-                      <button type="submit" disabled={loading}
-                        className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] disabled:opacity-50 disabled:cursor-not-allowed">
-                        {loading ? 'Joining...' : WAITLIST_MODE ? 'Join the waitlist' : 'Create Free Account'}
-                      </button>
-
-                      <p className="text-center text-sm text-slate-500 mt-4">Free to join. No credit card required.</p>
-                    </form>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* CTA Banner */}
-        <section className="py-20 md:py-28 relative overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-mint-400/5 via-brand-400/5 to-mint-400/5" />
-          <div className="container mx-auto px-4 md:px-6 relative">
-            <div className="max-w-3xl mx-auto text-center">
-              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                Ready to get your money back?
-              </h2>
-              <p className="text-slate-300 text-lg mb-4 max-w-xl mx-auto">
-                Most UK households are being overcharged by over £1,000 a year. Paybacker finds it, disputes it, and cancels it in minutes.
-              </p>
-              <p className="text-slate-400 text-sm mb-8">Create a free account in 30 seconds. No credit card required.</p>
-              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-lg inline-flex items-center gap-2">
-                Create Free Account <ArrowRight className="h-5 w-5" />
-              </Link>
-            </div>
-          </div>
-        </section>
       </main>
 
       {/* Footer */}
