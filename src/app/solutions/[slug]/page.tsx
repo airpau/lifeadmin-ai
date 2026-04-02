@@ -118,7 +118,7 @@ const PAGES: Record<string, SolutionPage> = {
       { step: '3', title: 'Cancel what you do not need', description: 'Generate AI cancellation emails citing Consumer Contracts Regulations for any subscription.' },
     ],
     faqs: [
-      { q: 'Is it safe to connect my bank?', a: 'Yes. We use Open Banking via TrueLayer, which is regulated by the FCA. We only have read-only access to your transactions. We never see your bank login details.' },
+      { q: 'Is it safe to connect my bank?', a: 'Yes. We use Open Banking via Yapily, which is regulated by the FCA. We only have read-only access to your transactions. We never see your bank login details.' },
       { q: 'How many subscriptions will it find?', a: 'The average user discovers 3-5 subscriptions they had forgotten about. Some find over 10.' },
       { q: 'Can it cancel subscriptions for me?', a: 'We generate a formal cancellation email citing UK Consumer Contracts Regulations that you send to the provider. Automated cancellation is coming soon.' },
     ],
@@ -213,7 +213,7 @@ const PAGES: Record<string, SolutionPage> = {
       'Financial health score updated with every sync',
     ],
     howItWorks: [
-      { step: '1', title: 'Connect your bank', description: 'Secure Open Banking connection via TrueLayer. FCA regulated. Read-only access.' },
+      { step: '1', title: 'Connect your bank', description: 'Secure Open Banking connection via Yapily. FCA regulated. Read-only access.' },
       { step: '2', title: 'See your full picture', description: 'Every transaction categorised. Income, spending, subscriptions, and trends in one view.' },
       { step: '3', title: 'Take control', description: 'Set budgets, track goals, and get alerts when spending spikes. AI assistant answers questions about your finances.' },
     ],

@@ -249,8 +249,8 @@ export default function Home() {
             <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12">
               {[
                 { name: 'ICO Registered', sub: 'Data Protection', icon: '🛡️' },
-                { name: 'FCA Regulated', sub: 'Via TrueLayer', icon: '✅' },
-                { name: 'TrueLayer', sub: 'Open Banking', icon: '🏦' },
+                { name: 'FCA Regulated', sub: 'Via Yapily', icon: '✅' },
+                { name: 'Yapily', sub: 'Open Banking', icon: '🏦' },
                 { name: 'Stripe', sub: 'Secure Payments', icon: '🔒' },
                 { name: 'GDPR Compliant', sub: 'UK Data Laws', icon: '📋' },
                 { name: 'UK Company', sub: 'Paybacker LTD', icon: '🇬🇧' },

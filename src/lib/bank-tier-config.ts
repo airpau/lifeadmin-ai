@@ -45,7 +45,7 @@ export const TIER_CONFIG = {
   upgradeMessage: string | null;
 }>;
 
-/** Global TrueLayer cost protection */
+/** Global Open Banking (Yapily) cost protection */
 export const GLOBAL_DAILY_API_CEILING = 500;
 export const API_CEILING_ALERT_PCT = 0.8; // Send Telegram alert at 80%
 
@@ -105,7 +105,7 @@ export async function checkAndAlertCeiling(
   // Only fire once — when we first cross the threshold
   if (previousCount < alertThreshold && newCount >= alertThreshold) {
     await sendTelegramAlert(
-      `⚠️ *TrueLayer API usage alert*\n\n` +
+      `⚠️ *Open Banking API usage alert*\n\n` +
       `${newCount}/${GLOBAL_DAILY_API_CEILING} API calls used today ` +
       `(${Math.round((newCount / GLOBAL_DAILY_API_CEILING) * 100)}%).\n` +
       `Approaching daily ceiling — monitor closely.`

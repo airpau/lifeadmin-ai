@@ -23,12 +23,12 @@ export interface PriceIncrease {
 const VARIABLE_CATEGORIES = new Set([
   'groceries', 'fuel', 'eating_out', 'shopping', 'cash', 'transfers',
   'income', 'other', 'transport', 'gambling',
-  // TrueLayer categories that are one-off purchases, not recurring bills
+  // Bank categories that are one-off purchases, not recurring bills
   'PURCHASE', 'ATM', 'TRANSFER', 'FEE_CHARGE', 'CASH',
   'CREDIT', 'INTEREST', 'OTHER',
 ]);
 
-// Only these TrueLayer categories can be recurring bills
+// Only these transaction categories can be recurring bills
 const RECURRING_CATEGORIES = new Set([
   'DIRECT_DEBIT', 'STANDING_ORDER',
   // Mapped internal categories

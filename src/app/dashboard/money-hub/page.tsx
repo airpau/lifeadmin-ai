@@ -465,7 +465,7 @@ export default function MoneyHubPage() {
     } catch (err) {
       // Edge function not deployed yet — fall back to the local sync routes
       try {
-        // Step 1: Pull fresh transactions from TrueLayer into DB
+        // Step 1: Pull fresh transactions from bank into DB
         await fetch('/api/bank/sync', { method: 'POST' });
         // Step 2: Categorise the new transactions
         await fetch('/api/money-hub/sync', { method: 'POST' });
@@ -479,7 +479,7 @@ export default function MoneyHubPage() {
   };
 
   const handleReconnectBank = () => {
-    window.location.href = '/api/auth/truelayer';
+    window.location.href = '/api/auth/yapily';
   };
 
   // ─── Category drill-down ──────────────────────────────────────────────────
@@ -951,13 +951,13 @@ export default function MoneyHubPage() {
             We analyse your transactions and give you a complete financial picture — spending, income, subscriptions, budgets, and savings goals.
           </p>
           <a
-            href="/api/auth/truelayer"
+            href="/api/auth/yapily"
             className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all"
           >
             <Building2 className="h-5 w-5" />
             Connect Bank Account
           </a>
-          <p className="text-slate-500 text-xs mt-3">FCA regulated via TrueLayer · Read-only access · Takes 2 minutes</p>
+          <p className="text-slate-500 text-xs mt-3">FCA regulated via Yapily · Read-only access · Takes 2 minutes</p>
         </div>
 
         {/* Demo preview tiles (blurred) */}

@@ -81,7 +81,7 @@ export default function AboutPage() {
                   </h3>
                   <p className="text-slate-300 text-sm leading-relaxed">
                     We use read-only access via Gmail, Outlook and Open Banking
-                    (powered by TrueLayer, FCA regulated). We never store your login credentials
+                    (powered by Yapily, FCA regulated). We never store your login credentials
                     and can never move your money.
                   </p>
                 </div>

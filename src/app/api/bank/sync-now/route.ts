@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getAccessToken, fetchTransactions, BankConnection } from '@/lib/truelayer';
+import { getTransactions } from '@/lib/yapily';
+import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
 import {
@@ -13,6 +14,19 @@ import {
 } from '@/lib/bank-tier-config';
 
 export const maxDuration = 60;
+
+interface BankConnection {
+  id: string;
+  user_id: string;
+  provider: string;
+  consent_token: string | null;
+  consent_expires_at: string | null;
+  account_ids: string[] | null;
+  bank_name: string | null;
+  status: string;
+  last_synced_at: string | null;
+  last_manual_sync_at: string | null;
+}
 
 function getAdmin() {
   return createAdmin(
@@ -79,7 +93,7 @@ export async function POST(request: NextRequest) {
 
   if (totalCallsToday >= GLOBAL_DAILY_API_CEILING) {
     await sendTelegramAlert(
-      `🚨 *TrueLayer API ceiling reached*\n\n` +
+      `🚨 *Open Banking API ceiling reached*\n\n` +
       `Daily limit of ${GLOBAL_DAILY_API_CEILING} API calls hit.\n` +
       `Manual sync blocked. Resets at midnight UTC.`
     );
@@ -98,12 +112,13 @@ export async function POST(request: NextRequest) {
     // No body — sync all connections
   }
 
-  // Fetch active connection(s)
+  // Fetch active Yapily connection(s)
   let connectionsQuery = supabase
     .from('bank_connections')
     .select('*')
     .eq('user_id', user.id)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .eq('provider', 'yapily');
 
   if (connectionId) {
     connectionsQuery = connectionsQuery.eq('id', connectionId);
@@ -146,12 +161,8 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
 
   for (const conn of connections as BankConnection[]) {
-    let accessToken: string;
-    try {
-      accessToken = await getAccessToken(conn);
-      apiCallsMade++;
-    } catch {
-      // Token refresh failed — mark as expired, do not retry
+    // Check consent token exists
+    if (!conn.consent_token) {
       await supabase
         .from('bank_connections')
         .update({ status: 'expired', updated_at: now })
@@ -163,15 +174,41 @@ export async function POST(request: NextRequest) {
         trigger_type: 'manual',
         status: 'failed',
         api_calls_made: apiCallsMade,
-        error_message: 'Token refresh failed — reconnect required',
+        error_message: 'No consent token — reconnect required',
       });
       continue;
     }
 
+    // Check consent expiry (Yapily consents are valid for 90 days)
+    if (conn.consent_expires_at) {
+      const expiresAt = new Date(conn.consent_expires_at).getTime();
+      if (Date.now() >= expiresAt) {
+        await supabase
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', conn.id);
+
+        await supabase.from('bank_sync_log').insert({
+          user_id: user.id,
+          connection_id: conn.id,
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'Consent expired — reconnect required',
+        });
+        continue;
+      }
+    }
+
+    // Decrypt consent token
+    const consentToken = decrypt(conn.consent_token);
+
     const accountIds = conn.account_ids || [];
     for (const accountId of accountIds) {
       try {
-        const transactions = await fetchTransactions(accessToken, accountId, ninetyDaysAgo);
+        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+        const toDate = new Date().toISOString().split('T')[0];
+        const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
         apiCallsMade++;
 
         if (transactions.length === 0) continue;
@@ -179,14 +216,14 @@ export async function POST(request: NextRequest) {
         const rows = transactions.map((tx) => ({
           user_id: user.id,
           connection_id: conn.id,
-          transaction_id: tx.transaction_id,
+          transaction_id: tx.id,
           account_id: accountId,
-          amount: tx.amount,
-          currency: tx.currency || 'GBP',
+          amount: tx.transactionAmount.amount,
+          currency: tx.transactionAmount.currency || 'GBP',
           description: tx.description || null,
-          merchant_name: tx.merchant_name || null,
-          category: tx.transaction_category || null,
-          timestamp: tx.timestamp,
+          merchant_name: tx.merchantName || null,
+          category: null,
+          timestamp: tx.bookingDateTime,
         }));
 
         const { error } = await supabase

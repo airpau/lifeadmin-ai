@@ -61,7 +61,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
 
     <div style="${box}">
       <p style="margin:0 0 16px;"><span style="${stepNum}">1</span><strong style="color:#e2e8f0;font-size:15px;">Connect your bank account</strong></p>
-      <p style="color:#94a3b8;margin:0 0 20px;font-size:14px;padding-left:38px;">We'll find every subscription, direct debit, and recurring payment automatically. Read-only, FCA regulated via TrueLayer. Takes 30 seconds.</p>
+      <p style="color:#94a3b8;margin:0 0 20px;font-size:14px;padding-left:38px;">We'll find every subscription, direct debit, and recurring payment automatically. Read-only, FCA regulated via Yapily. Takes 30 seconds.</p>
 
       <p style="margin:0 0 16px;"><span style="${stepNum}">2</span><strong style="color:#e2e8f0;font-size:15px;">Write your first complaint letter</strong></p>
       <p style="color:#94a3b8;margin:0 0 20px;font-size:14px;padding-left:38px;">Describe any billing issue in plain English. Our AI writes a professional letter citing the exact UK law that protects you. Energy, broadband, flights, debt, parking, council tax, HMRC, and more.</p>

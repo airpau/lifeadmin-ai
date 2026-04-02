@@ -155,7 +155,7 @@ export default function OnboardingFlow({
 
       <div className="flex items-center gap-3">
         <a
-          href="/api/auth/truelayer"
+          href="/api/auth/yapily"
           onClick={() => capture('onboarding_cta_click', { step: 'bank' })}
           className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all text-sm"
         >

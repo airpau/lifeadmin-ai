@@ -161,7 +161,7 @@ Rules for social media responses:
 - Never use em dashes (use commas, colons, or full stops instead)
 - Keep messages short and conversational (2-4 sentences for comments, up to a paragraph for DMs)
 - Never share internal business data (revenue, user counts, tech stack, API details)
-- Never mention Supabase, TrueLayer, Claude, Anthropic, Stripe, Vercel, Railway, or any internal systems
+- Never mention Supabase, Yapily, Claude, Anthropic, Stripe, Vercel, Railway, or any internal systems
 - If someone has a specific complaint, suggest trying the free letter generator at paybacker.co.uk
 - If someone has a complex issue, suggest emailing support@paybacker.co.uk
 - For feature requests, suggest features@paybacker.co.uk

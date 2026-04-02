@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getAccessToken, fetchAccounts, fetchTransactions, BankConnection } from '@/lib/truelayer';
+import { getAccounts, getTransactions } from '@/lib/yapily';
+import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
 import {
   TIER_CONFIG,
@@ -11,6 +12,18 @@ import {
 } from '@/lib/bank-tier-config';
 
 export const maxDuration = 60;
+
+interface BankConnection {
+  id: string;
+  user_id: string;
+  provider: string;
+  consent_token: string | null;
+  consent_expires_at: string | null;
+  account_ids: string[] | null;
+  bank_name: string | null;
+  status: string;
+  last_synced_at: string | null;
+}
 
 function getAdmin() {
   return createClient(
@@ -32,7 +45,7 @@ function getAdmin() {
  * Cost protection:
  *   - Global 500 API call ceiling per day (shared with manual syncs)
  *   - Telegram alert at 80% (400 calls)
- *   - Token refresh failures: mark as expired, do NOT retry in a loop
+ *   - Expired consent tokens: mark as expired, do NOT retry in a loop
  *
  * All syncs are logged to bank_sync_log.
  */
@@ -86,11 +99,12 @@ export async function GET(request: NextRequest) {
 
   const orderedUserIds = sortedProfiles.map((p) => p.id);
 
-  // Fetch active bank connections for these users
+  // Fetch active bank connections for these users (Yapily only)
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('*')
     .eq('status', 'active')
+    .eq('provider', 'yapily')
     .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000']);
 
   if (connError || !connections || connections.length === 0) {
@@ -127,7 +141,7 @@ export async function GET(request: NextRequest) {
     if (currentCallCount >= GLOBAL_DAILY_API_CEILING) {
       const remaining = sortedConnections.length - results.length;
       await sendTelegramAlert(
-        `🚨 *TrueLayer ceiling hit mid-cron*\n\n` +
+        `🚨 *Open Banking API ceiling hit mid-cron*\n\n` +
         `Stopped after ${results.length} connections processed.\n` +
         `${remaining} connections skipped. Total calls today: ${currentCallCount}.`
       );
@@ -138,14 +152,9 @@ export async function GET(request: NextRequest) {
     let connectionApiCalls = 0;
 
     try {
-      // Get valid access token (auto-refreshes if expired)
-      let accessToken: string;
-      try {
-        accessToken = await getAccessToken(connection);
-        connectionApiCalls++;
-      } catch (err: any) {
-        console.error(`Bank sync: token refresh failed for ${connection.id}:`, err.message);
-        // Mark expired — do NOT retry in a loop
+      // Check consent token exists
+      if (!connection.consent_token) {
+        console.error(`Bank sync: no consent token for ${connection.id}`);
         await supabase
           .from('bank_connections')
           .update({ status: 'expired', updated_at: now })
@@ -157,7 +166,7 @@ export async function GET(request: NextRequest) {
           trigger_type: 'cron',
           status: 'failed',
           api_calls_made: connectionApiCalls,
-          error_message: 'Token refresh failed — reconnect required',
+          error_message: 'No consent token — reconnect required',
         });
 
         results.push({
@@ -167,25 +176,61 @@ export async function GET(request: NextRequest) {
           transactions: 0,
           recurring: 0,
           api_calls: connectionApiCalls,
-          error: 'Token expired',
+          error: 'No consent token',
         });
         totalApiCalls += connectionApiCalls;
         continue;
       }
 
+      // Check consent expiry (Yapily consents are valid for 90 days)
+      if (connection.consent_expires_at) {
+        const expiresAt = new Date(connection.consent_expires_at).getTime();
+        if (Date.now() >= expiresAt) {
+          console.error(`Bank sync: consent expired for ${connection.id}`);
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+
+          await supabase.from('bank_sync_log').insert({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            trigger_type: 'cron',
+            status: 'failed',
+            api_calls_made: connectionApiCalls,
+            error_message: 'Consent expired — reconnect required',
+          });
+
+          results.push({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            tier,
+            transactions: 0,
+            recurring: 0,
+            api_calls: connectionApiCalls,
+            error: 'Consent expired',
+          });
+          totalApiCalls += connectionApiCalls;
+          continue;
+        }
+      }
+
+      // Decrypt consent token
+      const consentToken = decrypt(connection.consent_token);
+
       // Backfill bank name if missing
       if (!connection.bank_name) {
         try {
-          const accounts = await fetchAccounts(accessToken);
+          const accounts = await getAccounts(consentToken);
           connectionApiCalls++;
-          const bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
+          const bankName = accounts[0]?.institution?.name || null;
           const displayNames = accounts.map((a) =>
-            [a.display_name, a.description].filter(Boolean).join(' — ') || 'Account'
+            a.accountNames?.[0]?.name || a.type || 'Account'
           );
           await supabase.from('bank_connections').update({
             bank_name: bankName,
             account_display_names: displayNames,
-            account_ids: accounts.map((a) => a.account_id),
+            account_ids: accounts.map((a) => a.id),
           }).eq('id', connection.id);
         } catch {
           // Non-fatal
@@ -198,7 +243,9 @@ export async function GET(request: NextRequest) {
 
       for (const accountId of accountIds) {
         try {
-          const transactions = await fetchTransactions(accessToken, accountId, ninetyDaysAgo);
+          const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+          const toDate = new Date().toISOString().split('T')[0];
+          const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
           connectionApiCalls++;
 
           if (transactions.length === 0) continue;
@@ -206,14 +253,14 @@ export async function GET(request: NextRequest) {
           const rows = transactions.map((tx) => ({
             user_id: connection.user_id,
             connection_id: connection.id,
-            transaction_id: tx.transaction_id,
+            transaction_id: tx.id,
             account_id: accountId,
-            amount: tx.amount,
-            currency: tx.currency || 'GBP',
+            amount: tx.transactionAmount.amount,
+            currency: tx.transactionAmount.currency || 'GBP',
             description: tx.description || null,
-            merchant_name: tx.merchant_name || null,
-            category: tx.transaction_category || null,
-            timestamp: tx.timestamp,
+            merchant_name: tx.merchantName || null,
+            category: null,
+            timestamp: tx.bookingDateTime,
           }));
 
           const { error: upsertError } = await supabase

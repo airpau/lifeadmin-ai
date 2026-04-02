@@ -1306,7 +1306,7 @@ export default function SubscriptionsPage() {
                     </p>
                   </div>
                   <a
-                    href="/api/auth/truelayer"
+                    href="/api/auth/yapily"
                     className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                   >
                     <RefreshCw className="h-4 w-4" />
@@ -1364,7 +1364,7 @@ export default function SubscriptionsPage() {
                       {isFirst ? 'Connect your bank for automatic detection' : 'Connect another bank account'}
                     </h3>
                     <p className="text-slate-400 text-sm mb-1">
-                      We use TrueLayer (FCA regulated) to securely read your transactions. We never store your credentials.
+                      We use Yapily (FCA regulated) to securely read your transactions. We never store your credentials.
                     </p>
                     {isFirst && (
                       <p className="text-slate-500 text-xs">
@@ -1373,7 +1373,7 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
                   <a
-                    href="/api/auth/truelayer"
+                    href="/api/auth/yapily"
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
                   >
                     <Building2 className="h-4 w-4" />
