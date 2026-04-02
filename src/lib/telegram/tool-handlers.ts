@@ -53,6 +53,13 @@ export async function executeToolCall(
   switch (toolName) {
     case 'get_spending_summary':
       return getSpendingSummary(supabase, userId, toolInput.month as string | undefined);
+    case 'list_transactions':
+      return listTransactions(supabase, userId, {
+        month: toolInput.month as string | undefined,
+        category: toolInput.category as string | undefined,
+        merchant: toolInput.merchant as string | undefined,
+        limit: toolInput.limit as number | undefined,
+      });
     case 'get_subscriptions':
       return getSubscriptions(supabase, userId, toolInput.filter as string | undefined);
     case 'get_disputes':
@@ -172,6 +179,61 @@ async function getSpendingSummary(
     const arrow = diff > 1 ? ` ▲${fmt(diff)}` : diff < -1 ? ` ▼${fmt(Math.abs(diff))}` : '';
     text += `• ${cat}: *${fmt(amount)}*${arrow}\n`;
   }
+
+  return { text };
+}
+
+async function listTransactions(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { month?: string; category?: string; merchant?: string; limit?: number },
+): Promise<ToolResult> {
+  const now = new Date();
+  const targetMonth = params.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [year, mon] = targetMonth.split('-').map(Number);
+
+  const startDate = new Date(year, mon - 1, 1).toISOString();
+  const endDate = new Date(year, mon, 1).toISOString();
+  const maxResults = params.limit ?? 25;
+
+  let query = supabase
+    .from('bank_transactions')
+    .select('merchant_name, amount, category, timestamp')
+    .eq('user_id', userId)
+    .gte('timestamp', startDate)
+    .lt('timestamp', endDate)
+    .order('timestamp', { ascending: false })
+    .limit(maxResults);
+
+  if (params.category) {
+    query = query.ilike('category', params.category);
+  }
+  if (params.merchant) {
+    query = query.ilike('merchant_name', `%${params.merchant}%`);
+  }
+
+  const { data, error } = await query;
+
+  if (error || !data || data.length === 0) {
+    return { text: `No transactions found for ${targetMonth}${params.category ? ` in ${params.category}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}.` };
+  }
+
+  const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  let text = `*Transactions — ${monthLabel}*`;
+  if (params.category) text += ` (${params.category})`;
+  if (params.merchant) text += ` matching "${params.merchant}"`;
+  text += `\n\n`;
+
+  let total = 0;
+  for (const t of data) {
+    const amt = Number(t.amount);
+    total += amt;
+    const date = new Date(t.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+    const isDebit = amt < 0;
+    text += `${date} · ${t.merchant_name ?? 'Unknown'} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${t.category ?? 'other'}\n`;
+  }
+
+  text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${data.length} transaction${data.length !== 1 ? 's' : ''})`;
 
   return { text };
 }

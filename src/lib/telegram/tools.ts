@@ -21,6 +21,33 @@ export const telegramTools: Tool[] = [
     },
   },
   {
+    name: 'list_transactions',
+    description:
+      "List individual bank transactions with merchant name, amount, category, and date. Use this when the user asks to see specific transactions, direct debits, payments, or wants to review what they've been charged. Can filter by category, merchant, or date range.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        month: {
+          type: 'string',
+          description: 'Month in YYYY-MM format (e.g. 2026-04). Defaults to current month.',
+        },
+        category: {
+          type: 'string',
+          description: 'Filter by category (e.g. "food", "streaming", "bills"). Optional.',
+        },
+        merchant: {
+          type: 'string',
+          description: 'Filter by merchant name (partial match, case-insensitive). Optional.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max number of transactions to return. Defaults to 25.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'get_subscriptions',
     description:
       "Get the user's subscriptions with monthly/annual costs, renewal dates, and status.",
