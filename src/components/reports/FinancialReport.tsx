@@ -13,7 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
-import type { AnnualReportData } from '@/lib/report-generator';
+import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
 
 /* ------------------------------------------------------------------ */
 /*  Sample data for non-Pro users                                      */
@@ -126,15 +126,15 @@ function monthLabel(yyyymm: string): string {
 /* ------------------------------------------------------------------ */
 
 interface FinancialReportProps {
-  data?: AnnualReportData | null;
-  type: 'sample';
+  data?: AnnualReportData | OnDemandReportData | null;
+  type: 'sample' | 'annual' | 'on_demand';
 }
 
 export default function FinancialReport({ data, type }: FinancialReportProps) {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const isSample = true;
-  const report: AnnualReportData = data || SAMPLE_ANNUAL;
+  const report: AnnualReportData = (data as AnnualReportData) || SAMPLE_ANNUAL;
   const isAnnual = true;
 
   const handleDownloadPdf = async () => {

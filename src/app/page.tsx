@@ -30,13 +30,6 @@ export default function Home() {
   const [previewResult, setPreviewResult] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // Try-before-signup letter generator state
-  const [previewCategory, setPreviewCategory] = useState('energy');
-  const [previewDescription, setPreviewDescription] = useState('');
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewResult, setPreviewResult] = useState<string | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-
   useEffect(() => {
     // Check if user is logged in
     const supabase = createClient();
@@ -140,36 +133,6 @@ export default function Home() {
       )}
     </div>
   );
-
-  const handlePreviewGenerate = async () => {
-    if (!previewCategory) return;
-    setPreviewLoading(true);
-    setPreviewError(null);
-    setPreviewResult(null);
-    capture('preview_generate_click', { category: previewCategory });
-    try {
-      const res = await fetch('/api/complaints/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: previewCategory, description: previewDescription }),
-      });
-      if (res.status === 429) {
-        setPreviewError('You have reached the preview limit. Sign up free to generate unlimited letters.');
-        return;
-      }
-      if (!res.ok) throw new Error('Generation failed');
-      const data = await res.json();
-      setPreviewResult(data.preview || '');
-      // Store in session so it's waiting after signup
-      try {
-        sessionStorage.setItem('pb_preview_letter', JSON.stringify({ category: previewCategory, preview: data.preview }));
-      } catch {}
-    } catch {
-      setPreviewError('Something went wrong. Try again or sign up to generate.');
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
 
   const handlePreviewGenerate = async () => {
     if (!previewCategory) return;

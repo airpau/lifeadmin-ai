@@ -121,22 +121,6 @@ const CATEGORY_ALIAS: Record<string, string> = {
   subscription: 'complaint',
 };
 
-// Maps ?category= aliases (e.g. from homepage chips) to issue_type keys
-const CATEGORY_ALIAS: Record<string, string> = {
-  energy_bill: 'energy_dispute',
-  energy: 'energy_dispute',
-  broadband: 'broadband_complaint',
-  mobile: 'broadband_complaint',
-  flight: 'flight_compensation',
-  flights: 'flight_compensation',
-  parking: 'parking_appeal',
-  debt: 'debt_dispute',
-  refund: 'refund_request',
-  hmrc: 'hmrc_tax_rebate',
-  council_tax: 'council_tax_band',
-  dvla: 'dvla_vehicle',
-  nhs: 'nhs_complaint',
-};
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   open: { label: 'Open', className: 'bg-blue-500/10 text-blue-400' },
