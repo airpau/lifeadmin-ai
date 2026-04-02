@@ -147,6 +147,92 @@ export const telegramTools: Tool[] = [
     },
   },
 
+  {
+    name: 'get_savings_goals',
+    description:
+      "Get the user's savings goals from Money Hub — name, target amount, current progress, target date, and emoji. Use when they ask about savings targets, goals, or how much they've saved towards something.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_savings_challenges',
+    description:
+      "Get the user's active savings challenges — gamified challenges like No-Spend Week, Round-Up Challenge, etc. Shows status, progress, and when started/completed.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_bank_connections',
+    description:
+      "Get the user's connected bank accounts — which banks are linked, their status (active/expired/expiring), last sync time, and account names.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_verified_savings',
+    description:
+      "Get the user's verified savings — money confirmed saved through disputes, cancellations, price reversions, and refunds. Shows each saving with amount, type, and how it was verified.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_monthly_trends',
+    description:
+      "Get income vs spending trends over the last 6 months, showing how the user's finances have changed month by month. Use for questions like 'how has my spending changed?' or 'show my trends'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        months: {
+          type: 'number',
+          description: 'Number of months to look back. Defaults to 6.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_income_breakdown',
+    description:
+      "Get the user's income breakdown for a month — salary, refunds, transfers in, and other credits, grouped by source.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        month: {
+          type: 'string',
+          description: 'Month in YYYY-MM format. Defaults to current month.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_dispute_detail',
+    description:
+      "Get the full detail of a specific dispute including all correspondence (letters sent, responses received). Use when the user asks about a specific complaint or dispute with a provider.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name to find the dispute for (partial match).',
+        },
+      },
+      required: ['provider'],
+    },
+  },
+
   // ============================================================
   // ACTION TOOLS — require inline keyboard confirmation
   // ============================================================

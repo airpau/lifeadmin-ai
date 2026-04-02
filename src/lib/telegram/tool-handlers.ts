@@ -74,6 +74,20 @@ export async function executeToolCall(
       return getUpcomingRenewals(supabase, userId);
     case 'get_price_alerts':
       return getPriceAlerts(supabase, userId);
+    case 'get_savings_goals':
+      return getSavingsGoals(supabase, userId);
+    case 'get_savings_challenges':
+      return getSavingsChallenges(supabase, userId);
+    case 'get_bank_connections':
+      return getBankConnections(supabase, userId);
+    case 'get_verified_savings':
+      return getVerifiedSavings(supabase, userId);
+    case 'get_monthly_trends':
+      return getMonthlyTrends(supabase, userId, toolInput.months as number | undefined);
+    case 'get_income_breakdown':
+      return getIncomeBreakdown(supabase, userId, toolInput.month as string | undefined);
+    case 'get_dispute_detail':
+      return getDisputeDetail(supabase, userId, toolInput.provider as string);
     case 'draft_dispute_letter':
       return draftDisputeLetter(supabase, userId, {
         provider: toolInput.provider as string,
@@ -966,6 +980,283 @@ async function getFinancialOverview(
     text += `\n*Verified Savings:*\n`;
     text += `• Total saved: *${fmt(totalSaved)}*\n`;
     if (annualSaved > 0) text += `• Annual saving: *${fmt(annualSaved)}*\n`;
+  }
+
+  return { text };
+}
+
+// ============================================================
+// MONEY HUB DATA HANDLERS
+// ============================================================
+
+async function getSavingsGoals(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('money_hub_savings_goals')
+    .select('goal_name, target_amount, current_amount, target_date, emoji')
+    .eq('user_id', userId)
+    .order('target_date', { ascending: true });
+
+  if (error || !data || data.length === 0) {
+    return { text: 'No savings goals set up. Create one at paybacker.co.uk/dashboard/money-hub' };
+  }
+
+  let text = `*Savings Goals (${data.length})*\n\n`;
+  for (const g of data) {
+    const target = Number(g.target_amount);
+    const current = Number(g.current_amount);
+    const pct = target > 0 ? Math.round((current / target) * 100) : 0;
+    const emoji = g.emoji ?? '🎯';
+    text += `${emoji} *${g.goal_name}*\n`;
+    text += `   ${fmt(current)} / ${fmt(target)} (${pct}%)`;
+    if (g.target_date) text += ` · Target: ${fmtDate(g.target_date)}`;
+    text += '\n';
+  }
+
+  return { text };
+}
+
+async function getSavingsChallenges(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('user_challenges')
+    .select('template_id, status, started_at, completed_at, progress')
+    .eq('user_id', userId)
+    .order('started_at', { ascending: false })
+    .limit(10);
+
+  if (error || !data || data.length === 0) {
+    return { text: 'No savings challenges found. Start one at paybacker.co.uk/dashboard/money-hub' };
+  }
+
+  const templateIds = [...new Set(data.map(d => d.template_id))];
+  const { data: templates } = await supabase
+    .from('challenge_templates')
+    .select('id, name, description, target_days')
+    .in('id', templateIds);
+
+  const templateMap = new Map((templates ?? []).map(t => [t.id, t]));
+
+  const statusEmoji: Record<string, string> = {
+    active: '🔥', completed: '✅', failed: '❌', abandoned: '⚪',
+  };
+
+  let text = `*Savings Challenges (${data.length})*\n\n`;
+  for (const c of data) {
+    const tmpl = templateMap.get(c.template_id);
+    const emoji = statusEmoji[c.status] ?? '⚪';
+    text += `${emoji} *${tmpl?.name ?? 'Challenge'}* — ${c.status}\n`;
+    if (tmpl?.description) text += `   ${tmpl.description}\n`;
+    text += `   Started: ${fmtDate(c.started_at)}`;
+    if (c.completed_at) text += ` · Completed: ${fmtDate(c.completed_at)}`;
+    text += '\n';
+  }
+
+  return { text };
+}
+
+async function getBankConnections(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('bank_connections')
+    .select('bank_name, status, last_synced_at, connected_at, account_display_names, consent_expires_at')
+    .eq('user_id', userId)
+    .order('connected_at', { ascending: false });
+
+  if (error || !data || data.length === 0) {
+    return { text: 'No bank accounts connected. Connect one at paybacker.co.uk/dashboard/subscriptions' };
+  }
+
+  const statusEmoji: Record<string, string> = {
+    active: '🟢', expired: '🔴', expiring_soon: '🟡', revoked: '⚫', expired_legacy: '⚫',
+  };
+
+  let text = `*Bank Connections (${data.length})*\n\n`;
+  for (const b of data) {
+    const emoji = statusEmoji[b.status] ?? '⚪';
+    text += `${emoji} *${b.bank_name ?? 'Unknown Bank'}* — ${b.status.replace(/_/g, ' ')}\n`;
+    if (b.account_display_names?.length) {
+      text += `   Accounts: ${b.account_display_names.join(', ')}\n`;
+    }
+    if (b.last_synced_at) text += `   Last sync: ${fmtDate(b.last_synced_at)}`;
+    if (b.consent_expires_at) text += ` · Consent expires: ${fmtDate(b.consent_expires_at)}`;
+    text += '\n';
+  }
+
+  return { text };
+}
+
+async function getVerifiedSavings(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('verified_savings')
+    .select('title, saving_type, amount_saved, annual_saving, confirmed_by, confirmed_at')
+    .eq('user_id', userId)
+    .order('confirmed_at', { ascending: false })
+    .limit(20);
+
+  if (error || !data || data.length === 0) {
+    return { text: 'No verified savings yet. When you resolve a dispute or cancel a subscription, savings are tracked here automatically.' };
+  }
+
+  const totalSaved = data.reduce((sum, s) => sum + Number(s.amount_saved ?? 0), 0);
+  const totalAnnual = data.reduce((sum, s) => sum + Number(s.annual_saving ?? 0), 0);
+
+  let text = `*Verified Savings (${data.length})*\n`;
+  text += `Total: *${fmt(totalSaved)}* | Annual: *${fmt(totalAnnual)}*\n\n`;
+
+  for (const s of data) {
+    const type = s.saving_type.replace(/_/g, ' ');
+    text += `✅ *${s.title}*\n`;
+    text += `   ${fmt(s.amount_saved)} saved · ${type}`;
+    if (s.confirmed_by) text += ` · Verified: ${s.confirmed_by}`;
+    text += '\n';
+  }
+
+  return { text };
+}
+
+async function getMonthlyTrends(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  months?: number,
+): Promise<ToolResult> {
+  const lookback = months ?? 6;
+  const now = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1).toISOString();
+
+  const { data, error } = await supabase
+    .from('bank_transactions')
+    .select('amount, timestamp')
+    .eq('user_id', userId)
+    .gte('timestamp', startDate)
+    .order('timestamp', { ascending: true });
+
+  if (error || !data || data.length === 0) {
+    return { text: `No transaction data found for the last ${lookback} months.` };
+  }
+
+  const monthlyData: Record<string, { income: number; spending: number }> = {};
+  for (const t of data) {
+    const d = new Date(t.timestamp);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (!monthlyData[key]) monthlyData[key] = { income: 0, spending: 0 };
+    const amt = Number(t.amount);
+    if (amt > 0) monthlyData[key].income += amt;
+    else monthlyData[key].spending += Math.abs(amt);
+  }
+
+  const sorted = Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b));
+
+  let text = `*Monthly Trends (last ${lookback} months)*\n\n`;
+  for (const [month, vals] of sorted) {
+    const [y, m] = month.split('-').map(Number);
+    const label = new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    const net = vals.income - vals.spending;
+    const netSign = net >= 0 ? '+' : '';
+    text += `*${label}*\n`;
+    text += `  In: ${fmt(vals.income)} | Out: ${fmt(vals.spending)} | Net: ${netSign}${fmt(net)}\n`;
+  }
+
+  return { text };
+}
+
+async function getIncomeBreakdown(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  month?: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  const targetMonth = month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [year, mon] = targetMonth.split('-').map(Number);
+
+  const startDate = new Date(year, mon - 1, 1).toISOString();
+  const endDate = new Date(year, mon, 1).toISOString();
+
+  const { data, error } = await supabase
+    .from('bank_transactions')
+    .select('merchant_name, amount, category, timestamp')
+    .eq('user_id', userId)
+    .gt('amount', 0)
+    .gte('timestamp', startDate)
+    .lt('timestamp', endDate)
+    .order('amount', { ascending: false });
+
+  if (error || !data || data.length === 0) {
+    return { text: `No income found for ${targetMonth}.` };
+  }
+
+  const total = data.reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const sources: Record<string, number> = {};
+  for (const t of data) {
+    const source = t.merchant_name ?? t.category ?? 'Other';
+    sources[source] = (sources[source] ?? 0) + Number(t.amount);
+  }
+  const sorted = Object.entries(sources).sort(([, a], [, b]) => b - a);
+
+  const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  let text = `*Income Breakdown — ${monthLabel}*\n`;
+  text += `Total: *${fmt(total)}*\n\n`;
+
+  for (const [source, amount] of sorted) {
+    text += `• ${source}: *${fmt(amount)}*\n`;
+  }
+
+  return { text };
+}
+
+async function getDisputeDetail(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  provider: string,
+): Promise<ToolResult> {
+  const { data: dispute } = await supabase
+    .from('disputes')
+    .select('id, provider_name, issue_type, issue_summary, desired_outcome, status, disputed_amount, money_recovered, created_at, updated_at')
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${provider}%`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!dispute) {
+    return { text: `No dispute found matching "${provider}".` };
+  }
+
+  const { data: letters } = await supabase
+    .from('correspondence')
+    .select('entry_type, title, content, entry_date')
+    .eq('dispute_id', dispute.id)
+    .eq('user_id', userId)
+    .order('entry_date', { ascending: true });
+
+  let text = `*Dispute: ${dispute.provider_name}*\n`;
+  text += `Status: ${dispute.status} · Type: ${dispute.issue_type?.replace(/_/g, ' ') ?? 'complaint'}\n`;
+  text += `Opened: ${fmtDate(dispute.created_at)}`;
+  if (dispute.disputed_amount) text += ` · Amount: ${fmt(dispute.disputed_amount)}`;
+  if (dispute.money_recovered && Number(dispute.money_recovered) > 0) text += ` · Recovered: ${fmt(dispute.money_recovered)}`;
+  text += '\n';
+  if (dispute.issue_summary) text += `\n_${dispute.issue_summary}_\n`;
+  if (dispute.desired_outcome) text += `Desired outcome: ${dispute.desired_outcome}\n`;
+
+  if (letters && letters.length > 0) {
+    text += `\n*Correspondence (${letters.length}):*\n`;
+    for (const l of letters) {
+      text += `\n📄 *${l.title ?? l.entry_type}* — ${fmtDate(l.entry_date)}\n`;
+      if (l.content) {
+        const preview = l.content.length > 300 ? l.content.slice(0, 300) + '...' : l.content;
+        text += `${preview}\n`;
+      }
+    }
   }
 
   return { text };
