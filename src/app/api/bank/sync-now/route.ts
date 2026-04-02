@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getTransactions } from '@/lib/yapily';
+import {
+  getAccessToken as getTrueLayerAccessToken,
+  fetchTransactions as fetchTrueLayerTransactions,
+} from '@/lib/truelayer';
 import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
@@ -19,8 +23,14 @@ interface BankConnection {
   id: string;
   user_id: string;
   provider: string;
+  // Yapily fields
   consent_token: string | null;
   consent_expires_at: string | null;
+  // TrueLayer fields
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  // Common
   account_ids: string[] | null;
   bank_name: string | null;
   status: string;
@@ -112,13 +122,13 @@ export async function POST(request: NextRequest) {
     // No body — sync all connections
   }
 
-  // Fetch active Yapily connection(s)
+  // Fetch active bank connection(s) — TrueLayer and Yapily
   let connectionsQuery = supabase
     .from('bank_connections')
     .select('*')
     .eq('user_id', user.id)
     .eq('status', 'active')
-    .eq('provider', 'yapily');
+    .in('provider', ['truelayer', 'yapily']);
 
   if (connectionId) {
     connectionsQuery = connectionsQuery.eq('id', connectionId);
@@ -161,28 +171,9 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
 
   for (const conn of connections as BankConnection[]) {
-    // Check consent token exists
-    if (!conn.consent_token) {
-      await supabase
-        .from('bank_connections')
-        .update({ status: 'expired', updated_at: now })
-        .eq('id', conn.id);
-
-      await supabase.from('bank_sync_log').insert({
-        user_id: user.id,
-        connection_id: conn.id,
-        trigger_type: 'manual',
-        status: 'failed',
-        api_calls_made: apiCallsMade,
-        error_message: 'No consent token — reconnect required',
-      });
-      continue;
-    }
-
-    // Check consent expiry (Yapily consents are valid for 90 days)
-    if (conn.consent_expires_at) {
-      const expiresAt = new Date(conn.consent_expires_at).getTime();
-      if (Date.now() >= expiresAt) {
+    if (conn.provider === 'truelayer') {
+      // === TrueLayer path ===
+      if (!conn.access_token) {
         await supabase
           .from('bank_connections')
           .update({ status: 'expired', updated_at: now })
@@ -194,45 +185,143 @@ export async function POST(request: NextRequest) {
           trigger_type: 'manual',
           status: 'failed',
           api_calls_made: apiCallsMade,
-          error_message: 'Consent expired — reconnect required',
+          error_message: 'No access token — reconnect required',
         });
         continue;
       }
-    }
 
-    // Decrypt consent token
-    const consentToken = decrypt(conn.consent_token);
-
-    const accountIds = conn.account_ids || [];
-    for (const accountId of accountIds) {
+      // Get access token, refreshing if expired — mark connection expired if refresh fails
+      let accessToken: string;
       try {
-        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-        const toDate = new Date().toISOString().split('T')[0];
-        const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
-        apiCallsMade++;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        accessToken = await getTrueLayerAccessToken(conn as any);
+      } catch {
+        await supabase
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', conn.id);
 
-        if (transactions.length === 0) continue;
-
-        const rows = transactions.map((tx) => ({
+        await supabase.from('bank_sync_log').insert({
           user_id: user.id,
           connection_id: conn.id,
-          transaction_id: tx.id,
-          account_id: accountId,
-          amount: tx.transactionAmount.amount,
-          currency: tx.transactionAmount.currency || 'GBP',
-          description: tx.description || null,
-          merchant_name: tx.merchantName || null,
-          category: null,
-          timestamp: tx.bookingDateTime,
-        }));
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'Token refresh failed — reconnect required',
+        });
 
-        const { error } = await supabase
-          .from('bank_transactions')
-          .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+        return NextResponse.json(
+          {
+            error: 'Your bank connection has expired. Please reconnect your bank account.',
+            reconnectRequired: true,
+          },
+          { status: 401 }
+        );
+      }
 
-        if (!error) totalSynced += rows.length;
-      } catch {
-        // Non-fatal per-account error — continue with next account
+      const accountIds = conn.account_ids || [];
+      for (const accountId of accountIds) {
+        try {
+          const transactions = await fetchTrueLayerTransactions(accessToken, accountId, ninetyDaysAgo);
+          apiCallsMade++;
+
+          if (transactions.length === 0) continue;
+
+          const rows = transactions.map((tx) => ({
+            user_id: user.id,
+            connection_id: conn.id,
+            transaction_id: tx.transaction_id,
+            account_id: accountId,
+            amount: tx.amount,
+            currency: tx.currency || 'GBP',
+            description: tx.description || null,
+            merchant_name: tx.merchant_name || null,
+            category: null,
+            timestamp: tx.timestamp,
+          }));
+
+          const { error } = await supabase
+            .from('bank_transactions')
+            .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+
+          if (!error) totalSynced += rows.length;
+        } catch {
+          // Non-fatal per-account error — continue with next account
+        }
+      }
+    } else {
+      // === Yapily path ===
+      if (!conn.consent_token) {
+        await supabase
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', conn.id);
+
+        await supabase.from('bank_sync_log').insert({
+          user_id: user.id,
+          connection_id: conn.id,
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'No consent token — reconnect required',
+        });
+        continue;
+      }
+
+      // Check consent expiry (Yapily consents are valid for 90 days)
+      if (conn.consent_expires_at) {
+        const expiresAt = new Date(conn.consent_expires_at).getTime();
+        if (Date.now() >= expiresAt) {
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', conn.id);
+
+          await supabase.from('bank_sync_log').insert({
+            user_id: user.id,
+            connection_id: conn.id,
+            trigger_type: 'manual',
+            status: 'failed',
+            api_calls_made: apiCallsMade,
+            error_message: 'Consent expired — reconnect required',
+          });
+          continue;
+        }
+      }
+
+      const consentToken = decrypt(conn.consent_token);
+
+      const accountIds = conn.account_ids || [];
+      for (const accountId of accountIds) {
+        try {
+          const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+          const toDate = new Date().toISOString().split('T')[0];
+          const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
+          apiCallsMade++;
+
+          if (transactions.length === 0) continue;
+
+          const rows = transactions.map((tx) => ({
+            user_id: user.id,
+            connection_id: conn.id,
+            transaction_id: tx.id,
+            account_id: accountId,
+            amount: tx.transactionAmount.amount,
+            currency: tx.transactionAmount.currency || 'GBP',
+            description: tx.description || null,
+            merchant_name: tx.merchantName || null,
+            category: null,
+            timestamp: tx.bookingDateTime,
+          }));
+
+          const { error } = await supabase
+            .from('bank_transactions')
+            .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+
+          if (!error) totalSynced += rows.length;
+        } catch {
+          // Non-fatal per-account error — continue with next account
+        }
       }
     }
 

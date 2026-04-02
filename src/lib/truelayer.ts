@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
 import { encrypt, decrypt } from '@/lib/encrypt';
 
@@ -245,4 +246,72 @@ export async function fetchPendingTransactions(
     console.log(`Pending transactions fetch failed (non-fatal):`, err);
     return [];
   }
+}
+
+/**
+ * Refreshes a TrueLayer access token using a provided Supabase client.
+ * Use this in cron contexts where createClient() from next/headers is unavailable.
+ */
+export async function refreshTokenWithClient(
+  connection: BankConnection,
+  supabase: SupabaseClient
+): Promise<string> {
+  if (!connection.refresh_token) {
+    throw new Error('No refresh token available');
+  }
+
+  const res = await fetch(`${TRUELAYER_AUTH_URL}/connect/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: process.env.TRUELAYER_CLIENT_ID!,
+      client_secret: process.env.TRUELAYER_CLIENT_SECRET!,
+      refresh_token: decrypt(connection.refresh_token),
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Token refresh failed: ${res.status}`);
+  }
+
+  const data = await res.json();
+  const expiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
+
+  await supabase
+    .from('bank_connections')
+    .update({
+      access_token: encrypt(data.access_token),
+      refresh_token: data.refresh_token
+        ? encrypt(data.refresh_token)
+        : encrypt(decrypt(connection.refresh_token)),
+      token_expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connection.id);
+
+  return data.access_token;
+}
+
+/**
+ * Returns a valid TrueLayer access token, refreshing if expired.
+ * Use this in cron contexts where createClient() from next/headers is unavailable.
+ */
+export async function getAccessTokenWithClient(
+  connection: BankConnection,
+  supabase: SupabaseClient
+): Promise<string> {
+  if (!connection.access_token) {
+    throw new Error('No access token for connection');
+  }
+
+  if (connection.token_expires_at) {
+    const expiresAt = new Date(connection.token_expires_at).getTime();
+    const now = Date.now() + 60_000; // 60s buffer
+    if (now >= expiresAt) {
+      return refreshTokenWithClient(connection, supabase);
+    }
+  }
+
+  return decrypt(connection.access_token);
 }
