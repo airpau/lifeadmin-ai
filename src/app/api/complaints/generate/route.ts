@@ -145,16 +145,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch verified legal references for this letter type
-    // Also fetch the dispute's provider_type for category targeting (prevents gym/goods refs on broadband/energy complaints)
+    // Also fetch the dispute's provider_type + issue_type for category targeting
     let disputeProviderType: string | null = null;
+    let disputeIssueType: string | null = null;
     if (body.disputeId) {
       const { data: disputeRow } = await supabase
         .from('disputes')
-        .select('provider_type, description, desired_outcome, amount, status')
+        .select('provider_type, issue_type, description, desired_outcome, amount, status')
         .eq('id', body.disputeId)
         .single();
       disputeProviderType = disputeRow?.provider_type || null;
-      
+      disputeIssueType = disputeRow?.issue_type || null;
+
       if (disputeRow && threadContext) {
         threadContext += `\n\nORIGINAL DISPUTE DETAILS:\nDescription: ${disputeRow.description || 'N/A'}\nDesired Outcome: ${disputeRow.desired_outcome || 'N/A'}\nDisputed Amount: £${disputeRow.amount || '0'}\n`;
       }
@@ -174,7 +176,8 @@ export async function POST(request: NextRequest) {
       nhs_complaint: ['nhs'],
     };
 
-    // Provider-type overrides issue-type so broadband disputes always get broadband refs
+    // Provider-type overrides issue-type so broadband disputes always get broadband refs.
+    // 'government' and 'council_tax' map to council_tax category.
     const providerTypeToCategory: Record<string, string[]> = {
       broadband: ['broadband', 'general'],
       energy: ['energy', 'general'],
@@ -184,18 +187,23 @@ export async function POST(request: NextRequest) {
       parking: ['parking', 'general'],
       finance: ['finance', 'general'],
       debt: ['debt', 'finance', 'general'],
+      government: ['council_tax', 'general'],
+      council_tax: ['council_tax', 'general'],
     };
 
-    const categories = (disputeProviderType && providerTypeToCategory[disputeProviderType])
-      || issueTypeToCategory[body.letterType || 'complaint']
-      || ['general'];
+    // Resolution chain: provider_type → dispute.issue_type → body.letterType → 'general'
+    const categories =
+      (disputeProviderType && providerTypeToCategory[disputeProviderType]) ||
+      (disputeIssueType && issueTypeToCategory[disputeIssueType]) ||
+      issueTypeToCategory[body.letterType || 'complaint'] ||
+      ['general'];
 
+    // NOTE: legal_references has no confidence_score column — filter by verification_status only
     const { data: legalRefs } = await supabase
       .from('legal_references')
       .select('category, law_name, section, summary, source_url, escalation_body, strength, applies_to')
       .in('category', categories)
-      .in('verification_status', ['current', 'updated'])
-      .gte('confidence_score', 60);
+      .in('verification_status', ['current', 'updated']);
 
     // Filter out 'general' refs that have a sector-specific applies_to array which doesn't
     // overlap with the current dispute's categories. This prevents gym/fitness legal refs
