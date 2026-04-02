@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
     if (issueType === 'broadband_complaint' || /sky|virgin media|bt|onestream|talktalk|plusnet|vodafone|ee|three|o2/i.test(n)) return 'broadband';
     if (issueType === 'flight_compensation') return 'travel';
     if (issueType === 'parking_appeal') return 'parking';
-    if (issueType === 'debt_dispute' || /lendinvest|lowell|cabot|debt/i.test(n)) return 'finance';
+    if (issueType === 'gym_membership' || /puregym|the gym group|david lloyd|nuffield health|fitness first|anytime fitness|village gym|bannatyne|leisure centre/i.test(n)) return 'gym';
+    if (issueType === 'insurance_dispute' || /aviva|axa|admiral|direct line|churchill|more than|comparethemarket|moneysupermarket|hastings direct|esure|zurich|legal & general|prudential|royal london|lloyds insurance|allianz/i.test(n)) return 'insurance';
+    if (issueType === 'debt_dispute' || /lendinvest|lowell|cabot|intrum|arrow global|debt/i.test(n)) return 'finance';
     if (issueType === 'hmrc_tax_rebate') return 'government';
     if (issueType === 'council_tax_band') return 'government';
     if (issueType === 'dvla_vehicle') return 'government';

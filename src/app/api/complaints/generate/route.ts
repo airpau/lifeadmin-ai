@@ -115,16 +115,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch verified legal references for this letter type
-    // Also fetch the dispute's provider_type for category targeting (prevents gym/goods refs on broadband/energy complaints)
+    // Also fetch the dispute's provider_type and issue_type for category targeting
+    // (prevents gym/goods refs on broadband/energy complaints, and narrows 'government' to the specific sub-type)
     let disputeProviderType: string | null = null;
+    let disputeIssueType: string | null = null;
     if (body.disputeId) {
       const { data: disputeRow } = await supabase
         .from('disputes')
-        .select('provider_type, description, desired_outcome, amount, status')
+        .select('provider_type, issue_type, description, desired_outcome, amount, status')
         .eq('id', body.disputeId)
         .single();
       disputeProviderType = disputeRow?.provider_type || null;
-      
+      disputeIssueType = disputeRow?.issue_type || null;
+
       if (disputeRow && threadContext) {
         threadContext += `\n\nORIGINAL DISPUTE DETAILS:\nDescription: ${disputeRow.description || 'N/A'}\nDesired Outcome: ${disputeRow.desired_outcome || 'N/A'}\nDisputed Amount: £${disputeRow.amount || '0'}\n`;
       }
@@ -138,13 +141,16 @@ export async function POST(request: NextRequest) {
       parking_appeal: ['general', 'parking'],
       debt_dispute: ['general', 'debt', 'finance'],
       refund_request: ['general', 'finance'],
-      hmrc_tax_rebate: ['hmrc'],
-      council_tax_band: ['council_tax'],
-      dvla_vehicle: ['dvla'],
-      nhs_complaint: ['nhs'],
+      hmrc_tax_rebate: ['hmrc', 'general'],
+      council_tax_band: ['council_tax', 'general'],
+      dvla_vehicle: ['dvla', 'general'],
+      nhs_complaint: ['nhs', 'general'],
+      gym_membership: ['gym', 'general'],
+      insurance_dispute: ['insurance', 'finance', 'general'],
     };
 
-    // Provider-type overrides issue-type so broadband disputes always get broadband refs
+    // Provider-type fallback — used only when issue_type doesn't give us a specific category.
+    // 'government' maps broadly; issue_type (e.g. council_tax_band) narrows it correctly in step 1.
     const providerTypeToCategory: Record<string, string[]> = {
       broadband: ['broadband', 'general'],
       energy: ['energy', 'general'],
@@ -154,11 +160,19 @@ export async function POST(request: NextRequest) {
       parking: ['parking', 'general'],
       finance: ['finance', 'general'],
       debt: ['debt', 'finance', 'general'],
+      government: ['council_tax', 'hmrc', 'dvla', 'general'],
+      nhs: ['nhs', 'general'],
+      gym: ['gym', 'general'],
+      general: ['general'],
     };
 
-    const categories = (disputeProviderType && providerTypeToCategory[disputeProviderType])
-      || issueTypeToCategory[body.letterType || 'complaint']
-      || ['general'];
+    // Two-step resolution: issue_type is more specific, so try it first.
+    // This prevents a 'government' provider_type from pulling in HMRC refs on a council tax dispute.
+    const categories =
+      issueTypeToCategory[disputeIssueType || ''] ||
+      issueTypeToCategory[body.letterType || ''] ||
+      (disputeProviderType ? providerTypeToCategory[disputeProviderType] : null) ||
+      ['general'];
 
     const { data: legalRefs } = await supabase
       .from('legal_references')

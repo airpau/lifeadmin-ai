@@ -93,6 +93,8 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
   council_tax_band: 'Council Tax',
   dvla_vehicle: 'DVLA',
   nhs_complaint: 'NHS Complaint',
+  gym_membership: 'Gym Membership',
+  insurance_dispute: 'Insurance Dispute',
 };
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
