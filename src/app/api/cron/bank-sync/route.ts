@@ -196,9 +196,39 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
-        // Get access token, refreshing if expired
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const accessToken = await getAccessTokenWithClient(connection as any, supabase);
+        // Get access token, refreshing if expired — mark connection expired if refresh fails
+        let accessToken: string;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          accessToken = await getAccessTokenWithClient(connection as any, supabase);
+        } catch (refreshErr: any) {
+          console.error(`Bank sync: token refresh failed for ${connection.id}:`, refreshErr.message);
+          await supabase
+            .from('bank_connections')
+            .update({ status: 'expired', updated_at: now })
+            .eq('id', connection.id);
+
+          await supabase.from('bank_sync_log').insert({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            trigger_type: 'cron',
+            status: 'failed',
+            api_calls_made: connectionApiCalls,
+            error_message: 'Token refresh failed — reconnect required',
+          });
+
+          results.push({
+            user_id: connection.user_id,
+            connection_id: connection.id,
+            tier,
+            transactions: 0,
+            recurring: 0,
+            api_calls: connectionApiCalls,
+            error: 'Token refresh failed',
+          });
+          totalApiCalls += connectionApiCalls;
+          continue;
+        }
 
         // Backfill bank name if missing
         if (!connection.bank_name) {

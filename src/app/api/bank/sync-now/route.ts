@@ -190,9 +190,34 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Get access token, refreshing if expired (uses user session via createClient internally)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const accessToken = await getTrueLayerAccessToken(conn as any);
+      // Get access token, refreshing if expired — mark connection expired if refresh fails
+      let accessToken: string;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        accessToken = await getTrueLayerAccessToken(conn as any);
+      } catch {
+        await supabase
+          .from('bank_connections')
+          .update({ status: 'expired', updated_at: now })
+          .eq('id', conn.id);
+
+        await supabase.from('bank_sync_log').insert({
+          user_id: user.id,
+          connection_id: conn.id,
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'Token refresh failed — reconnect required',
+        });
+
+        return NextResponse.json(
+          {
+            error: 'Your bank connection has expired. Please reconnect your bank account.',
+            reconnectRequired: true,
+          },
+          { status: 401 }
+        );
+      }
 
       const accountIds = conn.account_ids || [];
       for (const accountId of accountIds) {
