@@ -164,4 +164,147 @@ export const telegramTools: Tool[] = [
       required: ['query'],
     },
   },
+
+  // ============================================================
+  // WRITE TOOLS — modify user data
+  // ============================================================
+  {
+    name: 'recategorise_transactions',
+    description:
+      'Change the category of bank transactions matching a merchant name. For example, recategorise all "Costa" transactions from "other" to "food". Returns how many transactions were updated.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        merchant_name: {
+          type: 'string',
+          description: 'The merchant name to match (case-insensitive partial match, e.g. "Costa", "Tesco", "Netflix").',
+        },
+        new_category: {
+          type: 'string',
+          enum: [
+            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
+            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
+            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+          ],
+          description: 'The category to assign to matching transactions.',
+        },
+      },
+      required: ['merchant_name', 'new_category'],
+    },
+  },
+  {
+    name: 'set_budget',
+    description:
+      'Create or update a monthly budget limit for a spending category. If a budget already exists for the category it will be updated, otherwise a new one is created.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          enum: [
+            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
+            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
+            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+          ],
+          description: 'The spending category to set a budget for.',
+        },
+        monthly_limit: {
+          type: 'number',
+          description: 'The monthly budget limit in GBP (e.g. 200 for £200/month).',
+        },
+      },
+      required: ['category', 'monthly_limit'],
+    },
+  },
+  {
+    name: 'recategorise_subscription',
+    description:
+      'Change the category of a subscription/regular payment. Finds the subscription by provider name and updates its category.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The subscription provider name to match (case-insensitive partial match, e.g. "Netflix", "British Gas").',
+        },
+        new_category: {
+          type: 'string',
+          enum: [
+            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
+            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
+            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+          ],
+          description: 'The new category for this subscription.',
+        },
+      },
+      required: ['provider_name', 'new_category'],
+    },
+  },
+  {
+    name: 'add_subscription',
+    description:
+      'Add a new subscription or regular payment to track. The user provides the provider name, amount, and billing cycle.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The name of the subscription provider (e.g. "Netflix", "Spotify", "Sky").',
+        },
+        amount: {
+          type: 'number',
+          description: 'The payment amount in GBP (e.g. 12.99).',
+        },
+        billing_cycle: {
+          type: 'string',
+          enum: ['monthly', 'quarterly', 'yearly'],
+          description: 'How often the payment is charged. Defaults to monthly.',
+        },
+        category: {
+          type: 'string',
+          enum: [
+            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
+            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
+            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+          ],
+          description: 'Category for the subscription. Optional — defaults to other.',
+        },
+      },
+      required: ['provider_name', 'amount'],
+    },
+  },
+  {
+    name: 'cancel_subscription',
+    description:
+      'Mark a subscription as cancelled in the system. Finds by provider name and sets status to cancelled. Does NOT contact the provider — just updates the tracking.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The subscription provider name to cancel (case-insensitive partial match).',
+        },
+      },
+      required: ['provider_name'],
+    },
+  },
+  {
+    name: 'delete_budget',
+    description:
+      'Remove a budget limit for a spending category.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          description: 'The spending category to remove the budget for.',
+        },
+      },
+      required: ['category'],
+    },
+  },
 ];

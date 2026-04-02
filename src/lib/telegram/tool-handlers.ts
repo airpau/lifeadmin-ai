@@ -78,6 +78,23 @@ export async function executeToolCall(
         toolInput.category as string | undefined,
         toolInput.query as string,
       );
+    case 'recategorise_transactions':
+      return recategoriseTransactions(supabase, userId, toolInput.merchant_name as string, toolInput.new_category as string);
+    case 'set_budget':
+      return setBudget(supabase, userId, toolInput.category as string, toolInput.monthly_limit as number);
+    case 'recategorise_subscription':
+      return recategoriseSubscription(supabase, userId, toolInput.provider_name as string, toolInput.new_category as string);
+    case 'add_subscription':
+      return addSubscription(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        amount: toolInput.amount as number,
+        billing_cycle: (toolInput.billing_cycle as string | undefined) ?? 'monthly',
+        category: (toolInput.category as string | undefined) ?? 'other',
+      });
+    case 'cancel_subscription':
+      return cancelSubscription(supabase, userId, toolInput.provider_name as string);
+    case 'delete_budget':
+      return deleteBudget(supabase, userId, toolInput.category as string);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -571,4 +588,165 @@ async function searchLegalRights(
   }
 
   return { text: text.trim() };
+}
+
+// ============================================================
+// WRITE HANDLERS
+// ============================================================
+
+async function recategoriseTransactions(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  merchantName: string,
+  newCategory: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('bank_transactions')
+    .update({ category: newCategory })
+    .eq('user_id', userId)
+    .ilike('merchant_name', `%${merchantName}%`)
+    .select('id');
+
+  if (error) {
+    return { text: `Failed to recategorise: ${error.message}` };
+  }
+
+  const count = data?.length ?? 0;
+  if (count === 0) {
+    return { text: `No transactions found matching "${merchantName}". Check the spelling or try a shorter name.` };
+  }
+
+  // Also add/update merchant_rules so future transactions auto-categorise
+  await supabase.from('merchant_rules').upsert(
+    {
+      pattern: merchantName.toLowerCase(),
+      category: newCategory,
+      display_name: merchantName,
+      source: 'telegram',
+    },
+    { onConflict: 'pattern' },
+  ).then(() => {});
+
+  return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${newCategory}". Future transactions from this merchant will also be categorised as "${newCategory}".` };
+}
+
+async function setBudget(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  category: string,
+  monthlyLimit: number,
+): Promise<ToolResult> {
+  const { error } = await supabase.from('money_hub_budgets').upsert(
+    {
+      user_id: userId,
+      category,
+      monthly_limit: monthlyLimit,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,category' },
+  );
+
+  if (error) {
+    return { text: `Failed to set budget: ${error.message}` };
+  }
+
+  return { text: `Budget set: ${category} — ${fmt(monthlyLimit)}/month. I'll alert you if you go over this limit.` };
+}
+
+async function deleteBudget(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  category: string,
+): Promise<ToolResult> {
+  const { error, count } = await supabase
+    .from('money_hub_budgets')
+    .delete({ count: 'exact' })
+    .eq('user_id', userId)
+    .eq('category', category);
+
+  if (error) {
+    return { text: `Failed to delete budget: ${error.message}` };
+  }
+
+  if (!count || count === 0) {
+    return { text: `No budget found for "${category}".` };
+  }
+
+  return { text: `Budget removed for "${category}".` };
+}
+
+async function recategoriseSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  providerName: string,
+  newCategory: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .update({ category: newCategory })
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${providerName}%`)
+    .eq('status', 'active')
+    .select('provider_name');
+
+  if (error) {
+    return { text: `Failed to recategorise subscription: ${error.message}` };
+  }
+
+  if (!data || data.length === 0) {
+    return { text: `No active subscription found matching "${providerName}".` };
+  }
+
+  const names = data.map(s => s.provider_name).join(', ');
+  return { text: `Recategorised ${data.length} subscription${data.length !== 1 ? 's' : ''} (${names}) to "${newCategory}".` };
+}
+
+async function addSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider_name: string; amount: number; billing_cycle: string; category: string },
+): Promise<ToolResult> {
+  const { error } = await supabase.from('subscriptions').insert({
+    user_id: userId,
+    provider_name: params.provider_name,
+    amount: params.amount,
+    billing_cycle: params.billing_cycle,
+    category: params.category,
+    status: 'active',
+  });
+
+  if (error) {
+    return { text: `Failed to add subscription: ${error.message}` };
+  }
+
+  const cycle = params.billing_cycle;
+  const annual = params.amount * (cycle === 'monthly' ? 12 : cycle === 'quarterly' ? 4 : 1);
+  return { text: `Subscription added: ${params.provider_name} — ${fmt(params.amount)}/${cycle} (${fmt(annual)}/year). Category: ${params.category}.` };
+}
+
+async function cancelSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  providerName: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${providerName}%`)
+    .eq('status', 'active')
+    .select('provider_name, amount, billing_cycle');
+
+  if (error) {
+    return { text: `Failed to cancel subscription: ${error.message}` };
+  }
+
+  if (!data || data.length === 0) {
+    return { text: `No active subscription found matching "${providerName}".` };
+  }
+
+  const sub = data[0];
+  const cycle = sub.billing_cycle ?? 'monthly';
+  const annual = Number(sub.amount) * (cycle === 'monthly' ? 12 : cycle === 'quarterly' ? 4 : 1);
+  return { text: `Marked ${sub.provider_name} as cancelled (${fmt(sub.amount)}/${cycle}). That's ${fmt(annual)}/year saved. Note: this updates your tracking only — you still need to cancel directly with ${sub.provider_name}. Want me to draft a cancellation email?` };
 }
