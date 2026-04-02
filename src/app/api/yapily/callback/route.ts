@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getAccounts, getTransactions } from '@/lib/yapily';
-import { detectRecurring } from '@/lib/detect-recurring';
+import { getAccounts } from '@/lib/yapily';
 import { encrypt } from '@/lib/encrypt';
 
 /**
@@ -142,117 +141,24 @@ export async function GET(request: NextRequest) {
     })
     .catch(() => {});
 
-  // ── Initial transaction sync (12 months) ──
-  try {
-    await syncTransactionsForConnection(
-      connection,
-      user.id,
-      supabase,
-      consentToken
-    );
-  } catch (err) {
-    console.error('Yapily initial sync failed (non-fatal):', err);
-  }
+  // ── Trigger full 12-month sync in the background ──
+  // Don't await — redirect the user immediately, sync runs separately
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
+  fetch(`${appUrl}/api/yapily/initial-sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+    },
+    body: JSON.stringify({
+      connectionId: connection.id,
+      userId: user.id,
+      consentToken,
+      accountIds,
+    }),
+  }).catch(err => console.error('Failed to trigger initial sync:', err));
 
   return NextResponse.redirect(
     new URL('/dashboard/subscriptions?connected=true', request.url)
   );
-}
-
-// ── Sync Helper ──
-
-async function syncTransactionsForConnection(
-  connection: { id: string; account_ids: string[] | null },
-  userId: string,
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  consentToken: string
-) {
-  // Sync last 90 days on initial connect (12 months would timeout)
-  // The daily cron will backfill older data over time
-  const syncStart = new Date();
-  syncStart.setDate(syncStart.getDate() - 90);
-  const fromDate = syncStart.toISOString();
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const toDate = tomorrow.toISOString();
-
-  const accountIds = connection.account_ids || [];
-  let totalSynced = 0;
-  let apiCallsMade = 0;
-
-  for (const accountId of accountIds) {
-    try {
-      const transactions = await getTransactions(
-        accountId,
-        consentToken,
-        fromDate,
-        toDate
-      );
-      apiCallsMade++;
-
-      if (transactions.length === 0) continue;
-
-      const rows = transactions.map((tx) => ({
-        user_id: userId,
-        connection_id: connection.id,
-        transaction_id: tx.id,
-        account_id: accountId,
-        amount: tx.transactionAmount?.amount ?? tx.amount,
-        currency: tx.transactionAmount?.currency ?? tx.currency ?? 'GBP',
-        description:
-          tx.description ||
-          tx.transactionInformation?.join(' ') ||
-          tx.reference ||
-          null,
-        merchant_name: tx.merchantName || null,
-        category: null,
-        timestamp: tx.bookingDateTime || tx.date,
-      }));
-
-      const { error } = await supabase
-        .from('bank_transactions')
-        .upsert(rows, {
-          onConflict: 'user_id,transaction_id',
-          ignoreDuplicates: true,
-        });
-
-      if (error) {
-        console.error('Error upserting Yapily transactions:', error);
-      } else {
-        totalSynced += rows.length;
-      }
-    } catch (err) {
-      console.error(`Error syncing Yapily account ${accountId}:`, err);
-    }
-  }
-
-  // ── Detect recurring payments ──
-  await detectRecurring(userId, supabase);
-
-  // ── Update connection sync timestamp ──
-  const now = new Date().toISOString();
-  await supabase
-    .from('bank_connections')
-    .update({ last_synced_at: now, updated_at: now })
-    .eq('id', connection.id);
-
-  // ── Log sync for cost tracking ──
-  await supabase
-    .from('bank_sync_log')
-    .insert({
-      user_id: userId,
-      connection_id: connection.id,
-      trigger_type: 'initial',
-      status: 'success',
-      api_calls_made: apiCallsMade,
-    })
-    .then(({ error }) => {
-      if (error) console.error('Failed to log Yapily initial sync:', error);
-    });
-
-  console.log(
-    `Yapily initial sync: ${totalSynced} transactions synced across ${accountIds.length} accounts`
-  );
-  return totalSynced;
 }
