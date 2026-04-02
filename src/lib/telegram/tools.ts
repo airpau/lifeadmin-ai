@@ -503,4 +503,175 @@ export const telegramTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'create_savings_goal',
+    description:
+      "Create a new savings goal in Money Hub. The goal will appear on the dashboard immediately. Use when the user says things like \"I want to save for a holiday\", \"set a savings target of £500\", or \"create a goal for a new car\".",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_name: {
+          type: 'string',
+          description: 'Name for the savings goal (e.g. "Holiday Fund", "Emergency Fund", "New Car").',
+        },
+        target_amount: {
+          type: 'number',
+          description: 'The target savings amount in GBP (e.g. 2000 for £2,000).',
+        },
+        target_date: {
+          type: 'string',
+          description: 'Optional target date in YYYY-MM-DD format (e.g. "2026-12-01").',
+        },
+        emoji: {
+          type: 'string',
+          description: 'Optional emoji for the goal (e.g. "✈️" for holiday, "🚗" for car, "🏠" for house). Defaults to 🎯.',
+        },
+      },
+      required: ['goal_name', 'target_amount'],
+    },
+  },
+  {
+    name: 'update_savings_goal',
+    description:
+      "Update the progress on an existing savings goal — set the current amount saved, or add to it. Use when the user says \"I saved £200 towards my holiday fund\" or \"update my car savings to £1500\".",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_name: {
+          type: 'string',
+          description: 'Name of the savings goal to update (partial match, case-insensitive).',
+        },
+        amount_saved: {
+          type: 'number',
+          description: 'Set the current_amount to this exact value (e.g. 1500 means they now have £1500 saved). Use this OR add_amount, not both.',
+        },
+        add_amount: {
+          type: 'number',
+          description: 'Add this amount to the current saved amount (e.g. 200 adds £200 to whatever is already saved). Use this OR amount_saved, not both.',
+        },
+      },
+      required: ['goal_name'],
+    },
+  },
+  {
+    name: 'create_task',
+    description:
+      "Create a financial task or reminder for the user. Use when the user wants to set a to-do item or track something they need to do (e.g. \"remind me to cancel Netflix\", \"add a task to check my mortgage rate\", \"create a task to claim flight compensation\").",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Short title for the task (e.g. "Cancel Netflix subscription", "Review energy tariff").',
+        },
+        description: {
+          type: 'string',
+          description: 'Longer description of what needs to be done.',
+        },
+        priority: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'urgent'],
+          description: 'Task priority. Defaults to medium.',
+        },
+      },
+      required: ['title', 'description'],
+    },
+  },
+  {
+    name: 'update_dispute_status',
+    description:
+      "Update the status of an existing dispute — mark it resolved, escalate it, or add a note. Use when the user says \"British Gas responded to my complaint\", \"I won my energy dispute\", or \"escalate my BT complaint\".",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider: {
+          type: 'string',
+          description: 'Provider name of the dispute to update (partial match, case-insensitive).',
+        },
+        new_status: {
+          type: 'string',
+          enum: ['open', 'awaiting_response', 'escalated', 'resolved_won', 'resolved_partial', 'resolved_lost', 'closed'],
+          description: 'The new status for the dispute.',
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional notes about the update (e.g. "Company replied refusing refund", "Ombudsman case opened").',
+        },
+        money_recovered: {
+          type: 'number',
+          description: 'Amount of money recovered in GBP — only for resolved_won or resolved_partial.',
+        },
+      },
+      required: ['provider', 'new_status'],
+    },
+  },
+  {
+    name: 'add_contract',
+    description:
+      'Add a new contract manually — mortgage, broadband, mobile, energy, insurance, loan, gym, etc. Creates a tracked entry with end date so it appears on the Contracts page and triggers renewal reminders.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The provider or lender name (e.g. "Halifax", "Sky", "British Gas", "Santander").',
+        },
+        category: {
+          type: 'string',
+          enum: ['mortgage', 'loan', 'broadband', 'mobile', 'energy', 'insurance', 'fitness', 'streaming', 'software', 'utility', 'other'],
+          description: 'Contract category.',
+        },
+        monthly_cost: {
+          type: 'number',
+          description: 'Monthly payment amount in GBP.',
+        },
+        contract_end_date: {
+          type: 'string',
+          description: 'Contract end date in YYYY-MM-DD format (e.g. "2027-03-01").',
+        },
+        contract_start_date: {
+          type: 'string',
+          description: 'Optional contract start date in YYYY-MM-DD format.',
+        },
+        auto_renews: {
+          type: 'boolean',
+          description: 'Whether the contract auto-renews. Defaults to true.',
+        },
+        interest_rate: {
+          type: 'number',
+          description: 'Optional interest rate as a percentage (e.g. 4.5 for 4.5%). For mortgages and loans.',
+        },
+        remaining_balance: {
+          type: 'number',
+          description: 'Optional remaining balance in GBP. For mortgages and loans.',
+        },
+      },
+      required: ['provider_name', 'category', 'monthly_cost'],
+    },
+  },
+  {
+    name: 'recategorise_transaction',
+    description:
+      "Change the category of a specific bank transaction by its ID. The change is immediately reflected in the Money Hub dashboard (writes to user_category). First use list_transactions to find the transaction ID, then use this tool to change its category.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        transaction_id: {
+          type: 'string',
+          description: 'The unique ID of the transaction to recategorise (shown in list_transactions output).',
+        },
+        new_category: {
+          type: 'string',
+          enum: [
+            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
+            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
+            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+          ],
+          description: 'The new category for this transaction.',
+        },
+      },
+      required: ['transaction_id', 'new_category'],
+    },
+  },
 ];

@@ -91,12 +91,18 @@ READ:
 - Look up UK consumer law rights (search_legal_rights)
 
 WRITE:
-- Recategorise bank transactions by merchant name (recategorise_transactions)
+- Recategorise all transactions from a merchant (recategorise_transactions)
+- Recategorise a specific transaction by ID (recategorise_transaction — use list_transactions to find IDs first)
 - Set or update monthly budget limits (set_budget)
 - Remove budget limits (delete_budget)
 - Recategorise subscriptions (recategorise_subscription)
 - Add new subscriptions to track (add_subscription)
 - Mark subscriptions as cancelled (cancel_subscription)
+- Create a new savings goal (create_savings_goal)
+- Update progress on a savings goal (update_savings_goal)
+- Create a financial task or reminder (create_task)
+- Update the status of a dispute, mark as won/lost, add notes (update_dispute_status)
+- Add a contract manually — mortgage, broadband, loan, energy, etc. (add_contract)
 - Draft complaint letters citing UK consumer law (draft_dispute_letter)
 
 Rules:

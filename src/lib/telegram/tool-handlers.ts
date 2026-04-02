@@ -122,6 +122,50 @@ export async function executeToolCall(
       return updateAlertPreferences(supabase, userId, toolInput as Record<string, unknown>);
     case 'get_alert_preferences':
       return getAlertPreferences(supabase, userId);
+    case 'create_savings_goal':
+      return createSavingsGoal(supabase, userId, {
+        goal_name: toolInput.goal_name as string,
+        target_amount: toolInput.target_amount as number,
+        target_date: toolInput.target_date as string | undefined,
+        emoji: toolInput.emoji as string | undefined,
+      });
+    case 'update_savings_goal':
+      return updateSavingsGoal(supabase, userId, {
+        goal_name: toolInput.goal_name as string,
+        amount_saved: toolInput.amount_saved as number | undefined,
+        add_amount: toolInput.add_amount as number | undefined,
+      });
+    case 'create_task':
+      return createTask(supabase, userId, {
+        title: toolInput.title as string,
+        description: toolInput.description as string,
+        priority: (toolInput.priority as string | undefined) ?? 'medium',
+      });
+    case 'update_dispute_status':
+      return updateDisputeStatus(supabase, userId, {
+        provider: toolInput.provider as string,
+        new_status: toolInput.new_status as string,
+        notes: toolInput.notes as string | undefined,
+        money_recovered: toolInput.money_recovered as number | undefined,
+      });
+    case 'add_contract':
+      return addContract(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        category: toolInput.category as string,
+        monthly_cost: toolInput.monthly_cost as number,
+        contract_end_date: toolInput.contract_end_date as string | undefined,
+        contract_start_date: toolInput.contract_start_date as string | undefined,
+        auto_renews: (toolInput.auto_renews as boolean | undefined) ?? true,
+        interest_rate: toolInput.interest_rate as number | undefined,
+        remaining_balance: toolInput.remaining_balance as number | undefined,
+      });
+    case 'recategorise_transaction':
+      return recategoriseTransaction(
+        supabase,
+        userId,
+        toolInput.transaction_id as string,
+        toolInput.new_category as string,
+      );
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -218,7 +262,7 @@ async function listTransactions(
 
   let query = supabase
     .from('bank_transactions')
-    .select('merchant_name, amount, category, timestamp')
+    .select('id, merchant_name, amount, category, user_category, timestamp')
     .eq('user_id', userId)
     .gte('timestamp', startDate)
     .lt('timestamp', endDate)
@@ -250,10 +294,12 @@ async function listTransactions(
     total += amt;
     const date = new Date(t.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
     const isDebit = amt < 0;
-    text += `${date} · ${t.merchant_name ?? 'Unknown'} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${t.category ?? 'other'}\n`;
+    const effectiveCategory = t.user_category || t.category || 'other';
+    text += `\`${t.id.slice(0, 8)}\` · ${date} · ${t.merchant_name ?? 'Unknown'} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${effectiveCategory}\n`;
   }
 
-  text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${data.length} transaction${data.length !== 1 ? 's' : ''})`;
+  text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${data.length} transaction${data.length !== 1 ? 's' : ''})\n`;
+  text += `_To recategorise a transaction, use its 8-character ID prefix._`;
 
   return { text };
 }
@@ -1375,4 +1421,263 @@ async function getAlertPreferences(
   text += `\n\nTo change any of these, just tell me — e.g. "turn off budget alerts" or "set quiet hours 10pm to 7am"`;
 
   return { text };
+}
+
+// ============================================================
+// SAVINGS GOAL HANDLERS
+// ============================================================
+
+async function createSavingsGoal(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { goal_name: string; target_amount: number; target_date?: string; emoji?: string },
+): Promise<ToolResult> {
+  const { error } = await supabase.from('money_hub_savings_goals').insert({
+    user_id: userId,
+    goal_name: params.goal_name,
+    target_amount: params.target_amount,
+    current_amount: 0,
+    target_date: params.target_date ?? null,
+    emoji: params.emoji ?? '🎯',
+  });
+
+  if (error) {
+    return { text: `Failed to create savings goal: ${error.message}` };
+  }
+
+  const emoji = params.emoji ?? '🎯';
+  let text = `Savings goal created: ${emoji} *${params.goal_name}* — target ${fmt(params.target_amount)}`;
+  if (params.target_date) text += ` by ${fmtDate(params.target_date)}`;
+  text += `.\n\nIt's now live in your Money Hub dashboard. Tell me "I saved £X towards my ${params.goal_name}" any time to update progress.`;
+
+  return { text };
+}
+
+async function updateSavingsGoal(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { goal_name: string; amount_saved?: number; add_amount?: number },
+): Promise<ToolResult> {
+  if (params.amount_saved === undefined && params.add_amount === undefined) {
+    return { text: `Please specify either amount_saved (set to a value) or add_amount (add to current total).` };
+  }
+
+  const { data: goal, error: fetchError } = await supabase
+    .from('money_hub_savings_goals')
+    .select('id, goal_name, target_amount, current_amount, emoji')
+    .eq('user_id', userId)
+    .ilike('goal_name', `%${params.goal_name}%`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (fetchError || !goal) {
+    return { text: `No savings goal found matching "${params.goal_name}". Use get_savings_goals to see your goals.` };
+  }
+
+  const newAmount =
+    params.amount_saved !== undefined
+      ? params.amount_saved
+      : Number(goal.current_amount) + params.add_amount!;
+
+  const { error } = await supabase
+    .from('money_hub_savings_goals')
+    .update({ current_amount: newAmount, updated_at: new Date().toISOString() })
+    .eq('id', goal.id);
+
+  if (error) {
+    return { text: `Failed to update savings goal: ${error.message}` };
+  }
+
+  const target = Number(goal.target_amount);
+  const pct = target > 0 ? Math.round((newAmount / target) * 100) : 0;
+  const emoji = goal.emoji ?? '🎯';
+  let text = `${emoji} *${goal.goal_name}* updated: ${fmt(newAmount)} / ${fmt(target)} (${pct}%)`;
+  if (newAmount >= target) {
+    text += `\n\n🎉 Goal reached! Well done!`;
+  } else {
+    text += `\n${fmt(target - newAmount)} still to go.`;
+  }
+
+  return { text };
+}
+
+// ============================================================
+// TASK HANDLER
+// ============================================================
+
+async function createTask(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { title: string; description: string; priority: string },
+): Promise<ToolResult> {
+  const { error } = await supabase.from('tasks').insert({
+    user_id: userId,
+    type: 'other',
+    title: params.title,
+    description: params.description,
+    priority: params.priority,
+    status: 'pending_review',
+  });
+
+  if (error) {
+    return { text: `Failed to create task: ${error.message}` };
+  }
+
+  return { text: `Task created: *${params.title}* (${params.priority} priority). View and manage it in your Paybacker dashboard.` };
+}
+
+// ============================================================
+// DISPUTE STATUS HANDLER
+// ============================================================
+
+async function updateDisputeStatus(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider: string; new_status: string; notes?: string; money_recovered?: number },
+): Promise<ToolResult> {
+  const { data: dispute, error: fetchError } = await supabase
+    .from('disputes')
+    .select('id, provider_name, status, issue_type')
+    .eq('user_id', userId)
+    .ilike('provider_name', `%${params.provider}%`)
+    .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (fetchError || !dispute) {
+    return { text: `No open dispute found matching "${params.provider}". Use get_disputes to see all disputes.` };
+  }
+
+  const updates: Record<string, unknown> = {
+    status: params.new_status,
+    updated_at: new Date().toISOString(),
+  };
+  if (params.notes) updates.outcome_notes = params.notes;
+  if (params.money_recovered !== undefined) updates.money_recovered = params.money_recovered;
+
+  const isResolved = ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'].includes(params.new_status);
+  if (isResolved) updates.resolved_at = new Date().toISOString();
+
+  const { error } = await supabase.from('disputes').update(updates).eq('id', dispute.id);
+
+  if (error) {
+    return { text: `Failed to update dispute: ${error.message}` };
+  }
+
+  const statusEmoji: Record<string, string> = {
+    open: '🔴', awaiting_response: '🟡', escalated: '🟠',
+    resolved_won: '✅', resolved_partial: '🟢', resolved_lost: '❌', closed: '⚫',
+  };
+
+  const emoji = statusEmoji[params.new_status] ?? '⚪';
+  let text = `${emoji} *${dispute.provider_name}* dispute updated to: *${params.new_status.replace(/_/g, ' ')}*`;
+  if (params.notes) text += `\nNotes: ${params.notes}`;
+  if (params.money_recovered) text += `\nRecovered: *${fmt(params.money_recovered)}*`;
+  if (params.new_status === 'resolved_won') text += `\n\n🎉 Well done on winning this dispute!`;
+
+  return { text };
+}
+
+// ============================================================
+// CONTRACT HANDLER
+// ============================================================
+
+async function addContract(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider_name: string;
+    category: string;
+    monthly_cost: number;
+    contract_end_date?: string;
+    contract_start_date?: string;
+    auto_renews: boolean;
+    interest_rate?: number;
+    remaining_balance?: number;
+  },
+): Promise<ToolResult> {
+  const annual = params.monthly_cost * 12;
+
+  const { error } = await supabase.from('subscriptions').insert({
+    user_id: userId,
+    provider_name: params.provider_name,
+    category: params.category,
+    amount: params.monthly_cost,
+    billing_cycle: 'monthly',
+    contract_type: 'fixed_term',
+    contract_start_date: params.contract_start_date ?? null,
+    contract_end_date: params.contract_end_date ?? null,
+    auto_renews: params.auto_renews,
+    interest_rate: params.interest_rate ?? null,
+    remaining_balance: params.remaining_balance ?? null,
+    status: 'active',
+    source: 'telegram',
+  });
+
+  if (error) {
+    return { text: `Failed to add contract: ${error.message}` };
+  }
+
+  let text = `Contract added: *${params.provider_name}* [${params.category}] — ${fmt(params.monthly_cost)}/month (${fmt(annual)}/year)`;
+  if (params.contract_end_date) {
+    const daysLeft = Math.ceil(
+      (new Date(params.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    );
+    text += `\nEnds: ${fmtDate(params.contract_end_date)} (${daysLeft} days)`;
+    if (params.auto_renews) text += ` · Auto-renews`;
+  }
+  if (params.interest_rate) text += `\nInterest: ${params.interest_rate}%`;
+  if (params.remaining_balance) text += ` · Remaining: ${fmt(params.remaining_balance)}`;
+  text += `\n\nYou'll get renewal reminders before the contract ends.`;
+
+  return { text };
+}
+
+// ============================================================
+// PER-TRANSACTION RECATEGORISE HANDLER
+// ============================================================
+
+async function recategoriseTransaction(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  transactionId: string,
+  newCategory: string,
+): Promise<ToolResult> {
+  const { data: txn, error: fetchError } = await supabase
+    .from('bank_transactions')
+    .select('id, merchant_name, amount, category, user_category')
+    .eq('id', transactionId)
+    .eq('user_id', userId)
+    .single();
+
+  if (fetchError || !txn) {
+    return { text: `Transaction not found. Use list_transactions to find the transaction ID first.` };
+  }
+
+  const { error: updateError } = await supabase
+    .from('bank_transactions')
+    .update({ user_category: newCategory })
+    .eq('id', transactionId)
+    .eq('user_id', userId);
+
+  if (updateError) {
+    return { text: `Failed to recategorise: ${updateError.message}` };
+  }
+
+  // Persist override so it survives future syncs
+  await supabase.from('money_hub_category_overrides').insert({
+    user_id: userId,
+    merchant_pattern: 'txn_specific',
+    user_category: newCategory,
+    transaction_id: transactionId,
+  });
+
+  const merchant = txn.merchant_name ?? 'Unknown';
+  const amt = fmt(Math.abs(Number(txn.amount)));
+  const prevCategory = txn.user_category || txn.category || 'unknown';
+  return {
+    text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}". The change is now reflected in your Money Hub dashboard.`,
+  };
 }
