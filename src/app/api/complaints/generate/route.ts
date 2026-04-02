@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     // NOTE: legal_references has no confidence_score column — filter by verification_status only
     const { data: legalRefs } = await supabase
       .from('legal_references')
-      .select('category, law_name, section, summary, source_url, escalation_body, strength, applies_to')
+      .select('id, category, law_name, section, summary, source_url, escalation_body, strength, applies_to')
       .in('category', categories)
       .in('verification_status', ['current', 'updated']);
 
@@ -221,6 +221,33 @@ export async function POST(request: NextRequest) {
       // Only include if applies_to overlaps with the dispute's categories
       return appliesTo.some((a: string) => categories.includes(a.toLowerCase()));
     });
+
+    // Check if any referenced laws have pending updates in the review queue
+    // Surfaces a warning so admin knows the letter may cite a law under review
+    let pendingLegalUpdates = false;
+    const refIds = relevantRefs.map(r => r.id).filter(Boolean);
+    if (refIds.length > 0) {
+      const { data: pendingQueue } = await supabase
+        .from('legal_update_queue')
+        .select('id')
+        .in('legal_reference_id', refIds)
+        .eq('status', 'pending')
+        .limit(1);
+      if (pendingQueue && pendingQueue.length > 0) {
+        pendingLegalUpdates = true;
+        // Log for admin awareness — not shown to users
+        void supabase.from('business_log').insert({
+          category: 'legal_intelligence',
+          action: 'letter_generated_with_pending_updates',
+          details: {
+            user_id: user.id,
+            company: body.companyName,
+            pending_ref_ids: refIds,
+            note: 'Letter generated while some referenced laws have pending legal update queue items',
+          },
+        });
+      }
+    }
 
     let verifiedLegalRefs = '';
     if (relevantRefs.length > 0) {
@@ -437,7 +464,7 @@ export async function POST(request: NextRequest) {
       provider: body.companyName,
     }).catch(() => {});
 
-    return NextResponse.json({ ...result, taskId: task?.id, rightsPills });
+    return NextResponse.json({ ...result, taskId: task?.id, rightsPills, pendingLegalUpdates });
   } catch (error: any) {
     console.error('Complaint generation error:', error);
     return NextResponse.json(

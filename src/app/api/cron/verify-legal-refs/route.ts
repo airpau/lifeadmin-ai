@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { createHash } from 'crypto';
 
 export const maxDuration = 300; // 5 minutes — checking many sources
 
@@ -13,13 +14,19 @@ function getAdmin() {
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
+function hashContent(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
 /**
- * Monthly legal reference verification cron.
- * Schedule: 1st of each month at 6am — configured in vercel.json
+ * Weekly legal reference verification cron.
+ * Schedule: Sundays at 6am — configured in vercel.json
  *
  * Two verification methods:
  * a) Statutes: Check legislation.gov.uk API for amendments
- * b) Regulator rules: Fetch source page + Claude Haiku comparison
+ * b) Regulator rules: Fetch page content, compare content_hash, Claude Haiku for changes
+ *
+ * When content changes, creates a legal_update_queue entry instead of directly overwriting.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -44,6 +51,7 @@ export async function GET(request: NextRequest) {
     current: 0,
     needs_review: 0,
     updated: 0,
+    queued: 0,
     errors: 0,
   };
 
@@ -76,16 +84,10 @@ export async function GET(request: NextRequest) {
     await new Promise(r => setTimeout(r, 200));
   }
 
-  // B3: Confidence decay for stale refs (30+ days since last_verified)
+  // Confidence decay for stale refs (30+ days since last_verified)
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  await supabase
-    .from('legal_references')
-    .update({ confidence_score: 90 }) // Will be overwritten below with per-ref decay
-    .lt('last_verified', thirtyDaysAgo.toISOString())
-    .gt('confidence_score', 60);
 
-  // Actually decay stale ones
   const { data: staleRefs } = await supabase
     .from('legal_references')
     .select('id, confidence_score')
@@ -101,9 +103,9 @@ export async function GET(request: NextRequest) {
   if (issues.length > 0) {
     await supabase.from('business_log').insert({
       category: 'legal_verification',
-      action: 'monthly_check',
+      action: 'weekly_check',
       details: {
-        summary: `Legal reference verification: ${results.needs_review} need review, ${results.updated} auto-updated out of ${results.total} references`,
+        summary: `Legal reference verification: ${results.needs_review} need review, ${results.updated} auto-updated, ${results.queued} queued out of ${results.total} references`,
         issues,
       },
     });
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
 // Verify a statute via legislation.gov.uk API
 // ============================================
 async function verifyStatute(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   ref: any,
   results: any,
@@ -155,7 +158,7 @@ async function verifyStatute(
           .eq('id', ref.id);
         results.current++;
       } else {
-        // Page doesn't load — flag for review
+        // Page doesn't load — queue for review
         await supabase
           .from('legal_references')
           .update({
@@ -164,6 +167,16 @@ async function verifyStatute(
             updated_at: new Date().toISOString(),
           })
           .eq('id', ref.id);
+
+        await supabase.from('legal_update_queue').insert({
+          legal_reference_id: ref.id,
+          change_type: 'content_update',
+          source_url: ref.source_url,
+          detected_change_summary: `Source URL returned HTTP ${pageRes.status} — page may have moved or been removed`,
+          confidence: 'medium',
+          status: 'pending',
+        });
+
         results.needs_review++;
         issues.push({ id: ref.id, law: ref.law_name, issue: `Source URL returned ${pageRes.status}` });
       }
@@ -172,8 +185,11 @@ async function verifyStatute(
 
     const xml = await res.text();
 
+    // Compute content hash and compare
+    const newHash = hashContent(xml);
+    const hashChanged = ref.content_hash && ref.content_hash !== newHash;
+
     // Check for amendment markers in the XML
-    // legislation.gov.uk XML contains <ukm:UnappliedEffects> for pending amendments
     const hasUnappliedEffects = xml.includes('UnappliedEffects') && xml.includes('<ukm:Effect');
     const hasRecentAmendment = xml.includes('amended') || xml.includes('substituted') || xml.includes('repealed');
 
@@ -186,33 +202,88 @@ async function verifyStatute(
         .update({
           verification_status: 'needs_review',
           verification_notes: `Possible repeal detected in XML on ${new Date().toISOString()}. Manual review required.`,
+          content_hash: newHash,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
+
+      await supabase.from('legal_update_queue').insert({
+        legal_reference_id: ref.id,
+        change_type: 'repealed',
+        source_url: ref.source_url,
+        detected_change_summary: `Possible repeal or revocation detected in legislation XML for ${ref.law_name}${ref.section ? ` ${ref.section}` : ''}`,
+        confidence: 'medium',
+        status: 'pending',
+      });
+
+      await supabase.from('legal_audit_log').insert({
+        legal_reference_id: ref.id,
+        check_type: 'legislation_api',
+        result: 'queued',
+        details: 'Possible repeal detected — queued for review',
+      });
+
       results.needs_review++;
       issues.push({ id: ref.id, law: `${ref.law_name} ${ref.section || ''}`, issue: 'Possible repeal detected' });
-    } else if (hasUnappliedEffects) {
-      // There are pending amendments — flag but don't panic
+    } else if (hashChanged || hasUnappliedEffects) {
+      // Content has changed OR pending amendments — flag for review
+      const changeNote = [
+        hashChanged && 'XML content hash changed since last check',
+        hasUnappliedEffects && 'unapplied amendments pending',
+      ].filter(Boolean).join('; ');
+
       await supabase
         .from('legal_references')
         .update({
           verification_status: 'current',
-          verification_notes: `Unapplied amendments pending as of ${new Date().toISOString()}. Legislation still current.`,
+          verification_notes: `Change detected on ${new Date().toISOString()}: ${changeNote}. Queued for weekly scan review.`,
           last_verified: new Date().toISOString(),
+          content_hash: newHash,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
-      results.current++;
+
+      if (hashChanged) {
+        await supabase.from('legal_update_queue').insert({
+          legal_reference_id: ref.id,
+          change_type: 'content_update',
+          source_url: ref.source_url,
+          detected_change_summary: `Statute XML content changed since last verification: ${changeNote}`,
+          confidence: 'medium',
+          status: 'pending',
+        });
+
+        await supabase.from('legal_audit_log').insert({
+          legal_reference_id: ref.id,
+          check_type: 'content_hash',
+          result: 'queued',
+          details: `Hash changed — ${changeNote}`,
+        });
+
+        results.queued++;
+        issues.push({ id: ref.id, law: `${ref.law_name} ${ref.section || ''}`, issue: changeNote });
+      } else {
+        results.current++;
+      }
     } else {
-      // All good
+      // All good — update hash if we didn't have one
       await supabase
         .from('legal_references')
         .update({
           verification_status: 'current',
           last_verified: new Date().toISOString(),
+          content_hash: newHash,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
+
+      await supabase.from('legal_audit_log').insert({
+        legal_reference_id: ref.id,
+        check_type: 'legislation_api',
+        result: 'current',
+        details: 'No changes detected',
+      });
+
       results.current++;
     }
   } catch (fetchErr: any) {
@@ -223,9 +294,10 @@ async function verifyStatute(
 }
 
 // ============================================
-// Verify a regulator rule via Claude Haiku
+// Verify a regulator rule via content hash + Claude Haiku
 // ============================================
 async function verifyRegulatorRule(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   ref: any,
   results: any,
@@ -233,6 +305,7 @@ async function verifyRegulatorRule(
 ) {
   // Fetch the current source page
   let pageContent = '';
+  let rawHtml = '';
   try {
     const res = await fetch(ref.source_url, {
       headers: { 'User-Agent': 'Paybacker-LegalVerifier/1.0 (hello@paybacker.co.uk)' },
@@ -248,14 +321,24 @@ async function verifyRegulatorRule(
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
+
+      await supabase.from('legal_update_queue').insert({
+        legal_reference_id: ref.id,
+        change_type: 'regulator_change',
+        source_url: ref.source_url,
+        detected_change_summary: `Source URL returned HTTP ${res.status} — regulator page may have changed`,
+        confidence: 'medium',
+        status: 'pending',
+      });
+
       results.needs_review++;
       issues.push({ id: ref.id, law: ref.law_name, issue: `Source returned ${res.status}` });
       return;
     }
 
-    const html = await res.text();
+    rawHtml = await res.text();
     // Extract text content (strip HTML tags, limit to ~4000 chars)
-    pageContent = html
+    pageContent = rawHtml
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .replace(/<[^>]+>/g, ' ')
@@ -264,7 +347,6 @@ async function verifyRegulatorRule(
       .slice(0, 4000);
   } catch (fetchErr: any) {
     console.error(`[verify-legal] Failed to fetch ${ref.source_url}:`, fetchErr.message);
-    // Can't verify — leave status as-is
     results.errors++;
     return;
   }
@@ -279,7 +361,33 @@ async function verifyRegulatorRule(
     return;
   }
 
-  // Send to Claude Haiku for comparison
+  // Compute content hash and compare
+  const newHash = hashContent(pageContent);
+  const hashUnchanged = ref.content_hash && ref.content_hash === newHash;
+
+  if (hashUnchanged) {
+    // Content unchanged — skip Claude call, just update timestamp
+    await supabase
+      .from('legal_references')
+      .update({
+        verification_status: 'current',
+        last_verified: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', ref.id);
+
+    await supabase.from('legal_audit_log').insert({
+      legal_reference_id: ref.id,
+      check_type: 'content_hash',
+      result: 'current',
+      details: 'Content hash unchanged — skipped AI comparison',
+    });
+
+    results.current++;
+    return;
+  }
+
+  // Hash changed (or no hash stored yet) — send to Claude Haiku for comparison
   try {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -304,7 +412,7 @@ Has anything MATERIALLY changed? Specifically check:
 - Whether the rule/scheme still exists
 
 Return ONLY a JSON object:
-{"changed": boolean, "changes": ["list of specific changes found"], "updated_summary": "updated summary if changed, or empty string if unchanged"}
+{"changed": boolean, "changes": ["list of specific changes found"], "updated_summary": "updated summary if changed, or empty string if unchanged", "confidence": "high|medium|low"}
 
 If you cannot determine whether something changed (e.g. page content is unclear), set changed to false.`,
       }],
@@ -327,42 +435,118 @@ If you cannot determine whether something changed (e.g. page content is unclear)
     const result = JSON.parse(jsonMatch[0]);
 
     if (result.changed && result.changes?.length > 0) {
-      // Auto-update the reference
-      const oldSummary = ref.summary;
-      const newSummary = result.updated_summary || ref.summary;
+      const confidence: 'high' | 'medium' | 'low' = result.confidence || 'medium';
 
-      await supabase
-        .from('legal_references')
-        .update({
-          summary: newSummary,
-          verification_status: 'updated',
-          last_verified: new Date().toISOString(),
-          last_changed: new Date().toISOString(),
-          verification_notes: `Auto-updated on ${new Date().toISOString()}. Changes: ${result.changes.join('; ')}. Previous summary: ${oldSummary}`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', ref.id);
+      if (confidence === 'high') {
+        // High confidence — auto-apply the update
+        const oldSummary = ref.summary;
+        const newSummary = result.updated_summary || ref.summary;
 
-      results.updated++;
-      issues.push({
-        id: ref.id,
-        law: `${ref.law_name} ${ref.section || ''}`,
-        issue: `Auto-updated: ${result.changes.join('; ')}`,
-      });
+        await supabase
+          .from('legal_references')
+          .update({
+            summary: newSummary,
+            verification_status: 'updated',
+            last_verified: new Date().toISOString(),
+            last_changed: new Date().toISOString(),
+            content_hash: newHash,
+            verification_notes: `Auto-updated on ${new Date().toISOString()}. Changes: ${result.changes.join('; ')}. Previous: ${oldSummary.slice(0, 100)}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', ref.id);
+
+        await supabase.from('legal_update_queue').insert({
+          legal_reference_id: ref.id,
+          change_type: 'regulator_change',
+          source_url: ref.source_url,
+          detected_change_summary: result.changes.join('; '),
+          proposed_update: newSummary,
+          confidence: 'high',
+          status: 'auto_applied',
+          reviewed_at: new Date().toISOString(),
+        });
+
+        await supabase.from('legal_audit_log').insert({
+          legal_reference_id: ref.id,
+          check_type: 'ai_comparison',
+          result: 'updated',
+          details: `High-confidence auto-applied: ${result.changes.join('; ')}`,
+        });
+
+        results.updated++;
+        issues.push({
+          id: ref.id,
+          law: `${ref.law_name} ${ref.section || ''}`,
+          issue: `Auto-updated (high confidence): ${result.changes.join('; ')}`,
+        });
+      } else {
+        // Medium/low confidence — queue for review
+        await supabase
+          .from('legal_references')
+          .update({
+            verification_status: 'needs_review',
+            last_verified: new Date().toISOString(),
+            content_hash: newHash,
+            verification_notes: `Possible change detected on ${new Date().toISOString()} (${confidence} confidence). Queued for review: ${result.changes.join('; ')}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', ref.id);
+
+        await supabase.from('legal_update_queue').insert({
+          legal_reference_id: ref.id,
+          change_type: 'regulator_change',
+          source_url: ref.source_url,
+          detected_change_summary: result.changes.join('; '),
+          proposed_update: result.updated_summary || null,
+          confidence,
+          status: 'pending',
+        });
+
+        await supabase.from('legal_audit_log').insert({
+          legal_reference_id: ref.id,
+          check_type: 'ai_comparison',
+          result: 'queued',
+          details: `${confidence} confidence — queued: ${result.changes.join('; ')}`,
+        });
+
+        results.queued++;
+        results.needs_review++;
+        issues.push({
+          id: ref.id,
+          law: `${ref.law_name} ${ref.section || ''}`,
+          issue: `Queued for review (${confidence}): ${result.changes.join('; ')}`,
+        });
+      }
     } else {
-      // No changes detected
+      // No material changes detected — update hash and timestamp
       await supabase
         .from('legal_references')
         .update({
           verification_status: 'current',
           last_verified: new Date().toISOString(),
+          content_hash: newHash,
           updated_at: new Date().toISOString(),
         })
         .eq('id', ref.id);
+
+      await supabase.from('legal_audit_log').insert({
+        legal_reference_id: ref.id,
+        check_type: 'ai_comparison',
+        result: 'current',
+        details: 'Hash changed but no material changes found by AI comparison',
+      });
+
       results.current++;
     }
   } catch (aiErr: any) {
     console.error(`[verify-legal] Claude Haiku error for ${ref.law_name}:`, aiErr.message);
+
+    // Store the new hash even on AI error, so we don't re-trigger next time
+    await supabase
+      .from('legal_references')
+      .update({ content_hash: newHash, last_verified: new Date().toISOString() })
+      .eq('id', ref.id);
+
     results.errors++;
   }
 }
