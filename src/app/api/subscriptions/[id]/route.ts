@@ -96,6 +96,14 @@ export async function PATCH(
   }
 }
 
+// PUT handler — same as PATCH (frontend uses PUT for needs_review updates)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return PATCH(request, { params });
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

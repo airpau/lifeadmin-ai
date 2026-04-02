@@ -384,7 +384,13 @@ export default function SubscriptionsPage() {
 
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
   const [showDuplicateDetails, setShowDuplicateDetails] = useState(false);
-  const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(new Set());
+  const [dismissedGroups, setDismissedGroups] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const stored = localStorage.getItem('paybacker_dismissed_merge_groups');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
   const [groupAmountOverrides, setGroupAmountOverrides] = useState<Record<string, string>>({});
   const duplicateGroups = (() => {
     const groups: Record<string, Subscription[]> = {};
@@ -441,7 +447,11 @@ export default function SubscriptionsPage() {
   };
 
   const handleDismissGroup = (key: string) => {
-    setDismissedGroups(prev => new Set([...prev, key]));
+    setDismissedGroups(prev => {
+      const next = new Set([...prev, key]);
+      try { localStorage.setItem('paybacker_dismissed_merge_groups', JSON.stringify([...next])); } catch {}
+      return next;
+    });
   };
 
   const activeDuplicateGroups = duplicateGroups.filter(g => {
