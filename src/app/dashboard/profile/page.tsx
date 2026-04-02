@@ -884,6 +884,22 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+      {/* Telegram Bot */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+          <Mail className="h-5 w-5 text-amber-500" />
+          Telegram Bot
+        </h2>
+        <p className="text-slate-400 text-sm mb-4">
+          Connect your Paybacker account to Telegram for proactive alerts, spending queries, and complaint letters — all from your phone.
+        </p>
+        <Link
+          href="/dashboard/settings/telegram"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
+        >
+          Configure Telegram Bot
+        </Link>
+      </div>
       {/* Danger Zone — Delete Account */}
       <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">

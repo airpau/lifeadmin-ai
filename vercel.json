@@ -147,6 +147,10 @@
     {
       "path": "/api/cron/aggregate-provider-intelligence",
       "schedule": "0 0 * * 0"
+    },
+    {
+      "path": "/api/cron/telegram-alerts",
+      "schedule": "0 */6 * * *"
     }
   ]
 }
