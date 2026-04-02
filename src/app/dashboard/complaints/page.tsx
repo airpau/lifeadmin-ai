@@ -213,8 +213,28 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-navy-700/50 flex-shrink-0">
-          <h2 className="text-xl font-bold text-white">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-xl font-bold text-white truncate">{title}</h2>
+            {(() => {
+              const count = rightsPills?.length ?? 0;
+              if (count >= 3) return (
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                  Strong legal backing
+                </span>
+              );
+              if (count >= 1) return (
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  Some legal backing
+                </span>
+              );
+              return (
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                  Review carefully
+                </span>
+              );
+            })()}
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 flex-shrink-0"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-navy-950 rounded-xl p-6 border border-navy-700/50 mb-4">
