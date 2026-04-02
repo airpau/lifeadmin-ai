@@ -267,6 +267,184 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Meet Pocket Agent Showcase */}
+        <section className="py-20 md:py-28 bg-navy-900/30 relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent" />
+          <div className="container mx-auto px-4 md:px-6 relative">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-14"
+            >
+              <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20 mb-6">
+                <MessageCircle className="h-4 w-4" />
+                <span>Pro Feature</span>
+              </div>
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                Meet{' '}
+                <span className="bg-gradient-to-r from-amber-400 to-amber-500 bg-clip-text text-transparent">
+                  Pocket Agent
+                </span>
+              </h2>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
+                Your AI financial agent lives in Telegram. Ask anything, fix everything — from your pocket.
+              </p>
+            </motion.div>
+
+            <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-10 lg:gap-14 items-start">
+              {/* LEFT — Fake Telegram Chat Mockup */}
+              <motion.div
+                initial={{ opacity: 0, x: -30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+              >
+                <div className="rounded-[2rem] border-2 border-slate-700/60 bg-slate-900 p-1.5 shadow-2xl max-w-md mx-auto lg:mx-0">
+                  {/* Phone notch bar */}
+                  <div className="flex items-center justify-center pt-2 pb-1">
+                    <div className="w-24 h-5 bg-slate-800 rounded-full" />
+                  </div>
+                  {/* Telegram header */}
+                  <div className="bg-[#1c2b3a] rounded-t-2xl px-4 py-3 flex items-center gap-3 border-b border-slate-700/40">
+                    <div className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-xs font-bold shrink-0">PA</div>
+                    <div>
+                      <p className="text-white text-sm font-semibold leading-tight">Pocket Agent</p>
+                      <p className="text-slate-500 text-[11px]">online</p>
+                    </div>
+                  </div>
+                  {/* Chat messages */}
+                  <div className="bg-[#17212b] px-3 py-4 space-y-3 min-h-[420px] rounded-b-2xl">
+                    {/* User message 1 */}
+                    <div className="flex justify-end">
+                      <div className="bg-[#2b5278] text-white text-[13px] leading-relaxed rounded-2xl rounded-br-md px-3.5 py-2 max-w-[80%] shadow-sm">
+                        How much did I spend on eating out this month?
+                      </div>
+                    </div>
+                    {/* Bot message 1 */}
+                    <div className="flex items-start gap-2">
+                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-[10px] font-bold shrink-0 mt-0.5">PA</div>
+                      <div className="bg-[#182533] border-l-2 border-amber-500 text-slate-200 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2.5 max-w-[85%] shadow-sm">
+                        <p>You spent <span className="text-amber-400 font-semibold">£247.30</span> on eating out in March — that&apos;s 18% more than February (£209.15).</p>
+                        <p className="mt-2 text-slate-400">Your top 3 were:</p>
+                        <ul className="mt-1 space-y-0.5 text-slate-300">
+                          <li>• Deliveroo — £89.40 (6 orders)</li>
+                          <li>• Nando&apos;s — £52.80</li>
+                          <li>• Costa Coffee — £38.60</li>
+                        </ul>
+                        <p className="mt-2 text-slate-400">Want me to set a budget alert for this category?</p>
+                      </div>
+                    </div>
+                    {/* User message 2 */}
+                    <div className="flex justify-end">
+                      <div className="bg-[#2b5278] text-white text-[13px] leading-relaxed rounded-2xl rounded-br-md px-3.5 py-2 max-w-[80%] shadow-sm">
+                        Yes, set it to £200
+                      </div>
+                    </div>
+                    {/* Bot message 2 */}
+                    <div className="flex items-start gap-2">
+                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-[10px] font-bold shrink-0 mt-0.5">PA</div>
+                      <div className="bg-[#182533] border-l-2 border-amber-500 text-slate-200 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2.5 max-w-[85%] shadow-sm">
+                        <p><span className="text-amber-400 font-semibold">Done.</span> I&apos;ll message you when you hit 80% of your £200 eating out budget.</p>
+                        <p className="mt-2">I&apos;ve also spotted that your Deliveroo Plus subscription renewed yesterday at <span className="text-amber-400 font-semibold">£7.99</span> — want me to check if there&apos;s a better deal?</p>
+                      </div>
+                    </div>
+                    {/* Typing indicator */}
+                    <div className="flex items-start gap-2">
+                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-[10px] font-bold shrink-0 mt-0.5">PA</div>
+                      <div className="bg-[#182533] border-l-2 border-amber-500/40 rounded-2xl rounded-bl-md px-4 py-3 max-w-[60px] shadow-sm">
+                        <div className="flex gap-1 items-center">
+                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '600ms' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* RIGHT — Feature Highlights */}
+              <motion.div
+                initial={{ opacity: 0, x: 30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="space-y-5 lg:pt-4"
+              >
+                {[
+                  {
+                    icon: <Zap className="h-5 w-5 text-amber-400" />,
+                    title: 'Instant Answers',
+                    desc: 'Ask about spending, bills, subscriptions — get answers in seconds.',
+                  },
+                  {
+                    icon: <FileEdit className="h-5 w-5 text-amber-400" />,
+                    title: 'One-Tap Complaints',
+                    desc: 'Draft and send dispute letters without leaving the chat.',
+                  },
+                  {
+                    icon: <Bell className="h-5 w-5 text-amber-400" />,
+                    title: 'Proactive Alerts',
+                    desc: 'Get warned about price increases, expiring contracts, and unusual spending.',
+                  },
+                  {
+                    icon: <BadgeCheck className="h-5 w-5 text-amber-400" />,
+                    title: 'Verified Savings',
+                    desc: 'Track exactly how much Paybacker has saved you, automatically verified.',
+                  },
+                  {
+                    icon: <Shield className="h-5 w-5 text-amber-400" />,
+                    title: 'Bank-Grade Security',
+                    desc: 'End-to-end encrypted. Your data never leaves Paybacker\u2019s servers.',
+                  },
+                ].map((feature, i) => (
+                  <motion.div
+                    key={feature.title}
+                    initial={{ opacity: 0, y: 15 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.35, delay: 0.15 + i * 0.08 }}
+                    className="flex items-start gap-4 bg-navy-900 border border-navy-700/50 hover:border-amber-500/30 rounded-2xl p-5 transition-all shadow-[--shadow-card]"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                      {feature.icon}
+                    </div>
+                    <div>
+                      <h3 className="text-white font-semibold text-sm mb-1">{feature.title}</h3>
+                      <p className="text-slate-400 text-xs leading-relaxed">{feature.desc}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+
+            {/* CTA Bar */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="max-w-3xl mx-auto mt-14 text-center bg-navy-900 border border-navy-700/50 rounded-2xl px-6 py-8 shadow-[--shadow-card]"
+            >
+              <p className="text-white font-semibold text-lg mb-4">
+                Pocket Agent is exclusive to{' '}
+                <span className="text-amber-400">Paybacker Pro</span>
+              </p>
+              <Link
+                href="/pricing"
+                className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-navy-950 font-semibold px-8 py-3 rounded-xl transition-all text-sm shadow-lg shadow-amber-500/20"
+              >
+                Upgrade to Pro <ArrowRight className="h-4 w-4" />
+              </Link>
+              <p className="text-slate-500 text-xs mt-4">
+                Available on Telegram. WhatsApp coming soon.
+              </p>
+            </motion.div>
+          </div>
+        </section>
+
         {/* Feature Section 1: AI Complaint Letters */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
@@ -801,184 +979,6 @@ export default function Home() {
                   Get Pocket Agent with Pro <ChevronRight className="h-4 w-4" />
                 </a>
               </div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Meet Pocket Agent Showcase */}
-        <section className="py-20 md:py-28 bg-navy-900/30 relative overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent" />
-          <div className="container mx-auto px-4 md:px-6 relative">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-14"
-            >
-              <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20 mb-6">
-                <MessageCircle className="h-4 w-4" />
-                <span>Pro Feature</span>
-              </div>
-              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                Meet{' '}
-                <span className="bg-gradient-to-r from-amber-400 to-amber-500 bg-clip-text text-transparent">
-                  Pocket Agent
-                </span>
-              </h2>
-              <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
-                Your AI financial agent lives in Telegram. Ask anything, fix everything — from your pocket.
-              </p>
-            </motion.div>
-
-            <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-10 lg:gap-14 items-start">
-              {/* LEFT — Fake Telegram Chat Mockup */}
-              <motion.div
-                initial={{ opacity: 0, x: -30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
-                <div className="rounded-[2rem] border-2 border-slate-700/60 bg-slate-900 p-1.5 shadow-2xl max-w-md mx-auto lg:mx-0">
-                  {/* Phone notch bar */}
-                  <div className="flex items-center justify-center pt-2 pb-1">
-                    <div className="w-24 h-5 bg-slate-800 rounded-full" />
-                  </div>
-                  {/* Telegram header */}
-                  <div className="bg-[#1c2b3a] rounded-t-2xl px-4 py-3 flex items-center gap-3 border-b border-slate-700/40">
-                    <div className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-xs font-bold shrink-0">PA</div>
-                    <div>
-                      <p className="text-white text-sm font-semibold leading-tight">Pocket Agent</p>
-                      <p className="text-slate-500 text-[11px]">online</p>
-                    </div>
-                  </div>
-                  {/* Chat messages */}
-                  <div className="bg-[#17212b] px-3 py-4 space-y-3 min-h-[420px] rounded-b-2xl">
-                    {/* User message 1 */}
-                    <div className="flex justify-end">
-                      <div className="bg-[#2b5278] text-white text-[13px] leading-relaxed rounded-2xl rounded-br-md px-3.5 py-2 max-w-[80%] shadow-sm">
-                        How much did I spend on eating out this month?
-                      </div>
-                    </div>
-                    {/* Bot message 1 */}
-                    <div className="flex items-start gap-2">
-                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-[10px] font-bold shrink-0 mt-0.5">PA</div>
-                      <div className="bg-[#182533] border-l-2 border-amber-500 text-slate-200 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2.5 max-w-[85%] shadow-sm">
-                        <p>You spent <span className="text-amber-400 font-semibold">£247.30</span> on eating out in March — that&apos;s 18% more than February (£209.15).</p>
-                        <p className="mt-2 text-slate-400">Your top 3 were:</p>
-                        <ul className="mt-1 space-y-0.5 text-slate-300">
-                          <li>• Deliveroo — £89.40 (6 orders)</li>
-                          <li>• Nando&apos;s — £52.80</li>
-                          <li>• Costa Coffee — £38.60</li>
-                        </ul>
-                        <p className="mt-2 text-slate-400">Want me to set a budget alert for this category?</p>
-                      </div>
-                    </div>
-                    {/* User message 2 */}
-                    <div className="flex justify-end">
-                      <div className="bg-[#2b5278] text-white text-[13px] leading-relaxed rounded-2xl rounded-br-md px-3.5 py-2 max-w-[80%] shadow-sm">
-                        Yes, set it to £200
-                      </div>
-                    </div>
-                    {/* Bot message 2 */}
-                    <div className="flex items-start gap-2">
-                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-[10px] font-bold shrink-0 mt-0.5">PA</div>
-                      <div className="bg-[#182533] border-l-2 border-amber-500 text-slate-200 text-[13px] leading-relaxed rounded-2xl rounded-bl-md px-3.5 py-2.5 max-w-[85%] shadow-sm">
-                        <p><span className="text-amber-400 font-semibold">Done.</span> I&apos;ll message you when you hit 80% of your £200 eating out budget.</p>
-                        <p className="mt-2">I&apos;ve also spotted that your Deliveroo Plus subscription renewed yesterday at <span className="text-amber-400 font-semibold">£7.99</span> — want me to check if there&apos;s a better deal?</p>
-                      </div>
-                    </div>
-                    {/* Typing indicator */}
-                    <div className="flex items-start gap-2">
-                      <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-navy-950 text-[10px] font-bold shrink-0 mt-0.5">PA</div>
-                      <div className="bg-[#182533] border-l-2 border-amber-500/40 rounded-2xl rounded-bl-md px-4 py-3 max-w-[60px] shadow-sm">
-                        <div className="flex gap-1 items-center">
-                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
-                          <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse" style={{ animationDelay: '600ms' }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* RIGHT — Feature Highlights */}
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="space-y-5 lg:pt-4"
-              >
-                {[
-                  {
-                    icon: <Zap className="h-5 w-5 text-amber-400" />,
-                    title: 'Instant Answers',
-                    desc: 'Ask about spending, bills, subscriptions — get answers in seconds.',
-                  },
-                  {
-                    icon: <FileEdit className="h-5 w-5 text-amber-400" />,
-                    title: 'One-Tap Complaints',
-                    desc: 'Draft and send dispute letters without leaving the chat.',
-                  },
-                  {
-                    icon: <Bell className="h-5 w-5 text-amber-400" />,
-                    title: 'Proactive Alerts',
-                    desc: 'Get warned about price increases, expiring contracts, and unusual spending.',
-                  },
-                  {
-                    icon: <BadgeCheck className="h-5 w-5 text-amber-400" />,
-                    title: 'Verified Savings',
-                    desc: 'Track exactly how much Paybacker has saved you, automatically verified.',
-                  },
-                  {
-                    icon: <Shield className="h-5 w-5 text-amber-400" />,
-                    title: 'Bank-Grade Security',
-                    desc: 'End-to-end encrypted. Your data never leaves Paybacker\u2019s servers.',
-                  },
-                ].map((feature, i) => (
-                  <motion.div
-                    key={feature.title}
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.35, delay: 0.15 + i * 0.08 }}
-                    className="flex items-start gap-4 bg-navy-900 border border-navy-700/50 hover:border-amber-500/30 rounded-2xl p-5 transition-all shadow-[--shadow-card]"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-                      {feature.icon}
-                    </div>
-                    <div>
-                      <h3 className="text-white font-semibold text-sm mb-1">{feature.title}</h3>
-                      <p className="text-slate-400 text-xs leading-relaxed">{feature.desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </motion.div>
-            </div>
-
-            {/* CTA Bar */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="max-w-3xl mx-auto mt-14 text-center bg-navy-900 border border-navy-700/50 rounded-2xl px-6 py-8 shadow-[--shadow-card]"
-            >
-              <p className="text-white font-semibold text-lg mb-4">
-                Pocket Agent is exclusive to{' '}
-                <span className="text-amber-400">Paybacker Pro</span>
-              </p>
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-navy-950 font-semibold px-8 py-3 rounded-xl transition-all text-sm shadow-lg shadow-amber-500/20"
-              >
-                Upgrade to Pro <ArrowRight className="h-4 w-4" />
-              </Link>
-              <p className="text-slate-500 text-xs mt-4">
-                Available on Telegram. WhatsApp coming soon.
-              </p>
             </motion.div>
           </div>
         </section>

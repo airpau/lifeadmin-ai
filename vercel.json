@@ -153,6 +153,14 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/cron/telegram-morning-summary",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-evening-summary",
+      "schedule": "0 20 * * *"
+    },
+    {
       "path": "/api/cron/consent-renewal",
       "schedule": "0 7 * * *"
     }
