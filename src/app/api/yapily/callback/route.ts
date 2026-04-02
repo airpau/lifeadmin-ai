@@ -15,6 +15,8 @@ import { encrypt } from '@/lib/encrypt';
  * 5. Runs recurring payment detection
  * 6. Redirects to dashboard
  */
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const consentToken = searchParams.get('consent');
@@ -165,9 +167,11 @@ async function syncTransactionsForConnection(
   supabase: Awaited<ReturnType<typeof createClient>>,
   consentToken: string
 ) {
-  const twelveMonthsAgo = new Date();
-  twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-  const fromDate = twelveMonthsAgo.toISOString();
+  // Sync last 90 days on initial connect (12 months would timeout)
+  // The daily cron will backfill older data over time
+  const syncStart = new Date();
+  syncStart.setDate(syncStart.getDate() - 90);
+  const fromDate = syncStart.toISOString();
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
