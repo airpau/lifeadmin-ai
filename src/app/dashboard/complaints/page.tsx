@@ -121,6 +121,23 @@ const CATEGORY_ALIAS: Record<string, string> = {
   subscription: 'complaint',
 };
 
+// Maps ?category= aliases (e.g. from homepage chips) to issue_type keys
+const CATEGORY_ALIAS: Record<string, string> = {
+  energy_bill: 'energy_dispute',
+  energy: 'energy_dispute',
+  broadband: 'broadband_complaint',
+  mobile: 'broadband_complaint',
+  flight: 'flight_compensation',
+  flights: 'flight_compensation',
+  parking: 'parking_appeal',
+  debt: 'debt_dispute',
+  refund: 'refund_request',
+  hmrc: 'hmrc_tax_rebate',
+  council_tax: 'council_tax_band',
+  dvla: 'dvla_vehicle',
+  nhs: 'nhs_complaint',
+};
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   open: { label: 'Open', className: 'bg-blue-500/10 text-blue-400' },
   awaiting_response: { label: 'Waiting for reply', className: 'bg-purple-500/10 text-purple-400' },
@@ -1042,14 +1059,18 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     const typeParam = searchParams.get('type');
     const catParam = searchParams.get('category');
     let resolvedType = typeParam || (catParam ? (CATEGORY_ALIAS[catParam] || catParam) : null);
-    if (!resolvedType && typeof window !== 'undefined') {
+    // Always clear pb_preview_letter from sessionStorage — even when type is already set by URL —
+    // so a stale key doesn't re-open the form on a later visit without ?new=1.
+    if (typeof window !== 'undefined') {
       try {
         const stored = sessionStorage.getItem('pb_preview_letter');
         if (stored) {
-          const parsed = JSON.parse(stored);
-          // pb_preview_letter stores {category, preview} (written by homepage try-before-signup)
-          const cat = parsed.category || parsed.type || null;
-          resolvedType = cat ? (CATEGORY_ALIAS[cat] || cat) : null;
+          if (!resolvedType) {
+            const parsed = JSON.parse(stored);
+            // pb_preview_letter stores {type} or legacy {category, preview}
+            const cat = parsed.type || parsed.category || null;
+            resolvedType = cat ? (CATEGORY_ALIAS[cat] || cat) : null;
+          }
           sessionStorage.removeItem('pb_preview_letter');
         }
       } catch {}
