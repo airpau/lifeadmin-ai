@@ -98,6 +98,8 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
   council_tax_band: 'Council Tax',
   dvla_vehicle: 'DVLA',
   nhs_complaint: 'NHS Complaint',
+  gym_membership: 'Gym Membership',
+  insurance_dispute: 'Insurance Dispute',
 };
 
 // Maps ?category= aliases (e.g. from OnboardingFlow chips) to issue_type keys

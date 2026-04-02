@@ -145,7 +145,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch verified legal references for this letter type
-    // Also fetch the dispute's provider_type + issue_type for category targeting
+    // Also fetch the dispute's provider_type and issue_type for category targeting
+    // (prevents gym/goods refs on broadband/energy complaints, and narrows 'government' to the specific sub-type)
     let disputeProviderType: string | null = null;
     let disputeIssueType: string | null = null;
     if (body.disputeId) {
@@ -170,14 +171,16 @@ export async function POST(request: NextRequest) {
       parking_appeal: ['general', 'parking'],
       debt_dispute: ['general', 'debt', 'finance'],
       refund_request: ['general', 'finance'],
-      hmrc_tax_rebate: ['hmrc'],
-      council_tax_band: ['council_tax'],
-      dvla_vehicle: ['dvla'],
-      nhs_complaint: ['nhs'],
+      hmrc_tax_rebate: ['hmrc', 'general'],
+      council_tax_band: ['council_tax', 'general'],
+      dvla_vehicle: ['dvla', 'general'],
+      nhs_complaint: ['nhs', 'general'],
+      gym_membership: ['gym', 'general'],
+      insurance_dispute: ['insurance', 'finance', 'general'],
     };
 
-    // Provider-type overrides issue-type so broadband disputes always get broadband refs.
-    // 'government' and 'council_tax' map to council_tax category.
+    // Provider-type fallback — used only when issue_type doesn't give us a specific category.
+    // 'government' maps broadly; issue_type (e.g. council_tax_band) narrows it correctly in step 1.
     const providerTypeToCategory: Record<string, string[]> = {
       broadband: ['broadband', 'general'],
       energy: ['energy', 'general'],
@@ -187,15 +190,18 @@ export async function POST(request: NextRequest) {
       parking: ['parking', 'general'],
       finance: ['finance', 'general'],
       debt: ['debt', 'finance', 'general'],
-      government: ['council_tax', 'general'],
-      council_tax: ['council_tax', 'general'],
+      government: ['council_tax', 'hmrc', 'dvla', 'general'],
+      nhs: ['nhs', 'general'],
+      gym: ['gym', 'general'],
+      general: ['general'],
     };
 
-    // Resolution chain: provider_type → dispute.issue_type → body.letterType → 'general'
+    // Two-step resolution: issue_type is more specific, so try it first.
+    // This prevents a 'government' provider_type from pulling in HMRC refs on a council tax dispute.
     const categories =
-      (disputeProviderType && providerTypeToCategory[disputeProviderType]) ||
-      (disputeIssueType && issueTypeToCategory[disputeIssueType]) ||
-      issueTypeToCategory[body.letterType || 'complaint'] ||
+      issueTypeToCategory[disputeIssueType || ''] ||
+      issueTypeToCategory[body.letterType || ''] ||
+      (disputeProviderType ? providerTypeToCategory[disputeProviderType] : null) ||
       ['general'];
 
     // NOTE: legal_references has no confidence_score column — filter by verification_status only
