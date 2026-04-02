@@ -135,6 +135,14 @@
     {
       "path": "/api/cron/marketing-automation",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/contract-expiry-alerts",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/aggregate-provider-intelligence",
+      "schedule": "0 0 * * 0"
     }
   ]
 }

@@ -43,6 +43,11 @@ interface ContractExtraction {
   file_url: string | null;
   file_name: string | null;
   provider_name: string | null;
+  contract_type: string | null;
+  contract_start_date: string | null;
+  contract_end_date: string | null;
+  monthly_cost: number | null;
+  annual_cost: number | null;
   minimum_term: string | null;
   notice_period: string | null;
   cancellation_fee: string | null;
@@ -452,6 +457,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [generating, setGenerating] = useState(false);
   const [statusDropdown, setStatusDropdown] = useState(false);
   const [contractUploading, setContractUploading] = useState(false);
+  const [justExtracted, setJustExtracted] = useState(false);
   const [providerInfo, setProviderInfo] = useState<any>(null);
 
   const fetchDispute = async () => {
@@ -865,16 +871,63 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
         {dispute.contract_extractions && dispute.contract_extractions.length > 0 ? (
           <div>
+            {justExtracted && (
+              <div className="flex items-center gap-2 mb-3 bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+                <CheckCircle className="h-4 w-4 text-mint-400 flex-shrink-0" />
+                <p className="text-xs text-mint-400 font-medium">Contract analysed successfully — terms loaded below</p>
+              </div>
+            )}
+
             <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 mb-3">
-              <p className="text-sm text-white font-medium mb-2">Here&apos;s what we found in your contract</p>
-              <p className="text-xs text-slate-400 mb-3">{dispute.contract_extractions[0].raw_summary}</p>
+              {/* Provider + type header */}
+              {(dispute.contract_extractions[0].provider_name || dispute.contract_extractions[0].contract_type) && (
+                <div className="flex items-center gap-3 mb-3">
+                  {dispute.contract_extractions[0].provider_name && (
+                    <span className="text-sm font-semibold text-white">{dispute.contract_extractions[0].provider_name}</span>
+                  )}
+                  {dispute.contract_extractions[0].contract_type && (
+                    <span className="text-[10px] uppercase tracking-wide bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full capitalize">
+                      {dispute.contract_extractions[0].contract_type}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <p className="text-xs text-slate-400 mb-3 leading-relaxed">{dispute.contract_extractions[0].raw_summary}</p>
+
               <div className="grid sm:grid-cols-2 gap-2">
+                {/* Dates */}
+                {dispute.contract_extractions[0].contract_start_date && (
+                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Contract start</p>
+                    <p className="text-xs text-slate-300">{new Date(dispute.contract_extractions[0].contract_start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  </div>
+                )}
+                {dispute.contract_extractions[0].contract_end_date && (
+                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Contract end</p>
+                    <p className="text-xs text-slate-300">{new Date(dispute.contract_extractions[0].contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  </div>
+                )}
+                {/* Costs */}
+                {dispute.contract_extractions[0].monthly_cost != null && (
+                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Monthly cost</p>
+                    <p className="text-xs text-slate-300">£{dispute.contract_extractions[0].monthly_cost.toFixed(2)}</p>
+                  </div>
+                )}
+                {dispute.contract_extractions[0].annual_cost != null && (
+                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide">Annual cost</p>
+                    <p className="text-xs text-slate-300">£{dispute.contract_extractions[0].annual_cost.toFixed(2)}</p>
+                  </div>
+                )}
+                {/* Key terms */}
                 {[
                   { label: 'Minimum term', value: dispute.contract_extractions[0].minimum_term },
                   { label: 'Notice period', value: dispute.contract_extractions[0].notice_period },
                   { label: 'Cancellation fee', value: dispute.contract_extractions[0].cancellation_fee },
                   { label: 'Early exit fee', value: dispute.contract_extractions[0].early_exit_fee },
-                  { label: 'Price increases', value: dispute.contract_extractions[0].price_increase_clause },
                   { label: 'Auto-renewal', value: dispute.contract_extractions[0].auto_renewal },
                   { label: 'Cooling-off period', value: dispute.contract_extractions[0].cooling_off_period },
                 ].filter(t => t.value).map((term) => (
@@ -884,12 +937,23 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                   </div>
                 ))}
               </div>
+
+              {/* Price increase clause gets its own row */}
+              {dispute.contract_extractions[0].price_increase_clause && (
+                <div className="mt-2 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-amber-400 uppercase tracking-wide mb-1">Price increase clause</p>
+                  <p className="text-xs text-slate-300">{dispute.contract_extractions[0].price_increase_clause}</p>
+                </div>
+              )}
             </div>
 
             {dispute.contract_extractions[0].unfair_clauses && dispute.contract_extractions[0].unfair_clauses.length > 0 && (
               <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 mb-3">
-                <p className="text-sm text-red-400 font-medium mb-2">Potentially unfair clauses found</p>
-                <ul className="text-xs text-slate-400 space-y-1">
+                <p className="text-sm text-red-400 font-medium mb-2">
+                  <AlertCircle className="h-4 w-4 inline mr-1" />
+                  {dispute.contract_extractions[0].unfair_clauses.length} potentially unfair clause{dispute.contract_extractions[0].unfair_clauses.length !== 1 ? 's' : ''} found
+                </p>
+                <ul className="text-xs text-slate-400 space-y-1.5">
                   {dispute.contract_extractions[0].unfair_clauses.map((clause: string, i: number) => (
                     <li key={i} className="flex items-start gap-2">
                       <AlertCircle className="h-3 w-3 text-red-400 mt-0.5 flex-shrink-0" />
@@ -936,6 +1000,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                       const err = await res.json().catch(() => ({}));
                       throw new Error(err.error || 'Analysis failed');
                     }
+                    setJustExtracted(true);
                     fetchDispute();
                   } catch (err: any) {
                     alert(err.message || 'Failed to analyse contract. Please try again.');

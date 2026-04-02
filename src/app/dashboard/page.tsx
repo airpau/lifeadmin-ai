@@ -221,15 +221,24 @@ export default function DashboardPage() {
         }, 0);
         setMonthlySpend(monthly);
 
-        // Count contracts expiring within 30 days
+        // Count contracts expiring within 30 days (subscriptions + vault extractions)
         const now = new Date();
         const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        const expiring = subsList.filter(s =>
+        const expiringSubs = subsList.filter(s =>
           s.contract_end_date &&
           new Date(s.contract_end_date) >= now &&
           new Date(s.contract_end_date) <= thirtyDays
         ).length;
-        setExpiringContracts(expiring);
+
+        const { count: vaultExpiringCount } = await supabase
+          .from('contract_extractions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .not('contract_end_date', 'is', null)
+          .gte('contract_end_date', now.toISOString().split('T')[0])
+          .lte('contract_end_date', thirtyDays.toISOString().split('T')[0]);
+
+        setExpiringContracts(expiringSubs + (vaultExpiringCount || 0));
 
         // Fetch active price increase alerts for display
         const { data: priceAlertData } = await supabase
@@ -544,7 +553,7 @@ export default function DashboardPage() {
               <p className="text-slate-400 text-xs">Review these before they auto-renew at a higher rate</p>
             </div>
           </div>
-          <Link href="/dashboard/subscriptions" className="text-mint-400 hover:text-mint-300 text-sm font-medium flex items-center gap-1">
+          <Link href="/dashboard/contracts" className="text-mint-400 hover:text-mint-300 text-sm font-medium flex items-center gap-1">
             View <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
