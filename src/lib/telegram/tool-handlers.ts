@@ -61,13 +61,15 @@ export async function executeToolCall(
         limit: toolInput.limit as number | undefined,
       });
     case 'get_subscriptions':
-      return getSubscriptions(supabase, userId, toolInput.filter as string | undefined);
+      return getSubscriptions(supabase, userId, toolInput.filter as string | undefined, toolInput.category as string | undefined, toolInput.provider as string | undefined);
     case 'get_disputes':
       return getDisputes(supabase, userId, toolInput.status as string | undefined);
     case 'get_contracts':
-      return getContracts(supabase, userId, toolInput.provider as string | undefined);
+      return getContracts(supabase, userId, toolInput.provider as string | undefined, toolInput.category as string | undefined);
     case 'get_budget_status':
       return getBudgetStatus(supabase, userId);
+    case 'get_financial_overview':
+      return getFinancialOverview(supabase, userId);
     case 'get_upcoming_renewals':
       return getUpcomingRenewals(supabase, userId);
     case 'get_price_alerts':
@@ -242,13 +244,15 @@ async function getSubscriptions(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
   filter?: string,
+  category?: string,
+  provider?: string,
 ): Promise<ToolResult> {
   const effectiveFilter = filter ?? 'active';
 
   let query = supabase
     .from('subscriptions')
     .select(
-      'provider_name, amount, billing_cycle, next_billing_date, status, contract_end_date, provider_type',
+      'provider_name, amount, billing_cycle, next_billing_date, status, contract_end_date, provider_type, category',
     )
     .eq('user_id', userId)
     .is('dismissed_at', null)
@@ -262,9 +266,17 @@ async function getSubscriptions(
     }
   }
 
+  if (category) {
+    query = query.ilike('category', category);
+  }
+  if (provider) {
+    query = query.ilike('provider_name', `%${provider}%`);
+  }
+
   const { data, error } = await query.limit(25);
   if (error || !data || data.length === 0) {
-    return { text: 'No subscriptions found.' };
+    const desc = category ? ` in category "${category}"` : provider ? ` matching "${provider}"` : '';
+    return { text: `No subscriptions found${desc}.` };
   }
 
   const totalMonthly = data
@@ -289,6 +301,7 @@ async function getSubscriptions(
     const end = s.contract_end_date ? `Ends ${fmtDate(s.contract_end_date)}` : renewal;
     const cycle = s.billing_cycle ?? 'monthly';
     text += `• *${s.provider_name}* — ${fmt(s.amount)}/${cycle}`;
+    if (s.category) text += ` [${s.category}]`;
     if (end) text += ` (${end})`;
     if (s.status !== 'active') text += ` [${s.status}]`;
     text += '\n';
@@ -351,43 +364,58 @@ async function getContracts(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
   provider?: string,
+  category?: string,
 ): Promise<ToolResult> {
   let query = supabase
     .from('subscriptions')
     .select(
-      'provider_name, contract_type, contract_end_date, contract_start_date, amount, billing_cycle, auto_renews, early_exit_fee, provider_type',
+      'provider_name, contract_type, contract_end_date, contract_start_date, amount, billing_cycle, auto_renews, early_exit_fee, provider_type, category, interest_rate, remaining_balance',
     )
     .eq('user_id', userId)
     .eq('status', 'active')
-    .not('contract_end_date', 'is', null)
-    .order('contract_end_date', { ascending: true })
+    .order('contract_end_date', { ascending: true, nullsFirst: false })
     .limit(20);
 
   if (provider) {
     query = query.ilike('provider_name', `%${provider}%`);
   }
+  if (category) {
+    query = query.ilike('category', category);
+  }
 
   const { data, error } = await query;
   if (error || !data || data.length === 0) {
-    return { text: 'No contracts found. Add contracts in the dashboard at paybacker.co.uk/dashboard/subscriptions' };
+    const desc = category ? ` in category "${category}"` : provider ? ` matching "${provider}"` : '';
+    return { text: `No contracts found${desc}. Add contracts at paybacker.co.uk/dashboard/subscriptions` };
   }
 
   const now = new Date();
   let text = `*Contracts (${data.length})*\n\n`;
 
   for (const c of data) {
-    const endDate = new Date(c.contract_end_date);
-    const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    const urgency = daysLeft <= 7 ? '🔴' : daysLeft <= 30 ? '🟡' : '🟢';
     const cycle = c.billing_cycle ?? 'monthly';
-    text += `${urgency} *${c.provider_name}*`;
+    text += `*${c.provider_name}*`;
+    if (c.category) text += ` [${c.category}]`;
     if (c.contract_type && c.contract_type !== 'subscription') {
       text += ` (${c.contract_type.replace(/_/g, ' ')})`;
     }
-    text += `\n   ${fmt(c.amount)}/${cycle} · Ends ${fmtDate(c.contract_end_date)} (${daysLeft} days)`;
+    text += `\n   ${fmt(c.amount)}/${cycle}`;
+    if (c.contract_end_date) {
+      const endDate = new Date(c.contract_end_date);
+      const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const urgency = daysLeft <= 7 ? '🔴' : daysLeft <= 30 ? '🟡' : '🟢';
+      text = text.replace(`*${c.provider_name}*`, `${urgency} *${c.provider_name}*`);
+      text += ` · Ends ${fmtDate(c.contract_end_date)} (${daysLeft} days)`;
+    }
     if (c.auto_renews) text += ' · Auto-renews';
     if (c.early_exit_fee && Number(c.early_exit_fee) > 0) {
       text += ` · Exit fee: ${fmt(c.early_exit_fee)}`;
+    }
+    if (c.interest_rate && Number(c.interest_rate) > 0) {
+      text += `\n   Interest: ${Number(c.interest_rate).toFixed(2)}%`;
+    }
+    if (c.remaining_balance && Number(c.remaining_balance) > 0) {
+      text += ` · Remaining: ${fmt(c.remaining_balance)}`;
     }
     text += '\n';
   }
@@ -811,4 +839,92 @@ async function cancelSubscription(
   const cycle = sub.billing_cycle ?? 'monthly';
   const annual = Number(sub.amount) * (cycle === 'monthly' ? 12 : cycle === 'quarterly' ? 4 : 1);
   return { text: `Marked ${sub.provider_name} as cancelled (${fmt(sub.amount)}/${cycle}). That's ${fmt(annual)}/year saved. Note: this updates your tracking only — you still need to cancel directly with ${sub.provider_name}. Want me to draft a cancellation email?` };
+}
+
+// ============================================================
+// OVERVIEW HANDLER
+// ============================================================
+
+async function getFinancialOverview(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+  const [subs, disputes, banks, transactions, budgets, savings] = await Promise.all([
+    supabase.from('subscriptions').select('amount, billing_cycle, category', { count: 'exact' })
+      .eq('user_id', userId).eq('status', 'active').is('dismissed_at', null),
+    supabase.from('disputes').select('id', { count: 'exact', head: true })
+      .eq('user_id', userId).not('status', 'in', '("resolved","dismissed")'),
+    supabase.from('bank_connections').select('bank_name, status', { count: 'exact' })
+      .eq('user_id', userId),
+    supabase.from('bank_transactions').select('amount, category')
+      .eq('user_id', userId).gte('timestamp', monthStart).lt('timestamp', monthEnd),
+    supabase.from('money_hub_budgets').select('category, monthly_limit')
+      .eq('user_id', userId),
+    supabase.from('verified_savings').select('amount_saved, annual_saving')
+      .eq('user_id', userId),
+  ]);
+
+  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  // Calculate totals
+  const subsList = subs.data ?? [];
+  const monthlySubsTotal = subsList.reduce((sum, s) => {
+    const amt = Number(s.amount);
+    if (s.billing_cycle === 'monthly') return sum + amt;
+    if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+    if (s.billing_cycle === 'yearly') return sum + amt / 12;
+    return sum;
+  }, 0);
+
+  const txs = transactions.data ?? [];
+  const totalSpending = txs.filter(t => Number(t.amount) < 0).reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  const totalIncome = txs.filter(t => Number(t.amount) > 0).reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const totalSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.amount_saved ?? 0), 0);
+  const annualSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.annual_saving ?? 0), 0);
+
+  // Category breakdown (top 5)
+  const catTotals: Record<string, number> = {};
+  for (const t of txs.filter(t => Number(t.amount) < 0)) {
+    const cat = t.category ?? 'other';
+    catTotals[cat] = (catTotals[cat] ?? 0) + Math.abs(Number(t.amount));
+  }
+  const topCats = Object.entries(catTotals).sort(([, a], [, b]) => b - a).slice(0, 5);
+
+  const activeBanks = (banks.data ?? []).filter(b => b.status === 'active');
+
+  let text = `*Financial Overview — ${monthLabel}*\n\n`;
+
+  text += `*This Month:*\n`;
+  text += `• Income: *${fmt(totalIncome)}*\n`;
+  text += `• Spending: *${fmt(totalSpending)}*\n`;
+  text += `• Net: *${totalIncome - totalSpending >= 0 ? '+' : ''}${fmt(totalIncome - totalSpending)}*\n\n`;
+
+  text += `*Recurring Payments:*\n`;
+  text += `• ${subs.count ?? 0} active subscriptions\n`;
+  text += `• Monthly total: *${fmt(monthlySubsTotal)}* (${fmt(monthlySubsTotal * 12)}/year)\n\n`;
+
+  if (topCats.length > 0) {
+    text += `*Top Spending Categories:*\n`;
+    for (const [cat, total] of topCats) {
+      text += `• ${cat}: ${fmt(total)}\n`;
+    }
+    text += '\n';
+  }
+
+  text += `*Budgets:* ${(budgets.data ?? []).length} set\n`;
+  text += `*Open Disputes:* ${disputes.count ?? 0}\n`;
+  text += `*Bank Connections:* ${activeBanks.length} active\n`;
+
+  if (totalSaved > 0) {
+    text += `\n*Verified Savings:*\n`;
+    text += `• Total saved: *${fmt(totalSaved)}*\n`;
+    if (annualSaved > 0) text += `• Annual saving: *${fmt(annualSaved)}*\n`;
+  }
+
+  return { text };
 }

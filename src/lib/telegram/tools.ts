@@ -50,7 +50,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_subscriptions',
     description:
-      "Get the user's subscriptions with monthly/annual costs, renewal dates, and status.",
+      "Get the user's subscriptions, regular payments, direct debits, and recurring charges from Money Hub. This is the SAME data shown on the Subscriptions page and Money Hub dashboard. Use this for ANY question about recurring payments, bills, mortgages, loans, insurance, broadband, streaming, gym memberships, etc.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -58,6 +58,14 @@ export const telegramTools: Tool[] = [
           type: 'string',
           enum: ['all', 'active', 'cancelled'],
           description: 'Filter subscriptions by status. Defaults to active.',
+        },
+        category: {
+          type: 'string',
+          description: 'Filter by category (e.g. "mortgage", "insurance", "streaming", "broadband", "food", "fitness", "loan", "utility", "council_tax", "mobile"). Optional — returns all categories if omitted.',
+        },
+        provider: {
+          type: 'string',
+          description: 'Filter by provider name (partial match, case-insensitive, e.g. "Sky", "Netflix", "British Gas"). Optional.',
         },
       },
       required: [],
@@ -82,7 +90,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_contracts',
     description:
-      "Get the user's active contracts (broadband, mobile, energy, insurance, gym etc.) with end dates, costs, and provider details.",
+      "Get the user's active contracts (broadband, mobile, energy, insurance, gym, mortgage, loan etc.) with end dates, costs, interest rates, remaining balance, and provider details. This is the SAME data shown on the Contracts page and Money Hub dashboard.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -90,7 +98,21 @@ export const telegramTools: Tool[] = [
           type: 'string',
           description: 'Optional: filter by provider name (partial match, case-insensitive).',
         },
+        category: {
+          type: 'string',
+          description: 'Optional: filter by category (e.g. "mortgage", "loan", "broadband", "insurance", "energy").',
+        },
       },
+      required: [],
+    },
+  },
+  {
+    name: 'get_financial_overview',
+    description:
+      "Get a complete financial overview of the user's Money Hub — total income, total spending, net position, number of active subscriptions, bank connections, open disputes, and savings. Use this when the user asks for an overview, summary, or \"how am I doing?\" question.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
       required: [],
     },
   },
