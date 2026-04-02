@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { X, Search, Loader2, Building2 } from 'lucide-react';
 
+const OPEN_BANKING_PROVIDER = process.env.NEXT_PUBLIC_OPEN_BANKING_PROVIDER || 'truelayer';
+
 interface Institution {
   id: string;
   name: string;
@@ -23,6 +25,14 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
 
   useEffect(() => {
     if (!isOpen) return;
+
+    // TrueLayer has its own bank picker — redirect directly
+    if (OPEN_BANKING_PROVIDER === 'truelayer') {
+      window.location.href = '/api/auth/truelayer';
+      return;
+    }
+
+    // Yapily: load institution list
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -47,6 +57,23 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
 
   if (!isOpen) return null;
 
+  // TrueLayer: show a loading state while the redirect happens
+  if (OPEN_BANKING_PROVIDER === 'truelayer') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg p-10 text-center shadow-2xl">
+          <Loader2 className="h-8 w-8 text-amber-500 animate-spin mx-auto mb-4" />
+          <p className="text-white font-semibold">Connecting to your bank...</p>
+          <p className="text-slate-400 text-sm mt-1">
+            You&apos;ll be redirected to TrueLayer to select your bank securely.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Yapily: institution picker
   const filtered = search
     ? institutions.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
     : institutions;
@@ -69,6 +96,8 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
       setConnecting(null);
     }
   };
+
+  const providerLabel = OPEN_BANKING_PROVIDER === 'truelayer' ? 'TrueLayer' : 'Yapily';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -146,7 +175,7 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
         {/* Footer */}
         <div className="p-4 border-t border-navy-700/50 flex-shrink-0">
           <p className="text-xs text-slate-500 text-center">
-            FCA regulated via Yapily. Read-only access. We never store your bank credentials.
+            FCA regulated via {providerLabel}. Read-only access. We never store your bank credentials.
           </p>
         </div>
       </div>
