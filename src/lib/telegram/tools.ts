@@ -442,4 +442,65 @@ export const telegramTools: Tool[] = [
       required: ['category'],
     },
   },
+  {
+    name: 'update_alert_preferences',
+    description:
+      "Update the user's Pocket Agent notification preferences. Use this when the user wants to turn off/on specific alerts, mute morning or evening summaries, stop budget notifications, etc. Examples: 'stop sending me budget alerts', 'turn off morning summary', 'mute all alerts', 'only send me price increase alerts'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        morning_summary: {
+          type: 'boolean',
+          description: 'Enable/disable the 7:30am morning financial briefing.',
+        },
+        evening_summary: {
+          type: 'boolean',
+          description: 'Enable/disable the 8pm evening money wrap-up.',
+        },
+        proactive_alerts: {
+          type: 'boolean',
+          description: 'Enable/disable all proactive alerts (price increases, budget overruns, etc). Master switch.',
+        },
+        price_increase_alerts: {
+          type: 'boolean',
+          description: 'Enable/disable alerts when a recurring payment increases in price.',
+        },
+        contract_expiry_alerts: {
+          type: 'boolean',
+          description: 'Enable/disable alerts when a contract is about to expire.',
+        },
+        budget_overrun_alerts: {
+          type: 'boolean',
+          description: 'Enable/disable alerts when spending exceeds a budget limit.',
+        },
+        renewal_reminders: {
+          type: 'boolean',
+          description: 'Enable/disable reminders about upcoming subscription renewals.',
+        },
+        dispute_followups: {
+          type: 'boolean',
+          description: 'Enable/disable follow-up reminders about open disputes.',
+        },
+        quiet_start: {
+          type: 'string',
+          description: 'Start of quiet hours in HH:MM format (e.g. "22:00"). No alerts sent during quiet hours.',
+        },
+        quiet_end: {
+          type: 'string',
+          description: 'End of quiet hours in HH:MM format (e.g. "07:00").',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_alert_preferences',
+    description:
+      "Show the user's current Pocket Agent notification preferences — which alerts are on/off, quiet hours, etc.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];

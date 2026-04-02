@@ -118,6 +118,10 @@ export async function executeToolCall(
       return cancelSubscription(supabase, userId, toolInput.provider_name as string);
     case 'delete_budget':
       return deleteBudget(supabase, userId, toolInput.category as string);
+    case 'update_alert_preferences':
+      return updateAlertPreferences(supabase, userId, toolInput as Record<string, unknown>);
+    case 'get_alert_preferences':
+      return getAlertPreferences(supabase, userId);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -1258,6 +1262,117 @@ async function getDisputeDetail(
       }
     }
   }
+
+  return { text };
+}
+
+// ============================================================
+// ALERT PREFERENCE HANDLERS
+// ============================================================
+
+const PREF_LABELS: Record<string, string> = {
+  morning_summary: 'Morning briefing (7:30am)',
+  evening_summary: 'Evening wrap-up (8pm)',
+  proactive_alerts: 'Proactive alerts (all)',
+  price_increase_alerts: 'Price increase alerts',
+  contract_expiry_alerts: 'Contract expiry alerts',
+  budget_overrun_alerts: 'Budget overrun alerts',
+  renewal_reminders: 'Renewal reminders',
+  dispute_followups: 'Dispute follow-ups',
+};
+
+async function updateAlertPreferences(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  input: Record<string, unknown>,
+): Promise<ToolResult> {
+  const validFields = [
+    'morning_summary', 'evening_summary', 'proactive_alerts',
+    'price_increase_alerts', 'contract_expiry_alerts', 'budget_overrun_alerts',
+    'renewal_reminders', 'dispute_followups', 'quiet_start', 'quiet_end',
+  ];
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const changes: string[] = [];
+
+  for (const field of validFields) {
+    if (field in input && input[field] !== undefined) {
+      updates[field] = input[field];
+      if (typeof input[field] === 'boolean') {
+        changes.push(`${PREF_LABELS[field] ?? field}: ${input[field] ? '✅ On' : '❌ Off'}`);
+      } else {
+        changes.push(`${field.replace(/_/g, ' ')}: ${input[field]}`);
+      }
+    }
+  }
+
+  if (changes.length === 0) {
+    return { text: 'No preferences specified to update. Tell me which alerts you want to turn on or off.' };
+  }
+
+  const { error } = await supabase.from('telegram_alert_preferences').upsert(
+    { user_id: userId, ...updates },
+    { onConflict: 'user_id' },
+  );
+
+  if (error) {
+    return { text: `Failed to update preferences: ${error.message}` };
+  }
+
+  let text = `*Alert preferences updated:*\n\n`;
+  for (const change of changes) {
+    text += `• ${change}\n`;
+  }
+  text += `\nYou can change these any time — just ask me.`;
+
+  return { text };
+}
+
+async function getAlertPreferences(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data } = await supabase
+    .from('telegram_alert_preferences')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  const prefs = data ?? {
+    morning_summary: true,
+    evening_summary: true,
+    proactive_alerts: true,
+    price_increase_alerts: true,
+    contract_expiry_alerts: true,
+    budget_overrun_alerts: true,
+    renewal_reminders: true,
+    dispute_followups: true,
+    quiet_start: null,
+    quiet_end: null,
+  };
+
+  let text = `*Your Alert Preferences*\n\n`;
+  text += `*Summaries:*\n`;
+  text += `• Morning briefing (7:30am): ${prefs.morning_summary ? '✅ On' : '❌ Off'}\n`;
+  text += `• Evening wrap-up (8pm): ${prefs.evening_summary ? '✅ On' : '❌ Off'}\n\n`;
+
+  text += `*Proactive Alerts:*\n`;
+  text += `• All alerts: ${prefs.proactive_alerts ? '✅ On' : '❌ Off'}\n`;
+  if (prefs.proactive_alerts) {
+    text += `  • Price increases: ${prefs.price_increase_alerts ? '✅' : '❌'}\n`;
+    text += `  • Contract expiry: ${prefs.contract_expiry_alerts ? '✅' : '❌'}\n`;
+    text += `  • Budget overruns: ${prefs.budget_overrun_alerts ? '✅' : '❌'}\n`;
+    text += `  • Renewal reminders: ${prefs.renewal_reminders ? '✅' : '❌'}\n`;
+    text += `  • Dispute follow-ups: ${prefs.dispute_followups ? '✅' : '❌'}\n`;
+  }
+
+  if (prefs.quiet_start && prefs.quiet_end) {
+    text += `\n*Quiet Hours:* ${prefs.quiet_start} — ${prefs.quiet_end}`;
+  } else {
+    text += `\n*Quiet Hours:* Not set`;
+  }
+
+  text += `\n\nTo change any of these, just tell me — e.g. "turn off budget alerts" or "set quiet hours 10pm to 7am"`;
 
   return { text };
 }
