@@ -710,8 +710,103 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Coming Soon: Telegram & WhatsApp Integration */}
+        <section className="py-20 md:py-28 relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent" />
+          <div className="container mx-auto px-4 md:px-6 relative">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="max-w-5xl mx-auto"
+            >
+              <div className="text-center mb-12">
+                <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20 mb-6">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Coming Soon for Pro Members</span>
+                </div>
+                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                  Your Financial Assistant,{' '}
+                  <span className="bg-gradient-to-r from-amber-400 to-amber-500 bg-clip-text text-transparent">
+                    Wherever You Are
+                  </span>
+                </h2>
+                <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
+                  Chat with Paybacker on Telegram or WhatsApp. Check your spending, track disputes, get alerts, and draft complaint letters — all from your phone.
+                </p>
+              </div>
+
+              {/* Messenger platform badges */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+                <div className="flex items-center gap-4 bg-navy-900 border border-navy-700/50 hover:border-[#2AABEE]/40 rounded-2xl px-8 py-5 shadow-[--shadow-card] transition-all">
+                  <svg className="h-10 w-10 shrink-0" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <linearGradient id="tg-grad" x1="120" y1="0" x2="120" y2="240" gradientUnits="userSpaceOnUse">
+                        <stop stopColor="#2AABEE"/>
+                        <stop offset="1" stopColor="#229ED9"/>
+                      </linearGradient>
+                    </defs>
+                    <circle cx="120" cy="120" r="120" fill="url(#tg-grad)"/>
+                    <path d="M51.5 120.3c36.5-16 60.8-26.6 72.8-31.8 34.7-14.4 41.9-16.9 46.6-17 1 0 3.3.3 4.8 1.4 1.3.9 1.6 2.2 1.8 3.1.2.9.4 2.9.2 4.5-1.8 19-9.7 65.2-13.7 86.5-1.7 9-5 12-8.3 12.3-7 .6-12.4-4.6-19.2-9.1-10.7-7-16.7-11.3-27-18.1-12-7.9-4.2-12.2 2.6-19.3 1.8-1.9 33.2-30.4 33.8-33 .1-.3.1-.6-.1-.9s-.6-.2-.9-.1c-.4.1-6.8 4.3-19.2 12.6-18.2 12.3-36.4 24.4-36.4 24.4s-8.2 5.1-23.4 1.4z" fill="white"/>
+                  </svg>
+                  <div>
+                    <p className="text-white font-semibold">Telegram</p>
+                    <p className="text-slate-500 text-xs">Chat, alerts &amp; letters</p>
+                  </div>
+                </div>
+
+                <span className="text-slate-700 font-light text-xl hidden sm:block">+</span>
+
+                <div className="flex items-center gap-4 bg-navy-900 border border-navy-700/50 hover:border-[#25D366]/40 rounded-2xl px-8 py-5 shadow-[--shadow-card] transition-all">
+                  <svg className="h-10 w-10 shrink-0" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="256" height="256" rx="56" fill="#25D366"/>
+                    <path d="M128 37C77.9 37 37 77.9 37 128c0 19.9 6 38.3 16.2 53.5L38.4 218l38.3-14.7C90.4 212.4 108.6 219 128 219c50.1 0 91-40.9 91-91s-40.9-91-91-91zm0 166.4c-17 0-32.8-5-46-13.5l-3.3-2-24.1 7.8 8-23.3-2.2-3.4C52.6 155.2 47 141.9 47 128c0-44.7 36.3-81 81-81s81 36.3 81 81-36.3 81-81 81zm44.5-60.8c-2.4-1.2-14.4-7.1-16.6-7.9-2.2-.8-3.8-1.2-5.4 1.2-1.6 2.4-6.2 7.9-7.6 9.5-1.4 1.6-2.8 1.8-5.2.6-2.4-1.2-10.2-3.8-19.4-12-7.2-6.4-12-14.3-13.4-16.7-1.4-2.4-.2-3.7 1-5 1.1-1.1 2.4-2.8 3.6-4.2 1.2-1.4 1.6-2.4 2.4-4 .8-1.6.4-3-.2-4.2-.6-1.2-5.4-13.1-7.4-17.9-2-4.7-4-4.1-5.4-4.2-1.4-.1-3-.1-4.6-.1-1.6 0-4.2.6-6.4 3-2.2 2.4-8.4 8.2-8.4 20s8.6 23.2 9.8 24.8c1.2 1.6 16.8 25.6 40.6 35.9 5.7 2.4 10.1 3.9 13.5 5 5.7 1.8 10.8 1.6 14.9.9 4.5-.7 14.4-5.9 16.4-11.6 2-5.7 2-10.6 1.4-11.6-.6-1-2.2-1.6-4.6-2.8z" fill="white"/>
+                  </svg>
+                  <div>
+                    <p className="text-white font-semibold">WhatsApp</p>
+                    <p className="text-slate-500 text-xs">Chat, alerts &amp; letters</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feature cards */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+                {[
+                  { icon: '💬', title: 'Ask about your spending', desc: 'Check balances, top categories, and subscriptions in a single message.' },
+                  { icon: '🔔', title: 'Proactive alerts', desc: 'Contract expiry, budget warnings, and renewal reminders sent straight to your phone.' },
+                  { icon: '📝', title: 'Draft letters on the go', desc: 'Describe a dispute and get a full UK legal complaint letter back in seconds.' },
+                  { icon: '📋', title: 'Track your disputes', desc: 'Check open complaint status and correspondence history without opening the app.' },
+                ].map((item, i) => (
+                  <motion.div
+                    key={item.title}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: i * 0.1 }}
+                    className="bg-navy-900 border border-navy-700/50 hover:border-amber-500/30 rounded-2xl p-5 transition-all shadow-[--shadow-card]"
+                  >
+                    <span className="text-2xl mb-3 block">{item.icon}</span>
+                    <h3 className="text-white font-semibold text-sm mb-2">{item.title}</h3>
+                    <p className="text-slate-400 text-xs leading-relaxed">{item.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+
+              <div className="text-center">
+                <a
+                  href="#pricing"
+                  className="inline-flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:border-amber-500/50 font-semibold px-6 py-3 rounded-xl transition-all text-sm"
+                >
+                  Join Pro to get early access <ChevronRight className="h-4 w-4" />
+                </a>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
         {/* Plan Comparison Table */}
-        <section className="py-20 md:py-28">
+        <section id="pricing" className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-12">
               <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">Choose your plan</h2>

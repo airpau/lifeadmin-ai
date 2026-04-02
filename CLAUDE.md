@@ -334,7 +334,8 @@ All agents follow the same architectural pattern. Every agent must:
 - Automated cancellations
 - Instagram posting (pending Meta app review)
 - Self-learning from user feedback
-- WhatsApp integration for budget alerts and financial notifications
+- WhatsApp integration for budget alerts, dispute tracking, and complaint letters via chat
+- Telegram integration for budget alerts, dispute tracking, and complaint letters via chat
 - SMS notifications for urgent financial alerts (budget exceeded, contract expiring)
 - Native mobile app (iOS and Android) with push notifications
 - In-app push notifications for real-time budget tracking alerts
