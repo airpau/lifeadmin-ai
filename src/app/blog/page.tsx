@@ -62,17 +62,21 @@ const posts = [
 export const revalidate = 3600; // Revalidate every hour
 
 export default async function BlogIndexPage() {
-  // Fetch dynamic blog posts from database
-  let dynamicPosts: any[] | null = null;
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const { data } = await supabase
-      .from('blog_posts')
-      .select('slug, title, excerpt, published_at')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false })
-      .limit(20);
-    dynamicPosts = data;
+  // Fetch dynamic blog posts from database (gracefully skip if env vars absent at build time)
+  let dynamicPosts: { slug: string; title: string; excerpt: string | null; published_at: string }[] | null = null;
+  try {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('slug, title, excerpt, published_at')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false })
+        .limit(20);
+      dynamicPosts = data;
+    }
+  } catch {
+    // fall through — static posts shown below
   }
 
   // Merge static posts with dynamic ones (dynamic first, then static)

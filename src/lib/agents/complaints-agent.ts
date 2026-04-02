@@ -1,7 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || 'ant_dummy_key_for_build',
+// Lazy singleton — defer construction to first call so Next.js build-time
+// page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
+// preview environments.
+let _anthropic: Anthropic | undefined;
+function getAnthropic() {
+  if (!_anthropic) {
+    if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return _anthropic;
+}
+const anthropic = new Proxy({} as Anthropic, {
+  get(_, prop) { return Reflect.get(getAnthropic(), prop, getAnthropic()); },
 });
 
 const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advocate and complaint letter writer. Your role is to help UK consumers write effective, legally-grounded formal complaint letters.

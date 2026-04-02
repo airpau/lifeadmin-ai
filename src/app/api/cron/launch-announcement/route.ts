@@ -5,7 +5,14 @@ import { Resend } from 'resend';
 // Manual trigger only — NOT scheduled in vercel.json
 // Trigger via: GET /api/cron/launch-announcement with Authorization: Bearer <CRON_SECRET>
 
-const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
+// Lazy — avoids module-load error in preview builds where RESEND_API_KEY is absent
+let _resend: Resend | undefined;
+const resend = new Proxy({} as Resend, {
+  get(_, prop) {
+    if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY!);
+    return Reflect.get(_resend, prop, _resend);
+  },
+});
 
 const BATCH_SIZE = 50;
 

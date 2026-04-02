@@ -18,19 +18,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     'loans', 'credit-cards', 'car-finance', 'travel',
   ];
 
-  // Fetch all published blog posts from database
-  let blogPosts: any[] | null = null;
+  // Fetch all published blog posts from database (skip gracefully if env vars absent at build time)
+  let blogPosts: { slug: string; published_at: string }[] | null = null;
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-    );
-    const { data } = await supabase
-      .from('blog_posts')
-      .select('slug, published_at')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false });
-    blogPosts = data;
+    try {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+      );
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('slug, published_at')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false });
+      blogPosts = data;
+    } catch {
+      // fall through — only static blog entries will appear in sitemap
+    }
   }
 
   // Static blog posts (hardcoded routes)

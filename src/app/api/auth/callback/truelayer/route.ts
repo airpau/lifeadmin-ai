@@ -146,10 +146,12 @@ async function syncTransactionsForConnection(
 
   const accountIds = connection.account_ids || [];
   let totalSynced = 0;
+  let apiCallsMade = 0;
 
   for (const accountId of accountIds) {
     try {
       const transactions = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+      apiCallsMade++;
 
       if (transactions.length === 0) continue;
 
@@ -179,10 +181,22 @@ async function syncTransactionsForConnection(
 
   await detectRecurring(userId, supabase);
 
+  const now = new Date().toISOString();
   await supabase
     .from('bank_connections')
-    .update({ last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .update({ last_synced_at: now, updated_at: now })
     .eq('id', connection.id);
+
+  // Log initial sync to bank_sync_log for cost tracking
+  await supabase.from('bank_sync_log').insert({
+    user_id: userId,
+    connection_id: connection.id,
+    trigger_type: 'initial',
+    status: 'success',
+    api_calls_made: apiCallsMade,
+  }).then(({ error }) => {
+    if (error) console.error('Failed to log initial sync:', error);
+  });
 
   return totalSynced;
 }
