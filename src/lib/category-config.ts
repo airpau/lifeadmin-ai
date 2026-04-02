@@ -67,3 +67,25 @@ export function getCategoryIcon(category: string): LucideIcon {
 export const SORTED_CATEGORIES = Object.entries(CATEGORY_CONFIG)
   .sort(([, a], [, b]) => a.label.localeCompare(b.label))
   .map(([key, config]) => ({ value: key, label: config.label }));
+
+/** Consolidated filter groups for the subscriptions page filter bar */
+export interface FilterGroup {
+  value: string;
+  label: string;
+  icon: LucideIcon;
+  color: string;
+  bgColor: string;
+  /** Category values that belong to this group. Empty array = catch-all (Other). */
+  matches: string[];
+}
+
+export const SUBSCRIPTION_FILTER_CATEGORIES: FilterGroup[] = [
+  { value: 'energy', label: 'Energy', icon: Zap, color: 'text-green-400', bgColor: 'bg-green-400/10', matches: ['energy', 'utility', 'water', 'gas'] },
+  { value: 'broadband_tv', label: 'Broadband & TV', icon: Wifi, color: 'text-blue-400', bgColor: 'bg-blue-400/10', matches: ['broadband', 'tv'] },
+  { value: 'mobile', label: 'Mobile', icon: Smartphone, color: 'text-violet-400', bgColor: 'bg-violet-400/10', matches: ['mobile'] },
+  { value: 'insurance', label: 'Insurance', icon: Shield, color: 'text-cyan-400', bgColor: 'bg-cyan-400/10', matches: ['insurance'] },
+  { value: 'finance', label: 'Finance', icon: Banknote, color: 'text-red-400', bgColor: 'bg-red-400/10', matches: ['mortgage', 'loan', 'credit_card', 'credit_monitoring', 'fee', 'tax', 'bills', 'council_tax'] },
+  { value: 'entertainment', label: 'Entertainment', icon: Tv, color: 'text-purple-400', bgColor: 'bg-purple-400/10', matches: ['streaming', 'gaming', 'music', 'gambling', 'news'] },
+  { value: 'health_fitness', label: 'Health & Fitness', icon: Dumbbell, color: 'text-rose-400', bgColor: 'bg-rose-400/10', matches: ['fitness', 'healthcare', 'health'] },
+  { value: 'other', label: 'Other', icon: MoreHorizontal, color: 'text-slate-400', bgColor: 'bg-slate-400/10', matches: [] },
+];
