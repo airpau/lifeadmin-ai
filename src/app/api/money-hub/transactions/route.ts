@@ -138,7 +138,15 @@ export async function GET(request: NextRequest) {
   filtered = filtered.filter(t => !isTransfer(t.description || '', t.category || ''));
 
   if (category) {
-    filtered = filtered.filter(t => t.spending_category === category);
+    // Match the get_monthly_spending RPC which groups by user_category
+    // Primary: match spending_category (runtime re-categorised)
+    // Also include transactions where user_category matches (RPC source of truth)
+    filtered = filtered.filter(t => {
+      const userCat = (t.user_category || 'other').toLowerCase();
+      const spendCat = (t.spending_category || 'other').toLowerCase();
+      const target = category.toLowerCase();
+      return spendCat === target || userCat === target;
+    });
   }
 
   // Only include debits — credits (refunds, payouts) must never appear in spending
