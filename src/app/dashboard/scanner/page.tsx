@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import ReceiptScanner from '@/components/scanner/ReceiptScanner';
 import ReceiptResults from '@/components/scanner/ReceiptResults';
+import BankPickerModal from '@/components/BankPickerModal';
 
 interface EmailConnection {
   id: string;
@@ -86,6 +87,7 @@ const OutlookIcon = () => (
 );
 
 export default function ScannerPage() {
+  const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankConnections, setBankConnections] = useState<Array<{
     id: string; bank_name: string | null; status: string; last_synced_at: string | null;
     account_display_names: string[] | null; account_ids: string[] | null;
@@ -587,13 +589,13 @@ export default function ScannerPage() {
                   </div>
                   <p className="text-slate-500 text-xs">Connection expired. Your data is safe. Reconnect to resume syncing.</p>
                 </div>
-                <a
-                  href="/api/auth/yapily"
+                <button
+                  onClick={() => setShowBankPicker(true)}
                   className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Reconnect
-                </a>
+                </button>
               </div>
             </div>
           ))}
@@ -611,13 +613,13 @@ export default function ScannerPage() {
               <h3 className="text-white font-semibold mb-1">Connect your bank to detect subscriptions</h3>
               <p className="text-slate-400 text-sm">We use Yapily (FCA regulated) to securely read your transactions. We never store your credentials.</p>
             </div>
-            <a
-              href="/api/auth/yapily"
+            <button
+              onClick={() => setShowBankPicker(true)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
             >
               <Plus className="h-4 w-4" />
               Connect Bank Account
-            </a>
+            </button>
           </div>
         </div>
       )}
@@ -1232,6 +1234,7 @@ export default function ScannerPage() {
           </div>
         </>
       )}
+      <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
     </div>
   );
 }

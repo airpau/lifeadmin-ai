@@ -17,6 +17,7 @@ import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 import { createClient } from '@/lib/supabase/client';
+import BankPickerModal from '@/components/BankPickerModal';
 
 interface ContractAlert {
   id: string;
@@ -111,6 +112,7 @@ const PROVIDER_TYPES = ['energy', 'broadband', 'mobile', 'tv', 'insurance', 'mor
 export default function SubscriptionsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const [showBankPicker, setShowBankPicker] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [userTier, setUserTier] = useState('free');
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
@@ -1305,13 +1307,13 @@ export default function SubscriptionsPage() {
                       Connection expired. Your existing data is safe. Reconnect to resume auto-sync.
                     </p>
                   </div>
-                  <a
-                    href="/api/auth/yapily"
+                  <button
+                    onClick={() => setShowBankPicker(true)}
                     className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                   >
                     <RefreshCw className="h-4 w-4" />
                     Reconnect
-                  </a>
+                  </button>
                 </div>
               </div>
             ))
@@ -1372,13 +1374,13 @@ export default function SubscriptionsPage() {
                       </p>
                     )}
                   </div>
-                  <a
-                    href="/api/auth/yapily"
+                  <button
+                    onClick={() => setShowBankPicker(true)}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
                   >
                     <Building2 className="h-4 w-4" />
                     {isFirst ? 'Connect Bank Account' : 'Add Bank'}
-                  </a>
+                  </button>
                 </div>
               </div>
             );
@@ -2984,6 +2986,7 @@ export default function SubscriptionsPage() {
           </div>
         </div>
       )}
+      <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
     </div>
   );
 }

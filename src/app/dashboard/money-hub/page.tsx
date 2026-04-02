@@ -16,6 +16,7 @@ import { formatGBP } from '@/lib/format';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { createClient } from '@/lib/supabase/client';
+import BankPickerModal from '@/components/BankPickerModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -227,6 +228,7 @@ function StatWidget({ data }: { data: { value: string; label: string; color?: st
 
 export default function MoneyHubPage() {
   // Core state
+  const [showBankPicker, setShowBankPicker] = useState(false);
   const [data, setData] = useState<MoneyHubData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -479,7 +481,7 @@ export default function MoneyHubPage() {
   };
 
   const handleReconnectBank = () => {
-    window.location.href = '/api/auth/yapily';
+    setShowBankPicker(true);
   };
 
   // ─── Category drill-down ──────────────────────────────────────────────────
@@ -950,13 +952,13 @@ export default function MoneyHubPage() {
           <p className="text-slate-400 max-w-md mx-auto mb-6">
             We analyse your transactions and give you a complete financial picture — spending, income, subscriptions, budgets, and savings goals.
           </p>
-          <a
-            href="/api/auth/yapily"
+          <button
+            onClick={() => setShowBankPicker(true)}
             className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all"
           >
             <Building2 className="h-5 w-5" />
             Connect Bank Account
-          </a>
+          </button>
           <p className="text-slate-500 text-xs mt-3">FCA regulated via Yapily · Read-only access · Takes 2 minutes</p>
         </div>
 
@@ -3038,6 +3040,7 @@ export default function MoneyHubPage() {
           </>
         )}
       </div>
+      <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
     </div>
   );
 }
