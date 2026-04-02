@@ -24,6 +24,7 @@ import {
   Wallet,
   BookOpen,
   FolderLock,
+  MessageCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -35,6 +36,7 @@ const navItems = [
   { name: 'Contract Vault', href: '/dashboard/contracts', icon: FolderLock },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
+  { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
@@ -127,9 +129,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </span>
         )}
         {userTier === 'free' && (
-          <Link href="/pricing" className="block mt-2 text-center text-[11px] font-semibold bg-mint-400 hover:bg-mint-500 text-navy-950 px-3 py-1.5 rounded-lg transition-all">
-            Upgrade Now
-          </Link>
+          <div className="mt-2">
+            <p className="text-[10px] text-slate-500 mb-1.5">Unlock Pocket Agent, unlimited letters &amp; more</p>
+            <Link href="/pricing" className="block text-center text-[11px] font-semibold bg-mint-400 hover:bg-mint-500 text-navy-950 px-3 py-1.5 rounded-lg transition-all">
+              Upgrade Now
+            </Link>
+          </div>
         )}
       </div>
 
@@ -151,6 +156,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
               <span className="text-sm">{item.name}</span>
+              {item.name === 'Pocket Agent' && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full ml-auto">NEW</span>
+              )}
               {(item as any).comingSoon && (
                 <span className="text-[9px] bg-navy-700 text-slate-400 px-1.5 py-0.5 rounded-full ml-auto">Soon</span>
               )}

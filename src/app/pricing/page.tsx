@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { PRICE_IDS } from '@/lib/stripe';
 import Image from 'next/image';
-import { Check, Sparkles, TrendingUp, Zap, Users, Gift } from 'lucide-react';
+import { Check, Sparkles, TrendingUp, Zap, Users, Gift, MessageCircle, Bot, X } from 'lucide-react';
 import { WAITLIST_MODE } from '@/lib/config';
 import PublicNavbar from '@/components/PublicNavbar';
 import { capture } from '@/lib/posthog';
@@ -56,7 +56,7 @@ const plans = [
     ],
     cta: 'Subscribe to Essential',
     waitlistCta: 'Join Waitlist - Essential',
-    highlighted: true,
+    highlighted: false,
     trial: false,
     planKey: 'essential' as const,
     priceIds: {
@@ -69,6 +69,7 @@ const plans = [
     price: { monthly: 9.99, yearly: 94.99 },
     description: 'Complete financial intelligence',
     features: [
+      'Pocket Agent — AI chat on Telegram',
       'Everything in Essential, plus:',
       'Unlimited bank accounts',
       'Unlimited email scans',
@@ -81,7 +82,7 @@ const plans = [
     ],
     cta: 'Subscribe to Pro',
     waitlistCta: 'Join Waitlist - Pro',
-    highlighted: false,
+    highlighted: true,
     trial: true,
     planKey: 'pro' as const,
     priceIds: {
@@ -302,7 +303,15 @@ export default function PricingPage() {
               >
                 {plan.highlighted && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-mint-400 text-navy-950 px-4 py-1 rounded-full text-sm font-semibold">
-                    Most Popular
+                    Recommended
+                  </div>
+                )}
+
+                {plan.planKey === 'pro' && (
+                  <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
+                    <Bot className="h-5 w-5 text-amber-400 flex-shrink-0" />
+                    <span className="text-amber-400 text-sm font-semibold">Includes Pocket Agent</span>
+                    <Sparkles className="h-4 w-4 text-amber-400 flex-shrink-0" />
                   </div>
                 )}
 
@@ -374,12 +383,19 @@ export default function PricingPage() {
                 {(!plan.trial || WAITLIST_MODE) && <div className="mb-6" />}
 
                 <ul className="space-y-3">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <Check className="h-5 w-5 text-mint-400 flex-shrink-0 mt-0.5" />
-                      <span className="text-slate-300 text-sm">{feature}</span>
-                    </li>
-                  ))}
+                  {plan.features.map((feature, i) => {
+                    const isPocketAgent = feature.startsWith('Pocket Agent');
+                    return (
+                      <li key={i} className={`flex items-start gap-3 ${isPocketAgent ? 'bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 -mx-1' : ''}`}>
+                        {isPocketAgent ? (
+                          <MessageCircle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <Check className="h-5 w-5 text-mint-400 flex-shrink-0 mt-0.5" />
+                        )}
+                        <span className={`text-sm ${isPocketAgent ? 'text-amber-300 font-semibold' : 'text-slate-300'}`}>{feature}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               </motion.div>
             );
@@ -460,6 +476,84 @@ export default function PricingPage() {
             </div>
           </div>
         )}
+
+        {/* Plan Comparison Table */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+          className="mt-16 max-w-4xl mx-auto"
+        >
+          <h2 className="font-[family-name:var(--font-heading)] text-2xl md:text-3xl font-bold text-white text-center mb-8">
+            Compare plans
+          </h2>
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-navy-700/50">
+                  <th className="text-left text-slate-400 font-medium px-6 py-4">Feature</th>
+                  <th className="text-center text-slate-400 font-medium px-4 py-4">Free</th>
+                  <th className="text-center text-slate-400 font-medium px-4 py-4">Essential</th>
+                  <th className="text-center text-white font-semibold px-4 py-4">Pro</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-navy-700/30">
+                <tr className="bg-amber-500/5">
+                  <td className="px-6 py-4 text-white font-medium flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-amber-400" />
+                    Pocket Agent
+                    <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded">NEW</span>
+                  </td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">AI complaint letters</td>
+                  <td className="text-center px-4 py-4 text-slate-400">3/month</td>
+                  <td className="text-center px-4 py-4 text-slate-300">Unlimited</td>
+                  <td className="text-center px-4 py-4 text-white font-medium">Unlimited</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">Bank accounts</td>
+                  <td className="text-center px-4 py-4 text-slate-400">One-time scan</td>
+                  <td className="text-center px-4 py-4 text-slate-300">1 (daily sync)</td>
+                  <td className="text-center px-4 py-4 text-white font-medium">Unlimited</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">Email inbox scans</td>
+                  <td className="text-center px-4 py-4 text-slate-400">One-time</td>
+                  <td className="text-center px-4 py-4 text-slate-300">Monthly</td>
+                  <td className="text-center px-4 py-4 text-white font-medium">Unlimited</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">Spending analysis</td>
+                  <td className="text-center px-4 py-4 text-slate-400">Top 5</td>
+                  <td className="text-center px-4 py-4 text-slate-300">Full dashboard</td>
+                  <td className="text-center px-4 py-4 text-white font-medium">Transaction-level</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">AI financial chatbot</td>
+                  <td className="text-center px-4 py-4 text-slate-400">Basic</td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4 text-white font-medium">18 tools</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">Financial reports</td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4 text-white font-medium">Annual + on-demand</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 text-slate-300">Priority support</td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
 
         {/* Trust Section */}
         <div className="mt-16 pt-16 border-t border-navy-700/50">

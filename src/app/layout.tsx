@@ -28,10 +28,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL('https://paybacker.co.uk'),
   title: {
-    default: 'Paybacker - AI-Powered Money Recovery for UK Consumers',
+    default: 'Paybacker — AI Financial Agent | Save Money on Bills, Subscriptions & More',
     template: '%s | Paybacker',
   },
-  description: 'AI complaint letters citing UK consumer law, subscription tracking, bank scanning, and spending insights. Dispute bills, cancel subscriptions, and get your money back automatically.',
+  description: 'Paybacker\'s Pocket Agent lives in your Telegram. Ask about spending, cancel subscriptions, dispute bills, and track savings — all from your phone. Free to start.',
   keywords: ['complaint letter generator', 'UK consumer rights', 'subscription tracker', 'cancel subscriptions', 'energy bill dispute', 'debt dispute letter', 'flight delay compensation', 'parking charge appeal'],
   authors: [{ name: 'Paybacker LTD' }],
   creator: 'Paybacker LTD',
@@ -55,8 +55,8 @@ export const metadata: Metadata = {
     locale: 'en_GB',
     url: 'https://paybacker.co.uk',
     siteName: 'Paybacker',
-    title: 'Paybacker - AI-Powered Money Recovery for UK Consumers',
-    description: 'AI complaint letters citing UK consumer law, subscription tracking, bank scanning, and spending insights. Get your money back automatically.',
+    title: 'Paybacker — AI Financial Agent | Save Money on Bills, Subscriptions & More',
+    description: 'Paybacker\'s Pocket Agent lives in your Telegram. Ask about spending, cancel subscriptions, dispute bills, and track savings — all from your phone. Free to start.',
     images: [
       {
         url: '/logo.png',

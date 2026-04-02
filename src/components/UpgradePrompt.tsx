@@ -25,7 +25,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
         <div className="flex items-center gap-3 min-w-0">
           <Sparkles className="h-5 w-5 text-mint-400 flex-shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm text-white font-medium">Unlock unlimited letters, daily bank sync, and full spending intelligence</p>
+            <p className="text-sm text-white font-medium">Unlock unlimited letters, daily bank sync, Pocket Agent (AI chat on Telegram), and full spending intelligence</p>
             <p className="text-xs text-slate-400">Essential from £4.99/month</p>
           </div>
         </div>
@@ -51,7 +51,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
               <Sparkles className="h-8 w-8 text-mint-400" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Upgrade to Keep Scanning</h2>
-            <p className="text-slate-400">Free users get one email scan. Upgrade to Essential for unlimited scans and daily bank sync.</p>
+            <p className="text-slate-400">Free users get one email scan. Upgrade to Essential for unlimited scans, daily bank sync, and Pocket Agent on Telegram.</p>
           </div>
           <div className="bg-navy-950 rounded-xl p-4 mb-6 border border-navy-700/50">
             <ul className="space-y-2 text-sm text-slate-300">
@@ -59,6 +59,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
               <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Unlimited complaint letters</li>
               <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Daily bank sync</li>
               <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Full spending intelligence</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Pocket Agent — AI chat on Telegram</li>
             </ul>
           </div>
           <div className="flex flex-col gap-3">
