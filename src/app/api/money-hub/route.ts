@@ -114,10 +114,20 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
-    // Income breakdown from DB
+    // Income breakdown from DB — merge similar "other" variants into one
     const incomeByType: Record<string, number> = {};
+    const mergeAsOtherIncome = ['other', 'other_income', 'unknown', 'uncategorised', ''];
+    let otherIncomeTotal = 0;
     for (const row of (incomeBreakdownRes.data || []) as Array<{ source: string; source_total: string }>) {
-      incomeByType[row.source] = parseFloat(row.source_total) || 0;
+      const key = row.source.toLowerCase().trim();
+      if (mergeAsOtherIncome.includes(key)) {
+        otherIncomeTotal += parseFloat(row.source_total) || 0;
+      } else {
+        incomeByType[row.source] = parseFloat(row.source_total) || 0;
+      }
+    }
+    if (otherIncomeTotal > 0) {
+      incomeByType['other'] = otherIncomeTotal;
     }
 
     // Monthly trends via DB RPCs (accurate transfer exclusion for all months)
