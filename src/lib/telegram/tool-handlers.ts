@@ -273,30 +273,61 @@ async function getSubscriptions(
     query = query.ilike('provider_name', `%${provider}%`);
   }
 
-  const { data, error } = await query.limit(25);
+  const { data, error } = await query.limit(50);
   if (error || !data || data.length === 0) {
     const desc = category ? ` in category "${category}"` : provider ? ` matching "${provider}"` : '';
     return { text: `No subscriptions found${desc}.` };
   }
 
-  const totalMonthly = data
-    .filter((s) => s.status === 'active')
-    .reduce((sum, s) => {
-      const amt = Number(s.amount);
-      if (s.billing_cycle === 'monthly') return sum + amt;
-      if (s.billing_cycle === 'quarterly') return sum + amt / 3;
-      if (s.billing_cycle === 'yearly') return sum + amt / 12;
-      return sum;
-    }, 0);
+  // Match the website logic: separate finance payments (loans, mortgages, credit cards) from subscriptions
+  const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa', 'barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
 
-  let text = `*Subscriptions (${effectiveFilter})*\n`;
-  if (effectiveFilter !== 'cancelled') {
+  const isFinance = (name: string) => {
+    const lower = name.toLowerCase();
+    return FINANCE_KEYWORDS.some(kw => lower.includes(kw));
+  };
+
+  // Deduplicate by normalised provider name (same as website)
+  const seen = new Set<string>();
+  const deduped = data.filter(s => {
+    const key = s.provider_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const subs = deduped.filter(s => !isFinance(s.provider_name) && s.billing_cycle !== 'one-time');
+  const finance = deduped.filter(s => isFinance(s.provider_name));
+
+  const toMonthly = (s: { amount: string | number; billing_cycle: string | null }) => {
+    const amt = Number(s.amount);
+    if (s.billing_cycle === 'yearly') return amt / 12;
+    if (s.billing_cycle === 'quarterly') return amt / 3;
+    return amt;
+  };
+
+  const subsMonthly = subs.filter(s => s.status === 'active').reduce((sum, s) => sum + toMonthly(s), 0);
+  const financeMonthly = finance.filter(s => s.status === 'active').reduce((sum, s) => sum + toMonthly(s), 0);
+
+  // If user asked for a specific category (e.g. "mortgage"), show all matching without splitting
+  if (category) {
+    const totalMonthly = deduped.filter(s => s.status === 'active').reduce((sum, s) => sum + toMonthly(s), 0);
+    let text = `*${category} (${deduped.length})*\n`;
     text += `Monthly total: *${fmt(totalMonthly)}* | Annual: *${fmt(totalMonthly * 12)}*\n\n`;
-  } else {
-    text += '\n';
+    for (const s of deduped) {
+      const cycle = s.billing_cycle ?? 'monthly';
+      const end = s.contract_end_date ? ` (Ends ${fmtDate(s.contract_end_date)})` : '';
+      text += `• *${s.provider_name}* — ${fmt(s.amount)}/${cycle}${end}`;
+      if (s.status !== 'active') text += ` [${s.status}]`;
+      text += '\n';
+    }
+    return { text };
   }
 
-  for (const s of data) {
+  let text = `*Subscriptions (${subs.length})*\n`;
+  text += `Monthly: *${fmt(subsMonthly)}* | Annual: *${fmt(subsMonthly * 12)}*\n\n`;
+
+  for (const s of subs.slice(0, 25)) {
     const renewal = s.next_billing_date ? `Renews ${fmtDate(s.next_billing_date)}` : '';
     const end = s.contract_end_date ? `Ends ${fmtDate(s.contract_end_date)}` : renewal;
     const cycle = s.billing_cycle ?? 'monthly';
@@ -305,6 +336,17 @@ async function getSubscriptions(
     if (end) text += ` (${end})`;
     if (s.status !== 'active') text += ` [${s.status}]`;
     text += '\n';
+  }
+
+  if (finance.length > 0) {
+    text += `\n*Finance & Loans (${finance.length})*\n`;
+    text += `Monthly: *${fmt(financeMonthly)}* | Annual: *${fmt(financeMonthly * 12)}*\n\n`;
+    for (const s of finance) {
+      const cycle = s.billing_cycle ?? 'monthly';
+      text += `• *${s.provider_name}* — ${fmt(s.amount)}/${cycle}`;
+      if (s.category) text += ` [${s.category}]`;
+      text += '\n';
+    }
   }
 
   return { text };
