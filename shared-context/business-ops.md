@@ -338,3 +338,399 @@ All campaigns must be CREATED IN PAUSED/DRAFT STATE. Nothing goes live until Pau
 
 ## Communication Log
 (New entries appended by log_communication tool)
+
+
+
+## Daily Briefing Log — 27 Mar 2026
+**Status:** Pre-launch Day 4
+**Blockers:** All 3 unchanged (Google Ads Basic, Google OAuth, TrueLayer production)
+**Urgent:** 2 support tickets escalated overnight (TKT-0004 bank sync, TKT-0006 Money Hub access)
+**Today's priorities:**
+1. Fix TKT-0004 + TKT-0006 (Pro users blocked on core features)
+2. Manual feature testing of 80+ features built yesterday
+3. Quick wins: Azure app registration, LinkedIn vanity URL, Trustpilot page
+**Next step:** Check TrueLayer dashboard for production approval; email support if no update by EOD
+
+### 2026-03-28 07:01:58 - email with Paul (hello@paybacker.co.uk)
+Daily Morning Briefing sent (28 Mar 2026). 3 priorities: (1) Fix TKT-0004 + TKT-0006 — real Pro users blocked on bank sync and Money Hub access, escalated multiple times; (2) Pass full site audit fix batch (9 critical bugs) to Claude Code; (3) Chase TrueLayer production approval + set up Trustpilot. All 3 hard blockers remain red. Launch target 2 April = 5 days away.
+**Follow-up:** Paul to act on TKT-0004/TKT-0006 and site audit fixes via Claude Code today
+
+### 2026-03-31 15:49:31 - meeting with Thomas Picard & Christian, Yapily
+Yapily confirmed happy to onboard Paybacker onto their Open Banking platform. Key outcomes: (1) Reading transactions to gather data does NOT require FCA approval. (2) Displaying spending/income breakdowns is fine. (3) Displaying actual bank account balances DOES require FCA agent registration under Yapily Connect Ltd. (4) Recommended approach: remove balance displays from MoneyHub and replace with derived metrics (financial scores, graphs) until FCA approval. (5) FCA agent registration takes ~2 months, can run in parallel with integration. (6) Christian to send detailed requirements document on what can/cannot be shown. (7) Platform fees approximately £1500/month (to be confirmed).
+**Follow-up:** Await Christian's requirements document on permitted data display. Begin Yapily sandbox integration. Submit FCA agent registration application. Redesign MoneyHub to remove balance displays.
+
+
+## Daily Briefing — 1 April 2026 (Pre-Launch)
+
+**Blocker Status:** All 3 hard blockers remain pending (Google Ads Basic, Google OAuth, Yapily production).
+
+**Server Health:** Vercel UP, Railway UP.
+
+**Overnight:** Bank sync infrastructure deployed. Contract alerting system deployed. 3 bank connections expired (will need Yapily reconnect).
+
+**Priorities assigned to Paul:**
+1. FCA Compliance — Replace Net Position card with Savings Rate (critical, pre-launch requirement)
+2. Full QA testing pass of all features
+3. Chase all 3 blockers (Google Ads, Google OAuth, Yapily/Christian)
+
+**Notes:** Estimated launch ~2 April but all blockers still pending. Monthly P&L scheduled for 10am. Support tickets TKT-0004 and TKT-0006 still open.
+
+
+---
+
+# MONTHLY P&L REVIEW — MARCH 2026 (Pre-Launch)
+*Generated: 1 April 2026 | Period: 1–31 March 2026*
+*Status: PRE-LAUNCH — Marketing Day 1 clock has NOT started (gated on 3 blockers)*
+
+---
+
+## REVENUE
+
+| Line Item | March Actual | Notes |
+|-----------|-------------|-------|
+| Essential subscribers | 6 × £4.99 = £29.94 | 4 are test+oscar (Awin testing), 1 paulair13 (founder alt), 1 aireyjohn9 (real external) |
+| Pro subscribers | 1 × £9.99 = £9.99 | Paul (founder) |
+| **Gross MRR** | **£39.93** | |
+| Less: test accounts | -£19.96 | 4 × test+oscar Awin accounts |
+| **Real MRR** | **£19.97** | Founder (£9.99) + founder alt (£4.99) + 1 external (£4.99) |
+| Affiliate revenue (Awin) | £0.00 | Awin integration awaiting Oscar sign-off |
+| **Total Revenue** | **£19.97** | Effectively £4.99 from 1 real external user |
+
+## COSTS
+
+| Line Item | March Actual | Budget (M1 Plan) | Variance |
+|-----------|-------------|-------------------|----------|
+| Google Ads spend | ~£74 (est. 7 days × £10.60/day) | £1,000 | -93% (Explorer access only, limited spend) |
+| Meta Ads spend | £0.00 | £750 | -100% (campaigns created PAUSED) |
+| TikTok Influencer spend | £0.00 | £2,000 | -100% (pre-launch, no creators engaged) |
+| TikTok Spark Ads spend | £0.00 | £500 | -100% (not started) |
+| SEO & Content | £0.00 | £500 | -100% (4 blogs built by Claude Code, no paid spend) |
+| Tools & Analytics | ~£0 | £250 | -100% (all free tiers currently) |
+| Referral programme rewards | £0.00 | N/A | No referrals yet |
+| Yapily platform fees | £0.00 | ~£1,500/mo (future) | Not yet onboarded |
+| **Total Marketing Spend** | **~£74** | **£5,000** | **-99%** |
+
+## Infrastructure Costs (Monthly)
+
+| Item | Cost | Notes |
+|------|------|-------|
+| Vercel (hosting) | Free tier | |
+| Railway (AI agents) | ~£5-10 est. | 15 agents running |
+| Supabase | Free tier | |
+| Resend (email) | Free tier | |
+| Stripe fees | ~£0.80 | ~2% on £39.93 gross |
+| fal.ai (image gen) | ~£1-2 est. | Social post images |
+| Perplexity API | ~£2-5 est. | Agent research |
+| **Total Infrastructure** | **~£10-18 est.** | |
+
+## NET POSITION
+
+| | Amount |
+|---|--------|
+| Real Revenue | £19.97 |
+| Marketing Spend | ~£74 |
+| Infrastructure | ~£14 (midpoint est.) |
+| **Net Loss** | **~-£68** |
+
+---
+
+## UNIT ECONOMICS
+
+| Metric | March Actual | Notes |
+|--------|-------------|-------|
+| Total signups (March) | 35 | Mostly test/internal accounts |
+| Real external signups | ~1-3 | Hard to distinguish; 1 confirmed paying (aireyjohn9) |
+| New paying members | 7 (gross) / 2 (real) | Founder + 1 external |
+| Churned members | 0 | Too early for churn |
+| Net new paying | 7 (gross) / 2 (real) | |
+| CAC (total spend / new real paying) | ~£37 (£74 ads / 2 real) | Very small sample, not meaningful |
+| ARPU | £6.66 (£39.93 / 6 non-founder) | Blended Essential/Pro |
+| LTV (ARPU / 2.5% churn) | £266 (theoretical) | No real churn data yet |
+| LTV:CAC | ~7.2:1 (theoretical) | Too early to be meaningful |
+
+---
+
+## FORECAST COMPARISON
+
+The execution plan M1 forecast assumes marketing Day 1 has started with all blockers cleared. Since blockers remain, March is effectively "Month 0" (pre-launch). Formal comparison:
+
+| Metric | M1 Forecast | March Actual | Variance | Flag |
+|--------|------------|-------------|----------|------|
+| Paying members | 337 | 2 (real) | -99.4% | ⚠️ PRE-LAUNCH — not comparable |
+| MRR | £2,558 | £19.97 (real) | -99.2% | ⚠️ PRE-LAUNCH — not comparable |
+| Total spend | £5,253 | ~£74 | -98.6% | ⚠️ PRE-LAUNCH — not comparable |
+
+**Verdict:** These variances are NOT a cause for alarm. The execution plan is designed to start when blockers clear (~early April). March was a build month, not a growth month. The 12-month clock to £100K MRR starts when Google Ads Basic, Google OAuth, and Yapily production are all live.
+
+---
+
+## OPERATIONAL HIGHLIGHTS — MARCH 2026
+
+**Product:**
+- 80+ features built and deployed (biggest sprint in company history)
+- Full UAT completed (163 tests, majority PASS)
+- AI Letters system with 11 letter types, legal reference DB, anti-hallucination safeguards
+- Contract vault with Claude Vision upload
+- Money Hub financial intelligence dashboard
+- Bank connection via TrueLayer (dev mode)
+- Gmail scanning (awaiting Google OAuth verification)
+- 15 AI agents running autonomously on Railway
+
+**Marketing Infrastructure (Built, Not Yet Live):**
+- 3 Google Ads search campaigns created (PAUSED)
+- 2 Meta Ads conversion campaigns created (PAUSED)
+- Ad metrics + auto-optimisation crons built
+- Signup attribution tracking (UTM, gclid, fbclid) live
+- 4 SEO blog articles published
+- 5 SEO landing pages live
+- Daily social posting automated (Facebook + Instagram)
+- PR email drafts ready (MSE, Guardian, BBC, Which?)
+- Influencer research pipeline active
+
+**Blockers (unchanged all month):**
+1. Google Ads API Basic access — still pending
+2. Google OAuth verification — submitted 24 March, pending
+3. Open Banking provider — switched from TrueLayer to Yapily (31 March meeting). Yapily confirmed. FCA agent registration needed for balance display (~2 months).
+
+**Key Decision:**
+- Yapily replaces TrueLayer as Open Banking provider. Balance displays removed until FCA registration approved. Transaction-derived data (spending, categories, graphs) can launch immediately.
+
+**Server Health:** Vercel UP, Railway UP — no downtime incidents in March.
+
+**Social Media:** Instagram posting active daily (2 posts/day). Facebook token needs refresh (OAuthException on page access token). Content covering council tax, broadband switching, consumer rights, energy price cap, subscription tracking.
+
+---
+
+## RISKS & CONCERNS
+
+1. **Facebook posting broken** — OAuth token error on page posts. Instagram working fine. Needs immediate fix.
+2. **Zero organic conversions from Google Ads** — 15+ clicks/day but 0 conversions logged before campaigns paused. Landing page conversion optimisation needed.
+3. **No ad metrics in database** — daily_ad_metrics table is empty. The cron may not be running or Google Ads API Explorer access can't pull data.
+4. **35 users but nearly all test accounts** — Only 1 confirmed real external paying user. Need to validate product-market fit with real users once blockers clear.
+5. **Yapily costs ~£1,500/mo** — Significant new cost line once onboarded. Must be factored into updated budget model.
+
+---
+
+## RECOMMENDATIONS FOR APRIL
+
+1. **Clear blockers ASAP** — All 3 must clear before meaningful growth starts. Chase daily.
+2. **Fix Facebook page token** — System user token returning OAuthException. Casey agent can't post to Facebook.
+3. **Fix daily_ad_metrics cron** — Table empty, no data being logged. Debug and fix before ads go live.
+4. **Validate landing page conversion** — 0 conversions from ~100+ Google Ads clicks suggests landing page or signup flow issues. Run conversion rate optimisation before scaling spend.
+5. **Update budget model** — Add Yapily £1,500/mo. Re-forecast M1 start date based on blocker timelines.
+6. **FCA agent registration** — Submit immediately. 2-month timeline means balance features available by June.
+7. **Soft launch to friends/family** — Don't wait for all blockers. Get 10-20 real users testing the product now (without bank connection features).
+
+---
+
+
+
+---
+
+# INFLUENCER & PR PIPELINE REPORT — 1 April 2026
+*Generated by Cowork Scheduled Task (Wednesday Pipeline)*
+*Status: PRE-LAUNCH — Research & Preparation Only*
+
+---
+
+## 1. CREATOR SHORTLIST — Nano/Micro UK Personal Finance Creators
+
+### TIER 1: NANO CREATORS (5K-20K followers) — Est. £150-400/video
+
+| # | Creator | Platform | Handle | Est. Followers | Content Style | Est. Cost | Priority |
+|---|---------|----------|--------|---------------|---------------|-----------|----------|
+| 1 | Ella (My Budget Culture) | Instagram | @mybudgetculture | ~14.5K | Positive money habits, financial freedom journey | £150-250 | HIGH |
+| 2 | The Bougie Budget | Instagram | @thebougiebudget | ~13.9K | Zero-budget living, savings techniques | £150-250 | HIGH |
+| 3 | Chidera Peters | Instagram | @chiderapeters | ~16.6K | Simplifying money management, saving tactics | £200-300 | HIGH |
+| 4 | Jenny Amaka Okpechi | Instagram | @jennyamaka | ~19.3K | Quick money tips, investment education | £200-300 | MEDIUM |
+| 5 | Lynn James Beattie | Instagram | @mrsmummypennyuk | ~18.5K | Personal finance writing, family savings | £200-350 | MEDIUM |
+| 6 | Charlotte Jessop | TikTok | @lookingafteryourpennies | ~5-15K est. | Frugal living UK, avoiding fines, penny-saving | £150-250 | HIGH |
+| 7 | Robyn | TikTok | @budgetingrobyn | ~5-15K est. | Salary-based budgeting (£38K examples), UK-specific | £150-250 | HIGH |
+| 8 | Maria | TikTok | @thismumsavesmoney | ~10-20K est. | Mum audience, frugal living, money-saving tips | £150-300 | HIGH |
+
+### TIER 2: MICRO CREATORS (20K-50K followers) — Est. £400-800/video
+
+| # | Creator | Platform | Handle | Est. Followers | Content Style | Est. Cost | Priority |
+|---|---------|----------|--------|---------------|---------------|-----------|----------|
+| 1 | Kennie Bukky | Instagram | @kenniebukky | ~30.3K | Homeownership, tech finances, lifestyle | £400-600 | MEDIUM |
+| 2 | Demi Jackson (Saving Money Bish) | IG + TikTok | @savingmoneybish | ~30-50K est. | Fun/relatable budgeting, saving hacks, frugal living | £400-700 | HIGH |
+| 3 | Mat (The Quid Squid) | TikTok | @thequidsquid | ~20-40K est. | Open money conversations, travel savings, tax tips | £400-600 | HIGH |
+| 4 | Jade Van Riel | TikTok | @jadevanrielx | ~25-50K est. | First-time buyers, credit improvement | £400-600 | MEDIUM |
+| 5 | Pennies to Pounds | TikTok + IG | @penniestopounds | ~30-50K est. | Financial literacy for young people | £400-700 | HIGH |
+| 6 | This Girl Talks Money | TikTok + IG | @thisgirltalksmoney | ~20-40K est. | Gender pay gap, financial anxiety, money convos | £400-600 | HIGH |
+| 7 | Frugal Spender | TikTok | @frugal_spender | ~20-40K est. | Investing, ISAs, impulse purchase solutions | £400-600 | MEDIUM |
+
+### NOTES ON FOLLOWER COUNTS
+- Exact follower counts for TikTok creators are estimates based on content volume and engagement indicators from search results. Precise numbers should be verified on-platform before outreach.
+- Instagram counts from IZEA research are more reliable (scraped data).
+- Engagement rates not available from desk research — need manual check or tool like HypeAuditor/Modash before outreach.
+
+### CREATORS TO AVOID (too large, outside budget)
+- @Cazzatime (400K+ TikTok) — micro-to-mid tier, likely £1,000+/video
+- @MrMoneyJar / Timi Merriman-Johnson (587K TikTok, 241K IG) — too large
+- @HerFirst100k (2M TikTok) — macro influencer, US-focused
+- Martin Lewis — not an influencer partner, editorial/PR route only
+
+---
+
+## 2. OUTREACH DM TEMPLATES (DRAFT — DO NOT SEND)
+
+### Template A: TikTok/Instagram DM — Nano Creator
+
+Subject: n/a (DM)
+
+---
+Hey [NAME]! 👋
+
+Love your content on [SPECIFIC RECENT POST/TOPIC] — really resonates with what we're building at Paybacker.
+
+We're a new UK fintech app that connects to your bank and uses AI to find where you're overpaying on bills and subscriptions. Think of it as a personal finance assistant that actually does the work for you — finds forgotten subs, writes complaint letters, monitors energy tariffs.
+
+We're launching in April and looking for a small number of authentic UK money creators to try the app and share their genuine experience. No scripts — just your honest reaction to what the AI finds.
+
+Would you be open to a quick chat about a paid collaboration? We'd provide:
+✅ Early access to the app
+✅ Your own unique referral link
+✅ [£XXX] per video (negotiable)
+✅ Full creative freedom
+
+No pressure at all — just thought your audience would genuinely find this useful!
+
+Best,
+Paul — Founder, Paybacker
+hello@paybacker.co.uk | paybacker.co.uk
+---
+
+### Template B: Email — Micro Creator (more formal)
+
+Subject: Paid collaboration — Paybacker x [CREATOR NAME]
+
+---
+Hi [NAME],
+
+I'm Paul, founder of Paybacker — a UK AI-powered personal finance app launching in April 2026.
+
+I've been following your content on [PLATFORM] and really admire how you [SPECIFIC COMPLIMENT — e.g. "make budgeting feel accessible" / "break down complex money topics"]. Your audience is exactly who we built Paybacker for.
+
+**What Paybacker does:**
+- Connects to your bank via Open Banking (read-only, bank-level security)
+- AI scans your transactions to find forgotten subscriptions, overcharges, and better deals
+- Writes legally-worded complaint letters and cancellation emails automatically
+- Monitors energy tariffs daily and alerts you when a cheaper deal appears
+
+**The collaboration:**
+We'd love you to try the app genuinely and create 1 TikTok/Reel sharing your honest experience — what the AI found, any savings it identified, your genuine reaction. No script, full creative control.
+
+**What we offer:**
+- £[XXX] per video
+- Unique tracked referral link (paybacker.co.uk/?ref=[YOURNAME])
+- Early access before public launch
+- Potential for ongoing partnership as we scale
+
+Would you be open to a quick 10-minute call this week to discuss?
+
+Best wishes,
+Paul
+Founder, Paybacker
+hello@paybacker.co.uk | paybacker.co.uk
+---
+
+---
+
+## 3. PR PITCH ANGLE & JOURNALIST CONTACTS
+
+### Primary Pitch Angle
+**"AI-powered finance app helps UK consumers save £300+/year on forgotten subscriptions and overcharged bills"**
+
+Key stats to cite:
+- Average UK household has 2-3 forgotten subscriptions (est. £25-40/mo wasted)
+- CNET 2025 survey: typical adult spends ~£860/year on subscriptions, ~£160 on services they don't use
+- Energy price cap changes mean many consumers are overpaying without realising
+- Paybacker uses AI to scan bank transactions, identify savings, and auto-generate legally compliant complaint letters
+
+Story angles:
+1. **Cost-of-living tech:** "How AI is helping UK families fight the cost-of-living crisis"
+2. **Consumer rights:** "This app writes your complaint letters using UK consumer law — for free"
+3. **Founder story:** "From personal frustration to fintech startup — how one developer built an AI money-saving app"
+4. **Data angle:** "We analysed 1,000 bank accounts and found the average person overpays £X/month" (use once sufficient user data exists)
+
+### Journalist Contact List
+
+| # | Name | Outlet | Role | Contact | Pitch Angle | Status |
+|---|------|--------|------|---------|-------------|--------|
+| 1 | Patrick Collinson | The Guardian | Money Editor | patrick.collinson@guardian.co.uk / @pcollinson | Consumer story — AI finds overcharges | DRAFT READY |
+| 2 | Hilary Osborne | The Guardian | Money/Tech Journalist | Via Guardian press / @hilaryosborne | Tech angle — AI meets consumer finance | TO DRAFT |
+| 3 | Kevin Peachey | BBC News | Cost of Living Correspondent | @PeacheyK on X | Cost-of-living angle — app saves families £X/mo | DRAFT READY |
+| 4 | Which? Press Office | Which? Magazine | External Affairs | externalaffairs@which.co.uk | Product review request — independent consumer tool | DRAFT READY |
+| 5 | Claer Barrett | Financial Times | Consumer Editor | @ClaerB on X/LinkedIn | Fintech innovation angle | TO DRAFT |
+| 6 | Jeff Prestridge | Mail on Sunday | Personal Finance Editor | @jeffprestridge on X/LinkedIn | Money-saving app for families | TO DRAFT |
+| 7 | Tara Evans | The Sun Online | Digital Consumer Editor | @taraevans on X | Mass-market savings angle | TO DRAFT |
+| 8 | Jasmine Birtles | MoneyMagpie / BBC | Finance Presenter | @Jasmine on X/LinkedIn | Founder interview + app demo | TO DRAFT |
+
+### Podcast Targets
+
+| Podcast | Host | Contact Route | Angle |
+|---------|------|---------------|-------|
+| Cash Chats | Andy Webb | becleverwithyourcash.com/contact or @andywebb on X | Founder interview — AI finance app |
+| Meaningful Money | Pete Matthew | meaningfulmoney.tv/contact | How AI is changing personal finance |
+| All Things Money | Unknown | Via podcast website/socials | Consumer fintech innovation |
+
+---
+
+## 4. MSE FORUM INTELLIGENCE
+
+### Key Findings from MoneySavingExpert Forum Research
+
+**Thread: "Best money/wealth management app" (active discussion)**
+User pain points directly relevant to Paybacker:
+1. **Limited bank integrations** — Money Dashboard doesn't support HL or NS&I; users frustrated
+2. **Confusing account organisation** — Moneybox mixes savings pots with bank accounts
+3. **Manual updates required** — Users hate manually updating Money Dashboard
+4. **Want comprehensive aggregation** — Single view of all finances without oversimplification
+
+**Paybacker competitive advantages vs complaints:**
+- Open Banking auto-sync (solves manual update pain)
+- AI-powered categorisation (solves confusing organisation)
+- Goes beyond tracking — actually takes action (complaint letters, cancellation emails)
+
+**⚠️ MSE FORUM WARNING (from business-ops):**
+DO NOT post about Paybacker on MSE Forum — strict moderation, instant ban risk for promotion.
+Use editorial/press pitch route ONLY (submit to MSE Deals Team via contact form + press office).
+
+### Broader Market Signals
+- Subscription fatigue is a major 2026 trend — users actively searching for tools to audit and cancel
+- Bill-switching content gets high engagement on forums
+- AI-powered finance tools are a growing discussion topic
+- Users want "set it and forget it" solutions rather than manual budgeting apps
+
+---
+
+## 5. MARKET RATE BENCHMARKS (2026)
+
+| Platform | Nano (5-10K) | Micro (10-50K) | Source |
+|----------|-------------|----------------|--------|
+| TikTok | £150-400/video | £400-800/video | Influencer Marketing Hub + industry estimates |
+| Instagram Post | £100-300/post | £300-500/post | Influencer Marketing Hub |
+| Instagram Reel | £150-400/reel | £400-700/reel | Industry estimates |
+| YouTube | £250-500/integration | £500-1,500/integration | Influencer Marketing Hub |
+
+**Recommendation:** TikTok offers best ROI for Paybacker's target demo (22-35, UK, cost-conscious). Instagram Reels as secondary. YouTube for evergreen SEO content with select micro creators only.
+
+---
+
+## 6. NEW TASKS DISCOVERED
+
+1. **Sign up for HypeAuditor or Modash free trial** — verify exact follower counts and engagement rates before any outreach
+2. **Create Influencer Tracker spreadsheet** — centralised tracking of all creator outreach, status, costs, and ROI
+3. **Prepare 30-second app demo video** — to attach to creator outreach emails showing the app in action
+4. **Set up UTM links for each creator** — paybacker.co.uk/?ref=CREATORNAME&utm_source=influencer&utm_medium=tiktok&utm_campaign=CREATORNAME
+5. **Draft MSE Deals Team submission** — separate from journalist pitch, use their official submission form
+6. **Research Finextra and AltFi contacts** — fintech-specific press for founder story angle
+
+---
+
+*Next run: Wednesday 8 April 2026. Post-launch focus: begin outreach if product is live.*
+
+### 2026-04-01 13:05:28 - report with Influencer/PR Pipeline (automated research)
+Wednesday pipeline completed. Key deliverables: (1) 15-creator shortlist logged to business-ops.md — 8 nano creators (£150-400/video range) and 7 micro creators (£400-800/video range), all UK personal finance niche across TikTok and Instagram. Top picks: @mybudgetculture, @lookingafteryourpennies, @savingmoneybish, @thequidsquid, @penniestopounds, @thisgirltalksmoney. (2) Two outreach DM templates drafted (not sent). (3) 8 journalist contacts + 3 podcast targets compiled. (4) MSE forum intelligence: users want auto-sync, clear categorisation, and action-taking tools — all Paybacker strengths. (5) 4 new tasks added to queue. All outreach remains ON HOLD until product launches.
+**Follow-up:** Next pipeline run 8 April. If launched by then, switch to active outreach starting with HIGH priority nano creators. Paul to verify creator metrics via HypeAuditor/Modash before any outreach begins.

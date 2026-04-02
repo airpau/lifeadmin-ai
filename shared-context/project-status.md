@@ -6,13 +6,36 @@
 Paybacker is live at paybacker.co.uk in waitlist mode. Core product is built and functional. Stripe billing is live with founding member pricing. AI agent team (15 agents) running on Railway. Social media posting automated to Facebook and Instagram.
 
 ## Current Sprint
-PRE-LAUNCH MODE (target launch: ~2 April 2026)
-- Build ad campaigns in PAUSED state (Google Ads + Meta Ads)
-- Build referral system, SEO content, daily metrics cron
-- Bug fixes from UX review (38 bugs logged, fixing in priority order)
-- Interactive chatbot Phase 1 implementation
-- Pre-launch prep: influencer research, PR pitch drafting, MSE editorial outreach prep
-- Awin affiliate integration testing (waiting Oscar sign-off)
+UAT COMPLETE — MASTER BUILD IN PROGRESS (29 Mar 2026)
+
+Full 163-test UAT executed via Antigravity. Results: majority PASS, 1 P0 fixed (Stripe checkout), 2 sections blocked (mobile/overall).
+
+Deployed by Antigravity:
+- Manage Billing 404 fix (commits 7c99a8f + 85f5fc5)
+- 27-category shared config with icons and colours (f98b684)
+- Trial lifecycle: sidebar badge, expiry banner, getUserPlan fix (7873460)
+- Upgrade flow: sidebar badge, banner, scan modal, profile plan (7a510d2)
+- PARTIAL: Section 1 bug fixes (3 page.tsx files modified before API quota hit)
+
+Fixed by Cowork (database):
+- P0 Stripe checkout: cleared fake stripe_customer_id from test account
+- Backfilled trial_ends_at for 2 users
+- Recategorised 4 subscriptions + updated merchant_rules
+- Deduplicated 4 active subscriptions
+- 33 legal references verified
+
+REMAINING — 9 sections in shared-context/handoff-notes.md:
+1. Critical bug fixes (PARTIAL)
+2. Email marketing overhaul
+3. AI scanner intelligence
+4. Legal intelligence expansion
+5. Affiliate revenue & deal targeting
+6. Social media pipeline
+7. Support ticketing
+8. Agent orchestra (inter-agent messaging)
+9. User intelligence & personalisation
+
+Plan: Run as parallel Antigravity agents (3-4 agents per phase) starting 30 March.
 
 ## What's Live
 - Landing page with waitlist signup
@@ -156,3 +179,31 @@ Claude Code (6-7am: pull ad data, optimise) → MCP (data store) → Cowork (8:3
 - M12 projection: ~£69K MRR paid channels + £15K+ PR = £100K+ MRR
 - Full model: paybacker-100k-mrr-execution-plan.xlsx
 - 90-day ops plan: paybacker-90-day-operations-plan.xlsx
+
+## Monthly P&L
+## Monthly P&L — March 2026 (Pre-Launch Month)
+*Last updated: 1 April 2026*
+
+### Summary
+- **Real MRR:** £19.97 (1 founder Pro + 1 founder alt Essential + 1 external Essential)
+- **Gross MRR (inc. test accounts):** £39.93
+- **Total Spend:** ~£88 (£74 Google Ads + ~£14 infrastructure)
+- **Net Loss:** ~-£68
+- **Total Users:** 35 (mostly test/internal)
+- **Real External Paying:** 1 user (£4.99/mo Essential)
+- **Churn:** 0%
+
+### Forecast Status
+M1 execution plan NOT started — gated on 3 blockers (Google Ads Basic, Google OAuth, Yapily production). March = Month 0. Variances vs M1 forecast are expected and not actionable until blockers clear.
+
+### Key Actions for April
+1. Clear all 3 blockers (daily chase)
+2. Fix Facebook page token (OAuthException)
+3. Fix daily_ad_metrics cron (table empty)
+4. Landing page CRO (0 conversions from Google Ads clicks)
+5. Submit FCA agent registration for Yapily balance display
+6. Update budget model with Yapily £1,500/mo cost
+7. Soft launch to 10-20 real users (skip bank connection features)
+
+### Server Health
+Vercel: UP | Railway: UP | No incidents in March

@@ -175,9 +175,11 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
       <style>body{font-family:'Times New Roman',serif;max-width:800px;margin:40px auto;padding:0 40px;line-height:1.8;color:#000}
       pre{white-space:pre-wrap;font-family:'Times New Roman',serif;font-size:13px;line-height:1.8}
       .refs{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:11px;color:#555}
+      .disclaimer{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:10px;color:#555;text-align:center;line-height:1.6}
       @media print{body{margin:20mm 25mm}}</style></head><body>
       <pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
       ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
+      <div class="disclaimer">This letter was generated with AI assistance using publicly available legal information from legislation.gov.uk. It does not constitute legal advice. If you are unsure about your rights, please consult a qualified solicitor, Citizens Advice (citizensadvice.org.uk), or your relevant ombudsman.</div>
       <script>window.onload=()=>{window.print()}<\/script></body></html>`);
     printWindow.document.close();
   };

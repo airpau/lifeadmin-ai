@@ -1925,8 +1925,8 @@ export default function MoneyHubPage() {
                 const vsOutgoings = prevMonth && prevMonth.outgoings > 0 ? ((m.outgoings - prevMonth.outgoings) / prevMonth.outgoings * 100) : null;
 
                 // Format month name
-                const monthDate = new Date(m.month + '-01');
-                const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+                const monthDate = new Date(m.month + '-15T00:00:00Z');
+                const monthName = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
                 return (
                   <div
@@ -1939,7 +1939,7 @@ export default function MoneyHubPage() {
                       <div className="w-3 bg-green-500/60 rounded-t transition-all hover:bg-green-500/80" style={{ height: `${(m.income / maxVal) * 100}%` }} />
                       <div className="w-3 bg-red-500/60 rounded-t transition-all hover:bg-red-500/80" style={{ height: `${(m.outgoings / maxVal) * 100}%` }} />
                     </div>
-                    <p className="text-slate-500 text-[10px]">{new Date(m.month + '-01').toLocaleDateString('en-GB', { month: 'short' })}</p>
+                    <p className="text-slate-500 text-[10px]">{new Date(m.month + '-15T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}</p>
 
                     {/* Hover tooltip */}
                     {hoveredMonth === idx && (

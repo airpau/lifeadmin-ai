@@ -42,7 +42,7 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
       const [letters, resolved, disputes] = await Promise.all([
         supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).not('status', 'in', '("resolved","dismissed")'),
       ]);
       setLettersWritten(letters.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);

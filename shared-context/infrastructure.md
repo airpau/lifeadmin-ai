@@ -1,50 +1,53 @@
-# Infrastructure
+## Yapily Integration Requirements
 
-*Last updated: 2026-03-26*
+### Provider Details
+- Provider: Yapily Connect Ltd (FCA firm no. 827001)
+- Contacts: Thomas Picard, Christian
+- Agreed: 31 March 2026
+- Estimated fees: ~£1500/month (to be confirmed by Christian)
 
-## Hosting
-- **Vercel Pro:** paybacker.co.uk (Next.js 15 app)
-- **Railway:** Agent server (15 AI agents on cron schedules)
-- **Supabase:** PostgreSQL database + Auth + Storage (eu-west-2, project ID: kcxxlesishltdmfctlmo)
+### Migration from TrueLayer
+- Current provider: TrueLayer (client ID: paybacker-340887), sandbox/dev mode only
+- Migration: Swap API client, update bank connection flow, map data formats
+- Existing users will need to re-authenticate (no consent transfer between providers)
 
-## Domains
-- paybacker.co.uk (primary, Vercel)
-- paybacker.com (NOT owned, never use)
+### FCA Compliance Rules
+**Can show WITHOUT FCA approval:**
+- Spending breakdowns by category (derived from transactions)
+- Income breakdowns by category (derived from transactions)
+- Transaction lists with amounts, merchants, categories
+- Subscription/recurring payment detection
+- Financial health scores (derived metrics)
+- Spending trends, monthly comparisons, graphs
+- Budget tracking, savings rate percentages, top merchants
 
-## Environment Variables
-All env vars set in Vercel dashboard and Railway dashboard. Key vars:
-- NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
-- ANTHROPIC_API_KEY / ANTHROPIC_AGENTS_API_KEY
-- STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET
-- RESEND_API_KEY
-- TRUELAYER_CLIENT_ID / TRUELAYER_CLIENT_SECRET
-- META_ACCESS_TOKEN / META_APP_ID / META_APP_SECRET / META_PAGE_ID / META_INSTAGRAM_ACCOUNT_ID
-- FAL_KEY
-- PERPLEXITY_API_KEY
-- POSTHOG_API_KEY
-- LATE_API_KEY
-- AWIN_PUBLISHER_ID / AWIN_ADVERTISER_ID
-- TELEGRAM_BOT_TOKEN / TELEGRAM_FOUNDER_CHAT_ID
-- CRON_SECRET (protects all cron endpoints)
-- GEMINI_API_KEY (image generation)
+**CANNOT show until FCA agent registration approved:**
+- Actual bank account balances (current balance, available balance)
+- Consolidated account balance totals across multiple accounts
+- Any direct representation of how much money is in a bank account
 
-## Database Tables (Key)
-- profiles, waitlist_signups, tasks, agent_runs
-- subscriptions, contracts, bank_accounts, transactions
-- complaints, support_tickets, ticket_messages
-- executive_reports, content_drafts, compliance_log
-- competitive_intelligence, nps_responses
-- loyalty_points, referrals
-- email_scans, opportunities
+**Feature flag:** SHOW_BANK_BALANCES in lib/feature-flags.ts (set to false until FCA approved)
 
-## Deployment
-- Main branch = production (auto-deploys to Vercel)
-- Always run `npx tsc --noEmit` before deploying
-- Tag releases: `git tag v[date]-[description]`
-- Railway auto-deploys from main branch
+### 90-Day Consent Renewal (CRITICAL)
+- Open Banking consents expire after 90 days
+- Users should be prompted to renew BEFORE the 90-day limit (e.g. 7 days before expiry)
+- Renewal UX: Simple "OK" / "Renew Connection" button tap — NOT a full re-authentication
+- Yapily confirmed this simple re-consent is supported
+- IMPORTANT: Renewing before expiry avoids being charged a new connection fee by Yapily
+- Implementation: Track consent_granted_at in bank_connections table, run daily check for connections expiring within 7 days, show in-app prompt + send email notification
 
-## Monitoring
-- Agent runs logged to executive_reports table
-- Charlie compiles daily digest email to founder
-- Telegram bot sends real-time notifications
-- PostHog tracks product analytics
+### FCA Agent Registration
+- Required because Paybacker displays consolidated account information to users
+- Timeline: ~2 months from submission
+- Yapily handles the FCA submission on Paybacker's behalf
+- Paul needs: Basic DBS check (submitted 31 March 2026), fit and proper documentation
+- Once approved: Enable SHOW_BANK_BALANCES feature flag, add balance display to MoneyHub
+
+### Christian's Requirements Document
+- Christian (Yapily) to send detailed document specifying exactly what can/cannot be shown
+- Awaiting delivery — update this context once received
+
+### Data Plus (Transaction Enrichment)
+- Yapily Data Plus provides: merchant name enrichment, transaction categorisation (26 incoming / 72 outgoing consumer categories), recurring transaction detection, income insights
+- Could replace Paybacker's manual merchant_rules table (160 rules currently in Supabase)
+- Confirm with Yapily: pricing for Data Plus, availability for UK consumer accounts in production
