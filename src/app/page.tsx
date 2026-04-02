@@ -1021,11 +1021,17 @@ export default function Home() {
                     { label: 'Email Scanning', sub: 'Gmail, Outlook, Yahoo — find hidden costs', free: 'One-time scan', essential: 'Daily re-scans', pro: 'Daily re-scans' },
                     { label: 'Money Hub & Budgets', sub: 'Spending intelligence, budget planner, goals', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
                     { label: 'Contract AI Analysis', sub: 'Renewal reminders, price increase alerts', free: false, essential: true, pro: true },
+                    { label: 'Pocket Agent', sub: 'AI assistant in Telegram — spending, disputes, alerts', free: false, essential: false, pro: true, isNew: true },
                     { label: 'Priority Support', sub: 'Faster response times', free: false, essential: false, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-navy-700/20 hover:bg-navy-900/30 transition-colors">
                       <td className="py-3 px-3">
-                        <span className="text-white text-sm font-medium block">{row.label}</span>
+                        <span className="text-white text-sm font-medium block">
+                          {row.label}
+                          {'isNew' in row && row.isNew && (
+                            <span className="ml-2 inline-block bg-amber-500 text-navy-950 text-[10px] font-bold px-1.5 py-0.5 rounded-full align-middle">NEW</span>
+                          )}
+                        </span>
                         <span className="text-slate-500 text-xs">{row.sub}</span>
                       </td>
                       {[row.free, row.essential, row.pro].map((val, j) => (
