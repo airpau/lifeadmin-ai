@@ -125,6 +125,7 @@ If you can't find a particular term, set it to null. For unfair_clauses, flag an
       user_id: user.id,
       file_url: urlData.publicUrl,
       file_name: file.name,
+      file_type: file.type,
       provider_name: result.provider_name || dispute.provider_name,
       contract_start_date: result.contract_start_date,
       contract_end_date: result.contract_end_date,
@@ -147,5 +148,33 @@ If you can't find a particular term, set it to null. For unfair_clauses, flag an
     return NextResponse.json({ error: 'Failed to save analysis' }, { status: 500 });
   }
 
-  return NextResponse.json(extraction);
+  // Sync contract_end_date to a matching subscription (dispute flow has no subscription_id,
+  // so we match by provider name as a best-effort sync)
+  let suggestedSubscriptionId: string | null = null;
+  if (result.contract_end_date) {
+    const providerName = result.provider_name || dispute.provider_name;
+    if (providerName) {
+      const { data: matchedSubs } = await supabase
+        .from('subscriptions')
+        .select('id, provider_name, contract_end_date')
+        .eq('user_id', user.id)
+        .ilike('provider_name', providerName)
+        .limit(1);
+
+      if (matchedSubs && matchedSubs.length > 0) {
+        suggestedSubscriptionId = matchedSubs[0].id;
+
+        // Only overwrite if the subscription has no contract_end_date yet
+        if (!matchedSubs[0].contract_end_date) {
+          await supabase
+            .from('subscriptions')
+            .update({ contract_end_date: result.contract_end_date })
+            .eq('id', suggestedSubscriptionId)
+            .eq('user_id', user.id);
+        }
+      }
+    }
+  }
+
+  return NextResponse.json({ ...extraction, suggested_subscription_id: suggestedSubscriptionId });
 }

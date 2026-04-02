@@ -167,7 +167,7 @@ Set terms to null if not found. For unfair_clauses, flag anything one-sided, hid
     if (result.contract_end_date) syncFields.contract_end_date = result.contract_end_date;
     if (result.minimum_term) {
       const months = parseInt(result.minimum_term);
-      if (!isNaN(months)) syncFields.term_months = months;
+      if (!isNaN(months)) syncFields.contract_term_months = months;
     }
     if (result.auto_renewal != null) syncFields.auto_renews = result.auto_renewal?.toLowerCase?.()?.includes('yes') || result.auto_renewal === true;
     if (result.early_exit_fee) syncFields.early_exit_fee = parseFloat(result.early_exit_fee.replace(/[^0-9.]/g, '')) || null;
