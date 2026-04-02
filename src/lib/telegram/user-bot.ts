@@ -69,15 +69,12 @@ async function sendChunked(
 }
 
 // ============================================================
-// Claude tool-use loop
+// Constants
 // ============================================================
-async function callClaudeWithTools(
-  userId: string,
-  userMessage: string,
-): Promise<{ text: string; pendingAction?: PendingAction }> {
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const RATE_LIMIT_PER_HOUR = 20;
+const SESSION_EXPIRY_DAYS = 90;
 
-  const systemPrompt = `You are Paybacker's financial assistant for UK consumers. You help Pro users understand and act on their financial data.
+const SYSTEM_PROMPT = `You are Paybacker's financial assistant for UK consumers. You help Pro users understand and act on their financial data.
 
 Rules:
 - Always use tools to fetch real data before answering — never make up numbers
@@ -88,17 +85,112 @@ Rules:
 - For complaint letters: call draft_dispute_letter and present the preview clearly
 - You are part of a closed-loop workflow: detect → explain → recommend → execute → confirm → remind
 - Be specific about financial impact: "that's £276/year more" not just "your bill went up"
-- UK consumer law: Consumer Rights Act 2015, Consumer Credit Act 1974, EU261/UK261, Ofgem/Ofcom rules`;
+- UK consumer law: Consumer Rights Act 2015, Consumer Credit Act 1974, EU261/UK261, Ofgem/Ofcom rules
+- You have conversation history — reference previous messages naturally when relevant`;
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
+// ============================================================
+// Rate limiter — 20 messages per user per hour
+// ============================================================
+async function checkRateLimit(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<boolean> {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await supabase
+    .from('telegram_message_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('direction', 'inbound')
+    .gte('created_at', oneHourAgo);
+
+  return (count ?? 0) < RATE_LIMIT_PER_HOUR;
+}
+
+// ============================================================
+// Session expiry — deactivate after 90 days inactivity
+// ============================================================
+function isSessionExpired(lastMessageAt: string | null): boolean {
+  if (!lastMessageAt) return false;
+  const daysSince = (Date.now() - new Date(lastMessageAt).getTime()) / (1000 * 60 * 60 * 24);
+  return daysSince > SESSION_EXPIRY_DAYS;
+}
+
+// ============================================================
+// Conversation history — load last 10 messages for context
+// ============================================================
+async function getConversationHistory(
+  supabase: ReturnType<typeof getAdmin>,
+  chatId: number,
+): Promise<Anthropic.MessageParam[]> {
+  const { data } = await supabase
+    .from('telegram_message_log')
+    .select('direction, message_text')
+    .eq('telegram_chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (!data || data.length === 0) return [];
+
+  // Reverse to chronological order and map to Claude message format
+  const history: Anthropic.MessageParam[] = [];
+  for (const msg of data.reverse()) {
+    if (!msg.message_text) continue;
+    const role = msg.direction === 'inbound' ? 'user' : 'assistant';
+    // Merge consecutive same-role messages
+    if (history.length > 0 && history[history.length - 1].role === role) {
+      history[history.length - 1] = {
+        role,
+        content: history[history.length - 1].content + '\n' + msg.message_text,
+      };
+    } else {
+      history.push({ role, content: msg.message_text });
+    }
+  }
+
+  // Ensure history starts with user message (Claude requirement)
+  while (history.length > 0 && history[0].role === 'assistant') {
+    history.shift();
+  }
+
+  return history;
+}
+
+// ============================================================
+// Claude tool-use loop (with prompt caching + conversation history)
+// ============================================================
+async function callClaudeWithTools(
+  userId: string,
+  userMessage: string,
+  chatId: number,
+): Promise<{ text: string; pendingAction?: PendingAction }> {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const supabase = getAdmin();
+
+  // Load conversation history for context
+  const history = await getConversationHistory(supabase, chatId);
+
+  // Build messages: history + current message
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: 'user', content: userMessage },
+  ];
+
   let pendingAction: PendingAction | undefined;
   const toolsUsed: string[] = [];
+
+  // Enable prompt caching on system prompt and tools
+  const cachedTools = telegramTools.map((tool, idx) => {
+    if (idx === telegramTools.length - 1) {
+      return { ...tool, cache_control: { type: 'ephemeral' as const } };
+    }
+    return tool;
+  });
 
   let response = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 2048,
-    system: systemPrompt,
-    tools: telegramTools,
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    tools: cachedTools,
     messages,
   });
 
@@ -133,8 +225,8 @@ Rules:
     response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
-      system: systemPrompt,
-      tools: telegramTools,
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      tools: cachedTools,
       messages,
     });
   }
@@ -514,7 +606,7 @@ export function createUserBot(): Bot<UserBotContext> {
     // Check linked session
     const { data: session } = await supabase
       .from('telegram_sessions')
-      .select('user_id')
+      .select('user_id, last_message_at')
       .eq('telegram_chat_id', chatId)
       .eq('is_active', true)
       .single();
@@ -526,6 +618,18 @@ export function createUserBot(): Bot<UserBotContext> {
           `2. Generate a link code\n` +
           `3. Send: /link YOUR_CODE\n\n` +
           `Or type /start for setup instructions.`,
+      );
+    }
+
+    // Check 90-day session expiry
+    if (isSessionExpired(session.last_message_at)) {
+      await supabase
+        .from('telegram_sessions')
+        .update({ is_active: false })
+        .eq('telegram_chat_id', chatId);
+
+      return ctx.reply(
+        `Your session has expired due to inactivity (90 days).\n\nPlease re-link your account at paybacker.co.uk/dashboard/settings/telegram`,
       );
     }
 
@@ -549,6 +653,14 @@ export function createUserBot(): Bot<UserBotContext> {
       );
     }
 
+    // Rate limit: 20 messages per hour
+    const withinLimit = await checkRateLimit(supabase, session.user_id);
+    if (!withinLimit) {
+      return ctx.reply(
+        `You've reached the limit of ${RATE_LIMIT_PER_HOUR} messages per hour. Please try again shortly.`,
+      );
+    }
+
     // Update last_message_at
     supabase
       .from('telegram_sessions')
@@ -556,23 +668,22 @@ export function createUserBot(): Bot<UserBotContext> {
       .eq('telegram_chat_id', chatId)
       .then(() => {});
 
-    // Log inbound
+    // Log inbound (await so it's in DB before getConversationHistory runs)
     const startTime = Date.now();
-    supabase
+    await supabase
       .from('telegram_message_log')
       .insert({
         user_id: session.user_id,
         telegram_chat_id: chatId,
         direction: 'inbound',
         message_text: userMessage,
-      })
-      .then(() => {});
+      });
 
     // Show typing...
     await ctx.replyWithChatAction('typing');
 
     try {
-      const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage);
+      const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
 
       // Log outbound
       supabase
