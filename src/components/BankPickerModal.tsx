@@ -23,16 +23,26 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
 
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch('/api/yapily/institutions')
+    setInstitutions([]);
+    fetch('/api/yapily/institutions', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
+        if (cancelled) return;
         if (data.error) throw new Error(data.error);
-        setInstitutions(data.institutions ?? []);
+        const list = data.institutions ?? [];
+        console.log('[BankPicker] Loaded', list.length, 'institutions');
+        setInstitutions(list);
       })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch(err => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [isOpen]);
 
   if (!isOpen) return null;
