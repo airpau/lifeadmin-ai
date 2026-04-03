@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       // Fetch all saved comparisons for user's subscriptions
       const { data: subs } = await supabase
         .from('subscriptions')
-        .select('id, provider_name, category, provider_type')
+        .select('id, provider_name, category, provider_type, category_normalized')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .is('dismissed_at', null);
@@ -37,11 +37,26 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ totalAnnualSaving: 0, count: 0, subscriptionsCompared: 0, subscriptions: [] });
       }
 
-      // Filter out subscriptions with excluded categories/provider_types or null category
+      // Provider name keywords that indicate an energy/broadband/mobile provider
+      // (allows matching even when category and provider_type are null)
+      const inferrableProviderKeywords = [
+        'british gas', 'octopus', 'ovo', 'edf', 'eon', 'e.on', 'sse', 'bulb',
+        'shell energy', 'scottish power', 'utilita',
+        'bt', 'sky broadband', 'virgin media', 'plusnet', 'talktalk',
+        'hyperoptic', 'community fibre', 'onestream', 'ee broadband',
+        'vodafone', 'three', 'o2', 'giffgaff', 'smarty', 'lebara',
+        'id mobile', 'voxi', 'tesco mobile',
+      ];
+
+      // Filter out subscriptions with excluded categories/provider_types
+      // but keep subscriptions whose provider name matches known switchable providers
       const filteredSubs = subs.filter((s: any) => {
-        if (!s.category && !s.provider_type) return false;
         const cat = (s.category || s.provider_type || '').toLowerCase();
-        return !excludedCategories.has(cat);
+        if (cat && excludedCategories.has(cat)) return false;
+        if (s.category || s.provider_type) return true;
+        // Fallback: include if provider name matches known switchable providers
+        const name = (s.provider_name || '').toLowerCase();
+        return inferrableProviderKeywords.some(kw => name.includes(kw));
       });
 
       if (filteredSubs.length === 0) {
@@ -89,7 +104,7 @@ export async function GET(request: NextRequest) {
           subscriptionId: subId,
           subscriptionName: normaliseMerchantName(sub?.provider_name || 'Unknown'),
           providerName: normaliseMerchantName(sub?.provider_name || 'Unknown'),
-          category: sub?.category || sub?.provider_type || '',
+          category: sub?.category || sub?.provider_type || sub?.category_normalized || '',
           comparisons: grouped[subId] || [],
         };
       });
@@ -140,7 +155,7 @@ export async function POST() {
     const subIds = Object.keys(result.comparisons);
     const { data: subDetails } = await supabase
       .from('subscriptions')
-      .select('id, provider_name, category, provider_type')
+      .select('id, provider_name, category, provider_type, category_normalized')
       .in('id', subIds.length > 0 ? subIds : ['none']);
 
     const subMap = new Map((subDetails || []).map(s => [s.id, s]));
@@ -151,7 +166,7 @@ export async function POST() {
         subscriptionId: subId,
         subscriptionName: normaliseMerchantName(sub?.provider_name || 'Unknown'),
         providerName: normaliseMerchantName(sub?.provider_name || 'Unknown'),
-        category: sub?.category || sub?.provider_type || '',
+        category: sub?.category || sub?.provider_type || sub?.category_normalized || '',
         comparisons: result.comparisons[subId] || [],
       };
     });

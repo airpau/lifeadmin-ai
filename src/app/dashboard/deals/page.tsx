@@ -463,12 +463,23 @@ export default function DealsPage() {
     Promise.all([
       fetch('/api/subscriptions').then(r => r.json()).then(data => {
         if (Array.isArray(data)) {
-          // Filter out dismissed and cancelled subscriptions, and those with null category
-          const filtered = data.filter((s: any) =>
-            s.status !== 'cancelled' &&
-            !s.dismissed_at &&
-            (s.category || s.provider_type)
-          );
+          // Filter out dismissed and cancelled subscriptions
+          // Keep subs with category, provider_type, OR a recognisable provider name
+          const energyBroadbandMobileKeywords = [
+            'british gas', 'octopus', 'ovo', 'edf', 'eon', 'e.on', 'sse', 'bulb',
+            'shell energy', 'scottish power', 'utilita',
+            'bt', 'sky broadband', 'virgin media', 'plusnet', 'talktalk',
+            'hyperoptic', 'community fibre', 'onestream', 'ee broadband',
+            'vodafone', 'three', 'o2', 'giffgaff', 'smarty', 'lebara',
+            'id mobile', 'voxi', 'tesco mobile', 'ee',
+          ];
+          const filtered = data.filter((s: any) => {
+            if (s.status === 'cancelled' || s.dismissed_at) return false;
+            if (s.category || s.provider_type) return true;
+            // Fallback: include if provider name matches known energy/broadband/mobile providers
+            const name = (s.provider_name || '').toLowerCase();
+            return energyBroadbandMobileKeywords.some(kw => name.includes(kw));
+          });
           setSubscriptions(filtered);
         }
       }),
@@ -482,18 +493,46 @@ export default function DealsPage() {
   const categoryToUserSubs: Record<string, UserSubscription[]> = {};
   const urgentSubsByCategory: Record<string, Array<{ sub: UserSubscription; days: number }>> = {};
 
+  // Provider name keywords to infer deal category when provider_type and category are missing
+  const PROVIDER_NAME_TO_DEALS: Record<string, string[]> = {
+    'british gas': ['Energy'], 'octopus': ['Energy'], 'ovo': ['Energy'], 'edf': ['Energy'],
+    'eon': ['Energy'], 'e.on': ['Energy'], 'sse': ['Energy'], 'bulb': ['Energy'],
+    'shell energy': ['Energy'], 'scottish power': ['Energy'], 'utilita': ['Energy'],
+    'bt': ['Broadband'], 'sky broadband': ['Broadband'], 'virgin media': ['Broadband'],
+    'plusnet': ['Broadband'], 'talktalk': ['Broadband'], 'hyperoptic': ['Broadband'],
+    'community fibre': ['Broadband'], 'onestream': ['Broadband'], 'ee broadband': ['Broadband'],
+    'vodafone': ['Mobile'], 'three': ['Mobile'], 'o2': ['Mobile'], 'giffgaff': ['Mobile'],
+    'smarty': ['Mobile'], 'lebara': ['Mobile'], 'id mobile': ['Mobile'], 'voxi': ['Mobile'],
+    'tesco mobile': ['Mobile'], 'ee': ['Mobile'],
+  };
+
+  function inferDealCatsFromName(providerName: string): string[] {
+    const name = providerName.toLowerCase();
+    for (const [keyword, cats] of Object.entries(PROVIDER_NAME_TO_DEALS)) {
+      if (name.includes(keyword)) return cats;
+    }
+    return [];
+  }
+
   for (const sub of subscriptions) {
-    // Skip subscriptions with null category, dismissed, or cancelled
-    if (!sub.category && !sub.provider_type) continue;
+    // Skip dismissed or cancelled
     if (sub.status === 'cancelled' || sub.dismissed_at) continue;
 
     // Skip excluded categories (mortgages, loans, council_tax, etc.)
     const subCatLower = (sub.category || sub.provider_type || '').toLowerCase();
-    if (EXCLUDED_DEAL_CATEGORIES.has(subCatLower)) continue;
+    if (subCatLower && EXCLUDED_DEAL_CATEGORIES.has(subCatLower)) continue;
 
-    const dealCats = sub.provider_type
-      ? (PROVIDER_TYPE_TO_DEALS[sub.provider_type] || [])
-      : (CATEGORY_TO_DEALS[sub.category || ''] || []);
+    let dealCats: string[] = [];
+    if (sub.provider_type) {
+      dealCats = PROVIDER_TYPE_TO_DEALS[sub.provider_type] || [];
+    }
+    if (dealCats.length === 0 && sub.category) {
+      dealCats = CATEGORY_TO_DEALS[sub.category] || [];
+    }
+    // Fallback: infer from provider name for energy/broadband/mobile
+    if (dealCats.length === 0) {
+      dealCats = inferDealCatsFromName(sub.provider_name);
+    }
 
     if (dealCats.length === 0) continue;
 

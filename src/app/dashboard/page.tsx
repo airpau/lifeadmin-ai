@@ -307,32 +307,38 @@ export default function DashboardPage() {
         return true;
       };
 
+      // Helper: extract deals from comparison response data
+      const extractDeals = (data: any): { saving: number; count: number; deals: typeof comparisonDeals } => {
+        const dealsList: typeof comparisonDeals = [];
+        let filteredSaving = 0;
+        let filteredCount = 0;
+        for (const sub of (data.subscriptions || [])) {
+          if (!filterDealSub(sub)) continue;
+          if (sub.comparisons?.length > 0) {
+            const best = sub.comparisons[0];
+            if (!filterDealComparison(best)) continue;
+            filteredSaving += best.annualSaving;
+            filteredCount++;
+            dealsList.push({
+              subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+              currentPrice: best.currentPrice,
+              dealProvider: best.dealProvider,
+              dealPrice: best.dealPrice,
+              annualSaving: best.annualSaving,
+              dealUrl: best.dealUrl,
+              category: sub.category || '',
+            });
+          }
+        }
+        return { saving: filteredSaving, count: filteredCount, deals: dealsList };
+      };
+
       // Fetch subscription comparison data (non-blocking, runs after dashboard loads)
       try {
         const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
         if (compRes.ok) {
           const compData = await compRes.json();
-          const dealsList: typeof comparisonDeals = [];
-          let filteredSaving = 0;
-          let filteredCount = 0;
-          for (const sub of (compData.subscriptions || [])) {
-            if (!filterDealSub(sub)) continue;
-            if (sub.comparisons?.length > 0) {
-              const best = sub.comparisons[0];
-              if (!filterDealComparison(best)) continue;
-              filteredSaving += best.annualSaving;
-              filteredCount++;
-              dealsList.push({
-                subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
-                currentPrice: best.currentPrice,
-                dealProvider: best.dealProvider,
-                dealPrice: best.dealPrice,
-                annualSaving: best.annualSaving,
-                dealUrl: best.dealUrl,
-                category: sub.category || '',
-              });
-            }
-          }
+          const { saving: filteredSaving, count: filteredCount, deals: dealsList } = extractDeals(compData);
           setComparisonSaving(filteredSaving);
           setComparisonCount(filteredCount);
           setComparisonDeals(dealsList);
@@ -340,41 +346,21 @@ export default function DashboardPage() {
           // Update potential savings to include comparison deals
           setPotentialSavings(prev => prev + filteredSaving);
 
-          // If savings seem low relative to subscriptions, trigger a fresh comparison
+          // Trigger a fresh comparison POST if:
+          // - No saved comparisons exist yet (subscriptionsCompared === 0 or count === 0)
+          // - Few deals found relative to subscriptions compared
+          // - Savings seem stale (under £500 with 20+ subs)
           const compared = compData.subscriptionsCompared || 0;
-          const withDeals = filteredCount;
-          const annualSaving = filteredSaving;
-          // Trigger if: few deals compared, or savings seem stale (under £500 with 20+ subs)
-          if (compared > 0 && (withDeals < compared * 0.5 || (compared > 20 && annualSaving < 500))) {
+          const shouldRefresh = compared === 0 || filteredCount === 0 || (compared > 0 && filteredCount < compared * 0.5) || (compared > 20 && filteredSaving < 500);
+          if (shouldRefresh) {
             fetch('/api/subscriptions/compare', { method: 'POST' })
               .then(r => r.json())
               .then(freshData => {
-                let freshFilteredSaving = 0;
-                let freshFilteredCount = 0;
-                const freshDeals: typeof comparisonDeals = [];
-                for (const sub of (freshData.subscriptions || [])) {
-                  if (!filterDealSub(sub)) continue;
-                  if (sub.comparisons?.length > 0) {
-                    const best = sub.comparisons[0];
-                    if (best.annualSaving > 0 && filterDealComparison(best)) {
-                      freshFilteredSaving += best.annualSaving;
-                      freshFilteredCount++;
-                      freshDeals.push({
-                        subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
-                        currentPrice: best.currentPrice,
-                        dealProvider: best.dealProvider,
-                        dealPrice: best.dealPrice,
-                        annualSaving: best.annualSaving,
-                        dealUrl: best.dealUrl,
-                        category: sub.category || '',
-                      });
-                    }
-                  }
-                }
-                if (freshFilteredSaving !== annualSaving) {
-                  setComparisonSaving(freshFilteredSaving);
-                  setComparisonCount(freshFilteredCount);
-                  setPotentialSavings(prev => prev - annualSaving + freshFilteredSaving);
+                const { saving: freshSaving, count: freshCount, deals: freshDeals } = extractDeals(freshData);
+                if (freshSaving !== filteredSaving || freshCount !== filteredCount) {
+                  setComparisonSaving(freshSaving);
+                  setComparisonCount(freshCount);
+                  setPotentialSavings(prev => prev - filteredSaving + freshSaving);
                   if (freshDeals.length > 0) setComparisonDeals(freshDeals);
                 }
               })
@@ -666,10 +652,19 @@ export default function DashboardPage() {
           return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, needsComplaint, needsDeal, needsSubscription };
         });
 
-        let filtered = processedTasks.filter((task) => {
+        // Deduplicate tasks by provider+type combo (keep the first/highest priority)
+        const seenKeys = new Set<string>();
+        const dedupedTasks = processedTasks.filter((task) => {
+          const key = `${(task.provider || '').toLowerCase()}::${task.oppType || task.type || ''}`;
+          if (key !== '::' && seenKeys.has(key)) return false;
+          if (key !== '::') seenKeys.add(key);
+          return true;
+        });
+
+        let filtered = dedupedTasks.filter((task) => {
           if (task.needsSubscription && task.provider) {
-             const existing = activeSubscriptions.some(sub => 
-               (sub.provider_name || '').toLowerCase().includes(task.provider.toLowerCase()) || 
+             const existing = activeSubscriptions.some(sub =>
+               (sub.provider_name || '').toLowerCase().includes(task.provider.toLowerCase()) ||
                task.provider.toLowerCase().includes((sub.provider_name || '').toLowerCase())
              );
              if (existing) return false;

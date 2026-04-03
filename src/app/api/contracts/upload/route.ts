@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
   const file = formData.get('file') as File | null;
   const disputeId = formData.get('disputeId') as string | null;
   const subscriptionId = formData.get('subscriptionId') as string | null;
+  const customProviderName = formData.get('customProviderName') as string | null;
 
   if (!file) {
     return NextResponse.json({ error: 'Missing file' }, { status: 400 });
@@ -30,11 +31,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 });
   }
 
-  // Get provider name from dispute or subscription for context
-  let providerName = '';
+  // Get provider name from dispute, subscription, or custom input
+  let providerName = customProviderName || '';
   if (disputeId) {
     const { data: d } = await supabase.from('disputes').select('provider_name').eq('id', disputeId).eq('user_id', user.id).single();
-    providerName = d?.provider_name || '';
+    providerName = d?.provider_name || providerName;
   }
   if (subscriptionId) {
     const { data: s } = await supabase.from('subscriptions').select('provider_name').eq('id', subscriptionId).eq('user_id', user.id).single();

@@ -60,10 +60,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const { data } = await supabase.from('profiles').select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at').eq('id', user.id).single();
         const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
         setFirstName(name);
-        setUserTier(data?.subscription_tier || 'free');
+        const profileTier = data?.subscription_tier || 'free';
+        setUserTier(profileTier);
 
         // Detect founding member trial
+        let isFoundingTrial = false;
         if (data?.subscription_status === 'trialing' && !data?.stripe_subscription_id && data?.subscription_tier !== 'free') {
+          isFoundingTrial = true;
           const trialEnd = data?.trial_ends_at ? new Date(data.trial_ends_at) : null;
           if (trialEnd) {
             const days = Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -73,20 +76,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             } else {
               setTrialExpired(true);
               setUserTier('free');
+              isFoundingTrial = false;
             }
           } else {
             setIsTrial(true);
           }
         }
+
+        // Sync from Stripe to ensure tier is current.
+        // Only apply the Stripe tier if it's an upgrade or a real downgrade
+        // (not when user is on a founding member trial without a Stripe subscription).
+        try {
+          const syncRes = await fetch('/api/stripe/sync', { method: 'POST' });
+          const syncData = await syncRes.json();
+          if (syncData.tier && syncData.tier !== 'free') {
+            // Stripe confirms a paid tier — always apply
+            setUserTier(syncData.tier);
+          } else if (syncData.tier === 'free' && syncData.synced && !isFoundingTrial) {
+            // Only downgrade to free if NOT on a founding member trial
+            setUserTier('free');
+          }
+          // If on founding member trial, keep the profile tier (don't let Stripe override)
+        } catch {
+          // Stripe sync failed — keep profile tier
+        }
       }
     };
     loadUser();
-
-    // Also sync from Stripe to ensure tier is current
-    fetch('/api/stripe/sync', { method: 'POST' })
-      .then(r => r.json())
-      .then(d => { if (d.tier) setUserTier(d.tier); })
-      .catch(() => {});
   }, []);
 
   // Close sidebar on route change

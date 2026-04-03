@@ -188,9 +188,8 @@ export async function findCheaperAlternatives(
 
   // Skip excluded provider types (mortgages, loans, council_tax, etc.)
   if (sub.provider_type && EXCLUDED_PROVIDER_TYPES.has(sub.provider_type)) return [];
-  // Skip subscriptions with no category at all
-  if (!sub.category && !sub.provider_type && !sub.category_normalized) return [];
 
+  // Try to determine deal category (works even without category/provider_type via provider_name keywords)
   const dealCategory = normaliseToDealCategory(sub);
   if (!dealCategory) return [];
 
