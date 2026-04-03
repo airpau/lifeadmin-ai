@@ -54,17 +54,7 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
   }, [supabase, fallbackRecovered]);
 
   return (
-    <div className="grid md:grid-cols-3 gap-6 mb-6">
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
-        <div className="bg-green-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-          <TrendingUp className="h-6 w-6 text-green-500" />
-        </div>
-        <h3 className="text-3xl font-bold text-white mb-1">
-          {formatGBP(moneyRecovered)}
-        </h3>
-        <p className="text-slate-400 text-sm">Money recovered</p>
-      </div>
-
+    <div className="grid md:grid-cols-2 gap-6 mb-6">
       <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
         <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
           <CheckCircle2 className="h-6 w-6 text-blue-500" />
