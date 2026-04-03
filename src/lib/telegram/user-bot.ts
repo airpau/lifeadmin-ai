@@ -206,6 +206,7 @@ async function callClaudeWithTools(
   ];
 
   let pendingAction: PendingAction | undefined;
+  let pendingActionText = '';
   const toolsUsed: string[] = [];
 
   // Enable prompt caching on system prompt and tools
@@ -227,6 +228,7 @@ async function callClaudeWithTools(
   // Tool use loop
   while (response.stop_reason === 'tool_use') {
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    let hasPendingAction = false;
 
     for (const block of response.content) {
       if (block.type === 'tool_use') {
@@ -239,6 +241,8 @@ async function callClaudeWithTools(
 
         if (result.pendingAction) {
           pendingAction = result.pendingAction;
+          pendingActionText = result.text;
+          hasPendingAction = true;
         }
 
         toolResults.push({
@@ -247,6 +251,13 @@ async function callClaudeWithTools(
           content: result.text,
         });
       }
+    }
+
+    // Stop the loop immediately when a pending action exists (e.g. draft letter awaiting
+    // user approval). Feeding the result back to Claude would cause it to re-invoke the
+    // generation tool and produce duplicate previews.
+    if (hasPendingAction) {
+      break;
     }
 
     messages.push({ role: 'assistant', content: response.content });
@@ -261,10 +272,14 @@ async function callClaudeWithTools(
     });
   }
 
-  const finalText = response.content
-    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('');
+  // When a pending action was produced, use the tool result text directly — this avoids
+  // feeding the letter back to Claude and getting a duplicate/re-generated response.
+  const finalText = pendingAction
+    ? pendingActionText
+    : response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
 
   return { text: finalText, pendingAction };
 }
