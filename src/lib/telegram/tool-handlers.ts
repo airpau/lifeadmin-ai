@@ -190,7 +190,7 @@ async function getSpendingSummary(
   // Previous month for comparison
   const prevDate = new Date(year, mon - 2, 1).toISOString();
 
-  const [current, previous] = await Promise.all([
+  const [current, previous, connections] = await Promise.all([
     supabase
       .from('bank_transactions')
       .select('category, amount, merchant_name')
@@ -205,11 +205,36 @@ async function getSpendingSummary(
       .lt('amount', 0)
       .gte('timestamp', prevDate)
       .lt('timestamp', startDate),
+    supabase
+      .from('bank_connections')
+      .select('bank_name, status, last_synced_at')
+      .eq('user_id', userId),
   ]);
 
+  const connData = connections.data ?? [];
+  const EXPIRED_STATUSES = ['expired', 'expired_legacy', 'revoked'];
+  const allExpired = connData.length > 0 && connData.every(c => EXPIRED_STATUSES.includes(c.status));
+  const noneConnected = connData.length === 0;
+
   if (!current.data || current.data.length === 0) {
+    if (noneConnected) {
+      return {
+        text: `No bank transactions found for ${targetMonth}. Connect a bank account at paybacker.co.uk/dashboard/money-hub to start tracking spending.`,
+      };
+    }
+    // User has/had a connection — data exists in other months but not this one
+    const lastSync = connData.reduce((latest: string | null, c) => {
+      if (!c.last_synced_at) return latest;
+      return !latest || c.last_synced_at > latest ? c.last_synced_at : latest;
+    }, null);
+    const lastSyncStr = lastSync ? ` (last synced ${fmtDate(lastSync)})` : '';
+    if (allExpired) {
+      return {
+        text: `No stored transactions found for ${targetMonth}. Your bank connection has expired${lastSyncStr} — reconnect at paybacker.co.uk/dashboard/money-hub to sync the latest data.`,
+      };
+    }
     return {
-      text: `No bank transactions found for ${targetMonth}. Connect a bank account at paybacker.co.uk/dashboard to see spending data.`,
+      text: `No transactions found for ${targetMonth}. Your bank account is connected and transactions will appear once synced.`,
     };
   }
 
@@ -244,6 +269,10 @@ async function getSpendingSummary(
     text += `• ${cat}: *${fmt(amount)}*${arrow}\n`;
   }
 
+  if (allExpired) {
+    text += `\n_Note: Bank connection expired — this data is from before the connection lapsed. Reconnect at paybacker.co.uk/dashboard/money-hub to sync newer transactions._`;
+  }
+
   return { text };
 }
 
@@ -276,10 +305,31 @@ async function listTransactions(
     query = query.ilike('merchant_name', `%${params.merchant}%`);
   }
 
-  const { data, error } = await query;
+  const [txResult, connResult] = await Promise.all([
+    query,
+    supabase.from('bank_connections').select('status, last_synced_at').eq('user_id', userId),
+  ]);
+
+  const { data, error } = txResult;
+  const connData = connResult.data ?? [];
+  const EXPIRED_STATUSES = ['expired', 'expired_legacy', 'revoked'];
+  const allExpired = connData.length > 0 && connData.every(c => EXPIRED_STATUSES.includes(c.status));
+  const noneConnected = connData.length === 0;
 
   if (error || !data || data.length === 0) {
-    return { text: `No transactions found for ${targetMonth}${params.category ? ` in ${params.category}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}.` };
+    const filterDesc = `${params.category ? ` in ${params.category}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}`;
+    if (noneConnected) {
+      return { text: `No transactions found for ${targetMonth}${filterDesc}. Connect a bank account at paybacker.co.uk/dashboard/money-hub` };
+    }
+    if (allExpired) {
+      const lastSync = connData.reduce((latest: string | null, c) => {
+        if (!c.last_synced_at) return latest;
+        return !latest || c.last_synced_at > latest ? c.last_synced_at : latest;
+      }, null);
+      const lastSyncStr = lastSync ? ` (last synced ${fmtDate(lastSync)})` : '';
+      return { text: `No transactions found for ${targetMonth}${filterDesc}. Bank connection expired${lastSyncStr} — reconnect at paybacker.co.uk/dashboard/money-hub to sync newer data.` };
+    }
+    return { text: `No transactions found for ${targetMonth}${filterDesc}.` };
   }
 
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -300,6 +350,10 @@ async function listTransactions(
 
   text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${data.length} transaction${data.length !== 1 ? 's' : ''})\n`;
   text += `_To recategorise a transaction, use its 8-character ID prefix._`;
+
+  if (allExpired) {
+    text += `\n_Note: Bank connection expired — data may not be current. Reconnect at paybacker.co.uk/dashboard/money-hub_`;
+  }
 
   return { text };
 }
