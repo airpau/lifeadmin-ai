@@ -127,6 +127,12 @@ export default function SubscriptionsPage() {
   const [addingSubscription, setAddingSubscription] = useState(false);
   const [detectingFromInbox, setDetectingFromInbox] = useState(false);
   const [cancellationError, setCancellationError] = useState<string | null>(null);
+  const [rpcTotals, setRpcTotals] = useState<{
+    monthly_total: number; subscriptions_monthly: number; subscriptions_count: number;
+    mortgages_monthly: number; mortgages_count: number;
+    loans_monthly: number; loans_count: number;
+    council_tax_monthly: number; council_tax_count: number;
+  } | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
   const [editSub, setEditSub] = useState<Subscription | null>(null);
   const [editForm, setEditForm] = useState({
@@ -207,10 +213,22 @@ export default function SubscriptionsPage() {
 
   const fetchSubscriptions = useCallback(async () => {
     try {
-      const res = await fetch('/api/subscriptions');
-      if (res.ok) {
-        const data = await res.json();
+      const [subsRes, totalsRes] = await Promise.all([
+        fetch('/api/subscriptions'),
+        (async () => {
+          const sb = createClient();
+          const { data: { user } } = await sb.auth.getUser();
+          if (!user) return null;
+          const { data } = await sb.rpc('get_subscription_total', { p_user_id: user.id });
+          return data;
+        })(),
+      ]);
+      if (subsRes.ok) {
+        const data = await subsRes.json();
         setSubscriptions(data);
+      }
+      if (totalsRes) {
+        setRpcTotals(totalsRes);
       }
     } catch (error) {
       console.error('Error fetching subscriptions:', error);
@@ -1696,46 +1714,34 @@ export default function SubscriptionsPage() {
         );
       })()}
 
-      {/* Summary — grouped breakdown matching overview page */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Subscriptions & Bills</p>
-          <h3 className="text-2xl font-bold text-white">{formatGBP(flexibleTotalMonthly + statutoryTotalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">{baseSubscriptions.filter(s => s.status === 'active').length} active</p>
-        </div>
+      {/* Summary — from get_subscription_total() RPC (single source of truth) */}
+      {rpcTotals && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+            <p className="text-slate-400 text-xs mb-1">Subscriptions & Bills</p>
+            <h3 className="text-2xl font-bold text-white">{formatGBP(rpcTotals.subscriptions_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+            <p className="text-slate-500 text-xs mt-1">{rpcTotals.subscriptions_count} active</p>
+          </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Mortgages & Loans</p>
-          <h3 className="text-xl font-bold text-slate-300">{formatGBP(
-            subscriptions.filter(s => s.status === 'active' && ['mortgage', 'loan'].includes(s.category || '')).reduce((sum, s) => {
-              const amt = parseFloat(String(s.amount)) || 0;
-              if (s.billing_cycle === 'yearly') return sum + amt / 12;
-              if (s.billing_cycle === 'quarterly') return sum + amt / 3;
-              return sum + amt;
-            }, 0)
-          )}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">{subscriptions.filter(s => s.status === 'active' && ['mortgage', 'loan'].includes(s.category || '')).length} active</p>
-        </div>
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+            <p className="text-slate-400 text-xs mb-1">Mortgages & Loans</p>
+            <h3 className="text-xl font-bold text-slate-300">{formatGBP(rpcTotals.mortgages_monthly + rpcTotals.loans_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+            <p className="text-slate-500 text-xs mt-1">{rpcTotals.mortgages_count + rpcTotals.loans_count} active</p>
+          </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Council Tax</p>
-          <h3 className="text-xl font-bold text-slate-300">{formatGBP(
-            subscriptions.filter(s => s.status === 'active' && s.category === 'council_tax').reduce((sum, s) => {
-              const amt = parseFloat(String(s.amount)) || 0;
-              if (s.billing_cycle === 'yearly') return sum + amt / 12;
-              if (s.billing_cycle === 'quarterly') return sum + amt / 3;
-              return sum + amt;
-            }, 0)
-          )}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">{subscriptions.filter(s => s.status === 'active' && s.category === 'council_tax').length} active</p>
-        </div>
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+            <p className="text-slate-400 text-xs mb-1">Council Tax</p>
+            <h3 className="text-xl font-bold text-slate-300">{formatGBP(rpcTotals.council_tax_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+            <p className="text-slate-500 text-xs mt-1">{rpcTotals.council_tax_count} active</p>
+          </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Total All Commitments</p>
-          <h3 className="text-2xl font-bold text-white">{formatGBP(allActiveMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">{formatGBP(allActiveMonthly * 12)}/year · {allActiveCount} tracked</p>
+          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+            <p className="text-slate-400 text-xs mb-1">Total All Commitments</p>
+            <h3 className="text-2xl font-bold text-white">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {rpcTotals.subscriptions_count + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Filtering and Sorting Row */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 relative z-10">
@@ -2179,19 +2185,8 @@ export default function SubscriptionsPage() {
                         Find Better Deal
                       </a>
                     )}
-                    {(sub.source === 'bank' || sub.source === 'bank_and_email') && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setUnrecognisedSub(sub);
-                          setFraudStep('initial');
-                        }}
-                        className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-4 py-2 rounded-lg transition-all text-sm border border-amber-500/20"
-                      >
-                        <AlertTriangle className="h-4 w-4" />
-                        I don&apos;t recognise this
-                      </button>
-                    )}
+                    {/* "I don't recognise this" only for confirmed bank-sourced subs that haven't been reviewed */}
+
                   </div>
                 )}
 
