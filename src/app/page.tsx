@@ -224,6 +224,89 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Feature Section 1: AI Complaint Letters */}
+        <section className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
+            >
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-3 py-1.5 text-xs text-mint-400 border border-mint-400/20 mb-6">
+                  <Scale className="h-3.5 w-3.5" />
+                  <span>AI-Powered</span>
+                </div>
+                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                  Disputes Centre
+                </h2>
+                <p className="text-slate-400 text-lg leading-relaxed mb-6">
+                  Generate formal complaint letters citing exact UK consumer law in 30 seconds. Our AI knows the legislation that applies to your case.
+                </p>
+                <ul className="space-y-3 mb-8">
+                  {[
+                    'Cites Consumer Rights Act 2015, EU261/UK261, and more',
+                    'Covers energy, broadband, parking, flights, debt, HMRC',
+                    '3 free letters per month, unlimited on paid plans',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-mint-400 mt-0.5 shrink-0" />
+                      <span className="text-slate-300 text-sm">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
+                  Generate Your Letter <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-3 h-3 rounded-full bg-red-500/60" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
+                  <div className="w-3 h-3 rounded-full bg-green-500/60" />
+                </div>
+                <div className="space-y-3">
+                  <div className="bg-navy-800 rounded-lg p-3">
+                    <p className="text-slate-500 text-xs mb-1">Category</p>
+                    <p className="text-white text-sm">Energy Bill Dispute</p>
+                  </div>
+                  <div className="bg-navy-800 rounded-lg p-3">
+                    <p className="text-slate-500 text-xs mb-1">Provider</p>
+                    <p className="text-white text-sm">British Gas</p>
+                  </div>
+                  <div className="bg-navy-800 rounded-lg p-3">
+                    <p className="text-slate-500 text-xs mb-1">AI-Generated Letter Preview</p>
+                    <p className="text-slate-400 text-xs leading-relaxed">Dear Sir/Madam, I am writing to formally dispute my energy bill dated 15 March 2026. Under the Consumer Rights Act 2015, Section 49, services must be carried out with reasonable care...</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        { label: 'Energy', href: '/deals/energy' },
+                        { label: 'Broadband', href: '/deals/broadband' },
+                        { label: 'Parking', href: '/dashboard/complaints?type=parking_appeal&new=1', type: 'parking_appeal' },
+                        { label: 'Flights', href: '/dashboard/complaints?type=flight_compensation&new=1', type: 'flight_compensation' },
+                        { label: 'Debt', href: '/dashboard/complaints?type=debt_dispute&new=1', type: 'debt_dispute' },
+                        { label: 'HMRC', href: '/dashboard/complaints?type=hmrc_tax_rebate&new=1', type: 'hmrc_tax_rebate' },
+                      ] as { label: string; href: string; type?: string }[]
+                    ).map(cat => (
+                      <Link
+                        key={cat.label}
+                        href={cat.href}
+                        onClick={() => {
+                          if (cat.type) sessionStorage.setItem('pb_preview_letter', JSON.stringify({ type: cat.type }));
+                        }}
+                        className="text-xs bg-mint-400/10 text-mint-400 px-2 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-all"
+                      >{cat.label}</Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
         {/* Meet Pocket Agent Showcase */}
         <section className="py-20 md:py-28 bg-navy-900/30 relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent" />
@@ -398,89 +481,6 @@ export default function Home() {
               <p className="text-slate-500 text-xs mt-4">
                 Available on Telegram. WhatsApp coming soon.
               </p>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Feature Section 1: AI Complaint Letters */}
-        <section className="py-20 md:py-28">
-          <div className="container mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
-            >
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-3 py-1.5 text-xs text-mint-400 border border-mint-400/20 mb-6">
-                  <Scale className="h-3.5 w-3.5" />
-                  <span>AI-Powered</span>
-                </div>
-                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                  Disputes Centre
-                </h2>
-                <p className="text-slate-400 text-lg leading-relaxed mb-6">
-                  Generate formal complaint letters citing exact UK consumer law in 30 seconds. Our AI knows the legislation that applies to your case.
-                </p>
-                <ul className="space-y-3 mb-8">
-                  {[
-                    'Cites Consumer Rights Act 2015, EU261/UK261, and more',
-                    'Covers energy, broadband, parking, flights, debt, HMRC',
-                    '3 free letters per month, unlimited on paid plans',
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-3">
-                      <CheckCircle className="h-5 w-5 text-mint-400 mt-0.5 shrink-0" />
-                      <span className="text-slate-300 text-sm">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
-                  Generate Your Letter <ChevronRight className="h-4 w-4" />
-                </Link>
-              </div>
-              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-3 h-3 rounded-full bg-red-500/60" />
-                  <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
-                  <div className="w-3 h-3 rounded-full bg-green-500/60" />
-                </div>
-                <div className="space-y-3">
-                  <div className="bg-navy-800 rounded-lg p-3">
-                    <p className="text-slate-500 text-xs mb-1">Category</p>
-                    <p className="text-white text-sm">Energy Bill Dispute</p>
-                  </div>
-                  <div className="bg-navy-800 rounded-lg p-3">
-                    <p className="text-slate-500 text-xs mb-1">Provider</p>
-                    <p className="text-white text-sm">British Gas</p>
-                  </div>
-                  <div className="bg-navy-800 rounded-lg p-3">
-                    <p className="text-slate-500 text-xs mb-1">AI-Generated Letter Preview</p>
-                    <p className="text-slate-400 text-xs leading-relaxed">Dear Sir/Madam, I am writing to formally dispute my energy bill dated 15 March 2026. Under the Consumer Rights Act 2015, Section 49, services must be carried out with reasonable care...</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(
-                      [
-                        { label: 'Energy', href: '/deals/energy' },
-                        { label: 'Broadband', href: '/deals/broadband' },
-                        { label: 'Parking', href: '/dashboard/complaints?type=parking_appeal&new=1', type: 'parking_appeal' },
-                        { label: 'Flights', href: '/dashboard/complaints?type=flight_compensation&new=1', type: 'flight_compensation' },
-                        { label: 'Debt', href: '/dashboard/complaints?type=debt_dispute&new=1', type: 'debt_dispute' },
-                        { label: 'HMRC', href: '/dashboard/complaints?type=hmrc_tax_rebate&new=1', type: 'hmrc_tax_rebate' },
-                      ] as { label: string; href: string; type?: string }[]
-                    ).map(cat => (
-                      <Link
-                        key={cat.label}
-                        href={cat.href}
-                        onClick={() => {
-                          if (cat.type) sessionStorage.setItem('pb_preview_letter', JSON.stringify({ type: cat.type }));
-                        }}
-                        className="text-xs bg-mint-400/10 text-mint-400 px-2 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-all"
-                      >{cat.label}</Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
             </motion.div>
           </div>
         </section>
