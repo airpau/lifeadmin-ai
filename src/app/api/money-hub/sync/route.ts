@@ -37,13 +37,17 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
 // Income detection patterns - expanded for real-world bank descriptions
 const INCOME_PATTERNS: Array<{ keywords: string[]; type: string }> = [
   // Specific patterns first — order matters (first match wins)
+  // Credit/loan disbursements — NOT income, treated like transfers
+  { keywords: ['flexipay', 'credit facility', 'loan advance', 'loan drawdown', 'overdraft advance'], type: 'credit_loan' },
   { keywords: ['salary', 'wages', 'payroll', 'pay ref', 'director', 'monthly pay', 'net pay'], type: 'salary' },
   { keywords: ['freelance', 'invoice', 'consulting', 'contract pay'], type: 'freelance' },
   { keywords: ['hmrc', 'tax credit', 'working tax', 'child tax'], type: 'benefits' },
   { keywords: ['dwp', 'universal credit', 'child benefit', 'pension credit', 'pip ', 'esa ', 'jsa '], type: 'benefits' },
-  { keywords: ['rent ', 'rental income', 'tenant', 'letting'], type: 'rental' },
+  // Rental: require word-boundary patterns to avoid matching 'parent', 'transparent', etc.
+  { keywords: [' rent ', 'rent received', 'rent from', 'rental income', 'tenant payment', 'letting income'], type: 'rental' },
   { keywords: ['dividend', 'interest earned', 'interest payment', 'investment return', 'capital gain'], type: 'investment' },
-  { keywords: ['from a/c', 'via mobile xfer', 'personal transfer', 'internal transfer', 'between accounts'], type: 'transfer' },
+  // Transfers: expanded to catch UK bank abbreviations and common patterns
+  { keywords: ['from a/c', 'to a/c', 'via mobile xfer', 'personal transfer', 'internal transfer', 'between accounts', 'transfer from', 'transfer to', 'from savings', 'from current account', 'isa transfer', 'savings transfer'], type: 'transfer' },
   { keywords: ['loan repayment', 'loan repay', 'repayment received'], type: 'loan_repayment' },
   { keywords: ['birthday', 'gift from', 'present from'], type: 'gift' },
   // Refund pattern LAST and more specific — only match clear refund indicators
@@ -74,13 +78,30 @@ function isTransfer(desc: string, bankCategory: string): boolean {
   const cat = bankCategory.toUpperCase();
   const d = desc.toLowerCase();
   if (cat === 'TRANSFER') return true;
-  if (d.includes('personal transfer') || d.includes('to a/c ') || d.includes('via mobile xfer')) return true;
+  if (d.includes('personal transfer') || d.includes('to a/c ') || d.includes('from a/c') || d.includes('via mobile xfer')) return true;
+  if (d.includes('transfer from') || d.includes('transfer to')) return true;
+  // UK bank transfer abbreviations: TFR, TRF, FT (Faster Transfer), FPS (Faster Payment)
+  if (d.startsWith('tfr ') || d.startsWith('trf ') || d.startsWith('fps ')) return true;
+  if (d.includes(' tfr ') || d.includes(' trf ')) return true;
+  if (d.includes('from savings') || d.includes('from current') || d.includes('from isa') || d.includes('isa transfer')) return true;
+  if (d.includes('savings transfer') || d.includes('account transfer')) return true;
   if (d.includes('barclaycard') && !d.includes('fee')) return true;
   if (d.includes('mbna') && d.includes('tpp')) return true;
   if (d.includes('halifax credit') || d.includes('hsbc bank visa')) return true;
   if (d.includes('virgin money') && d.includes('tpp')) return true;
   if (d.includes('securepay.bos')) return true;
   return false;
+}
+
+function isCreditLoan(desc: string): boolean {
+  const d = desc.toLowerCase();
+  return (
+    d.includes('flexipay') ||
+    d.includes('credit facility') ||
+    d.includes('loan advance') ||
+    d.includes('loan drawdown') ||
+    d.includes('overdraft advance')
+  );
 }
 
 export async function POST() {
@@ -173,18 +194,33 @@ export async function POST() {
     let incomeType: string | null = null;
     if (amount > 0) {
       incomeType = detectIncomeType(desc);
-      if (!incomeType) {
+      // Credit/loan disbursements are not income — treat like transfers
+      if (incomeType === 'credit_loan') {
+        if (!finalCategory) finalCategory = 'transfers';
+      } else if (!incomeType) {
         const d = desc.toLowerCase();
-        // More intelligent fallbacks
-        if (d.includes('from a/c') || d.includes('via mobile xfer') || d.includes('internal')) incomeType = 'transfer';
-        else if (d.includes('rent') && !d.includes('current')) incomeType = 'rental';
-        else if (d.includes('director') || d.includes('payroll') || d.includes('salary') || d.includes('wages')) incomeType = 'salary';
-        else if (d.includes('airbnb') || d.includes('booking.com') || d.includes('vrbo')) incomeType = 'rental';
-        else if (d.includes('hmrc') || d.includes('dwp') || d.includes('universal credit')) incomeType = 'benefits';
-        else if (d.includes('dividend') || d.includes('interest')) incomeType = 'investment';
-        else if (d.includes('invoice') || d.includes('freelance') || d.includes('consulting')) incomeType = 'freelance';
+        // Transfer fallbacks — catch TFR/TRF abbreviations and common patterns
+        if (d.includes('from a/c') || d.includes('via mobile xfer') || d.includes('internal') ||
+            d.includes('transfer') || d.startsWith('tfr') || d.startsWith('trf') || d.startsWith('fps')) {
+          incomeType = 'transfer';
+        // Rental: use word-boundary checks to avoid false positives from 'parent', 'current', etc.
+        } else if ((d.includes(' rent ') || d.startsWith('rent ') || d.includes('rental') || d.includes('letting')) &&
+            !d.includes('current') && !d.includes('transfer')) {
+          incomeType = 'rental';
+        } else if (d.includes('director') || d.includes('payroll') || d.includes('salary') || d.includes('wages')) {
+          incomeType = 'salary';
+        } else if (d.includes('airbnb') || d.includes('booking.com') || d.includes('vrbo')) {
+          incomeType = 'rental';
+        } else if (d.includes('hmrc') || d.includes('dwp') || d.includes('universal credit')) {
+          incomeType = 'benefits';
+        } else if (d.includes('dividend') || d.includes('interest')) {
+          incomeType = 'investment';
+        } else if (d.includes('invoice') || d.includes('freelance') || d.includes('consulting')) {
+          incomeType = 'freelance';
         // Large recurring credits without clear description are likely salary
-        else if (amount > 1000 && !d.includes('transfer') && !d.includes('refund')) incomeType = 'salary';
+        } else if (amount > 1000 && !d.includes('transfer') && !d.includes('refund')) {
+          incomeType = 'salary';
+        }
       }
     }
 
@@ -223,18 +259,19 @@ export async function POST() {
 Categories for debits: mortgage, loans, council_tax, tax, energy, water, broadband, mobile, streaming, fitness, groceries, eating_out, fuel, shopping, insurance, transport, childcare, software, professional, bills, other.
 
 Income types for credits (IMPORTANT — classify carefully):
+- "credit_loan": FlexiPay drawdown, credit facility advance, loan disbursement, overdraft extension — NOT income, excluded from totals
 - "salary": Regular employment income, monthly pay, wages, director payments, PAYE
 - "freelance": Invoice payments, consulting fees, contract work, self-employed income
 - "benefits": Government payments — HMRC, DWP, Universal Credit, Child Benefit, PIP, Tax Credits
 - "rental": Rent from tenants, letting agent payments, Airbnb/Booking.com host payments
 - "investment": Dividends, interest earned, capital gains, ISA returns
 - "refund": ONLY when clearly a refund (e.g. "REFUND FROM AMAZON", "YOUR REFUND"). Do NOT classify regular income as refund.
-- "transfer": Money from own accounts, internal transfers, between-account movements
+- "transfer": Money from own accounts, internal transfers, between-account movements, TFR, FPS payments from own accounts
 - "loan_repayment": Someone repaying money they owe you
 - "gift": Birthday/Christmas money, gifts from family
 - "other": Only if none of the above fit
 
-CRITICAL: If the credit is a regular recurring amount from the same source (employer), classify as "salary" even if the description is unclear. If from Booking.com or Airbnb, classify as "rental" (host income), NOT "refund". If from HMRC, classify as "benefits" unless description says "tax refund" specifically.
+CRITICAL: If the credit is a regular recurring amount from the same source (employer), classify as "salary" even if the description is unclear. If from Booking.com or Airbnb, classify as "rental" (host income), NOT "refund". If from HMRC, classify as "benefits" unless description says "tax refund" specifically. FlexiPay and any credit facility must be "credit_loan". Any TFR/FPS/TRANSFER from own savings or current accounts must be "transfer".
 
 Return ONLY the JSON array.`,
           messages: [{ role: 'user', content: `Categorise:\n${txnList}` }],
@@ -285,9 +322,14 @@ Return ONLY the JSON array.`,
   const outgoings = monthTxns.filter(t => parseFloat(t.amount) < 0 && !isTransfer(t.description || '', t.category || ''))
     .reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
 
-  // Income breakdown by type
+  // Income breakdown by type — exclude transfers and credit/loan disbursements
   const incomeByType: Record<string, number> = {};
-  for (const t of monthTxns.filter(t => parseFloat(t.amount) > 0)) {
+  for (const t of monthTxns.filter(t =>
+    parseFloat(t.amount) > 0 &&
+    t.income_type !== 'transfer' &&
+    t.income_type !== 'credit_loan' &&
+    t.user_category !== 'transfers'
+  )) {
     const type = t.income_type || 'other';
     incomeByType[type] = (incomeByType[type] || 0) + parseFloat(t.amount);
   }

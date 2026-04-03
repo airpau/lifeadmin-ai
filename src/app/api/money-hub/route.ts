@@ -99,7 +99,7 @@ export async function GET(request: Request) {
       const cat = (t.category || '').toUpperCase();
       const desc = (t.description || '').toLowerCase();
       if (cat === 'TRANSFER') return true;
-      if (t.income_type === 'transfer' || t.user_category === 'transfers') return true;
+      if (t.income_type === 'transfer' || t.income_type === 'credit_loan' || t.user_category === 'transfers') return true;
       if (desc.includes('personal transfer') || desc.includes('to a/c ') || desc.includes('from a/c') ||
           desc.includes('via mobile xfer') || desc.includes('internal') || desc.includes('between accounts')) return true;
       return false;
