@@ -970,26 +970,7 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Trustpilot placeholder */}
-            <div className="text-center">
-              <a
-                href="https://www.trustpilot.com/review/paybacker.co.uk"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-3 bg-navy-900 border border-navy-700/50 rounded-2xl px-6 py-4 hover:border-mint-400/30 transition-all group"
-              >
-                <div className="flex gap-0.5">
-                  {[1,2,3,4,5].map(s => (
-                    <svg key={s} className="h-5 w-5 text-[#00b67a]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                  ))}
-                </div>
-                <div className="text-left">
-                  <p className="text-white text-sm font-semibold group-hover:text-mint-400 transition-all">See our reviews on Trustpilot</p>
-                  <p className="text-slate-500 text-xs">paybacker.co.uk</p>
-                </div>
-                <svg className="h-4 w-4 text-slate-600 group-hover:text-slate-400 transition-all ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              </a>
-            </div>
+            {/* Trustpilot — hidden until reviews are collected */}
           </div>
         </section>
 
