@@ -369,14 +369,15 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:p-4 sm:pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
+      <div className="relative bg-navy-900 border border-navy-700/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-navy-700/50 flex-shrink-0">
           <h2 className="text-lg font-bold text-white">Add to your dispute</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form id="add-correspondence-form" onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1"
+          style={{ WebkitOverflowScrolling: 'touch' }}>
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">What are you adding?</label>
             <div className="grid grid-cols-1 gap-2">
@@ -478,14 +479,17 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
             />
           </div>
 
+        </form>
+        <div className="p-5 pt-3 border-t border-navy-700/50 flex-shrink-0 safe-area-bottom">
           <button
             type="submit"
+            form="add-correspondence-form"
             disabled={saving || uploading || !content.trim()}
             className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
             {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );

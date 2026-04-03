@@ -36,8 +36,9 @@ const COMPLAINTS_SYSTEM_PROMPT = `You are a professional UK consumer rights advo
 - Debt harassment: Protection from Harassment Act 1997 — creditors must not harass, threaten, or use deceptive practices
 - Disputed debts: creditor must prove the debt exists and is owed by providing a signed credit agreement (Consumer Credit Act 1974, s.78)
 - Default notices: Consumer Credit Act 1974, s.87-88 — creditor must serve valid default notice before taking enforcement action
-- Gym/leisure debts: these are often unenforceable if no signed credit agreement exists, especially if service was cancelled
 - Unfair contract terms: Consumer Rights Act 2015, Part 2 — terms must be fair and transparent
+
+IMPORTANT: Only cite legislation that is DIRECTLY relevant to the specific industry and issue type. Do NOT cite gym, fitness, or CMA guidance unless the dispute is specifically about a gym or fitness membership. Do NOT cite energy regulations for broadband disputes or vice versa.
 
 ## Regulatory escalation paths:
 - Energy: Ofgem → Energy Ombudsman (after 8 weeks or deadlock letter)
