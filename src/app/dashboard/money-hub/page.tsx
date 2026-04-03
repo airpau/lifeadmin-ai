@@ -303,6 +303,15 @@ export default function MoneyHubPage() {
   } | null>(null);
   const [loadingPrevMonth, setLoadingPrevMonth] = useState(false);
 
+  // Verified savings
+  const [verifiedSavings, setVerifiedSavings] = useState<{
+    totalSaved: number;
+    monthlyRecurring: number;
+    annualRecurring: number;
+    count: number;
+    timeline: any[];
+  } | null>(null);
+
   // Dismissed expected bills (persisted in Supabase)
   const [showDismissedBills, setShowDismissedBills] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -907,6 +916,12 @@ export default function MoneyHubPage() {
         setTimeout(() => setTourStep(0), 1000);
       }
     } catch { /* silent */ }
+
+    // Fetch verified savings
+    fetch('/api/savings/summary')
+      .then(r => r.json())
+      .then(d => { if (!d.error) setVerifiedSavings(d); })
+      .catch(() => {});
 
     // Check FCA Banner
     try {
@@ -1606,6 +1621,82 @@ export default function MoneyHubPage() {
           </>
         );
       })()}
+
+      {/* ═══ VERIFIED SAVINGS ═══ */}
+      {verifiedSavings && verifiedSavings.count > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 to-amber-600/5 border border-amber-500/30 rounded-2xl p-5">
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <h2 className="text-lg font-semibold text-amber-400 font-[family-name:var(--font-heading)] flex items-center gap-2">
+                <PiggyBank className="h-5 w-5" /> Verified Savings
+              </h2>
+              <p className="text-slate-400 text-xs mt-0.5">Money you have actually saved using Paybacker</p>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold text-amber-400">£{fmt(verifiedSavings.totalSaved)}</p>
+              <p className="text-slate-500 text-xs">saved in total</p>
+            </div>
+          </div>
+
+          {/* Summary stats */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-navy-900 rounded-xl p-3 text-center">
+              <p className="text-white font-bold text-base">£{fmt(verifiedSavings.totalSaved)}</p>
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide mt-0.5">All time</p>
+            </div>
+            <div className="bg-navy-900 rounded-xl p-3 text-center">
+              <p className="text-white font-bold text-base">
+                £{fmt(verifiedSavings.monthlyRecurring)}<span className="text-slate-500 text-xs font-normal">/mo</span>
+              </p>
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide mt-0.5">Recurring</p>
+            </div>
+            <div className="bg-navy-900 rounded-xl p-3 text-center">
+              <p className="text-amber-400 font-bold text-base">{verifiedSavings.count}</p>
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide mt-0.5">Savings confirmed</p>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div className="space-y-2">
+            {verifiedSavings.timeline.slice(0, 5).map((entry: any) => {
+              const meta: Record<string, { icon: string; color: string; label: string }> = {
+                dispute_won: { icon: '⚖️', color: 'text-green-400', label: 'Dispute Won' },
+                subscription_cancelled: { icon: '✂️', color: 'text-amber-400', label: 'Cancelled' },
+                price_reverted: { icon: '📉', color: 'text-blue-400', label: 'Price Reverted' },
+                compensation: { icon: '💰', color: 'text-emerald-400', label: 'Compensation' },
+                refund: { icon: '💸', color: 'text-purple-400', label: 'Refund' },
+                contract_exited: { icon: '🚪', color: 'text-orange-400', label: 'Contract Exited' },
+                other: { icon: '✓', color: 'text-slate-400', label: 'Saving' },
+              };
+              const m = meta[entry.saving_type] || meta.other;
+              const date = new Date(entry.confirmed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+              return (
+                <div key={entry.id} className="flex items-center justify-between bg-navy-900/70 rounded-lg px-3 py-2.5 border border-navy-700/30">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-base shrink-0">{m.icon}</span>
+                    <div className="min-w-0">
+                      <p className="text-white text-xs font-medium truncate">{entry.title}</p>
+                      <p className="text-slate-500 text-[10px]">{m.label} · {date}</p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0 ml-3">
+                    <p className={`text-sm font-bold ${m.color}`}>£{fmt(Number(entry.amount_saved))}</p>
+                    {Number(entry.annual_saving) > 0 && (
+                      <p className="text-[10px] text-slate-500">£{fmt(Number(entry.annual_saving))}/yr</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {verifiedSavings.count > 5 && (
+            <p className="text-center text-slate-500 text-xs mt-3">
+              +{verifiedSavings.count - 5} more savings confirmed
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ═══ SPARSE MONTH: "Month So Far" Section ═══ */}
       {showSparseMonthContent && isCurrentMonthView && hasNoCurrentMonthTxns && (

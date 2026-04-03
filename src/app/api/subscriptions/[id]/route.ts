@@ -82,6 +82,20 @@ export async function PATCH(
                 else console.log(`Money recovered updated: +${annualSaving.toFixed(2)}/yr for ${data.provider_name}`);
               });
           });
+
+        // Track in verified_savings for the dashboard widget
+        supabase.from('verified_savings').insert({
+          user_id: user.id,
+          saving_type: 'subscription_cancelled',
+          title: `Cancelled ${data.provider_name}`,
+          description: `Was paying £${monthlySaving.toFixed(2)}/month`,
+          amount_saved: monthlySaving,
+          annual_saving: annualSaving,
+          subscription_id: id,
+          confirmed_by: 'user',
+        }).then(({ error: vsErr }) => {
+          if (vsErr) console.error('Failed to create verified_savings entry:', vsErr);
+        });
       }
     }
 

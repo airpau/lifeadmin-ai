@@ -186,6 +186,22 @@ export async function PATCH(
         console.error('Failed to resolve dispute:', error);
         return NextResponse.json({ error: 'Failed to resolve dispute' }, { status: 500 });
       }
+
+      // Track in verified_savings for won/partial disputes
+      if (data && (body.outcome === 'won' || body.outcome === 'partial') && moneyRecovered > 0) {
+        const suffix = body.outcome === 'partial' ? ' (partial)' : '';
+        supabase.from('verified_savings').insert({
+          user_id: user.id,
+          saving_type: 'dispute_won',
+          title: `Dispute won${suffix} — ${data.provider_name || data.category || 'complaint'}`,
+          description: body.outcome_notes || null,
+          amount_saved: moneyRecovered,
+          annual_saving: 0,
+          dispute_id: id,
+          confirmed_by: 'user',
+        }).then(({ error: vsErr }) => { if (vsErr) console.error('Failed to create verified_savings entry:', vsErr); });
+      }
+
       return NextResponse.json(data);
     }
 
@@ -196,6 +212,21 @@ export async function PATCH(
       .eq('id', id)
       .eq('user_id', user.id)
       .single();
+
+    // Track in verified_savings for won/partial disputes
+    if (resolved && (body.outcome === 'won' || body.outcome === 'partial') && moneyRecovered > 0) {
+      const suffix = body.outcome === 'partial' ? ' (partial)' : '';
+      supabase.from('verified_savings').insert({
+        user_id: user.id,
+        saving_type: 'dispute_won',
+        title: `Dispute won${suffix} — ${resolved.provider_name || resolved.category || 'complaint'}`,
+        description: body.outcome_notes || null,
+        amount_saved: moneyRecovered,
+        annual_saving: 0,
+        dispute_id: id,
+        confirmed_by: 'user',
+      }).then(({ error: vsErr }) => { if (vsErr) console.error('Failed to create verified_savings entry:', vsErr); });
+    }
 
     return NextResponse.json(resolved);
   }
