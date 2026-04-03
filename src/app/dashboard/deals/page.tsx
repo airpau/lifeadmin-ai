@@ -163,6 +163,24 @@ function shortenBadge(text: string): string {
     .replace(/^Rates from /i, 'From ');
 }
 
+// Categories that have real verified affiliate deals in the database
+const CATEGORIES_WITH_VERIFIED_DEALS = new Set(['broadband', 'mobile']);
+
+// Categories that should never show deal suggestions (non-switchable or no real deals)
+const EXCLUDED_DEAL_CATEGORIES = new Set([
+  'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax', 'fee', 'parking',
+  'credit_card', 'credit cards', 'car_finance', 'car finance',
+]);
+
+// Subcategory display names for loans
+const LOAN_SUBCATEGORY_LABELS: Record<string, string> = {
+  car_finance: 'Car Finance',
+  government_loan: 'Government Loan',
+  personal_loan: 'Personal Loan',
+  credit_card: 'Credit Card',
+  business_loan: 'Business Loan',
+};
+
 interface UserSubscription {
   id: string;
   provider_name: string;
@@ -172,6 +190,7 @@ interface UserSubscription {
   contract_end_date: string | null;
   contract_type: string | null;
   provider_type: string | null;
+  subcategory: string | null;
   annual_cost: number | null;
   interest_rate: number | null;
   remaining_balance: number | null;
@@ -181,6 +200,8 @@ interface UserSubscription {
   early_exit_fee: number | null;
   speed_mbps: number | null;
   data_allowance: string | null;
+  status: string | null;
+  dismissed_at: string | null;
 }
 
 function buildAwinUrl(awinMid: string, providerUrl: string): string {
@@ -271,7 +292,7 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
   );
 }
 
-const CATEGORY_TABS = ['Energy', 'Broadband', 'Mobile', 'Insurance', 'Mortgages', 'Loans', 'Credit Cards', 'Car Finance', 'Travel', 'Water'];
+const CATEGORY_TABS = ['Energy', 'Broadband', 'Mobile', 'Insurance', 'Travel', 'Water'];
 
 interface VerifiedDeal {
   id: string;
@@ -308,8 +329,8 @@ function parseDataAllowanceGB(da: string | null): number {
 function freshnessIndicator(lastVerified: string | null): { text: string; color: string; bg: string } | null {
   if (!lastVerified) return null;
   const days = Math.floor((Date.now() - new Date(lastVerified).getTime()) / (1000 * 60 * 60 * 24));
-  if (days <= 7) return { text: '✓ Verified', color: 'text-green-400', bg: 'bg-green-500/10' };
-  if (days <= 30) return null; // fine, show nothing
+  if (days <= 7) return { text: 'Verified this week', color: 'text-green-400', bg: 'bg-green-500/10' };
+  if (days <= 30) return { text: 'Verified', color: 'text-green-400', bg: 'bg-green-500/10' };
   return { text: 'Prices may have changed', color: 'text-amber-400', bg: 'bg-amber-500/10' };
 }
 
@@ -441,7 +462,15 @@ export default function DealsPage() {
   useEffect(() => {
     Promise.all([
       fetch('/api/subscriptions').then(r => r.json()).then(data => {
-        if (Array.isArray(data)) setSubscriptions(data);
+        if (Array.isArray(data)) {
+          // Filter out dismissed and cancelled subscriptions, and those with null category
+          const filtered = data.filter((s: any) =>
+            s.status !== 'cancelled' &&
+            !s.dismissed_at &&
+            (s.category || s.provider_type)
+          );
+          setSubscriptions(filtered);
+        }
       }),
       fetch('/api/affiliate-deals').then(r => r.json()).then(data => {
         setVerifiedDeals(Array.isArray(data) ? data : []);
@@ -454,13 +483,25 @@ export default function DealsPage() {
   const urgentSubsByCategory: Record<string, Array<{ sub: UserSubscription; days: number }>> = {};
 
   for (const sub of subscriptions) {
+    // Skip subscriptions with null category, dismissed, or cancelled
+    if (!sub.category && !sub.provider_type) continue;
+    if (sub.status === 'cancelled' || sub.dismissed_at) continue;
+
+    // Skip excluded categories (mortgages, loans, council_tax, etc.)
+    const subCatLower = (sub.category || sub.provider_type || '').toLowerCase();
+    if (EXCLUDED_DEAL_CATEGORIES.has(subCatLower)) continue;
+
     const dealCats = sub.provider_type
       ? (PROVIDER_TYPE_TO_DEALS[sub.provider_type] || [])
       : (CATEGORY_TO_DEALS[sub.category || ''] || []);
 
     if (dealCats.length === 0) continue;
 
-    for (const cat of dealCats) {
+    // Filter out deal categories that are excluded
+    const filteredDealCats = dealCats.filter(c => !EXCLUDED_DEAL_CATEGORIES.has(c.toLowerCase()));
+    if (filteredDealCats.length === 0) continue;
+
+    for (const cat of filteredDealCats) {
       if (!categoryToUserSubs[cat]) categoryToUserSubs[cat] = [];
       categoryToUserSubs[cat].push(sub);
 
@@ -507,11 +548,17 @@ export default function DealsPage() {
     const userSpend = categoryUserSpend[category];
     if (!userSpend || userSpend.amount <= 0 || deals.length === 0) return null;
 
+    // Don't show deal suggestions for excluded categories
+    if (EXCLUDED_DEAL_CATEGORIES.has(category.toLowerCase())) return null;
+
     let best: { deal: VerifiedDeal; savingsYearly: number; savingsMonthly: number } | null = null;
     for (const d of deals) {
       const effectivePrice = d.price_promotional ?? d.price_monthly;
       const savingsMonthly = userSpend.amount - effectivePrice;
       if (savingsMonthly <= 0) continue;
+
+      // Cap: if savings > 80% of current price, skip (unrealistic)
+      if (savingsMonthly > userSpend.amount * 0.8) continue;
 
       // For broadband: must have same or higher speed
       if (category === 'Broadband' && d.speed_mbps && userSpend.speedMbps > 0 && d.speed_mbps < userSpend.speedMbps) continue;
@@ -642,8 +689,32 @@ export default function DealsPage() {
       <div className="space-y-10">
         {visibleCategories.map((category) => {
           const catLower = category.toLowerCase();
+
+          // Skip excluded categories entirely
+          if (EXCLUDED_DEAL_CATEGORIES.has(catLower)) {
+            return (
+              <section key={category}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap className="h-5 w-5 text-slate-500" />
+                  <h2 className="text-xl font-bold text-white">{category}</h2>
+                </div>
+                <div className="bg-navy-800/30 border border-navy-700/40 rounded-xl px-4 py-4 flex items-center gap-3">
+                  <Info className="h-5 w-5 text-slate-500 flex-shrink-0" />
+                  <p className="text-sm text-slate-400">
+                    {catLower.includes('loan') || catLower.includes('mortgage') || catLower.includes('credit')
+                      ? `${category} aren't switchable like utility bills. We recommend speaking to a financial adviser for personalised guidance.`
+                      : `Deal comparisons aren't available for ${category.toLowerCase()}. We focus on categories where we can find you genuine savings.`
+                    }
+                  </p>
+                </div>
+              </section>
+            );
+          }
+
           const affiliatePlans = verifiedDeals
             .filter(d => d.category === catLower);
+
+          const hasVerifiedDeals = CATEGORIES_WITH_VERIFIED_DEALS.has(catLower);
 
           // Sort by savings if user has spend data, otherwise by price
           const userSpend = categoryUserSpend[category];
@@ -659,13 +730,34 @@ export default function DealsPage() {
             affiliatePlans.sort((a, b) => (a.price_promotional || a.price_monthly) - (b.price_promotional || b.price_monthly));
           }
 
-          // Remove hardcoded cards for providers that have affiliate plans
+          // Only show hardcoded generic deal cards for categories WITH verified deals
+          // For other categories, show a "coming soon" message instead
           const affiliateProviderNames = new Set(affiliatePlans.map(d => d.provider.toLowerCase()));
-          const genericDeals = (DEALS[category] || [])
-            .filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()))
-            .filter(d => !dismissedDeals.has(d.id));
+          const genericDeals = hasVerifiedDeals
+            ? (DEALS[category] || [])
+                .filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()))
+                .filter(d => !dismissedDeals.has(d.id))
+            : [];
 
           const activeAffiliatePlans = affiliatePlans.filter(d => !dismissedDeals.has(d.id));
+
+          // For categories without verified deals and no generic deals, show coming soon
+          if (!hasVerifiedDeals && activeAffiliatePlans.length === 0) {
+            return (
+              <section key={category}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap className="h-5 w-5 text-slate-500" />
+                  <h2 className="text-xl font-bold text-white">{category} Deals</h2>
+                </div>
+                <div className="bg-navy-800/30 border border-dashed border-navy-700/40 rounded-xl px-4 py-4 flex items-center gap-3">
+                  <Info className="h-5 w-5 text-mint-400 flex-shrink-0" />
+                  <p className="text-sm text-slate-400">
+                    We&apos;re working on finding verified deals for {category.toLowerCase()}. Check back soon!
+                  </p>
+                </div>
+              </section>
+            );
+          }
 
           if (activeAffiliatePlans.length === 0 && genericDeals.length === 0) return null;
 
@@ -756,7 +848,11 @@ export default function DealsPage() {
                     const hasMore = plans.length > 3 && !isExpanded;
                     for (const plan of shown) {
                       const effectivePrice = plan.price_promotional ?? plan.price_monthly;
-                      const savMo = userSpend ? userSpend.amount - effectivePrice : undefined;
+                      let savMo = userSpend ? userSpend.amount - effectivePrice : undefined;
+                      // Cap: if savings > 80% of current price, don't show savings (unrealistic)
+                      if (savMo !== undefined && userSpend && savMo > userSpend.amount * 0.8) {
+                        savMo = undefined;
+                      }
                       const savYr = savMo !== undefined ? savMo * 12 : undefined;
                       cards.push(
                         <AffiliatePlanCard

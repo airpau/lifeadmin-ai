@@ -284,17 +284,44 @@ export default function DashboardPage() {
         setLoading(false);
       }
 
+      // Categories that should never show savings suggestions
+      const excludedDealCategories = new Set([
+        'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
+        'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
+        'fee', 'parking',
+      ]);
+
+      // Filter helper: skip excluded categories, null category, Chris Hillier, and apply 80% cap
+      const filterDealSub = (sub: any): boolean => {
+        if (!sub.category) return false;
+        const catLower = (sub.category || '').toLowerCase();
+        if (excludedDealCategories.has(catLower)) return false;
+        const name = (sub.subscriptionName || sub.providerName || '').toLowerCase();
+        if (name.includes('chris hillier')) return false;
+        return true;
+      };
+
+      const filterDealComparison = (best: any): boolean => {
+        // 80% cap: if savings > 80% of current price, skip
+        if (best.currentPrice > 0 && best.annualSaving > best.currentPrice * 12 * 0.8) return false;
+        return true;
+      };
+
       // Fetch subscription comparison data (non-blocking, runs after dashboard loads)
       try {
         const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
         if (compRes.ok) {
           const compData = await compRes.json();
-          setComparisonSaving(compData.totalAnnualSaving || 0);
-          setComparisonCount(compData.count || 0);
           const dealsList: typeof comparisonDeals = [];
+          let filteredSaving = 0;
+          let filteredCount = 0;
           for (const sub of (compData.subscriptions || [])) {
+            if (!filterDealSub(sub)) continue;
             if (sub.comparisons?.length > 0) {
               const best = sub.comparisons[0];
+              if (!filterDealComparison(best)) continue;
+              filteredSaving += best.annualSaving;
+              filteredCount++;
               dealsList.push({
                 subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
                 currentPrice: best.currentPrice,
@@ -306,42 +333,48 @@ export default function DashboardPage() {
               });
             }
           }
+          setComparisonSaving(filteredSaving);
+          setComparisonCount(filteredCount);
           setComparisonDeals(dealsList);
 
           // Update potential savings to include comparison deals
-          setPotentialSavings(prev => prev + (compData.totalAnnualSaving || 0));
+          setPotentialSavings(prev => prev + filteredSaving);
 
           // If savings seem low relative to subscriptions, trigger a fresh comparison
           const compared = compData.subscriptionsCompared || 0;
-          const withDeals = compData.count || 0;
-          const annualSaving = compData.totalAnnualSaving || 0;
+          const withDeals = filteredCount;
+          const annualSaving = filteredSaving;
           // Trigger if: few deals compared, or savings seem stale (under £500 with 20+ subs)
           if (compared > 0 && (withDeals < compared * 0.5 || (compared > 20 && annualSaving < 500))) {
             fetch('/api/subscriptions/compare', { method: 'POST' })
               .then(r => r.json())
               .then(freshData => {
-                if (freshData.totalAnnualSaving && freshData.totalAnnualSaving !== annualSaving) {
-                  setComparisonSaving(freshData.totalAnnualSaving);
-                  setComparisonCount(freshData.count || 0);
-                  setPotentialSavings(prev => prev - annualSaving + freshData.totalAnnualSaving);
-                  // Update deals list
-                  const freshDeals: typeof comparisonDeals = [];
-                  for (const sub of (freshData.subscriptions || [])) {
-                    if (sub.comparisons?.length > 0) {
-                      const best = sub.comparisons[0];
-                      if (best.annualSaving > 0) {
-                        freshDeals.push({
-                          subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
-                          currentPrice: best.currentPrice,
-                          dealProvider: best.dealProvider,
-                          dealPrice: best.dealPrice,
-                          annualSaving: best.annualSaving,
-                          dealUrl: best.dealUrl,
-                          category: sub.category || '',
-                        });
-                      }
+                let freshFilteredSaving = 0;
+                let freshFilteredCount = 0;
+                const freshDeals: typeof comparisonDeals = [];
+                for (const sub of (freshData.subscriptions || [])) {
+                  if (!filterDealSub(sub)) continue;
+                  if (sub.comparisons?.length > 0) {
+                    const best = sub.comparisons[0];
+                    if (best.annualSaving > 0 && filterDealComparison(best)) {
+                      freshFilteredSaving += best.annualSaving;
+                      freshFilteredCount++;
+                      freshDeals.push({
+                        subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+                        currentPrice: best.currentPrice,
+                        dealProvider: best.dealProvider,
+                        dealPrice: best.dealPrice,
+                        annualSaving: best.annualSaving,
+                        dealUrl: best.dealUrl,
+                        category: sub.category || '',
+                      });
                     }
                   }
+                }
+                if (freshFilteredSaving !== annualSaving) {
+                  setComparisonSaving(freshFilteredSaving);
+                  setComparisonCount(freshFilteredCount);
+                  setPotentialSavings(prev => prev - annualSaving + freshFilteredSaving);
                   if (freshDeals.length > 0) setComparisonDeals(freshDeals);
                 }
               })

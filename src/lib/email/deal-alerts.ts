@@ -84,13 +84,21 @@ interface DealAlert {
 export function findDealOpportunities(subscriptions: UserSubscription[]): DealAlert[] {
   const alerts: DealAlert[] = [];
 
+  // Categories that should never show deal suggestions
+  const excludedCats = new Set([
+    'mortgage', 'loan', 'council_tax', 'tax', 'fee', 'parking',
+    'credit_card', 'car_finance', 'gambling',
+  ]);
+
   for (const sub of subscriptions) {
     const cat = sub.category || 'other';
     const dealInfo = DEAL_CATEGORIES[cat];
     if (!dealInfo) continue;
 
-    // Skip very small amounts or council tax (can't switch)
-    if (sub.amount < 5 || cat === 'council_tax' || cat === 'gambling') continue;
+    // Skip null categories, excluded categories, and very small amounts
+    if (!sub.category) continue;
+    if (excludedCats.has(cat)) continue;
+    if (sub.amount < 5) continue;
 
     alerts.push({
       category: cat,

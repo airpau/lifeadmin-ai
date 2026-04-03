@@ -20,10 +20,32 @@ interface SavingsOpportunityWidgetProps {
   deals?: DealComparison[];
 }
 
+// Categories that should never show savings suggestions
+const EXCLUDED_SAVINGS_CATEGORIES = new Set([
+  'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
+  'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
+  'fee', 'parking',
+]);
+
 export default function SavingsOpportunityWidget({ totalSaving, count, deals }: SavingsOpportunityWidgetProps) {
   if (totalSaving <= 0 || count <= 0) return null;
 
-  const topDeals = (deals || []).sort((a, b) => b.annualSaving - a.annualSaving).slice(0, 3);
+  // Filter out excluded categories, null categories, and unrealistic savings (>80%)
+  const filteredDeals = (deals || []).filter(d => {
+    if (!d.category) return false;
+    if (EXCLUDED_SAVINGS_CATEGORIES.has(d.category.toLowerCase())) return false;
+    // 80% cap: if annual saving > 80% of current annual spend, skip
+    if (d.currentPrice > 0 && d.annualSaving > d.currentPrice * 12 * 0.8) return false;
+    // Filter out Chris Hillier or similar
+    if (d.subscriptionName.toLowerCase().includes('chris hillier')) return false;
+    return true;
+  });
+
+  const filteredTotal = filteredDeals.reduce((sum, d) => sum + d.annualSaving, 0);
+  const filteredCount = filteredDeals.length;
+  if (filteredTotal <= 0 || filteredCount <= 0) return null;
+
+  const topDeals = filteredDeals.sort((a, b) => b.annualSaving - a.annualSaving).slice(0, 3);
 
   return (
     <div className="bg-gradient-to-r from-green-500/10 to-green-600/5 border border-green-500/20 rounded-2xl p-6 mb-8">
@@ -36,10 +58,10 @@ export default function SavingsOpportunityWidget({ totalSaving, count, deals }: 
             Better deals found
           </p>
           <p className="text-2xl md:text-3xl font-bold text-white font-[family-name:var(--font-heading)]">
-            Save {formatGBP(totalSaving)}<span className="text-lg font-normal text-slate-400">/year</span>
+            Save {formatGBP(filteredTotal)}<span className="text-lg font-normal text-slate-400">/year</span>
           </p>
           <p className="text-sm text-slate-400 mt-0.5">
-            {count} subscription{count !== 1 ? 's' : ''} with cheaper alternatives
+            {filteredCount} subscription{filteredCount !== 1 ? 's' : ''} with cheaper alternatives
           </p>
         </div>
       </div>

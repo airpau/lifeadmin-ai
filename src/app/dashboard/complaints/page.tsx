@@ -8,6 +8,7 @@ import {
   RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2,
   Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
   AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
+  Trophy, PoundSterling, TrendingUp, Scale,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { capture } from '@/lib/posthog';
@@ -123,14 +124,36 @@ const CATEGORY_ALIAS: Record<string, string> = {
 
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  open: { label: 'Open', className: 'bg-blue-500/10 text-blue-400' },
-  awaiting_response: { label: 'Waiting for reply', className: 'bg-purple-500/10 text-purple-400' },
-  escalated: { label: 'Escalated', className: 'bg-orange-500/10 text-orange-400' },
-  resolved_won: { label: 'Won', className: 'bg-green-500/10 text-green-500' },
-  resolved_partial: { label: 'Partially resolved', className: 'bg-yellow-500/10 text-yellow-400' },
-  resolved_lost: { label: 'Not resolved', className: 'bg-red-500/10 text-red-400' },
-  closed: { label: 'Closed', className: 'bg-slate-500/10 text-slate-400' },
+  open: { label: 'Open', className: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' },
+  in_progress: { label: 'In Progress', className: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' },
+  awaiting_response: { label: 'Waiting for reply', className: 'bg-purple-500/10 text-purple-400 border border-purple-500/20' },
+  escalated: { label: 'Escalated', className: 'bg-orange-500/10 text-orange-400 border border-orange-500/20' },
+  ombudsman: { label: 'Ombudsman', className: 'bg-red-500/10 text-red-400 border border-red-500/20' },
+  resolved_won: { label: 'Won', className: 'bg-green-500/10 text-green-500 border border-green-500/20' },
+  won: { label: 'Won', className: 'bg-green-500/10 text-green-500 border border-green-500/20' },
+  resolved_partial: { label: 'Partially Won', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
+  partial: { label: 'Partially Won', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
+  resolved_lost: { label: 'Not resolved', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
+  lost: { label: 'Not resolved', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
+  withdrawn: { label: 'Withdrawn', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
+  closed: { label: 'Closed', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
 };
+
+// Active statuses that can be changed via the status dropdown
+const ACTIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
+
+// Check if a dispute is resolved/closed
+function isResolved(status: string): boolean {
+  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed', 'won', 'partial', 'lost', 'withdrawn'].includes(status);
+}
+
+// Dispute summary type
+interface DisputeSummary {
+  total_open: number;
+  total_resolved: number;
+  total_disputed_amount: number;
+  total_recovered: number;
+}
 
 const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: typeof FileText; className: string }> = {
   ai_letter: { label: 'Your letter', icon: FileText, className: 'border-mint-400/30 bg-mint-400/5' },
@@ -469,16 +492,159 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
 }
 
 // ============================================================
+// Resolve Dispute Modal
+// ============================================================
+function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }: {
+  disputeId: string;
+  disputedAmount: number | null;
+  onClose: () => void;
+  onResolved: () => void;
+}) {
+  const [outcome, setOutcome] = useState<string>('won');
+  const [moneyRecovered, setMoneyRecovered] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const showMoneyField = outcome === 'won' || outcome === 'partial';
+
+  const outcomeOptions = [
+    { value: 'won', label: 'Won', desc: 'Full resolution in your favour', icon: '🏆', className: 'border-green-500/30 bg-green-500/5 text-green-400' },
+    { value: 'partial', label: 'Partially Won', desc: 'Some money or partial resolution', icon: '🤝', className: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400' },
+    { value: 'lost', label: 'Lost', desc: 'Company rejected your complaint', icon: '😔', className: 'border-slate-500/30 bg-slate-500/5 text-slate-400' },
+    { value: 'withdrawn', label: 'Withdrawn', desc: 'You decided not to pursue this', icon: '🚫', className: 'border-slate-500/30 bg-slate-500/5 text-slate-400' },
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/disputes/${disputeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outcome,
+          money_recovered: showMoneyField && moneyRecovered ? moneyRecovered : '0',
+          outcome_notes: notes || null,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to resolve');
+      capture('dispute_resolved', { outcome, money_recovered: moneyRecovered });
+      onResolved();
+      onClose();
+    } catch {
+      alert('Failed to resolve dispute. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
+          <div>
+            <h2 className="text-lg font-bold text-white">Resolve Dispute</h2>
+            <p className="text-slate-500 text-sm mt-0.5">Record the outcome of your dispute</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Outcome selector */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">What was the outcome?</label>
+            <div className="grid grid-cols-2 gap-2">
+              {outcomeOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setOutcome(opt.value)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all border ${
+                    outcome === opt.value
+                      ? opt.className
+                      : 'bg-navy-950 border-navy-700/50 text-slate-400 hover:border-navy-600'
+                  }`}
+                >
+                  <span className="text-lg">{opt.icon}</span>
+                  <div>
+                    <p className={`font-medium ${outcome === opt.value ? '' : 'text-slate-300'}`}>{opt.label}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Money recovered — only for won/partial */}
+          {showMoneyField && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                How much did you recover?
+              </label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-400 font-semibold">£</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={moneyRecovered}
+                  onChange={(e) => setMoneyRecovered(e.target.value)}
+                  className="w-full pl-8 pr-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                  placeholder={disputedAmount ? disputedAmount.toFixed(2) : '0.00'}
+                />
+              </div>
+              {disputedAmount && disputedAmount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setMoneyRecovered(disputedAmount.toFixed(2))}
+                  className="text-xs text-amber-400/70 hover:text-amber-400 mt-1 transition-colors"
+                >
+                  Use full disputed amount (£{disputedAmount.toFixed(2)})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Notes <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <textarea
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              placeholder="Any notes about the resolution..."
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full bg-amber-400 hover:bg-amber-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Resolve Dispute'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Dispute Detail View — the thread
 // ============================================================
 function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () => void }) {
   const [dispute, setDispute] = useState<Dispute | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showResolveModal, setShowResolveModal] = useState(false);
   const [letterModal, setLetterModal] = useState<{ content: string; title: string; refs: string[]; pills?: RightsPill[] } | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [statusDropdown, setStatusDropdown] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
   const [contractUploading, setContractUploading] = useState(false);
   const [justExtracted, setJustExtracted] = useState(false);
   const [providerInfo, setProviderInfo] = useState<any>(null);
@@ -539,13 +705,20 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   }, [dispute?.provider_name]);
 
   const updateStatus = async (newStatus: string) => {
-    await fetch(`/api/disputes/${disputeId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    setStatusDropdown(false);
-    fetchDispute();
+    setStatusUpdating(true);
+    try {
+      await fetch(`/api/disputes/${disputeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setStatusDropdown(false);
+      fetchDispute();
+    } catch {
+      alert('Failed to update status.');
+    } finally {
+      setStatusUpdating(false);
+    }
   };
 
   const generateFollowUp = async () => {
@@ -628,6 +801,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         />
       )}
 
+      {showResolveModal && (
+        <ResolveDisputeModal
+          disputeId={disputeId}
+          disputedAmount={dispute.disputed_amount}
+          onClose={() => setShowResolveModal(false)}
+          onResolved={fetchDispute}
+        />
+      )}
+
       {/* Back + header */}
       <button onClick={onBack} className="flex items-center gap-1 text-slate-400 hover:text-white mb-4 text-sm transition-all">
         <ChevronLeft className="h-4 w-4" /> Back to all disputes
@@ -643,28 +825,45 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           </div>
           <div className="flex items-center gap-3">
             {dispute.disputed_amount && dispute.disputed_amount > 0 && (
-              <span className="text-mint-400 font-bold text-lg">£{dispute.disputed_amount}</span>
+              <span className="text-amber-400 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
             )}
             <div className="relative">
               <button
-                onClick={() => setStatusDropdown(!statusDropdown)}
-                className={`text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer ${statusConf.className}`}
+                onClick={() => !isResolved(dispute.status) && setStatusDropdown(!statusDropdown)}
+                className={`text-xs px-3 py-1.5 rounded-full font-medium ${isResolved(dispute.status) ? '' : 'cursor-pointer hover:opacity-80'} ${statusConf.className}`}
               >
+                {statusUpdating ? (
+                  <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                ) : null}
                 {statusConf.label}
               </button>
-              {statusDropdown && (
-                <div className="absolute right-0 top-full mt-2 bg-navy-800 border border-navy-700/50 rounded-lg shadow-xl z-10 min-w-[180px]">
-                  {Object.entries(STATUS_CONFIG).map(([key, conf]) => (
-                    <button
-                      key={key}
-                      onClick={() => updateStatus(key)}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-navy-700 transition-all first:rounded-t-lg last:rounded-b-lg ${
-                        dispute.status === key ? 'text-mint-400' : 'text-slate-300'
-                      }`}
-                    >
-                      {conf.label}
-                    </button>
-                  ))}
+              {statusDropdown && !isResolved(dispute.status) && (
+                <div className="absolute right-0 top-full mt-2 bg-navy-800 border border-navy-700/50 rounded-lg shadow-xl z-10 min-w-[200px]">
+                  <div className="px-3 py-2 border-b border-navy-700/50">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
+                  </div>
+                  {ACTIVE_STATUSES.map((key) => {
+                    const conf = STATUS_CONFIG[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => updateStatus(key)}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-navy-700 transition-all flex items-center gap-2 ${
+                          dispute.status === key ? 'text-amber-400' : 'text-slate-300'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          key === 'open' ? 'bg-amber-400' :
+                          key === 'in_progress' ? 'bg-blue-400' :
+                          key === 'awaiting_response' ? 'bg-purple-400' :
+                          key === 'escalated' ? 'bg-orange-400' :
+                          'bg-red-400'
+                        }`} />
+                        {conf.label}
+                        {dispute.status === key && <CheckCircle className="h-3 w-3 ml-auto" />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -674,7 +873,24 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         {dispute.desired_outcome && (
           <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
         )}
-        <p className="text-slate-600 text-xs mt-2">Started {formatDate(dispute.created_at)}</p>
+        <div className="flex items-center justify-between mt-3">
+          <p className="text-slate-600 text-xs">Started {formatDate(dispute.created_at)}</p>
+          {!isResolved(dispute.status) && (
+            <button
+              onClick={() => setShowResolveModal(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-400/10 text-amber-400 hover:bg-amber-400/20 rounded-lg transition-all border border-amber-400/20 font-medium"
+            >
+              <Trophy className="h-3.5 w-3.5" />
+              Resolve Dispute
+            </button>
+          )}
+          {isResolved(dispute.status) && dispute.money_recovered > 0 && (
+            <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-green-500/10 text-green-400 rounded-lg border border-green-500/20 font-medium">
+              <TrendingUp className="h-3.5 w-3.5" />
+              Recovered £{dispute.money_recovered.toFixed(2)}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Provider Info Card */}
@@ -1578,6 +1794,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTour, setShowTour] = useState(false);
+  const [summary, setSummary] = useState<DisputeSummary | null>(null);
 
   useEffect(() => {
     fetch('/api/disputes')
@@ -1585,6 +1802,11 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       .then(setDisputes)
       .catch(console.error)
       .finally(() => setLoading(false));
+    // Fetch summary stats
+    fetch('/api/disputes/summary')
+      .then((r) => r.json())
+      .then((data) => { if (!data.error) setSummary(data); })
+      .catch(() => {});
   }, []);
 
   // Check if user has seen the tour
@@ -1638,6 +1860,52 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           New dispute
         </button>
       </div>
+
+      {/* Dispute Summary Stats */}
+      {summary && (summary.total_open > 0 || summary.total_resolved > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-amber-400/10 rounded-lg flex items-center justify-center">
+                <Scale className="h-4 w-4 text-amber-400" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-white">{summary.total_open}</p>
+            <p className="text-slate-500 text-xs mt-0.5">Active Disputes</p>
+          </div>
+          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-white">{summary.total_resolved}</p>
+            <p className="text-slate-500 text-xs mt-0.5">Resolved</p>
+          </div>
+          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-amber-400/10 rounded-lg flex items-center justify-center">
+                <PoundSterling className="h-4 w-4 text-amber-400" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-white">
+              £{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-slate-500 text-xs mt-0.5">Being Disputed</p>
+          </div>
+          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-green-400" />
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-green-400">
+              £{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-slate-500 text-xs mt-0.5">Total Recovered</p>
+          </div>
+        </div>
+      )}
 
       {/* How it works */}
       <div id="tour-how" className="bg-navy-900 border border-navy-700/50 rounded-xl p-5 mb-6">
@@ -1702,10 +1970,15 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                     </div>
                   </div>
                   <div className="flex items-center gap-3 ml-4 flex-shrink-0">
-                    {d.disputed_amount && d.disputed_amount > 0 && (
-                      <span className="text-mint-400 font-semibold">£{d.disputed_amount}</span>
-                    )}
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusConf.className}`}>
+                    {isResolved(d.status) && d.money_recovered > 0 ? (
+                      <span className="text-green-400 font-semibold text-sm flex items-center gap-1">
+                        <TrendingUp className="h-3.5 w-3.5" />
+                        £{d.money_recovered.toFixed(2)}
+                      </span>
+                    ) : d.disputed_amount && d.disputed_amount > 0 ? (
+                      <span className="text-amber-400 font-semibold">£{d.disputed_amount.toFixed(2)}</span>
+                    ) : null}
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusConf.className}`}>
                       {statusConf.label}
                     </span>
                   </div>

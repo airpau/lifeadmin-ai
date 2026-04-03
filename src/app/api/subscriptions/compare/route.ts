@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
     }
 
     const all = request.nextUrl.searchParams.get('all');
+    // Categories that should never produce deal comparisons
+    const excludedCategories = new Set([
+      'mortgage', 'loan', 'council_tax', 'credit_card', 'car_finance', 'tax', 'fee', 'parking',
+    ]);
+
     if (all) {
       // Fetch all saved comparisons for user's subscriptions
       const { data: subs } = await supabase
@@ -32,8 +37,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ totalAnnualSaving: 0, count: 0, subscriptionsCompared: 0, subscriptions: [] });
       }
 
-      const subIds = subs.map((s: any) => s.id);
-      const subMap = new Map((subs || []).map((s: any) => [s.id, s]));
+      // Filter out subscriptions with excluded categories/provider_types or null category
+      const filteredSubs = subs.filter((s: any) => {
+        if (!s.category && !s.provider_type) return false;
+        const cat = (s.category || s.provider_type || '').toLowerCase();
+        return !excludedCategories.has(cat);
+      });
+
+      if (filteredSubs.length === 0) {
+        return NextResponse.json({ totalAnnualSaving: 0, count: 0, subscriptionsCompared: 0, subscriptions: [] });
+      }
+
+      const subIds = filteredSubs.map((s: any) => s.id);
+      const subMap = new Map(filteredSubs.map((s: any) => [s.id, s]));
 
       const { data: comps } = await supabase
         .from('subscription_comparisons')
@@ -47,18 +63,23 @@ export async function GET(request: NextRequest) {
       let count = 0;
 
       for (const c of (comps || [])) {
+        const currentPrice = parseFloat(String(c.current_price));
+        const annualSaving = parseFloat(String(c.annual_saving));
+        // 80% cap: if saving > 80% of annual spend, skip
+        if (currentPrice > 0 && annualSaving > currentPrice * 12 * 0.8) continue;
+
         if (!grouped[c.subscription_id]) {
           grouped[c.subscription_id] = [];
           count++; // unique subscriptions with a deal
-          totalAnnualSaving += parseFloat(String(c.annual_saving)); // only count best deal
+          totalAnnualSaving += annualSaving; // only count best deal
         }
         grouped[c.subscription_id].push({
           dealProvider: c.deal_provider,
           dealName: c.deal_name,
           dealUrl: c.deal_url,
-          currentPrice: parseFloat(String(c.current_price)),
+          currentPrice,
           dealPrice: parseFloat(String(c.deal_price)),
-          annualSaving: parseFloat(String(c.annual_saving)),
+          annualSaving,
         });
       }
 

@@ -77,7 +77,59 @@ export async function GET(
   });
 }
 
-// PATCH /api/disputes/[id] — update dispute status or details
+// PUT /api/disputes/[id] — update dispute status (calls update_dispute_status RPC)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const body = await request.json();
+  const validStatuses = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
+  if (!body.status || !validStatuses.includes(body.status)) {
+    return NextResponse.json({ error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') }, { status: 400 });
+  }
+
+  // Try the RPC first; fall back to direct update if the function doesn't exist yet
+  const { data: rpcData, error: rpcError } = await supabase.rpc('update_dispute_status', {
+    p_user_id: user.id,
+    p_dispute_id: id,
+    p_status: body.status,
+    p_notes: body.notes || null,
+  });
+
+  if (rpcError) {
+    // Fallback to direct update if RPC not available
+    const { data, error } = await supabase
+      .from('disputes')
+      .update({ status: body.status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Failed to update dispute status:', error);
+      return NextResponse.json({ error: 'Failed to update dispute status' }, { status: 500 });
+    }
+    return NextResponse.json(data);
+  }
+
+  // Re-fetch the updated dispute
+  const { data: updated } = await supabase
+    .from('disputes')
+    .select()
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single();
+
+  return NextResponse.json(updated || rpcData);
+}
+
+// PATCH /api/disputes/[id] — resolve dispute or update details
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -89,6 +141,66 @@ export async function PATCH(
 
   const body = await request.json();
 
+  // If resolving the dispute (outcome is provided), use the resolve_dispute RPC
+  if (body.outcome) {
+    const validOutcomes = ['won', 'partial', 'lost', 'withdrawn'];
+    if (!validOutcomes.includes(body.outcome)) {
+      return NextResponse.json({ error: 'Invalid outcome. Must be one of: ' + validOutcomes.join(', ') }, { status: 400 });
+    }
+
+    const moneyRecovered = body.money_recovered ? parseFloat(body.money_recovered) : 0;
+
+    // Try the RPC first
+    const { error: rpcError } = await supabase.rpc('resolve_dispute', {
+      p_user_id: user.id,
+      p_dispute_id: id,
+      p_outcome: body.outcome,
+      p_money_recovered: moneyRecovered,
+      p_outcome_notes: body.outcome_notes || null,
+    });
+
+    if (rpcError) {
+      // Fallback: direct update
+      const statusMap: Record<string, string> = {
+        won: 'resolved_won',
+        partial: 'resolved_partial',
+        lost: 'resolved_lost',
+        withdrawn: 'closed',
+      };
+
+      const { data, error } = await supabase
+        .from('disputes')
+        .update({
+          status: statusMap[body.outcome] || 'closed',
+          money_recovered: moneyRecovered,
+          outcome_notes: body.outcome_notes || null,
+          resolved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Failed to resolve dispute:', error);
+        return NextResponse.json({ error: 'Failed to resolve dispute' }, { status: 500 });
+      }
+      return NextResponse.json(data);
+    }
+
+    // Re-fetch after RPC success
+    const { data: resolved } = await supabase
+      .from('disputes')
+      .select()
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    return NextResponse.json(resolved);
+  }
+
+  // Otherwise, general field update (existing behaviour)
   const allowedFields: Record<string, any> = {};
   if (body.status) allowedFields.status = body.status;
   if (body.provider_name) allowedFields.provider_name = body.provider_name;

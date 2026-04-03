@@ -83,6 +83,16 @@ const DEALS_BY_CATEGORY: Record<string, DealData[]> = {
   ],
 };
 
+// Categories that should never produce deal comparisons
+const EXCLUDED_COMPARISON_CATEGORIES = new Set([
+  'mortgages', 'loans', 'credit-cards', 'car-finance',
+]);
+
+// Provider types that should never produce deal comparisons
+const EXCLUDED_PROVIDER_TYPES = new Set([
+  'mortgage', 'loan', 'credit_card', 'council_tax',
+]);
+
 /**
  * Normalise a subscription's provider_type/category/provider_name into a deals category.
  */
@@ -176,8 +186,16 @@ export async function findCheaperAlternatives(
 
   if (error || !sub) return [];
 
+  // Skip excluded provider types (mortgages, loans, council_tax, etc.)
+  if (sub.provider_type && EXCLUDED_PROVIDER_TYPES.has(sub.provider_type)) return [];
+  // Skip subscriptions with no category at all
+  if (!sub.category && !sub.provider_type && !sub.category_normalized) return [];
+
   const dealCategory = normaliseToDealCategory(sub);
   if (!dealCategory) return [];
+
+  // Skip excluded deal categories
+  if (EXCLUDED_COMPARISON_CATEGORIES.has(dealCategory)) return [];
 
   // Update category_normalized if not set
   if (!sub.category_normalized && dealCategory) {
@@ -209,7 +227,11 @@ export async function findCheaperAlternatives(
     };
     const est = savingsEstimates[dealCategory] || { pct: 0, maxAnnual: 0 };
     const annualCurrent = currentMonthly * 12;
-    const estimatedAnnualSaving = Math.min(Math.round(annualCurrent * est.pct), est.maxAnnual);
+    let estimatedAnnualSaving = Math.min(Math.round(annualCurrent * est.pct), est.maxAnnual);
+    // Cap: if savings > 80% of current annual spend, cap at 80%
+    if (estimatedAnnualSaving > annualCurrent * 0.8) {
+      estimatedAnnualSaving = Math.round(annualCurrent * 0.8);
+    }
 
     comparisons = deals
       .filter(d => d.provider.toLowerCase() !== sub.provider_name.toLowerCase())
@@ -237,6 +259,9 @@ export async function findCheaperAlternatives(
         for (const tariff of tariffs) {
           const tariffMonthly = parseFloat(String(tariff.monthly_cost_estimate));
           const annualSaving = (currentMonthly - tariffMonthly) * 12;
+          const tariffSavingsMonthly = currentMonthly - tariffMonthly;
+          // Cap: if savings > 80% of current price, skip (unrealistic)
+          if (tariffSavingsMonthly > currentMonthly * 0.8) continue;
           if (annualSaving > 24) {
             // Find matching deal or create comparison link
             const matchingDeal = deals.find(d =>
@@ -266,6 +291,10 @@ export async function findCheaperAlternatives(
 
       const annualSaving = (currentMonthly - deal.monthlyPrice) * 12;
       if (annualSaving > 24) {
+        // Cap: if savings > 80% of current price, skip (unrealistic)
+        const savingsMonthly = currentMonthly - deal.monthlyPrice;
+        if (savingsMonthly > currentMonthly * 0.8) continue;
+
         comparisons.push({
           dealProvider: deal.provider,
           dealName: deal.headline,
