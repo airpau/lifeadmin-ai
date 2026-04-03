@@ -1001,6 +1001,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </div>
           </div>
         ) : (
+          <>
           <div className="space-y-4">
             {dispute.correspondence?.map((entry, index) => {
               const config = ENTRY_TYPE_CONFIG[entry.entry_type] || ENTRY_TYPE_CONFIG.user_note;
@@ -1120,6 +1121,33 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               );
             })}
           </div>
+
+          {/* Action buttons at bottom of thread */}
+          {!isResolved(dispute.status) && (
+            <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-navy-700/30">
+              <button
+                onClick={generateFollowUp}
+                disabled={generating}
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
+              >
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Write next letter
+              </button>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-xl text-sm transition-all flex-1"
+              >
+                <Plus className="h-4 w-4" /> Add their response
+              </button>
+              <button
+                onClick={() => setShowResolveModal(true)}
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm transition-all border border-amber-500/20 font-medium flex-1"
+              >
+                <Trophy className="h-3.5 w-3.5" /> Resolve dispute
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
 
