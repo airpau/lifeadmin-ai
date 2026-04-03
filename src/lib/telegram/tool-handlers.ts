@@ -1606,7 +1606,7 @@ async function addContract(
     category: params.category,
     amount: params.monthly_cost,
     billing_cycle: 'monthly',
-    contract_type: 'fixed_term',
+    contract_type: 'fixed_contract',
     contract_start_date: params.contract_start_date ?? null,
     contract_end_date: params.contract_end_date ?? null,
     auto_renews: params.auto_renews,
@@ -1645,16 +1645,27 @@ async function recategoriseTransaction(
   transactionId: string,
   newCategory: string,
 ): Promise<ToolResult> {
-  const { data: txn, error: fetchError } = await supabase
+  // Support truncated IDs (8-char prefix shown in list_transactions output)
+  let txnQuery = supabase
     .from('bank_transactions')
     .select('id, merchant_name, amount, category, user_category')
-    .eq('id', transactionId)
-    .eq('user_id', userId)
-    .single();
+    .eq('user_id', userId);
 
-  if (fetchError || !txn) {
+  if (transactionId.length < 36) {
+    txnQuery = txnQuery.ilike('id', transactionId + '%');
+  } else {
+    txnQuery = txnQuery.eq('id', transactionId);
+  }
+
+  const { data: matches, error: fetchError } = await txnQuery.limit(2);
+
+  if (fetchError || !matches || matches.length === 0) {
     return { text: `Transaction not found. Use list_transactions to find the transaction ID first.` };
   }
+  if (matches.length > 1) {
+    return { text: `"${transactionId}" matches more than one transaction. Provide more characters of the ID to narrow it down.` };
+  }
+  const txn = matches[0];
 
   const { error: updateError } = await supabase
     .from('bank_transactions')
