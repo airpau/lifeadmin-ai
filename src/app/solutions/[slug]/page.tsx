@@ -213,7 +213,7 @@ const PAGES: Record<string, SolutionPage> = {
       'Financial health score updated with every sync',
     ],
     howItWorks: [
-      { step: '1', title: 'Connect your bank', description: 'Secure Open Banking connection via Yapily. FCA regulated. Read-only access.' },
+      { step: '1', title: 'Connect your bank', description: 'Secure Open Banking connection via Yapily (FCA-authorised provider). Read-only access.' },
       { step: '2', title: 'See your full picture', description: 'Every transaction categorised. Income, spending, subscriptions, and trends in one view.' },
       { step: '3', title: 'Take control', description: 'Set budgets, track goals, and get alerts when spending spikes. AI assistant answers questions about your finances.' },
     ],

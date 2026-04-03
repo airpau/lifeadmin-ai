@@ -116,7 +116,7 @@ const TUTORIALS: Tutorial[] = [
     colour: 'text-amber-400',
     link: '/dashboard/scanner',
     steps: [
-      'Connect your bank account via Open Banking (read-only, secure, FCA regulated).',
+      'Connect your bank account via Open Banking (read-only, secure, powered by FCA-authorised Yapily).',
       'We scan up to 6 months of transactions to detect recurring payments you might have forgotten about.',
       'Connect your Gmail or Outlook to scan your inbox for bills, contracts, and savings opportunities.',
       'The Opportunity Scanner finds overcharges, flight delay claims, and debt dispute opportunities.',

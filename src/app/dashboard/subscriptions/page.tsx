@@ -1430,7 +1430,7 @@ export default function SubscriptionsPage() {
                       {isFirst ? 'Connect your bank for automatic detection' : 'Connect another bank account'}
                     </h3>
                     <p className="text-slate-400 text-sm mb-1">
-                      We use Yapily (FCA regulated) to securely read your transactions. We never store your credentials.
+                      We use Yapily (FCA-authorised Open Banking provider) to securely read your transactions. We never store your credentials.
                     </p>
                     {isFirst && (
                       <p className="text-slate-500 text-xs">

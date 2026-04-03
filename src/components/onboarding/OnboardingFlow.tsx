@@ -164,7 +164,7 @@ export default function OnboardingFlow({
           Connect bank (2 minutes)
           <ArrowRight className="h-4 w-4" />
         </button>
-        <span className="text-slate-500 text-xs">FCA regulated · Read-only</span>
+        <span className="text-slate-500 text-xs">FCA-authorised provider · Read-only</span>
       </div>
       <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
     </div>

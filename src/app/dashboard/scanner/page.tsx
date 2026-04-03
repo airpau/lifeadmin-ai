@@ -611,7 +611,7 @@ export default function ScannerPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-white font-semibold mb-1">Connect your bank to detect subscriptions</h3>
-              <p className="text-slate-400 text-sm">We use Yapily (FCA regulated) to securely read your transactions. We never store your credentials.</p>
+              <p className="text-slate-400 text-sm">We use Yapily (FCA-authorised Open Banking provider) to securely read your transactions. We never store your credentials.</p>
             </div>
             <button
               onClick={() => setShowBankPicker(true)}
@@ -830,7 +830,7 @@ export default function ScannerPage() {
       <div className="flex items-start gap-3 bg-navy-800/40 border border-navy-700/50 rounded-xl px-4 py-3 mb-6">
         <Shield className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-slate-400">
-          <span className="font-semibold text-slate-300">Your data is 100% secure.</span> We use read-only access to scan for financial information. We never store full email content, never share your data with third parties, and you can disconnect at any time. All data is encrypted and stored on UK/EU servers.
+          <span className="font-semibold text-slate-300">Your data is secure.</span> We use read-only access to scan for financial information. We never store full email content, and you can disconnect at any time. Your data is encrypted and stored on UK/EU servers, and only shared with the regulated providers needed to deliver the service. We never sell your data.
         </p>
       </div>
 

@@ -7,7 +7,7 @@ Paybacker is an AI-powered money assistant built exclusively for UK consumers. I
 ## Core Features
 
 ### 1. Subscription Tracker
-- Connects to UK bank accounts via TrueLayer (FCA regulated, Open Banking)
+- Connects to UK bank accounts via Yapily (FCA-authorised Open Banking provider)
 - Automatically detects every subscription, direct debit, and recurring payment
 - Shows total monthly spend, upcoming renewals, and unused services
 - One-click cancellation with legally-backed cancellation letters

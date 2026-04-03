@@ -45,7 +45,7 @@ FEATURE CATALOGUE:
    - Plan access: Essential and Pro only.
 
 4. Bank Connection and Scanning (Open Banking)
-   - Connects bank accounts securely (read-only, FCA regulated)
+   - Connects bank accounts securely (read-only, via FCA-authorised Yapily)
    - Scans 12 months of transactions
    - Automatically detects all subscriptions and recurring payments
    - Finds hidden charges and forgotten direct debits

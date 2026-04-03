@@ -53,7 +53,7 @@ Average UK adult pays for 4-7 subscriptions they barely use. Paybacker connects 
 Most consumers don't know their rights under Consumer Rights Act 2015, UK261, Ofcom/Ofgem rules. Paybacker's AI knows all of them and applies the right one automatically.
 
 ### Angle 4: "UK fintech startup" (best for Sifted, City A.M.)
-Founded March 2026, ICO registered, FCA-regulated Open Banking via TrueLayer, 15 AI agents managing operations autonomously.
+Founded March 2026, ICO registered, Open Banking via FCA-authorised Yapily, 15 AI agents managing operations autonomously.
 
 ## Do NOT Contact Until
 - Product is fully tested and stable

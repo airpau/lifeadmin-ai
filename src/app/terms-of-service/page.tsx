@@ -69,7 +69,7 @@ export default function TermsOfServicePage() {
             <li>Annual financial reports</li>
           </ul>
           <p className="text-slate-300 leading-relaxed mb-4">
-            To provide these services, we connect to your bank accounts via Open Banking using our partner Yapily (FCA-regulated) using read-only access.
+            To provide these services, we connect to your bank accounts via Open Banking using our partner Yapily (an FCA-authorised Open Banking provider) using read-only access.
           </p>
           <p className="text-slate-300 leading-relaxed">
             We may also connect to your email accounts (such as Gmail or Outlook) with read-only access to reliably identify bills, contracts, and renewal notices automatically.

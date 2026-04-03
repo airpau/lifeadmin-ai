@@ -983,7 +983,7 @@ export default function MoneyHubPage() {
             <Building2 className="h-5 w-5" />
             Connect Bank Account
           </button>
-          <p className="text-slate-500 text-xs mt-3">FCA regulated via Yapily · Read-only access · Takes 2 minutes</p>
+          <p className="text-slate-500 text-xs mt-3">Open Banking powered by FCA-authorised Yapily · Read-only access · Takes 2 minutes</p>
         </div>
 
         {/* Demo preview tiles (blurred) */}

@@ -175,7 +175,7 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
         {/* Footer */}
         <div className="p-4 border-t border-navy-700/50 flex-shrink-0">
           <p className="text-xs text-slate-500 text-center">
-            FCA regulated via {providerLabel}. Read-only access. We never store your bank credentials.
+            Open Banking powered by FCA-authorised {providerLabel}. Read-only access. We never store your bank credentials.
           </p>
         </div>
       </div>
