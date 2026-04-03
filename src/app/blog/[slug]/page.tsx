@@ -68,8 +68,36 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
     year: 'numeric',
   });
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: post.title,
+    description: post.meta_description || post.excerpt,
+    url: `https://paybacker.co.uk/blog/${post.slug}`,
+    datePublished: post.published_at,
+    dateModified: post.published_at,
+    publisher: {
+      '@type': 'Organization',
+      name: 'Paybacker',
+      url: 'https://paybacker.co.uk',
+    },
+    author: {
+      '@type': 'Organization',
+      name: 'Paybacker',
+      url: 'https://paybacker.co.uk',
+    },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `https://paybacker.co.uk/blog/${post.slug}`,
+    },
+  };
+
   return (
     <div className="min-h-screen bg-navy-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="relative">
         <PublicNavbar />
         <div className="h-16" />
@@ -90,7 +118,7 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
             </div>
 
             <div
-              className="prose prose-invert prose-slate max-w-none [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-white [&_h2]:mt-8 [&_h2]:mb-4 [&_p]:text-slate-300 [&_p]:leading-relaxed [&_p]:mb-4 [&_ul]:text-slate-300 [&_ul]:space-y-2 [&_ul]:mb-4 [&_li]:text-slate-300 [&_strong]:text-white"
+              className="prose prose-invert prose-slate max-w-none [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-white [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-white [&_h3]:mt-7 [&_h3]:mb-3 [&_p]:text-slate-300 [&_p]:leading-relaxed [&_p]:mb-4 [&_ul]:text-slate-300 [&_ul]:space-y-2 [&_ul]:mb-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:text-slate-300 [&_ol]:space-y-2 [&_ol]:mb-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:text-slate-300 [&_strong]:text-white [&_a]:text-amber-400 [&_a]:underline [&_a]:underline-offset-2 [&_a:hover]:text-amber-300"
               dangerouslySetInnerHTML={{ __html: post.content }}
             />
 
