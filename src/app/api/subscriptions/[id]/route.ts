@@ -69,23 +69,63 @@ export async function PATCH(
       }
     }
 
-    // Self-learning: if user changed provider_name or category, create a merchant rule
-    if (original && (body.provider_name || body.category)) {
+    // Self-learning: if user changed category, propagate everywhere
+    if (original && body.category) {
+      const newCategory = body.category;
+      const providerName = data.provider_name;
       const rawName = original.bank_description || original.provider_name;
       const normalised = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 
+      // 1. Update merchant rule for future auto-categorisation
       if (normalised) {
-        await supabase.from('merchant_rules').upsert({
+        supabase.from('merchant_rules').upsert({
           raw_name: rawName,
           raw_name_normalised: normalised,
-          display_name: body.provider_name || data.provider_name,
-          category: body.category || data.category || 'other',
+          display_name: body.provider_name || providerName,
+          category: newCategory,
           created_by_user_id: user.id,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'raw_name_normalised' }).then(({ error: ruleError }) => {
           if (ruleError) console.error('Merchant rule save failed:', ruleError);
-          else console.log(`Merchant rule learned: "${rawName}" → "${body.provider_name || data.provider_name}" [${body.category || data.category}]`);
         });
+      }
+
+      // 2. Update ALL bank transactions with matching merchant name (user_category)
+      // This ensures Money Hub spending breakdown matches the subscription category
+      const merchantVariants = [providerName, rawName].filter(Boolean);
+      for (const name of merchantVariants) {
+        supabase.from('bank_transactions')
+          .update({ user_category: newCategory })
+          .eq('user_id', user.id)
+          .ilike('merchant_name', `%${name}%`)
+          .then(({ error: txErr, count }) => {
+            if (txErr) console.error(`Transaction recategorise failed for "${name}":`, txErr);
+            else if (count) console.log(`Recategorised ${count} transactions for "${name}" → ${newCategory}`);
+          });
+      }
+
+      // 3. Update category override table for Money Hub consistency
+      supabase.from('money_hub_category_overrides').upsert({
+        user_id: user.id,
+        merchant_pattern: providerName.toLowerCase(),
+        new_category: newCategory,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,merchant_pattern' }).then(({ error: ovErr }) => {
+        if (ovErr) console.error('Category override save failed:', ovErr);
+      });
+    } else if (original && body.provider_name) {
+      // Provider name changed without category — still update merchant rule
+      const rawName = original.bank_description || original.provider_name;
+      const normalised = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+      if (normalised) {
+        supabase.from('merchant_rules').upsert({
+          raw_name: rawName,
+          raw_name_normalised: normalised,
+          display_name: body.provider_name,
+          category: data.category || 'other',
+          created_by_user_id: user.id,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'raw_name_normalised' }).then(() => {});
       }
     }
 
