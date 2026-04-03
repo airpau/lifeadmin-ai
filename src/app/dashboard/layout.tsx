@@ -25,6 +25,7 @@ import {
   BookOpen,
   FolderLock,
   MessageCircle,
+  Loader2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -44,6 +45,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const supabase = createClient();
+  const [authChecked, setAuthChecked] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [userTier, setUserTier] = useState<string>('free');
@@ -55,7 +57,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     const loadUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      setUserEmail(user?.email || null);
+      if (!user) {
+        router.push('/auth/login');
+        return;
+      }
+      setUserEmail(user.email || null);
+      setAuthChecked(true);
       if (user) {
         const { data } = await supabase.from('profiles').select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at').eq('id', user.id).single();
         const name = data?.first_name || user.user_metadata?.first_name || user.user_metadata?.full_name?.split(' ')[0] || null;
@@ -128,7 +135,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {firstName && (
           <p className="text-sm font-medium text-white">{firstName}</p>
         )}
-        <p className="text-xs text-slate-500 truncate">{userEmail}</p>
+        <p className="text-xs text-slate-500 truncate">{userEmail || ''}</p>
         {isTrial ? (
           <span className="inline-block mt-1.5 text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-amber-400 bg-amber-400/10">
             Pro Trial{trialDaysLeft ? ` · ${trialDaysLeft}d left` : ''}
@@ -207,6 +214,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
     </>
   );
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-navy-950">

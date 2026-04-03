@@ -98,10 +98,7 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'carwow-finance', provider: 'Carwow', headline: 'Compare car finance deals - PCP, HP, and personal loans', saving: 'Save on car finance', awinMid: '18621', providerUrl: 'https://www.carwow.co.uk/car-finance', category: 'Car Finance' },
     { id: 'zuto', provider: 'Zuto', headline: 'Car finance comparison - all credit scores welcome', saving: 'Rates from 6.9% APR', awinMid: '16944', providerUrl: 'https://www.zuto.com', category: 'Car Finance' },
   ],
-  Water: [
-    { id: 'water-switch', provider: 'Water Switch', headline: 'Check if you are eligible to switch your water supplier', saving: 'Check postcode', awinMid: '12345', providerUrl: 'https://www.uswitch.com/water/', category: 'Water' },
-    { id: 'water-meter', provider: 'Save on Water', headline: 'Get a water meter and save on your bills', saving: 'Cut your bills', awinMid: '12049', providerUrl: 'https://www.moneysavingexpert.com/utilities/cut-water-bills/', category: 'Water' },
-  ],
+  Water: [],
 };
 
 // Map provider_type (from contract tracking) to deal categories

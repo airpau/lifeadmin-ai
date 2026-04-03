@@ -111,6 +111,7 @@ export default function RewardsPage() {
     failed: any[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
@@ -132,7 +133,7 @@ export default function RewardsPage() {
     ]).then(([loyaltyData, refData]) => {
       if (!loyaltyData.error) setData(loyaltyData);
       if (!refData.error) setReferrals(refData);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch(() => { setError('Failed to load rewards data. Please try again.'); }).finally(() => setLoading(false));
     loadChallenges();
   };
 
@@ -192,6 +193,19 @@ export default function RewardsPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl text-center py-16">
+        <Gift className="h-16 w-16 text-red-400 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-white mb-2">Something went wrong</h2>
+        <p className="text-slate-400 mb-4">{error}</p>
+        <button onClick={() => { setError(null); setLoading(true); loadData(); }} className="px-4 py-2 bg-mint-400 text-navy-950 rounded-lg font-medium hover:bg-mint-500 transition-colors">
+          Retry
+        </button>
       </div>
     );
   }

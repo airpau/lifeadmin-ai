@@ -695,8 +695,6 @@ export default function ScannerPage() {
       .eq('user_id', user.id)
       .eq('status', 'active');
 
-    console.log('[scanner] email_connections query:', { allEmailConns, emailErr, userId: user.id });
-
     const accounts: ConnectedAccount[] = [];
 
     // Add all OAuth connections from email_connections (Google + Outlook)

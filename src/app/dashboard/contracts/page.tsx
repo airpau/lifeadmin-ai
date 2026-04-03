@@ -703,7 +703,10 @@ export default function ContractsPage() {
   const fetchContracts = () => {
     fetch('/api/contracts')
       .then(r => r.json())
-      .then(setContracts)
+      .then(data => {
+        if (Array.isArray(data)) setContracts(data);
+        else console.error('Contracts API error:', data.error);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
