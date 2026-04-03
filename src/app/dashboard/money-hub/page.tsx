@@ -1376,6 +1376,63 @@ export default function MoneyHubPage() {
         )}
       </div>
 
+      {/* ═══ SECTION 2: Bank Accounts ═══ */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        {/*
+          FCA COMPLIANCE: Do NOT add account balance display here.
+          Displaying bank account balances requires FCA agent registration.
+          Only show: bank name, connection status, last sync time.
+          Balance display can be added once FCA approval is obtained.
+        */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-purple-400" /> Bank Accounts
+          </h2>
+          {isPro && (
+            <Link href="/dashboard/subscriptions" className="text-mint-400 text-xs flex items-center gap-1">
+              <Plus className="h-3 w-3" /> Connect another
+            </Link>
+          )}
+        </div>
+        {data.accounts.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-slate-400 text-sm mb-3">No bank accounts connected</p>
+            <Link href="/dashboard/subscriptions" className="text-mint-400 text-sm">Connect bank account</Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.accounts.map(acc => (
+              <div key={acc.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
+                <div className="flex items-center gap-3">
+                  <Building2 className="h-4 w-4 text-green-400" />
+                  <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
+                  {/* Only fetch/display balance if FCA approved */}
+                  {FEATURE_FLAGS.SHOW_BANK_BALANCES && (
+                    <span className="text-emerald-400 font-bold ml-4">£---</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{acc.status}</span>
+                  {acc.last_synced_at && (
+                    <span className="text-slate-500 text-xs">
+                      Synced {(() => {
+                        const mins = Math.round((Date.now() - new Date(acc.last_synced_at).getTime()) / 60000);
+                        if (mins < 1) return 'just now';
+                        if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+                        const hrs = Math.floor(mins / 60);
+                        if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+                        const days = Math.floor(hrs / 24);
+                        return `${days} day${days === 1 ? '' : 's'} ago`;
+                      })()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Learning indicator */}
       <div className="flex items-center gap-2 text-[10px] text-slate-500 px-1">
         <Zap className="h-3 w-3 text-mint-400/60" />
@@ -1769,63 +1826,6 @@ export default function MoneyHubPage() {
           </div>
         ) : (
           <p className="text-slate-500 text-sm text-center py-4">No income data available this month. Connect your bank account to see your income breakdown.</p>
-        )}
-      </div>
-
-      {/* ═══ SECTION 2: Bank Accounts ═══ */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-        {/*
-          FCA COMPLIANCE: Do NOT add account balance display here.
-          Displaying bank account balances requires FCA agent registration.
-          Only show: bank name, connection status, last sync time.
-          Balance display can be added once FCA approval is obtained.
-        */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-purple-400" /> Bank Accounts
-          </h2>
-          {isPro && (
-            <Link href="/dashboard/subscriptions" className="text-mint-400 text-xs flex items-center gap-1">
-              <Plus className="h-3 w-3" /> Connect another
-            </Link>
-          )}
-        </div>
-        {data.accounts.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-slate-400 text-sm mb-3">No bank accounts connected</p>
-            <Link href="/dashboard/subscriptions" className="text-mint-400 text-sm">Connect bank account</Link>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {data.accounts.map(acc => (
-              <div key={acc.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
-                <div className="flex items-center gap-3">
-                  <Building2 className="h-4 w-4 text-green-400" />
-                  <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
-                  {/* Only fetch/display balance if FCA approved */}
-                  {FEATURE_FLAGS.SHOW_BANK_BALANCES && (
-                    <span className="text-emerald-400 font-bold ml-4">£---</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{acc.status}</span>
-                  {acc.last_synced_at && (
-                    <span className="text-slate-500 text-xs">
-                      Synced {(() => {
-                        const mins = Math.round((Date.now() - new Date(acc.last_synced_at).getTime()) / 60000);
-                        if (mins < 1) return 'just now';
-                        if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
-                        const hrs = Math.floor(mins / 60);
-                        if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
-                        const days = Math.floor(hrs / 24);
-                        return `${days} day${days === 1 ? '' : 's'} ago`;
-                      })()}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
         )}
       </div>
 
