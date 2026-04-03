@@ -24,6 +24,12 @@ export default function DashboardPage() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [subscriptionCount, setSubscriptionCount] = useState(0);
   const [monthlySpend, setMonthlySpend] = useState(0);
+  const [spendBreakdown, setSpendBreakdown] = useState<{
+    subscriptions_monthly: number; subscriptions_count: number;
+    mortgages_monthly: number; mortgages_count: number;
+    loans_monthly: number; loans_count: number;
+    council_tax_monthly: number; council_tax_count: number;
+  } | null>(null);
   const [complaintsGenerated, setComplaintsGenerated] = useState(0);
   const [bankConnected, setBankConnected] = useState(false);
   const [expiringContracts, setExpiringContracts] = useState(0);
@@ -212,14 +218,21 @@ export default function DashboardPage() {
         setSubscriptionCount(subsList.length);
         setActiveSubscriptions(subsList);
 
-        // Calculate monthly spend
-        const monthly = subsList.reduce((sum, s) => {
-          const amt = parseFloat(String(s.amount)) || 0;
-          if (s.billing_cycle === 'yearly') return sum + amt / 12;
-          if (s.billing_cycle === 'quarterly') return sum + amt / 3;
-          return sum + amt;
-        }, 0);
-        setMonthlySpend(monthly);
+        // Calculate monthly spend via RPC for consistency with subscriptions page
+        const { data: subTotal } = await supabase.rpc('get_subscription_total', { p_user_id: user.id });
+        if (subTotal) {
+          setMonthlySpend(subTotal.subscriptions_monthly ?? 0);
+          setSpendBreakdown(subTotal);
+        } else {
+          // Fallback: client-side calculation
+          const monthly = subsList.reduce((sum, s) => {
+            const amt = parseFloat(String(s.amount)) || 0;
+            if (s.billing_cycle === 'yearly') return sum + amt / 12;
+            if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+            return sum + amt;
+          }, 0);
+          setMonthlySpend(monthly);
+        }
 
         // Count contracts expiring within 30 days (subscriptions + vault extractions)
         const now = new Date();
@@ -529,7 +542,12 @@ export default function DashboardPage() {
         <Link href="/dashboard/money-hub" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
-          <p className="text-slate-400 text-sm">Monthly spend</p>
+          <p className="text-slate-400 text-sm">Subscriptions & bills</p>
+          {spendBreakdown && (spendBreakdown.mortgages_monthly > 0 || spendBreakdown.loans_monthly > 0) && (
+            <p className="text-slate-500 text-xs mt-1">
+              + {formatGBP(spendBreakdown.mortgages_monthly + spendBreakdown.loans_monthly + spendBreakdown.council_tax_monthly)} commitments
+            </p>
+          )}
         </Link>
         <Link href="/dashboard/complaints" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <FileText className="h-6 w-6 text-blue-400 mb-3" />
