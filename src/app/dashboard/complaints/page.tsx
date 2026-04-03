@@ -369,15 +369,16 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:p-4 sm:pt-8">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border border-navy-700/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="relative bg-navy-900 border border-navy-700/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-2xl" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
+        <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
         <div className="flex items-center justify-between p-5 border-b border-navy-700/50 flex-shrink-0">
           <h2 className="text-lg font-bold text-white">Add to your dispute</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
         </div>
-        <form id="add-correspondence-form" onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1"
-          style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
+          style={{ WebkitOverflowScrolling: 'touch' as any }}>
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">What are you adding?</label>
             <div className="grid grid-cols-1 gap-2">
@@ -479,17 +480,17 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
             />
           </div>
 
-        </form>
-        <div className="p-5 pt-3 border-t border-navy-700/50 flex-shrink-0 safe-area-bottom">
+        </div>
+        <div className="p-5 pt-3 border-t border-navy-700/50 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
           <button
             type="submit"
-            form="add-correspondence-form"
             disabled={saving || uploading || !content.trim()}
             className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
             {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
         </div>
+        </form>
       </div>
     </div>
   );
