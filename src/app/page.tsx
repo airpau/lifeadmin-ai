@@ -148,19 +148,20 @@ export default function Home() {
               </div>
 
               <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-                Your Personal{' '}
+                Find hidden overcharges.<br className="hidden sm:block" />
+                Fight unfair bills.{' '}
                 <span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">
-                  Consumer Champion
+                  Get your money back.
                 </span>
               </h1>
 
               <p className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
-                Fight unfair charges with AI disputes, uncover hidden subscriptions, track your total wealth, and find better deals. The ultimate financial command centre.
+                Paybacker scans your bank account and email to find overcharges, forgotten subscriptions, and unfair bills — then generates professional complaint letters citing UK law in 30 seconds.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <Link href="/auth/signup" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
-                  {trialActive ? 'Start Free 14-Day Pro Trial' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
+                  {trialActive ? 'Start Free 14-Day Pro Trial' : 'Find what you\'re overpaying'} <ArrowRight className="h-5 w-5" />
                 </Link>
                 <a href="#how-it-works" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-8 py-4 rounded-xl transition-all duration-200 text-center text-lg inline-flex items-center justify-center gap-2">
                   See How It Works
@@ -176,9 +177,9 @@ export default function Home() {
               >
                 {[
                   { icon: Scale, label: 'Disputes Centre', desc: 'AI letters citing UK law' },
-                  { icon: Banknote, label: 'Money Hub', desc: 'Open banking intelligence' },
-                  { icon: CreditCard, label: 'Subscription Finder', desc: 'Scan, track & cancel' },
-                  { icon: TrendingUp, label: 'Deals Checker', desc: 'Compare & switch to save' },
+                  { icon: Banknote, label: 'Overcharge Detection', desc: 'Bank & email scanning' },
+                  { icon: CreditCard, label: 'Subscription Finder', desc: 'Auto-detect & cancel' },
+                  { icon: TrendingUp, label: 'Better Deals', desc: 'Compare & switch to save' },
                 ].map((item) => (
                   <motion.div
                     key={item.label}
@@ -659,8 +660,59 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Feature Section 3: AI Financial Assistant */}
+        {/* Feature Section 3: Find Better Deals */}
         <section className="py-20 md:py-28">
+          <div className="container mx-auto px-4 md:px-6">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
+            >
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-3 py-1.5 text-xs text-mint-400 border border-mint-400/20 mb-6">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span>Deal Comparison</span>
+                </div>
+                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                  Find Better Deals
+                </h2>
+                <p className="text-slate-400 text-lg leading-relaxed mb-6">
+                  We analyse your bills and show you cheaper alternatives from 50+ UK providers. Energy, broadband, mobile, insurance, and more.
+                </p>
+                <ul className="space-y-3 mb-8">
+                  {[
+                    '53 deals across 9 categories from top UK providers',
+                    'Personalised recommendations based on your real spending',
+                    'Alerts before contracts renew so you never overpay',
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-mint-400 mt-0.5 shrink-0" />
+                      <span className="text-slate-300 text-sm">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/deals" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
+                  Browse Deals Free <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
+                <div className="space-y-3">
+                  {['Energy', 'Broadband', 'Mobile', 'Insurance', 'Mortgages', 'Loans', 'Credit Cards', 'Car Finance', 'Travel'].map(cat => (
+                    <div key={cat} className="flex items-center justify-between bg-navy-800 rounded-lg px-4 py-2.5">
+                      <span className="text-slate-300 text-sm">{cat}</span>
+                      <span className="text-mint-400 text-xs font-medium">View deals &rarr;</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Feature Section 4: AI Financial Assistant */}
+        <section className="py-20 md:py-28 bg-navy-900/30">
           <div className="container mx-auto px-4 md:px-6">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -728,87 +780,36 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Feature Section 4: Find Better Deals */}
-        <section className="py-20 md:py-28">
-          <div className="container mx-auto px-4 md:px-6">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
-            >
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-3 py-1.5 text-xs text-mint-400 border border-mint-400/20 mb-6">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  <span>Deal Comparison</span>
-                </div>
-                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                  Find Better Deals
-                </h2>
-                <p className="text-slate-400 text-lg leading-relaxed mb-6">
-                  We analyse your bills and show you cheaper alternatives from 50+ UK providers. Energy, broadband, mobile, insurance, and more.
-                </p>
-                <ul className="space-y-3 mb-8">
-                  {[
-                    '53 deals across 9 categories from top UK providers',
-                    'Personalised recommendations based on your real spending',
-                    'Alerts before contracts renew so you never overpay',
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-3">
-                      <CheckCircle className="h-5 w-5 text-mint-400 mt-0.5 shrink-0" />
-                      <span className="text-slate-300 text-sm">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/deals" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
-                  Browse Deals Free <ChevronRight className="h-4 w-4" />
-                </Link>
-              </div>
-              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
-                <div className="space-y-3">
-                  {['Energy', 'Broadband', 'Mobile', 'Insurance', 'Mortgages', 'Loans', 'Credit Cards', 'Car Finance', 'Travel'].map(cat => (
-                    <div key={cat} className="flex items-center justify-between bg-navy-800 rounded-lg px-4 py-2.5">
-                      <span className="text-slate-300 text-sm">{cat}</span>
-                      <span className="text-mint-400 text-xs font-medium">View deals &rarr;</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
         {/* What Happens After Signup */}
         <section id="how-it-works" className="py-20 md:py-28 bg-navy-900/30 scroll-mt-16">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-12">
-              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">You&apos;re up and running in minutes</h2>
-              <p className="text-slate-400 text-lg">No forms, no phone calls, no waiting. Three steps and you&apos;re saving money.</p>
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">How Paybacker works</h2>
+              <p className="text-slate-400 text-lg">Detect problems. Understand your rights. Take action — in one click.</p>
             </div>
             <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
               {[
                 {
                   step: '1',
-                  title: 'Generate your first letter — free, instant',
-                  desc: 'Describe your dispute and our AI produces a formal letter citing the exact UK law that applies. Takes 30 seconds. No account needed to try it.',
-                  cta: 'Try it now',
+                  title: 'Connect your bank and email',
+                  desc: 'We automatically scan your transactions and inbox to detect overcharges, forgotten subscriptions, price increases, and unfair bills. No manual work required.',
+                  cta: 'Scan your bills free',
                   href: '/auth/signup',
                   colour: 'mint',
                 },
                 {
                   step: '2',
-                  title: 'Connect your bank to find hidden costs',
-                  desc: 'Link your bank account securely via Open Banking. We automatically detect every subscription, direct debit, and forgotten recurring charge.',
-                  cta: 'Connect bank',
+                  title: 'We explain exactly what you\'re owed',
+                  desc: 'For every problem we find, Paybacker cites the exact UK legislation that applies — Consumer Rights Act 2015, Ofcom rules, UK261, and more. You\'ll know your rights.',
+                  cta: 'Check your rights',
                   href: '/auth/signup',
                   colour: 'brand',
                 },
                 {
                   step: '3',
-                  title: 'Get personalised savings recommendations',
-                  desc: 'Your dashboard shows exactly where you\'re overpaying, which contracts are about to renew, and the cheapest alternatives available right now.',
-                  cta: 'See your dashboard',
+                  title: 'Take action in one click',
+                  desc: 'Generate a formal complaint letter in 30 seconds, send a cancellation email with legal backing, or switch to a cheaper provider. Everything handled for you.',
+                  cta: 'Get started free',
                   href: '/auth/signup',
                   colour: 'mint',
                 },
