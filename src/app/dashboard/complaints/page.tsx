@@ -950,7 +950,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
       {/* Thread */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-bold text-white">Your dispute timeline</h2>
           <div className="flex gap-2">
             <button
@@ -1098,6 +1098,23 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     </>
                   ) : (
                     <p className="text-sm text-slate-300 whitespace-pre-wrap">{entry.content}</p>
+                  )}
+
+                  {/* Draft response button — shown on company responses */}
+                  {isFromCompany && !isResolved(dispute.status) && (
+                    <div className="mt-3 pt-3 border-t border-navy-700/30">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          generateFollowUp();
+                        }}
+                        disabled={generating}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-sm transition-all border border-amber-500/20 font-medium"
+                      >
+                        {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        Draft response to this
+                      </button>
+                    </div>
                   )}
                 </div>
               );
