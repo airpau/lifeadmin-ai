@@ -45,7 +45,7 @@ interface Subscription {
   next_billing_date: string | null;
   last_used_date: string | null;
   usage_frequency: string | null;
-  status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired' | 'dismissed';
+  status: 'active' | 'pending_cancellation' | 'cancelled' | 'expired' | 'dismissed' | 'flagged';
   account_email: string | null;
   cancel_requested_at: string | null;
   source?: 'manual' | 'email' | 'bank' | 'bank_and_email';
@@ -681,6 +681,24 @@ export default function SubscriptionsPage() {
     setCancellationError(null);
 
     try {
+      // Step 1: Create a dispute record for this cancellation
+      let disputeId: string | null = null;
+      try {
+        const disputeRes = await fetch('/api/subscriptions/create-dispute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId: subscription.id }),
+        });
+        if (disputeRes.ok) {
+          const disputeData = await disputeRes.json();
+          disputeId = disputeData.dispute_id || null;
+        }
+      } catch (disputeErr) {
+        // Non-blocking: continue with email generation even if dispute creation fails
+        console.error('Failed to create dispute:', disputeErr);
+      }
+
+      // Step 2: Generate the cancellation email
       const res = await fetch('/api/subscriptions/cancellation-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -707,6 +725,24 @@ export default function SubscriptionsPage() {
         setCancelFeedback('');
         setShowCancelFeedback(false);
         capture('cancellation_email_generated', { provider: subscription.provider_name, category: subscription.category });
+
+        // Step 3: Save the generated letter to the dispute if we have a dispute_id
+        if (disputeId && data.subject && data.body) {
+          try {
+            await fetch('/api/disputes/save-letter', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                disputeId,
+                title: data.subject,
+                content: data.body,
+              }),
+            });
+          } catch (saveErr) {
+            console.error('Failed to save letter to dispute:', saveErr);
+          }
+        }
+
         await fetchSubscriptions();
       }
     } catch (error: any) {
@@ -1620,24 +1656,41 @@ export default function SubscriptionsPage() {
         if (reviewCount === 0) return null;
         return (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-8">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-400" />
+                <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
                 <div>
-                  <h2 className="text-white font-semibold">{reviewCount} new subscription{reviewCount > 1 ? 's' : ''} detected — review now</h2>
+                  <h2 className="text-white font-semibold">{reviewCount} subscription{reviewCount > 1 ? 's' : ''} need{reviewCount === 1 ? 's' : ''} your review</h2>
                   <p className="text-slate-400 text-sm">Auto-detected from your bank transactions. Confirm they&apos;re yours or dismiss.</p>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  // Scroll to first needs_review subscription
-                  const el = document.querySelector('[data-needs-review="true"]');
-                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }}
-                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-medium px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap"
-              >
-                Review
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    const el = document.querySelector('[data-needs-review="true"]');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-medium px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap"
+                >
+                  Review Now
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const supabase = createClient();
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (!user) return;
+                      await supabase.rpc('confirm_all_subscriptions', { p_user_id: user.id });
+                      await fetchSubscriptions();
+                    } catch (err) {
+                      console.error('Failed to confirm all:', err);
+                    }
+                  }}
+                  className="bg-green-500/20 hover:bg-green-500/30 text-green-400 font-medium px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap border border-green-500/30"
+                >
+                  Confirm All as Mine
+                </button>
+              </div>
             </div>
           </div>
         );
@@ -2049,14 +2102,12 @@ export default function SubscriptionsPage() {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ needs_review: false }),
-                      }).then(() => {
-                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false } : s));
-                      });
+                      }).then(() => fetchSubscriptions());
                     }}
                     className="flex items-center gap-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 px-4 py-2 rounded-lg text-sm transition-all border border-green-500/30"
                   >
                     <CheckCircle className="h-4 w-4" />
-                    This is mine
+                    This Is Mine
                   </button>
                   <button
                     onClick={(e) => {
@@ -2064,37 +2115,18 @@ export default function SubscriptionsPage() {
                       fetch(`/api/subscriptions/${sub.id}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ needs_review: false, status: 'dismissed', dismissed_at: new Date().toISOString() }),
-                      }).then(() => {
-                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false, status: 'dismissed' as const } : s));
-                      });
-                    }}
-                    className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-slate-300 px-4 py-2 rounded-lg text-sm transition-all"
-                  >
-                    <X className="h-4 w-4" />
-                    Not a subscription
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      window.open('https://www.actionfraud.police.uk/', '_blank');
-                      fetch(`/api/subscriptions/${sub.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ needs_review: false, notes: 'Flagged as unrecognised — check with bank' }),
-                      }).then(() => {
-                        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, needs_review: false } : s));
-                      });
+                        body: JSON.stringify({ status: 'flagged', needs_review: false, notes: 'User does not recognise this transaction' }),
+                      }).then(() => fetchSubscriptions());
                     }}
                     className="flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm transition-all border border-red-500/30"
                   >
                     <AlertTriangle className="h-4 w-4" />
-                    I don&apos;t recognise this
+                    I Don&apos;t Recognise This
                   </button>
                 </div>
               )}
 
-              {sub.status === 'active' && (
+              {!sub.needs_review && sub.status === 'active' && (
                   <div className="mt-4 pt-4 border-t border-navy-700/50 flex flex-wrap gap-2">
                     {isStatutoryService(sub.provider_name) ? (
                       <span className="flex items-center gap-2 bg-slate-500/10 text-slate-400 px-4 py-2 rounded-lg text-sm border border-slate-500/20">

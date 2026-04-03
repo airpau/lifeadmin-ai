@@ -164,7 +164,7 @@ function shortenBadge(text: string): string {
 }
 
 // Categories that have real verified affiliate deals in the database
-const CATEGORIES_WITH_VERIFIED_DEALS = new Set(['broadband', 'mobile']);
+const CATEGORIES_WITH_VERIFIED_DEALS = new Set(['broadband', 'mobile', 'energy']);
 
 // Categories that should never show deal suggestions (non-switchable or no real deals)
 const EXCLUDED_DEAL_CATEGORIES = new Set([
