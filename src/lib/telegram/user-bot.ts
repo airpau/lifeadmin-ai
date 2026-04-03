@@ -107,6 +107,7 @@ WRITE:
 
 Rules:
 - ALWAYS call the relevant tool before answering — never make up numbers or say "I can't"
+- draft_dispute_letter is TERMINAL: call it exactly once when the user asks for a letter, then stop. Do NOT call search_legal_rights or any other tool first — draft_dispute_letter handles legal research internally. Do NOT call any tool after it.
 - If the user asks you to do something, DO IT with a tool — don't suggest they do it in the dashboard
 - When a tool returns spending or transaction data, ALWAYS show it — never withhold results because of bank connection status. The tool already handles connection status; if a connection-expiry note is included in the result, relay it at the end as context only. Never redirect the user to reconnect before showing the data.
 - Currency: £X.XX format. Dates: DD/MM/YYYY (UK format)
@@ -206,10 +207,6 @@ async function callClaudeWithTools(
     { role: 'user', content: userMessage },
   ];
 
-  let pendingAction: PendingAction | undefined;
-  let pendingActionText = '';
-  const toolsUsed: string[] = [];
-
   // Enable prompt caching on system prompt and tools
   const cachedTools = telegramTools.map((tool, idx) => {
     if (idx === telegramTools.length - 1) {
@@ -226,14 +223,16 @@ async function callClaudeWithTools(
     messages,
   });
 
-  // Tool use loop
-  while (response.stop_reason === 'tool_use') {
+  // Tool use loop — hard cap of 8 iterations as a safety net
+  const MAX_ITERATIONS = 8;
+  let iterations = 0;
+
+  while (response.stop_reason === 'tool_use' && iterations < MAX_ITERATIONS) {
+    iterations++;
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    let hasPendingAction = false;
 
     for (const block of response.content) {
       if (block.type === 'tool_use') {
-        toolsUsed.push(block.name);
         const result = await executeToolCall(
           block.name,
           block.input as Record<string, unknown>,
@@ -241,9 +240,10 @@ async function callClaudeWithTools(
         );
 
         if (result.pendingAction) {
-          pendingAction = result.pendingAction;
-          pendingActionText = result.text;
-          hasPendingAction = true;
+          // TERMINAL: a pending action (e.g. draft letter) must stop everything immediately.
+          // Do NOT feed this result back to Claude — that causes it to re-invoke the tool
+          // and generate duplicate letters. Return directly, bypassing both loops.
+          return { text: result.text, pendingAction: result.pendingAction };
         }
 
         toolResults.push({
@@ -252,13 +252,6 @@ async function callClaudeWithTools(
           content: result.text,
         });
       }
-    }
-
-    // Stop the loop immediately when a pending action exists (e.g. draft letter awaiting
-    // user approval). Feeding the result back to Claude would cause it to re-invoke the
-    // generation tool and produce duplicate previews.
-    if (hasPendingAction) {
-      break;
     }
 
     messages.push({ role: 'assistant', content: response.content });
@@ -273,16 +266,12 @@ async function callClaudeWithTools(
     });
   }
 
-  // When a pending action was produced, use the tool result text directly — this avoids
-  // feeding the letter back to Claude and getting a duplicate/re-generated response.
-  const finalText = pendingAction
-    ? pendingActionText
-    : response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('');
+  const finalText = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
 
-  return { text: finalText, pendingAction };
+  return { text: finalText };
 }
 
 // ============================================================

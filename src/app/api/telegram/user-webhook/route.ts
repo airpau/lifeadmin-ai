@@ -2,7 +2,7 @@ import { webhookCallback } from 'grammy';
 import { createUserBot } from '@/lib/telegram/user-bot';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // Bot instance — created once per cold start
 let handleUpdate: ((req: Request) => Promise<Response>) | null = null;
