@@ -120,6 +120,7 @@ const INCOME_LABELS: Record<string, { label: string; color: string; icon: string
   loan_repayment: { label: 'Loan Repayment', color: '#ef4444', icon: '🏦' },
   gift: { label: 'Gifts', color: '#ec4899', icon: '🎁' },
   loan: { label: 'Loan', color: '#ef4444', icon: '🏦' },
+  credit_loan: { label: 'Credit / Loan', color: '#ef4444', icon: '🏦' },
   other: { label: 'Other', color: '#475569', icon: '📋' },
 };
 
