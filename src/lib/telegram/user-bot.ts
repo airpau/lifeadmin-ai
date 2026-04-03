@@ -112,7 +112,11 @@ Rules:
 - Keep responses concise — bullet points, bold headers, no essays
 - Be specific about financial impact: "that's £276/year" not "your bill went up"
 - You have conversation history — reference previous messages naturally
-- When recategorising, suggest related actions (e.g. "shall I set a budget for this category too?")`;
+- When recategorising, suggest related actions (e.g. "shall I set a budget for this category too?")
+
+CRITICAL: When you commit to taking an action for the user (creating a goal, setting a budget, adding a subscription, etc.), you MUST call the appropriate tool. Never describe an action as done without actually executing the tool call. If a user asks you to do multiple things, call multiple tools. Saying "I've set your budget" without calling set_budget is a lie — always call the tool first, then confirm.
+
+When a user asks to create a savings goal with a monthly saving amount, ALSO call set_budget to create a budget for that category to track their spending.`;
 
 // ============================================================
 // Rate limiter — 20 messages per user per hour
