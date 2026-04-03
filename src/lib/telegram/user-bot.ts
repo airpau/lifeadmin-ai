@@ -72,6 +72,30 @@ async function sendChunked(
 // Constants
 // ============================================================
 const RATE_LIMIT_PER_HOUR = 20;
+
+// ============================================================
+// Intent classifier — keyword-based, zero API cost
+// Determines whether a message needs write tools (Sonnet)
+// or is read-only (Haiku).
+// ============================================================
+const WRITE_KEYWORDS = [
+  'set', 'create', 'add', 'update', 'cancel', 'delete', 'remove',
+  'change', 'save', 'track', 'budget', 'goal', 'recategorise',
+  'recategorize', 'mark', 'unlink',
+];
+
+const WRITE_PATTERNS = [
+  /£[\d,]+\s*(budget|goal|saving)/i,
+  /savings?\s+goal/i,
+  /new\s+subscription/i,
+];
+
+function classifyIntent(message: string): boolean {
+  const words = message.toLowerCase().split(/\W+/);
+  if (WRITE_KEYWORDS.some((kw) => words.includes(kw))) return true;
+  if (WRITE_PATTERNS.some((re) => re.test(message))) return true;
+  return false;
+}
 const SESSION_EXPIRY_DAYS = 90;
 
 const SYSTEM_PROMPT = `You are Paybacker's financial assistant for UK consumers. You are fully connected to the user's Paybacker account and can both READ and WRITE their financial data.
@@ -192,9 +216,13 @@ async function callClaudeWithTools(
   userId: string,
   userMessage: string,
   chatId: number,
-): Promise<{ text: string; pendingAction?: PendingAction }> {
+): Promise<{ text: string; pendingAction?: PendingAction; modelUsed: string }> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const supabase = getAdmin();
+
+  // Smart model routing — Sonnet for write operations, Haiku for read-only
+  const needsWrite = classifyIntent(userMessage);
+  const model = needsWrite ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
 
   // Load conversation history for context
   const history = await getConversationHistory(supabase, chatId);
@@ -217,7 +245,7 @@ async function callClaudeWithTools(
   });
 
   let response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model,
     max_tokens: 2048,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     tools: cachedTools,
@@ -253,7 +281,7 @@ async function callClaudeWithTools(
     messages.push({ role: 'user', content: toolResults });
 
     response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model,
       max_tokens: 2048,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       tools: cachedTools,
@@ -266,7 +294,7 @@ async function callClaudeWithTools(
     .map((b) => b.text)
     .join('');
 
-  return { text: finalText, pendingAction };
+  return { text: finalText, pendingAction, modelUsed: model };
 }
 
 // ============================================================
@@ -713,7 +741,7 @@ export function createUserBot(): Bot<UserBotContext> {
     await ctx.replyWithChatAction('typing');
 
     try {
-      const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
+      const { text, pendingAction, modelUsed } = await callClaudeWithTools(session.user_id, userMessage, chatId);
 
       // Log outbound
       supabase
@@ -724,6 +752,7 @@ export function createUserBot(): Bot<UserBotContext> {
           direction: 'outbound',
           message_text: text,
           processing_time_ms: Date.now() - startTime,
+          model_used: modelUsed,
         })
         .then(() => {});
 
