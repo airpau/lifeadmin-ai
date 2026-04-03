@@ -598,6 +598,9 @@ export default function Home() {
               <p className="text-center text-slate-500 text-xs mt-4">
                 Free users get 3 letters/month. Essential (£4.99/mo) gives unlimited letters.
               </p>
+              <p className="text-center text-slate-600 text-xs mt-2">
+                AI-generated letters are for guidance only and do not constitute legal advice. For complex disputes, always consult a qualified solicitor.
+              </p>
             </div>
           </div>
         </section>
