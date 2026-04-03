@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   const providerType = body.provider_type || detectProviderType(body.issue_type, normalisedName);
 
   // Dedup: check if same user + same provider has an open dispute within 7 days
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const { data: recentDup } = await supabase
     .from('disputes')
     .select('id, issue_summary')

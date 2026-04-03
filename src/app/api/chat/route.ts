@@ -8,6 +8,38 @@ import { getToolDefinitions, executeTool } from './tools/registry';
 
 export const maxDuration = 30;
 
+// Simple in-memory rate limiter for anonymous users: max 5 messages per IP per minute
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 5;
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const timestamps = rateLimitMap.get(ip) || [];
+  // Remove timestamps outside the window
+  const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX) {
+    rateLimitMap.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  rateLimitMap.set(ip, recent);
+  return false;
+}
+
+// Periodic cleanup to prevent memory leak (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) {
+      rateLimitMap.delete(ip);
+    } else {
+      rateLimitMap.set(ip, recent);
+    }
+  }
+}, 5 * 60 * 1000);
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -335,6 +367,19 @@ export async function POST(request: NextRequest) {
       }
     } catch (authErr: any) {
       console.error('[chat] Auth threw exception:', authErr.message);
+    }
+
+    // Rate limit anonymous (unauthenticated) users: max 5 messages per IP per minute
+    if (!userId) {
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        || request.headers.get('x-real-ip')
+        || 'unknown';
+      if (isRateLimited(ip)) {
+        return NextResponse.json(
+          { error: 'Too many requests. Please wait a moment before sending another message.' },
+          { status: 429 }
+        );
+      }
     }
 
     // Load product features from DB (cached 5 min)

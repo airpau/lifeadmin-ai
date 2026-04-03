@@ -20,6 +20,7 @@ function isTransfer(desc: string, bankCat: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
+  try {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -178,4 +179,8 @@ export async function GET(request: NextRequest) {
     totalTransactions: filtered.length,
     totalSpent: parseFloat(filtered.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0).toFixed(2)),
   });
+  } catch (error: any) {
+    console.error('Error fetching transactions:', error);
+    return NextResponse.json({ error: error.message || 'Failed to fetch transactions' }, { status: 500 });
+  }
 }

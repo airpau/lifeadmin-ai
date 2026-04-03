@@ -17,6 +17,22 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
+    // Allowlist: only permit these fields to be updated (prevent mass assignment)
+    const ALLOWED_FIELDS = new Set([
+      'provider_name', 'category', 'amount', 'billing_cycle', 'next_billing_date',
+      'account_email', 'contract_type', 'contract_end_date', 'contract_start_date',
+      'contract_term_months', 'auto_renews', 'early_exit_fee', 'provider_type',
+      'current_tariff', 'alerts_enabled', 'alert_before_days', 'contract_end_source',
+      'status', 'needs_review', 'notes', 'dismissed_at', 'cancelled_at',
+      'money_saved', 'subcategory',
+    ]);
+    const sanitisedBody: Record<string, unknown> = {};
+    for (const key of Object.keys(body)) {
+      if (ALLOWED_FIELDS.has(key)) {
+        sanitisedBody[key] = body[key];
+      }
+    }
+
     // Fetch original before update (for learning)
     const { data: original } = await supabase
       .from('subscriptions')
@@ -27,7 +43,7 @@ export async function PATCH(
 
     const { data, error } = await supabase
       .from('subscriptions')
-      .update(body)
+      .update(sanitisedBody)
       .eq('id', id)
       .eq('user_id', user.id)
       .select()

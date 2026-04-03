@@ -6,7 +6,7 @@ export const maxDuration = 30;
 
 const API = 'https://graph.facebook.com/v25.0';
 const PAGE_ID = '1056645287525328';
-const VERIFY_TOKEN = 'paybacker_meta_webhook_2026';
+const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || '';
 
 // GET - Meta webhook verification (one-time setup)
 export async function GET(request: NextRequest) {

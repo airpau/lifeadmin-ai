@@ -102,10 +102,11 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      // Cancel ALL existing subscriptions so the new checkout is clean
+      // Mark existing subscriptions to cancel at period end (not immediately)
+      // so the user keeps access if they abandon checkout
       for (const sub of allActiveSubs) {
-        console.log(`Checkout: cancelling existing sub=${sub.id} price=${sub.items.data[0]?.price.id}`);
-        await stripeDelete(`/subscriptions/${sub.id}`);
+        console.log(`Checkout: marking cancel_at_period_end for sub=${sub.id} price=${sub.items.data[0]?.price.id}`);
+        await stripePost(`/subscriptions/${sub.id}`, { cancel_at_period_end: 'true' });
       }
     }
 

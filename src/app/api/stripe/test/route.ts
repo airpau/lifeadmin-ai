@@ -70,7 +70,12 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ products: { essential: essentialProduct.id, pro: proProduct.id }, prices: created });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = request.headers.get('authorization');
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const results: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     stripe_key_set: !!process.env.STRIPE_SECRET_KEY,
