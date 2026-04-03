@@ -8,7 +8,7 @@ import {
   RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2,
   Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
   AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
-  Trophy, PoundSterling, TrendingUp, Scale,
+  Trophy, PoundSterling, TrendingUp, Scale, Trash2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { capture } from '@/lib/posthog';
@@ -1037,10 +1037,26 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         <span className="text-slate-500 text-sm">— {entry.title}</span>
                       )}
                     </div>
-                    <span className="text-slate-600 text-xs flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {formatDate(entry.entry_date)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-600 text-xs flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatDate(entry.entry_date)}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Remove this entry from the dispute history? This will also remove it from the AI context for future letters.')) {
+                            fetch(`/api/correspondence/${entry.id}`, { method: 'DELETE' })
+                              .then(r => { if (r.ok) fetchDispute(); })
+                              .catch(() => {});
+                          }
+                        }}
+                        className="text-slate-700 hover:text-red-400 transition-colors p-0.5"
+                        title="Remove from history"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
 
                   {isAiLetter ? (
