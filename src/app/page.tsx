@@ -148,19 +148,20 @@ export default function Home() {
               </div>
 
               <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-                Your Personal{' '}
+                Find Hidden Overcharges.{' '}
                 <span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">
-                  Consumer Champion
-                </span>
+                  Fight Unfair Bills.
+                </span>{' '}
+                Get Your Money Back.
               </h1>
 
               <p className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
-                Fight unfair charges with AI disputes, uncover hidden subscriptions, track your total wealth, and find better deals. The ultimate financial command centre.
+                Paybacker scans your bank and email to spot overcharges, forgotten subscriptions, and unfair bills — then generates professional complaint letters citing UK law in 30 seconds.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
                 <Link href="/auth/signup" className="w-full sm:w-auto bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] text-center text-lg inline-flex items-center justify-center gap-2">
-                  {trialActive ? 'Start Free 14-Day Pro Trial' : 'Get Started Free'} <ArrowRight className="h-5 w-5" />
+                  {trialActive ? 'Start Free 14-Day Pro Trial' : 'Find What You\'re Overpaying'} <ArrowRight className="h-5 w-5" />
                 </Link>
                 <a href="#how-it-works" className="border border-navy-700 hover:border-mint-400/50 text-slate-300 hover:text-white px-8 py-4 rounded-xl transition-all duration-200 text-center text-lg inline-flex items-center justify-center gap-2">
                   See How It Works
@@ -176,9 +177,9 @@ export default function Home() {
               >
                 {[
                   { icon: Scale, label: 'Disputes Centre', desc: 'AI letters citing UK law' },
-                  { icon: Banknote, label: 'Money Hub', desc: 'Open banking intelligence' },
-                  { icon: CreditCard, label: 'Subscription Finder', desc: 'Scan, track & cancel' },
-                  { icon: TrendingUp, label: 'Deals Checker', desc: 'Compare & switch to save' },
+                  { icon: Banknote, label: 'Overcharge Detection', desc: 'Bank + email scanning' },
+                  { icon: CreditCard, label: 'Subscription Finder', desc: 'Track & cancel' },
+                  { icon: TrendingUp, label: 'Better Deals', desc: 'Compare & switch to save' },
                 ].map((item) => (
                   <motion.div
                     key={item.label}
@@ -201,17 +202,20 @@ export default function Home() {
             <p className="text-center text-slate-500 text-sm mb-6">Regulated, secure, and built for UK consumers</p>
             <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12">
               {[
-                { name: 'ICO Registered', sub: 'Data Protection', icon: '🛡️' },
-                { name: 'FCA Regulated', sub: 'Via Yapily', icon: '✅' },
-                { name: 'Yapily', sub: 'Open Banking', icon: '🏦' },
-                { name: 'Stripe', sub: 'Secure Payments', icon: '🔒' },
-                { name: 'GDPR Compliant', sub: 'UK Data Laws', icon: '📋' },
-                { name: 'UK Company', sub: 'Paybacker LTD', icon: '🇬🇧' },
+                { name: 'ICO Registered', sub: 'Data Protection', icon: '🛡️', link: undefined as string | undefined },
+                { name: 'FCA-Authorised Provider', sub: 'Open Banking via Yapily', icon: '✅', link: 'https://register.fca.org.uk/' as string | undefined },
+                { name: 'Stripe', sub: 'Secure Payments', icon: '🔒', link: undefined as string | undefined },
+                { name: 'GDPR Compliant', sub: 'UK Data Laws', icon: '📋', link: undefined as string | undefined },
+                { name: 'UK Company', sub: 'Paybacker LTD', icon: '🇬🇧', link: undefined as string | undefined },
               ].map((badge) => (
                 <div key={badge.name} className="flex items-center gap-2">
                   <span className="text-lg">{badge.icon}</span>
                   <div>
-                    <p className="text-slate-400 font-semibold text-xs">{badge.name}</p>
+                    {badge.link ? (
+                      <a href={badge.link} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-mint-400 font-semibold text-xs transition-colors">{badge.name}</a>
+                    ) : (
+                      <p className="text-slate-400 font-semibold text-xs">{badge.name}</p>
+                    )}
                     <p className="text-slate-600 text-[10px]">{badge.sub}</p>
                   </div>
                 </div>
@@ -350,7 +354,7 @@ export default function Home() {
                   {
                     icon: <Shield className="h-5 w-5 text-amber-400" />,
                     title: 'Bank-Grade Security',
-                    desc: 'End-to-end encrypted. Your data never leaves Paybacker\u2019s servers.',
+                    desc: 'Your data is encrypted and only shared with regulated providers needed to deliver the service. We never sell your data.',
                   },
                 ].map((feature, i) => (
                   <motion.div
