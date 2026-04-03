@@ -34,12 +34,12 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdmin();
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const results = { mentions_replied: 0, tweets_liked: 0, tweets_replied: 0, leads_captured: 0 };
 
-  // 1. Reply to mentions
+  // 1. Fetch mentions (no Anthropic needed yet)
+  let mentions: any[] = [];
+  let sinceId: string | undefined;
   try {
-    // Get last processed mention ID
     const { data: lastMention } = await supabase
       .from('business_log')
       .select('content')
@@ -49,11 +49,47 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const sinceId = lastMention?.content || undefined;
-    const mentions = await getMentions(sinceId);
+    sinceId = lastMention?.content || undefined;
+    mentions = await getMentions(sinceId);
+  } catch (err: any) {
+    console.error('[twitter-engagement] Mentions fetch error:', err.message);
+  }
 
+  // 2. Find relevant tweets, handle likes and lead capture (no Anthropic needed)
+  const questionTweets: any[] = [];
+  try {
+    const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
+    const searchResults = await searchTweets(query, 5);
+
+    for (const tweet of searchResults.slice(0, 3)) {
+      const liked = await likeTweet(tweet.id);
+      if (liked) results.tweets_liked++;
+
+      // Capture as lead for all search tweets
+      await supabase.from('leads').upsert({
+        platform: 'twitter',
+        platform_user_id: tweet.author_id,
+        first_message: tweet.text.substring(0, 500),
+        status: 'new',
+      }, { onConflict: 'platform,platform_user_id' }).then(() => {});
+
+      const isQuestion = tweet.text.includes('?') || /how do i|can i|help|anyone know|any advice/i.test(tweet.text);
+      if (isQuestion) questionTweets.push(tweet);
+    }
+  } catch (err: any) {
+    console.error('[twitter-engagement] Search error:', err.message);
+  }
+
+  // Early exit if there's nothing requiring AI
+  if (mentions.slice(0, 5).length === 0 && questionTweets.length === 0) {
+    return NextResponse.json({ success: true, ...results });
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // 3. Reply to mentions
+  try {
     for (const mention of mentions.slice(0, 5)) {
-      // Generate a helpful reply
       const response = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 280,
@@ -67,7 +103,6 @@ export async function GET(request: NextRequest) {
         if (result) results.mentions_replied++;
       }
 
-      // Capture as lead
       await supabase.from('leads').upsert({
         platform: 'twitter',
         platform_user_id: mention.author_id,
@@ -76,7 +111,6 @@ export async function GET(request: NextRequest) {
       }, { onConflict: 'platform,platform_user_id' }).then(() => { results.leads_captured++; });
     }
 
-    // Save last mention ID
     if (mentions.length > 0) {
       await supabase.from('business_log').insert({
         category: 'context',
@@ -89,44 +123,24 @@ export async function GET(request: NextRequest) {
     console.error('[twitter-engagement] Mentions error:', err.message);
   }
 
-  // 2. Find and engage with relevant tweets
+  // 4. Reply to question tweets
   try {
-    const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
-    const tweets = await searchTweets(query, 5);
+    for (const tweet of questionTweets) {
+      const response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 280,
+        system: `You are Paybacker's social media team. Someone tweeted about a UK consumer issue. Write a genuinely helpful reply (max 280 chars). Give useful advice first, then briefly mention paybacker.co.uk only if relevant. Do NOT be salesy. UK English. Never use em dashes. Be warm and empathetic.`,
+        messages: [{ role: 'user', content: `Reply helpfully to: "${tweet.text}"` }],
+      });
 
-    for (const tweet of tweets.slice(0, 3)) {
-      // Like the tweet
-      const liked = await likeTweet(tweet.id);
-      if (liked) results.tweets_liked++;
-
-      // Only reply to tweets that are asking for help (not just mentioning topics)
-      const isQuestion = tweet.text.includes('?') || /how do i|can i|help|anyone know|any advice/i.test(tweet.text);
-
-      if (isQuestion) {
-        const response = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 280,
-          system: `You are Paybacker's social media team. Someone tweeted about a UK consumer issue. Write a genuinely helpful reply (max 280 chars). Give useful advice first, then briefly mention paybacker.co.uk only if relevant. Do NOT be salesy. UK English. Never use em dashes. Be warm and empathetic.`,
-          messages: [{ role: 'user', content: `Reply helpfully to: "${tweet.text}"` }],
-        });
-
-        const reply = response.content.find(b => b.type === 'text');
-        if (reply?.type === 'text') {
-          const result = await replyToTweet(tweet.id, reply.text);
-          if (result) results.tweets_replied++;
-        }
+      const reply = response.content.find(b => b.type === 'text');
+      if (reply?.type === 'text') {
+        const result = await replyToTweet(tweet.id, reply.text);
+        if (result) results.tweets_replied++;
       }
-
-      // Capture as lead
-      await supabase.from('leads').upsert({
-        platform: 'twitter',
-        platform_user_id: tweet.author_id,
-        first_message: tweet.text.substring(0, 500),
-        status: 'new',
-      }, { onConflict: 'platform,platform_user_id' }).then(() => {});
     }
   } catch (err: any) {
-    console.error('[twitter-engagement] Search error:', err.message);
+    console.error('[twitter-engagement] Search reply error:', err.message);
   }
 
   return NextResponse.json({ success: true, ...results });

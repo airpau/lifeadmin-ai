@@ -10,7 +10,7 @@ const API = 'https://graph.facebook.com/v25.0';
 const PAGE_ID = '1056645287525328';
 
 /**
- * Fast DM responder - runs every minute, ONLY checks for unanswered DMs.
+ * Fast DM responder - runs every hour, ONLY checks for unanswered DMs.
  * Separate from the full social-engagement cron for speed.
  */
 export async function GET(request: NextRequest) {
@@ -27,13 +27,20 @@ export async function GET(request: NextRequest) {
   const ptData = await ptRes.json();
   const pageToken = ptData.access_token || systemToken;
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const results: any[] = [];
 
   try {
     // Get recent conversations
     const convsRes = await fetch(`${API}/me/conversations?fields=participants,updated_time&platform=messenger&limit=3&access_token=${pageToken}`);
     const convsData = await convsRes.json();
+
+    // Collect conversations needing a reply before instantiating Anthropic
+    type PendingConv = {
+      sender: any;
+      lastMsg: any;
+      chatHistory: { role: 'user' | 'assistant'; content: string }[];
+    };
+    const pending: PendingConv[] = [];
 
     for (const conv of convsData.data || []) {
       // Only check conversations updated in last 5 minutes
@@ -62,6 +69,17 @@ export async function GET(request: NextRequest) {
           content: m.message,
         }));
 
+      pending.push({ sender, lastMsg, chatHistory });
+    }
+
+    // Nothing to process — skip Anthropic entirely
+    if (pending.length === 0) {
+      return NextResponse.json({ ok: true, replied: 0, results: [] });
+    }
+
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    for (const { sender, lastMsg, chatHistory } of pending) {
       // Generate reply
       const aiRes = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
