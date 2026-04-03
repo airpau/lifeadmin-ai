@@ -50,7 +50,7 @@ export async function GET() {
 
     const { data: transactions } = await supabase
       .from('bank_transactions')
-      .select('amount, description, category, timestamp')
+      .select('amount, description, category, user_category, timestamp')
       .eq('user_id', user.id)
       .gte('timestamp', sixMonthsAgo.toISOString())
       .order('timestamp', { ascending: false });
@@ -59,13 +59,13 @@ export async function GET() {
       return NextResponse.json({ hasData: false });
     }
 
-    // Load learned rules for this request
+    // Use user_category as source of truth (matches Money Hub RPCs)
+    // Fall back to runtime categorisation only if user_category is not set
     await loadLearnedRules();
 
-    // Categorise all transactions (using learning-aware sync version)
     const categorised = transactions.map(tx => ({
       ...tx,
-      spending_category: categoriseWithLearningSync(tx.description || '', tx.category || '', parseFloat(String(tx.amount))),
+      spending_category: (tx.user_category || categoriseWithLearningSync(tx.description || '', tx.category || '', parseFloat(String(tx.amount))) || 'other').toLowerCase(),
       amount: parseFloat(String(tx.amount)),
     }));
 

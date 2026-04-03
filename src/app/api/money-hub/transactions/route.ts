@@ -85,22 +85,25 @@ export async function GET(request: NextRequest) {
     return merchantOverridePatterns.some(p => p.length > 2 && (merchantLower.includes(p) || descLower.includes(p)));
   }
 
+  // Map transactions with consistent category logic matching the RPCs exactly:
+  // - Spending RPC groups by: COALESCE(user_category, 'other')
+  // - Income RPC filters by: user_category = 'income' AND category != 'TRANSFER'
+  // - Both exclude: user_category IN ('transfers', 'income') for spending, category = 'TRANSFER'
   let filtered = (txns || []).map(t => ({
     ...t,
-    spending_category: (() => {
-      const rawCat = t.user_category || '';
-      if (rawCat && (!SOFT_CATEGORIES.has(rawCat) || isUserOverride(t))) return rawCat;
-      return categorise(t.description || '', t.category || '', parseFloat(t.amount)) || rawCat || 'other';
-    })(),
+    // This MUST match get_monthly_spending RPC: COALESCE(user_category, 'other')
+    spending_category: (t.user_category || 'other').toLowerCase(),
     amount: parseFloat(t.amount),
   }));
 
   // Income drill-down mode
   if (incomeType) {
-    // Case-insensitive match, treat null/empty/unknown/uncategorised as "other"
     const mergeAsOther = ['other', 'unknown', 'uncategorised', ''];
+    // Match get_monthly_income RPC: user_category = 'income' AND amount > 0 AND category != 'TRANSFER'
     filtered = filtered.filter(t => {
       if (t.amount <= 0) return false;
+      if (t.user_category !== 'income') return false;
+      if ((t.category || '').toUpperCase() === 'TRANSFER') return false;
       const type = (t.income_type || 'other').toLowerCase();
       const target = (incomeType || 'other').toLowerCase();
       if (target === 'other') return mergeAsOther.includes(type);
@@ -134,23 +137,20 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Spending drill-down — filter out transfers (matching main route logic)
-  filtered = filtered.filter(t => !isTransfer(t.description || '', t.category || ''));
+  // Spending drill-down — match get_monthly_spending RPC exclusions exactly:
+  // amount < 0 AND user_category NOT IN ('transfers', 'income') AND category != 'TRANSFER'
+  filtered = filtered.filter(t => {
+    if (t.amount >= 0) return false;
+    const uc = (t.user_category || '').toLowerCase();
+    if (uc === 'transfers' || uc === 'income') return false;
+    if ((t.category || '').toUpperCase() === 'TRANSFER') return false;
+    return true;
+  });
 
   if (category) {
-    // Match the get_monthly_spending RPC which groups by user_category
-    // Primary: match spending_category (runtime re-categorised)
-    // Also include transactions where user_category matches (RPC source of truth)
-    filtered = filtered.filter(t => {
-      const userCat = (t.user_category || 'other').toLowerCase();
-      const spendCat = (t.spending_category || 'other').toLowerCase();
-      const target = category.toLowerCase();
-      return spendCat === target || userCat === target;
-    });
+    // Filter by spending_category which is COALESCE(user_category, 'other') — same as RPC
+    filtered = filtered.filter(t => t.spending_category === category.toLowerCase());
   }
-
-  // Only include debits — credits (refunds, payouts) must never appear in spending
-  filtered = filtered.filter(t => t.amount < 0);
 
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
