@@ -55,6 +55,11 @@ WHERE amount > 0
   );
 
 -- ─── 4. Replace RPC functions with versions that exclude transfers/credit_loans ─
+-- DROP first to allow return-type changes (error 42P13 if omitted)
+DROP FUNCTION IF EXISTS get_monthly_income(uuid, int, int);
+DROP FUNCTION IF EXISTS get_monthly_income_total(uuid, int, int);
+DROP FUNCTION IF EXISTS get_monthly_spending(uuid, int, int);
+DROP FUNCTION IF EXISTS get_monthly_spending_total(uuid, int, int);
 
 -- Monthly income total (excludes transfers and credit/loan disbursements)
 CREATE OR REPLACE FUNCTION get_monthly_income_total(p_user_id uuid, p_year int, p_month int)
