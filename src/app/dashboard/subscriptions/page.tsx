@@ -1696,32 +1696,44 @@ export default function SubscriptionsPage() {
         );
       })()}
 
-      {/* Summary */}
+      {/* Summary — grouped breakdown matching overview page */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Flexible (cancellable)</p>
-          <h3 className="text-2xl font-bold text-white">{formatGBP(flexibleTotalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">Savings opportunity</p>
+          <p className="text-slate-400 text-xs mb-1">Subscriptions & Bills</p>
+          <h3 className="text-2xl font-bold text-white">{formatGBP(flexibleTotalMonthly + statutoryTotalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">{baseSubscriptions.filter(s => s.status === 'active').length} active</p>
         </div>
 
         <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
-          <p className="text-slate-400 text-xs mb-1">Fixed / Statutory</p>
-          <h3 className="text-xl font-bold text-slate-300">{formatGBP(statutoryTotalMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-          <p className="text-slate-500 text-xs mt-1">Council tax, water, etc</p>
+          <p className="text-slate-400 text-xs mb-1">Mortgages & Loans</p>
+          <h3 className="text-xl font-bold text-slate-300">{formatGBP(
+            subscriptions.filter(s => s.status === 'active' && ['mortgage', 'loan'].includes(s.category || '')).reduce((sum, s) => {
+              const amt = parseFloat(String(s.amount)) || 0;
+              if (s.billing_cycle === 'yearly') return sum + amt / 12;
+              if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+              return sum + amt;
+            }, 0)
+          )}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">{subscriptions.filter(s => s.status === 'active' && ['mortgage', 'loan'].includes(s.category || '')).length} active</p>
         </div>
 
-        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 md:col-span-2 flex items-center justify-between">
-          <div>
-            <p className="text-slate-400 text-xs mb-1">Active Subscriptions</p>
-            <h3 className="text-2xl font-bold text-white">
-              {allActiveCount}
-            </h3>
-            <p className="text-slate-500 text-xs mt-1">All tracked payments</p>
-          </div>
-          <div className="text-right">
-             <p className="text-slate-400 text-xs mb-1">Total Annual Cost</p>
-             <h3 className="text-2xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">{formatGBP(allActiveMonthly * 12)}</h3>
-          </div>
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+          <p className="text-slate-400 text-xs mb-1">Council Tax</p>
+          <h3 className="text-xl font-bold text-slate-300">{formatGBP(
+            subscriptions.filter(s => s.status === 'active' && s.category === 'council_tax').reduce((sum, s) => {
+              const amt = parseFloat(String(s.amount)) || 0;
+              if (s.billing_cycle === 'yearly') return sum + amt / 12;
+              if (s.billing_cycle === 'quarterly') return sum + amt / 3;
+              return sum + amt;
+            }, 0)
+          )}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">{subscriptions.filter(s => s.status === 'active' && s.category === 'council_tax').length} active</p>
+        </div>
+
+        <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5">
+          <p className="text-slate-400 text-xs mb-1">Total All Commitments</p>
+          <h3 className="text-2xl font-bold text-white">{formatGBP(allActiveMonthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
+          <p className="text-slate-500 text-xs mt-1">{formatGBP(allActiveMonthly * 12)}/year · {allActiveCount} tracked</p>
         </div>
       </div>
 

@@ -231,6 +231,7 @@ export default function MoneyHubPage() {
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [data, setData] = useState<MoneyHubData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
@@ -842,8 +843,19 @@ export default function MoneyHubPage() {
   useEffect(() => {
     fetch('/api/money-hub')
       .then(r => r.json())
-      .then(d => { if (!d.error) setData(d); })
-      .catch(() => {})
+      .then(d => {
+        if (d.error) {
+          console.error('[MoneyHub] API error:', d.error);
+          setFetchError(d.error);
+        } else {
+          setData(d);
+          setFetchError(null);
+        }
+      })
+      .catch(err => {
+        console.error('[MoneyHub] Fetch failed:', err);
+        setFetchError(err.message || 'Failed to load Money Hub data');
+      })
       .finally(() => setLoading(false));
 
     // Fetch user ID and expired bank connections
@@ -934,6 +946,18 @@ export default function MoneyHubPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="max-w-2xl mx-auto py-20 text-center">
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-8">
+          <p className="text-red-400 font-semibold mb-2">Money Hub failed to load</p>
+          <p className="text-slate-400 text-sm mb-4">{fetchError}</p>
+          <button onClick={() => { setLoading(true); setFetchError(null); fetch('/api/money-hub').then(r => r.json()).then(d => { if (!d.error) setData(d); else setFetchError(d.error); }).catch(e => setFetchError(e.message)).finally(() => setLoading(false)); }} className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-4 py-2 rounded-xl text-sm">Retry</button>
+        </div>
       </div>
     );
   }
