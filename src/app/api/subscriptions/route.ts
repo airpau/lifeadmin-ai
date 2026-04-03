@@ -34,8 +34,12 @@ export async function GET() {
             else break;
           }
           sub.next_billing_date = newDate.toISOString().split('T')[0];
-          // Update in background
-          supabase.from('subscriptions').update({ next_billing_date: sub.next_billing_date }).eq('id', sub.id);
+          // Update in background — catch errors to avoid unhandled promise rejections
+          Promise.resolve(
+            supabase.from('subscriptions').update({ next_billing_date: sub.next_billing_date }).eq('id', sub.id)
+          )
+            .then(({ error }) => { if (error) console.error(`Failed to advance billing date for sub ${sub.id}:`, error.message); })
+            .catch((err: unknown) => console.error(`Failed to advance billing date for sub ${sub.id}:`, err));
         }
       }
     }

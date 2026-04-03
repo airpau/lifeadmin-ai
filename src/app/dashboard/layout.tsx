@@ -188,7 +188,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           );
         })}
-        {userEmail === 'aireypaul@googlemail.com' && (
+        {(process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com').split(',').includes(userEmail || '') && (
           <Link
             href="/dashboard/admin"
             className={`flex items-center gap-3 px-4 py-2.5 rounded-r-lg transition-all duration-200 min-h-[44px] mt-4 border-t border-navy-700/50 pt-4 ${
