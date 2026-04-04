@@ -456,6 +456,8 @@ function UploadModal({ subscriptions, onClose, onUploaded }: {
 
     setSaving(true);
     try {
+      let linkedSubscriptionId: string | null = null;
+
       if (supplierId === 'other') {
         // Create a new subscription with contract details
         const res = await fetch('/api/subscriptions', {
@@ -477,7 +479,10 @@ function UploadModal({ subscriptions, onClose, onUploaded }: {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || 'Failed to save');
         }
+        const newSub = await res.json();
+        linkedSubscriptionId = newSub.id || null;
       } else {
+        linkedSubscriptionId = supplierId;
         // Update existing subscription with contract dates
         const updatePayload: Record<string, unknown> = {};
         if (manualStartDate) updatePayload.contract_start_date = manualStartDate;
@@ -497,6 +502,25 @@ function UploadModal({ subscriptions, onClose, onUploaded }: {
           throw new Error(err.error || 'Failed to save');
         }
       }
+
+      // Create a contract_extractions record so it appears in the contracts list
+      const contractRes = await fetch('/api/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_name: resolvedSupplierName,
+          contract_type: manualCategory || null,
+          contract_start_date: manualStartDate || null,
+          contract_end_date: manualEndDate || null,
+          monthly_cost: manualMonthlyCost || null,
+          auto_renewal: manualAutoRenews,
+          subscription_id: linkedSubscriptionId,
+        }),
+      });
+      if (!contractRes.ok) {
+        console.error('Failed to create contract record:', await contractRes.text());
+      }
+
       onUploaded();
       onClose();
     } catch (err: unknown) {
