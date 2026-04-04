@@ -53,15 +53,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (post.platform === 'instagram' || post.platform === 'both') {
-      // For Instagram, if we have image_data, upload to Supabase Storage for a public URL
-      // The postToInstagram function handles the upload internally when imageBase64 is passed
-      const { postId } = await postToInstagram(
-        post.content,
-        post.hashtags ?? '',
-        post.image_data ?? undefined,
-        'image/png'
-      );
-      platformPostIds.instagram = postId;
+      // Instagram Content Publishing API requires an image — skip if none stored
+      if (!post.image_data) {
+        console.log(`social/post: skipping Instagram for post ${post.id} — no image_data`);
+      } else {
+        const { postId } = await postToInstagram(
+          post.content,
+          post.hashtags ?? '',
+          post.image_data,
+          'image/png'
+        );
+        platformPostIds.instagram = postId;
+      }
     }
   } catch (err: any) {
     console.error('Meta API posting error:', err.message);
