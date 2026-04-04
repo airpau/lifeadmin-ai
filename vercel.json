@@ -167,6 +167,10 @@
     {
       "path": "/api/cron/dispute-reminders",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/overcharge-assessment",
+      "schedule": "0 10 * * 0"
     }
   ]
 }
