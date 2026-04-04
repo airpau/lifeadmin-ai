@@ -3,9 +3,12 @@
 import { useEffect, Suspense, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { hasConsent } from '@/lib/consent';
 
-// Server-side tracking — guaranteed to work, no ad blockers
+// Server-side tracking — gated behind analytics consent
 function trackEvent(event: string, properties?: Record<string, unknown>) {
+  if (typeof window !== 'undefined' && !hasConsent('analytics')) return;
+
   const distinctId = typeof window !== 'undefined'
     ? localStorage.getItem('pb_distinct_id') || crypto.randomUUID()
     : 'server';
