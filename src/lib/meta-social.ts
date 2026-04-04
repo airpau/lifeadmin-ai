@@ -83,10 +83,19 @@ export async function postToFacebook(
   return { postId: data.id };
 }
 
+/**
+ * Post an image to Instagram via the Content Publishing API.
+ *
+ * REQUIREMENTS (all must be met before this will work):
+ * 1. Meta app must be in Live mode (not Development) — requires Meta App Review completion
+ * 2. App must have instagram_content_publish permission approved
+ * 3. Instagram account must be a Business or Creator account connected to the Facebook Page
+ * 4. imageBase64 is REQUIRED — Instagram Content Publishing API does not support text-only posts
+ */
 export async function postToInstagram(
   content: string,
   hashtags: string,
-  imageBase64?: string,
+  imageBase64: string,
   imageMimeType?: string
 ): Promise<{ postId: string }> {
   const { accessToken, igAccountId } = getConfig();
@@ -97,65 +106,27 @@ export async function postToInstagram(
 
   const caption = hashtags ? `${content}\n\n${hashtags}` : content;
 
-  if (imageBase64) {
-    // Instagram requires a public URL — upload to Supabase Storage first
-    // NOTE: 'social-images' bucket must be created in Supabase dashboard as a public bucket
-    const filename = `instagram_${Date.now()}.png`;
-    const imageUrl = await uploadImageToStorage(
-      imageBase64,
-      imageMimeType ?? 'image/png',
-      filename
-    );
+  // Instagram requires a public URL — upload to Supabase Storage first
+  // NOTE: 'social-images' bucket must be public in Supabase dashboard
+  const filename = `instagram_${Date.now()}.png`;
+  const imageUrl = await uploadImageToStorage(
+    imageBase64,
+    imageMimeType ?? 'image/png',
+    filename
+  );
 
-    // Step 1: Create image media container
-    const createRes = await fetch(`${META_API_BASE}/${igAccountId}/media`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        caption,
-        image_url: imageUrl,
-        access_token: accessToken,
-      }),
-    });
-
-    const createData = await createRes.json();
-    if (!createRes.ok || createData.error) {
-      throw new Error(createData.error?.message ?? `Instagram media create error: ${createRes.status}`);
-    }
-
-    const creationId = createData.id;
-
-    // Step 2: Publish the container
-    const publishRes = await fetch(`${META_API_BASE}/${igAccountId}/media_publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creation_id: creationId,
-        access_token: accessToken,
-      }),
-    });
-
-    const publishData = await publishRes.json();
-    if (!publishRes.ok || publishData.error) {
-      throw new Error(publishData.error?.message ?? `Instagram publish error: ${publishRes.status}`);
-    }
-
-    return { postId: publishData.id };
-  }
-
-  // Text/caption-only container (no image)
+  // Step 1: Create image media container
   const createRes = await fetch(`${META_API_BASE}/${igAccountId}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       caption,
-      media_type: 'TEXT',
+      image_url: imageUrl,
       access_token: accessToken,
     }),
   });
 
   const createData = await createRes.json();
-
   if (!createRes.ok || createData.error) {
     throw new Error(createData.error?.message ?? `Instagram media create error: ${createRes.status}`);
   }
@@ -173,7 +144,6 @@ export async function postToInstagram(
   });
 
   const publishData = await publishRes.json();
-
   if (!publishRes.ok || publishData.error) {
     throw new Error(publishData.error?.message ?? `Instagram publish error: ${publishRes.status}`);
   }

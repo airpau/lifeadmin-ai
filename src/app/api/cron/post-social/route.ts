@@ -46,8 +46,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (post.platform === 'instagram' || post.platform === 'both') {
-      const { postId } = await postToInstagram(post.content, post.hashtags ?? '');
-      platformPostIds.instagram = postId;
+      // Instagram Content Publishing API requires an image — skip if none available
+      if (!post.image_data) {
+        console.log(`post-social: skipping Instagram for post ${post.id} — no image_data`);
+      } else {
+        const { postId } = await postToInstagram(
+          post.content,
+          post.hashtags ?? '',
+          post.image_data,
+          'image/png'
+        );
+        platformPostIds.instagram = postId;
+      }
     }
   } catch (err: any) {
     console.error('post-social: Meta API error:', err.message);
