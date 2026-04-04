@@ -153,7 +153,12 @@ export async function scanOutlookForOpportunities(accessToken: string) {
   const message = await anthropic.messages.create({
     model: OUTLOOK_MODEL,
     max_tokens: 2048,
-    system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities. Look closely for ANY email mentioning "flight delayed", "EU261", "UK261", "compensation", or airline names (EasyJet, Ryanair, British Airways) which indicate a flight delay compensation opportunity (£520).
+    system: `You are a UK consumer finance assistant. Analyse emails and identify genuine money-saving opportunities. Focus on ACCURACY over volume.
+
+INCLUDE: billing emails, subscription renewals, price increases, direct debits, energy/broadband/insurance bills, flight delay/cancellation notifications (UK261 up to £520), debt collection, loan/mortgage statements, contract end notices, council tax, HMRC correspondence.
+
+EXCLUDE: marketing/newsletters, one-time purchase confirmations, shipping notifications, password resets, security alerts, social media notifications, surveys, welcome emails without billing info, app updates, loyalty marketing without charges.
+
 Return a JSON array of opportunities. Each must have:
 - id: unique string
 - emailId: the email id it came from
@@ -161,12 +166,12 @@ Return a JSON array of opportunities. Each must have:
 - title: short title (max 60 chars)
 - description: 1-2 sentences explaining the opportunity
 - amount: estimated GBP amount at risk or saveable (number, 0 if unknown)
-- confidence: 0-100
+- confidence: 55-100 (85+: visible amount/invoice; 70-84: known provider + billing subject; 55-69: likely financial but vague)
 - provider: company name
 - detected: today's date ${new Date().toISOString().split('T')[0]}
 - status: "new"
 
-Only include genuine opportunities with confidence >= 50. Return [] if none found.
+Only include genuine opportunities with confidence >= 55. For flight emails, only flag if delay/cancellation is mentioned. Return [] if none found.
 Return ONLY the JSON array, no markdown.`,
     messages: [{ role: 'user', content: `Analyse these emails:\n\n${emailSummaries}` }],
   });
@@ -178,7 +183,8 @@ Return ONLY the JSON array, no markdown.`,
     const raw = content.text.trim();
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return [];
-    return JSON.parse(jsonMatch[0]).map((o: any) => ({ ...o, status: 'new' as const }));
+    const parsed = JSON.parse(jsonMatch[0]);
+    return parsed.filter((o: any) => (o.confidence ?? 0) >= 55).map((o: any) => ({ ...o, status: 'new' as const }));
   } catch {
     return [];
   }

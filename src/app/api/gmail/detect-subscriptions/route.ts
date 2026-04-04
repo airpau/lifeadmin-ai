@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
-      system: `You are a subscription and contract detection assistant for UK consumers. Analyse these email providers and identify every recurring payment, subscription, and contract.
+      system: `You are a subscription and contract detection assistant for UK consumers. Analyse these email providers and identify genuine recurring payments, subscriptions, and contracts. Focus on ACCURACY — only flag providers where there is evidence of a recurring financial commitment.
 
 Return a JSON array. Each subscription must have:
 - provider_name: clean company name (e.g. "Netflix", "Spotify", "Community Fibre")
@@ -139,10 +139,24 @@ Return a JSON array. Each subscription must have:
 - cancel_suggestion: true if the subscription looks unused, expensive relative to alternatives, or is a free trial about to convert. false otherwise.
 - notes: brief note about what was found (e.g. "Price increase notification in Feb", "Contract ends April 2026", "Multiple receipts suggest active use")
 
+INCLUDE (evidence of recurring payment):
+- Emails with subjects mentioning: bill, invoice, payment received, subscription renewed, direct debit, statement, your plan, membership
+- Multiple emails from the same provider over months (pattern of recurring contact)
+- Price increase or tariff change notifications
+- Contract end or renewal date notices
+
+EXCLUDE (do NOT flag as subscriptions):
+- Marketing or promotional emails from a company (e.g. "Check out our new features", "Sale ends today")
+- One-time purchase confirmations or shipping notifications
+- Password reset or security alerts
+- Newsletters or blog digests
+- Welcome emails that do not mention billing
+- Companies where ALL emails are purely informational with no billing signal
+
 Rules:
-- Include EVERY provider that looks like a recurring payment. A normal inbox should have 10-30+ subscriptions.
-- If you see multiple emails from a company, it's likely a subscription.
-- Look for price increase notifications, these are important for the user to know about.
+- If a provider's emails are ALL marketing/promotional with no billing subjects, do NOT include them.
+- Multiple emails from a company is suggestive but not sufficient — at least one email should mention billing, payment, subscription, or renewal.
+- Look for price increase notifications — these are important.
 - Look for contract end dates, renewal notices, and "your contract is ending" emails.
 - Deduplicate: one entry per provider.
 - Return ONLY the JSON array. No markdown fences. No explanation.`,

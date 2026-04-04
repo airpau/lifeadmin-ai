@@ -163,29 +163,42 @@ export async function POST(request: NextRequest) {
     const claudeRes = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
-      system: `You are a UK consumer finance analyst. Your job is to find EVERY financial opportunity in these emails. Be extremely aggressive — if an email is from ANY company or service, it is likely an opportunity.
+      system: `You are a UK consumer finance analyst. Find genuine financial opportunities — active subscriptions, recurring bills, price increases, and actionable consumer rights claims. Focus on ACCURACY over volume.
 
-IDENTIFY BY PATTERN:
-- ANY email mentioning subscription, membership, plan, recurring payment = subscription opportunity
-- ANY email mentioning bill, invoice, statement, balance, amount due, payment = bill tracking
-- ANY email mentioning renewal, auto-renewal, contract end, "your plan" = renewal/switching opportunity
-- ANY email mentioning price increase, tariff change, rate change, "new prices" = dispute opportunity
-- ANY email mentioning direct debit, standing order, regular payment = financial tracking
-- ANY email mentioning insurance, policy, cover, premium, excess = insurance comparison
-- ANY email mentioning "flight delayed", "EU261", "UK261", "compensation", or airline names (EasyJet, Ryanair, British Airways, Wizz) = flight delay compensation opportunity (up to £520)
-- ANY email mentioning loan, credit card, APR, interest rate = better rate opportunity
-- ANY email mentioning council tax, HMRC, tax code = tax challenge opportunity
-- ANY email from a gym, fitness, wellness provider = subscription review
-- ANY email from streaming, software, cloud storage, app store, gaming = subscription review
-- ANY email from utility company (gas, electricity, water, broadband, mobile, TV) = switching opportunity
-- ANY email from bank, building society, lender = rate monitoring
-- ANY email from retailer about warranty, guarantee, protection plan = consumer rights opportunity
+INCLUDE (genuine financial opportunities):
+- Billing emails with amounts, payment dates, or invoice numbers
+- Subscription or renewal emails showing recurring charges
+- Price increase or tariff change notifications
+- Direct debit or standing order confirmations
+- Energy/broadband/insurance/mobile bills (switching opportunity)
+- Flight delay or cancellation notifications (UK261 compensation up to £520)
+- Debt collection letters (dispute opportunity under Consumer Credit Act 1974)
+- Loan/mortgage/credit card statements (rate comparison)
+- Contract end date or notice period notifications
+- Council tax or HMRC correspondence
+
+EXCLUDE (do NOT flag these):
+- Marketing emails, newsletters, promotional offers, sales announcements
+- One-time purchase order confirmations or shipping notifications
+- Password reset, security alerts, verification codes
+- Social media notifications
+- Survey or feedback requests
+- Welcome emails without billing info
+- Unsubscribe confirmations, app updates, feature announcements
+- Account summaries without specific charges
+- Loyalty/rewards marketing (unless showing a charge)
+
+CONFIDENCE CALIBRATION:
+- 85-100: Billing email with visible £ amount, payment date, or invoice number
+- 70-84: Known provider AND subject mentions billing/payment/renewal/statement
+- 55-69: Likely financial but details unclear
+- Below 55: Do NOT include
 
 RULES:
-- Return at least one entry for EVERY unique company/service identified
-- A normal UK inbox should produce 10-30+ opportunities. If fewer than 10, you are being too conservative
-- Include anything with confidence >= 40
 - Group by provider: multiple emails from same company = ONE opportunity
+- Only include where you have evidence of a financial commitment
+- For flight emails, only flag if delay/cancellation/disruption is mentioned
+- Do NOT include routine booking confirmations as flight delay opportunities
 
 Each entry: {"id":"opp_1", "type":"subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription", "category":"streaming|software|fitness|broadband|mobile|utility|insurance|loan|credit_card|mortgage|council_tax|transport|food|shopping|other", "title":"short actionable title max 80 chars", "description":"2-3 sentences with UK consumer rights where relevant", "amount":0, "confidence":70, "provider":"Company Name", "status":"new", "suggestedAction":"track|cancel|switch_deal|dispute|monitor|claim_compensation|claim_refund", "paymentFrequency":"monthly|quarterly|yearly|one-time|null"}
 
@@ -267,7 +280,7 @@ Return ONLY the JSON array.`,
         .eq('type', 'opportunity');
 
       const existingTitles = new Set((existing || []).map((t: any) => t.title));
-      opportunities = opportunities.filter((o: any) => !existingTitles.has(o.title));
+      opportunities = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.confidence ?? 0) >= 55);
 
       if (opportunities.length > 0) {
         await admin.from('tasks').insert(
@@ -278,7 +291,7 @@ Return ONLY the JSON array.`,
             description: JSON.stringify(o),
             provider_name: o.provider,
             status: o.confidence < 70 ? 'suggested' : 'pending_review',
-            priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
+            priority: o.confidence >= 85 ? 'high' : o.confidence >= 70 ? 'medium' : 'low',
           }))
         );
       }

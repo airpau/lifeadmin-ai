@@ -160,20 +160,40 @@ export async function POST(req: NextRequest) {
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
       max_tokens: 4096,
-      system: `You are a UK consumer finance analyst. Your job is to find EVERY financial opportunity in these emails. Be aggressive: if an email is from a known provider, that IS an opportunity.
+      system: `You are a UK consumer finance analyst. Your job is to find genuine financial opportunities — active subscriptions, recurring bills, price increases, and actionable consumer rights claims. Focus on ACCURACY over volume. Only flag emails that represent real ongoing financial commitments or actionable opportunities.
 
-CRITICAL: The sender email address and subject line are your primary signals. Even if the body is truncated, you can identify:
-- Any email from Netflix, Spotify, Disney+, Amazon, Apple = active subscription (suggest tracking/cancelling if unused)
-- Any email from BT, Sky, Virgin Media, Vodafone, EE, Three = broadband/mobile contract (suggest checking if overpaying)
-- Any email from British Gas, EDF, Octopus, OVO, E.ON = energy bill (suggest switching if on standard variable tariff)
-- Any email from an airline (Ryanair, easyJet, BA, Jet2, Wizz, TUI) = check for flight delay compensation under UK261 (up to £520 per person for delays over 3 hours)
-- Any email from a debt collector or solicitor = suggest formal dispute response citing Consumer Credit Act 1974
-- Any email mentioning "price increase", "new prices", "tariff change" = dispute opportunity
-- Any email mentioning "renewal", "renewing", "contract end" = switching opportunity
-- Any email from insurance companies = renewal comparison opportunity
-- Any email from banks, loan companies, credit cards = track balances and suggest better rates
-- Any email from councils = council tax band challenge opportunity
-- Any email from HMRC = potential tax rebate opportunity
+INCLUDE (genuine financial opportunities):
+- Billing emails with amounts, payment dates, or invoice/account numbers
+- Subscription confirmation or renewal emails showing recurring charges
+- Price increase or tariff change notifications
+- Direct debit or standing order setup/change confirmations
+- Energy/broadband/insurance/mobile bills (switching opportunity)
+- Flight delay or cancellation notifications (UK261 compensation up to £520)
+- Debt collection or solicitor letters (dispute opportunity under Consumer Credit Act 1974)
+- Loan/mortgage/credit card statements (rate comparison)
+- Contract end date or notice period notifications
+- Council tax band notifications (challenge opportunity)
+- HMRC correspondence (potential tax rebate)
+
+EXCLUDE (do NOT flag these — they are not financial opportunities):
+- Marketing emails, newsletters, promotional offers, sales announcements
+- One-time purchase order confirmations or shipping/delivery notifications
+- Password reset, security alerts, verification codes, login notifications
+- Social media notifications (likes, comments, follows, connection requests)
+- Survey or feedback requests
+- Welcome or onboarding emails that do NOT mention a billing amount or subscription
+- Unsubscribe confirmations
+- App update or feature announcement emails
+- Account activity summaries that do not show specific charges
+- Event invitations, calendar reminders, or meeting notifications
+- Reward points / loyalty programme marketing (unless showing a charge)
+- Referral or "invite a friend" emails
+
+CONFIDENCE CALIBRATION:
+- 85-100: Billing email with a visible £ amount, payment date, or invoice number
+- 70-84: From a known subscription/utility provider AND subject mentions billing, payment, renewal, statement, or direct debit
+- 55-69: Likely financial but details unclear (known provider but vague subject)
+- Below 55: Do NOT include — insufficient evidence of a financial commitment
 
 Return a JSON array. Each entry must have:
 - id: unique string (e.g. "opp_1")
@@ -182,7 +202,7 @@ Return a JSON array. Each entry must have:
 - title: short actionable title (max 80 chars)
 - description: 2-3 sentences explaining what was found and what the user should do. Include specific UK consumer rights where relevant.
 - amount: GBP amount if visible, 0 if unknown
-- confidence: 0-100 (80+ = definitely from a known provider, 60-79 = likely financial, 40-59 = possible)
+- confidence: 55-100 (see calibration above)
 - provider: company name (clean format)
 - detected: "${today}"
 - status: "new"
@@ -193,12 +213,11 @@ Return a JSON array. Each entry must have:
 - accountNumber: reference number if found, null otherwise
 
 IMPORTANT:
-- You MUST return at least one entry for every unique provider/service you can identify from the emails. A normal inbox should have 10-50+ opportunities.
 - Group emails by provider: if you see 5 emails from Netflix, create ONE opportunity for Netflix.
-- For flight bookings, always suggest checking for delay compensation.
-- For debt collection emails, always suggest a formal dispute response.
-- For any subscription over 1 year old, suggest reviewing if still needed.
-- Include confidence >= 40. When in doubt, include it.
+- Only include opportunities where you have genuine evidence of a financial commitment or actionable consumer right.
+- For flight emails, only flag as delay compensation if the email mentions a delay, cancellation, or disruption — not routine booking confirmations.
+- For debt collection emails, suggest a formal dispute response.
+- For subscriptions over 1 year old with no recent billing email, flag for review.
 - Return ONLY the JSON array, no markdown, no explanation.`,
       messages: [
         { role: 'user', content: `Analyse these email providers and find financial opportunities:\n\n${truncatedSummary}` },
@@ -235,8 +254,9 @@ IMPORTANT:
       if (jsonMatch) {
         try {
           const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
-          opportunities = JSON.parse(cleaned);
-          console.log(`[email/scan] Found ${opportunities.length} opportunities`);
+          const parsed: OpportunityResult[] = JSON.parse(cleaned);
+          opportunities = parsed.filter((o) => (o.confidence ?? 0) >= 55);
+          console.log(`[email/scan] Found ${parsed.length} opportunities, ${opportunities.length} above confidence threshold`);
         } catch (e) {
           console.error('[email/scan] JSON parse error:', e);
         }
@@ -252,7 +272,7 @@ IMPORTANT:
         .eq('type', 'opportunity');
         
       const existingTitles = new Set((existing || []).map((t: any) => t.title));
-      opportunities = opportunities.filter((o) => !existingTitles.has(o.title));
+      opportunities = opportunities.filter((o) => !existingTitles.has(o.title) && (o.confidence ?? 0) >= 55);
 
       if (opportunities.length > 0) {
         const rows = opportunities.map((opp) => ({
@@ -261,8 +281,8 @@ IMPORTANT:
           title: opp.title,
           description: JSON.stringify(opp),
           provider_name: opp.provider,
-          priority: opp.confidence >= 80 ? 'high' : opp.confidence >= 60 ? 'medium' : 'low',
-          status: 'pending_review',
+          priority: opp.confidence >= 85 ? 'high' : opp.confidence >= 70 ? 'medium' : 'low',
+          status: opp.confidence < 70 ? 'suggested' : 'pending_review',
           source: 'imap_scan',
         }));
 
