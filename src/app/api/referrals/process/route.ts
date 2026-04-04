@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { processReferral } from '@/lib/referrals';
 
 export async function POST(request: NextRequest) {
   try {
-    const { referralCode, userId, email } = await request.json();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!referralCode || !userId) {
-      return NextResponse.json({ error: 'Missing referralCode or userId' }, { status: 400 });
+    const { referralCode } = await request.json();
+    const userId = user.id;
+    const email = user.email;
+
+    if (!referralCode) {
+      return NextResponse.json({ error: 'Missing referralCode' }, { status: 400 });
     }
 
     const result = await processReferral(referralCode, userId, email);
