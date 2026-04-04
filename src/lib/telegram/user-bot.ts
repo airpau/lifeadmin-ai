@@ -71,7 +71,7 @@ async function sendChunked(
 // ============================================================
 // Constants
 // ============================================================
-const RATE_LIMIT_PER_HOUR = 20;
+const RATE_LIMIT_PER_HOUR = 200;
 const SESSION_EXPIRY_DAYS = 90;
 
 const SYSTEM_PROMPT = `You are Paybacker's financial assistant for UK consumers. You are fully connected to the user's Paybacker account and can both READ and WRITE their financial data.
@@ -121,7 +121,7 @@ CRITICAL: When you commit to taking an action for the user (creating a goal, set
 When a user asks to create a savings goal with a monthly saving amount, ALSO call set_budget to create a budget for that category to track their spending.`;
 
 // ============================================================
-// Rate limiter — 20 messages per user per hour
+// Rate limiter — 200 messages per user per hour
 // ============================================================
 async function checkRateLimit(
   supabase: ReturnType<typeof getAdmin>,
@@ -688,7 +688,7 @@ export function createUserBot(): Bot<UserBotContext> {
       );
     }
 
-    // Rate limit: 20 messages per hour
+    // Rate limit: 200 messages per hour
     const withinLimit = await checkRateLimit(supabase, session.user_id);
     if (!withinLimit) {
       return ctx.reply(
