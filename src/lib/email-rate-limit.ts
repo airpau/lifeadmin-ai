@@ -15,7 +15,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
  * - Onboarding sequence gets 1 reserved slot per day (so it's not blocked by deals)
  */
 
-const MAX_MARKETING_EMAILS_PER_DAY = 2;
+const MAX_MARKETING_EMAILS_PER_DAY = 1;
 
 // These task types count towards the daily limit
 const MARKETING_EMAIL_TYPES = [
@@ -29,6 +29,7 @@ const MARKETING_EMAIL_TYPES = [
   'churn_pre_renewal',
   'founding_reminder',
   'weekly_money_digest',
+  'onboarding_email',
 ];
 
 // These are transactional and bypass the limit
