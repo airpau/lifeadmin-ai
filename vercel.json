@@ -163,6 +163,10 @@
     {
       "path": "/api/cron/consent-renewal",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/overcharge-assessment",
+      "schedule": "0 10 * * 0"
     }
   ]
 }
