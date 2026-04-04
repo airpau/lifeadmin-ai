@@ -37,7 +37,7 @@ export async function POST() {
       },
       body: new URLSearchParams({
         customer: profile.stripe_customer_id,
-        return_url: 'https://paybacker.co.uk/dashboard/profile?billing=updated',
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'}/dashboard/profile?billing=updated`,
       }).toString(),
     });
 

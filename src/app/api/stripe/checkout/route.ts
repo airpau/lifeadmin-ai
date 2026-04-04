@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Always create a fresh Stripe checkout session requiring payment
-    const appUrl = 'https://paybacker.co.uk';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
 
     // Read Awin awc cookie for attribution tracking
     const awcCookie = request.cookies.get('awc')?.value || '';

@@ -8,7 +8,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const key = process.env.STRIPE_SECRET_KEY!;
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
+  }
 
   // List all products
   const prodRes = await fetch('https://api.stripe.com/v1/products?limit=20', {

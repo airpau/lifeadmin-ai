@@ -8,10 +8,10 @@ import {
 import { logClaudeCall } from '@/lib/claude-rate-limit';
 
 function getAdminClient() {
-  return createAdmin(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Supabase admin credentials not configured');
+  return createAdmin(url, key);
 }
 
 export async function POST(req: NextRequest) {
