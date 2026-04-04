@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
@@ -189,6 +189,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
@@ -349,6 +350,27 @@ export default function ProfilePage() {
     } catch {
       setPortalError('Failed to open billing portal. Please try again or contact support at support@paybacker.co.uk');
       setPortalLoading(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/account/export', { method: 'POST' });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `paybacker-data-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to export data. Please contact support@paybacker.co.uk');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -935,6 +957,25 @@ export default function ProfilePage() {
           </Link>
         )}
       </div>
+      {/* Data Export — GDPR Right to Portability */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+          <Download className="h-5 w-5 text-mint-400" />
+          Download My Data
+        </h2>
+        <p className="text-slate-400 text-sm mb-6">
+          Download a copy of all your Paybacker data in JSON format — profile, transactions,
+          subscriptions, disputes, and more. This is your right under GDPR Article 20.
+        </p>
+        <button
+          onClick={handleExportData}
+          disabled={exporting}
+          className="bg-mint-400/10 hover:bg-mint-400/20 border border-mint-400/30 text-mint-400 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50 inline-flex items-center gap-2"
+        >
+          {exporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Preparing export...</> : <><Download className="h-4 w-4" /> Download my data</>}
+        </button>
+      </div>
+
       {/* Danger Zone — Delete Account */}
       <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
