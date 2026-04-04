@@ -308,6 +308,11 @@ export default function MoneyHubPage() {
   const [showDismissedBills, setShowDismissedBills] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Overcharge assessments
+  const [overchargeAssessments, setOverchargeAssessments] = useState<any[]>([]);
+  const [overchargeSummary, setOverchargeSummary] = useState<{ total: number; highScoreCount: number; totalEstimatedAnnualSaving: number } | null>(null);
+  const [overchargeRunning, setOverchargeRunning] = useState(false);
+
   const fetchExpectedBills = async () => {
     try {
       const res = await fetch('/api/money-hub/expected-bills');
@@ -889,6 +894,17 @@ export default function MoneyHubPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingPrevMonth(false));
+
+    // Fetch overcharge assessments
+    fetch('/api/overcharge-assessments')
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error && d.assessments) {
+          setOverchargeAssessments(d.assessments);
+          setOverchargeSummary(d.summary);
+        }
+      })
+      .catch(() => {});
 
     // Restore chat history
     try {
@@ -2049,6 +2065,81 @@ export default function MoneyHubPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ═══ SECTION 5B: Overcharge Assessments ═══ */}
+      {overchargeAssessments.length > 0 && (
+        <div className="bg-navy-900 border border-red-500/20 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
+              <Zap className="h-5 w-5 text-red-400" /> Overcharge Check
+            </h2>
+            {overchargeSummary && overchargeSummary.totalEstimatedAnnualSaving > 0 && (
+              <span className="text-mint-400 font-bold text-sm">Save ~£{Math.round(overchargeSummary.totalEstimatedAnnualSaving)}/yr</span>
+            )}
+          </div>
+          {overchargeSummary && (
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">{overchargeSummary.total}</p>
+                <p className="text-slate-500 text-xs">Bills checked</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-red-400">{overchargeSummary.highScoreCount}</p>
+                <p className="text-slate-500 text-xs">Overcharged</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-mint-400">£{Math.round(overchargeSummary.totalEstimatedAnnualSaving)}</p>
+                <p className="text-slate-500 text-xs">Potential /yr</p>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            {overchargeAssessments.slice(0, 5).map((a: any) => (
+              <div key={a.id} className="bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white text-sm font-medium">{a.merchant_name}</span>
+                  <span className={`text-sm font-bold ${a.overcharge_score >= 70 ? 'text-red-400' : a.overcharge_score >= 40 ? 'text-amber-400' : 'text-slate-400'}`}>
+                    {a.overcharge_score}/100
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 text-xs">£{parseFloat(a.current_monthly).toFixed(2)}/mo</span>
+                  {a.estimated_annual_saving > 0 && (
+                    <span className="text-mint-400 text-xs font-medium">Save ~£{Math.round(parseFloat(a.estimated_annual_saving))}/yr</span>
+                  )}
+                </div>
+                {a.signals && a.signals.filter((s: any) => s.score > 0).length > 0 && (
+                  <div className="mt-1.5 text-xs text-slate-500">
+                    {a.signals.filter((s: any) => s.score > 0).slice(0, 2).map((s: any, i: number) => (
+                      <div key={i}>• {s.detail}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={async () => {
+              setOverchargeRunning(true);
+              try {
+                const res = await fetch('/api/overcharge-assessments', { method: 'POST' });
+                const d = await res.json();
+                if (!d.error) {
+                  setOverchargeAssessments(d.assessments || []);
+                  setOverchargeSummary(d.summary || null);
+                  showToast(`Checked ${d.summary?.total || 0} bills`, 'success');
+                }
+              } catch { showToast('Assessment failed', 'error'); }
+              setOverchargeRunning(false);
+            }}
+            disabled={overchargeRunning}
+            className="mt-3 w-full bg-navy-800 hover:bg-navy-700 border border-navy-600 text-white text-sm font-medium py-2 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {overchargeRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {overchargeRunning ? 'Checking bills...' : 'Re-check my bills'}
+          </button>
         </div>
       )}
 
