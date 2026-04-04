@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
   // Redirect paybacker.ai → paybacker.co.uk
   async redirects() {
     return [

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Plus_Jakarta_Sans, Inter } from "next/font/google";
 import "./globals.css";
-import PostHogProvider from "@/components/PostHogProvider";
-import ChatWidget from "@/components/ChatWidget";
+import ChatWidgetLoader from "@/components/ChatWidgetLoader";
+import PostHogTrackerLoader from "@/components/PostHogTrackerLoader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -150,10 +150,9 @@ export default function RootLayout({
             }),
           }}
         />
-        <PostHogProvider>
-          {children}
-          <ChatWidget />
-        </PostHogProvider>
+        {children}
+        <ChatWidgetLoader />
+        <PostHogTrackerLoader />
       </body>
     </html>
   );
