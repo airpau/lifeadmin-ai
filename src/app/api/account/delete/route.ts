@@ -92,7 +92,7 @@ export async function DELETE() {
       safeDelete(admin, 'user_points', 'user_id', userId, errors),
       safeDelete(admin, 'referrals', 'user_id', userId, errors),
       safeDelete(admin, 'support_tickets', 'user_id', userId, errors),
-      safeDelete(admin, 'ticket_messages', 'user_id', userId, errors),
+      // ticket_messages has no user_id column — cascade deleted when support_tickets rows are removed
       safeDelete(admin, 'chatbot_question_log', 'user_id', userId, errors),
       safeDelete(admin, 'nps_responses', 'user_id', userId, errors),
       safeDelete(admin, 'gmail_tokens', 'user_id', userId, errors),

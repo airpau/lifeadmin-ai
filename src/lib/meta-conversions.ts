@@ -7,6 +7,18 @@
  * the same event_id so Meta counts it once.
  */
 
+import { cookies } from 'next/headers';
+
+/**
+ * Returns true if the user has given marketing consent via the pb_consent cookie.
+ * Must be async because cookies() is async in Next.js 15+.
+ */
+export async function hasMarketingConsent(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const consentCookie = cookieStore.get('pb_consent');
+  return consentCookie?.value === 'true';
+}
+
 const PIXEL_ID = '722806327584909';
 const API_VERSION = 'v25.0';
 
