@@ -1,0 +1,178 @@
+/**
+ * Dispute Follow-Up Reminders Cron
+ *
+ * Runs daily at 9am UTC. For each user with Telegram linked, checks all active
+ * disputes and sends nudges based on age:
+ *
+ * - 14+ days old, no reminder in last 7 days:
+ *     "Have you heard back? Here's how to follow up."
+ * - 30+ days old, no reminder in last 7 days:
+ *     Stronger nudge to escalate to ombudsman/regulator.
+ *
+ * Deduplicates via disputes.last_reminder_sent — max one reminder per
+ * dispute per 7 days. Reminder count is incremented on each send.
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { sendProactiveAlert } from '@/lib/telegram/user-bot';
+
+export const runtime = 'nodejs';
+export const maxDuration = 120;
+
+function getAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
+
+const ACTIVE_STATUSES = ['open', 'awaiting_response', 'escalated'];
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function GET(request: NextRequest) {
+  const secret = request.headers.get('authorization')?.replace('Bearer ', '');
+  if (secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const supabase = getAdmin();
+  const now = new Date();
+  const results: Array<{ userId: string; disputeId: string; type: string; sent: boolean }> = [];
+
+  // All users who have Telegram linked and active
+  const { data: sessions, error: sessErr } = await supabase
+    .from('telegram_sessions')
+    .select('user_id, telegram_chat_id')
+    .eq('is_active', true);
+
+  if (sessErr || !sessions || sessions.length === 0) {
+    return NextResponse.json({ ok: true, message: 'No active Telegram sessions', sent: 0 });
+  }
+
+  const userIds = sessions.map((s) => s.user_id);
+  const cutoff14 = new Date(now.getTime() - FOURTEEN_DAYS_MS).toISOString();
+
+  // Fetch all active disputes for linked users that are at least 14 days old
+  const { data: disputes } = await supabase
+    .from('disputes')
+    .select('id, user_id, provider_name, status, created_at, last_reminder_sent, reminder_count, disputed_amount')
+    .in('user_id', userIds)
+    .in('status', ACTIVE_STATUSES)
+    .lte('created_at', cutoff14)
+    .order('created_at', { ascending: true });
+
+  if (!disputes || disputes.length === 0) {
+    return NextResponse.json({ ok: true, message: 'No stale disputes found', sent: 0 });
+  }
+
+  const sessionMap = new Map(sessions.map((s) => [s.user_id, Number(s.telegram_chat_id)]));
+
+  for (const dispute of disputes) {
+    const chatId = sessionMap.get(dispute.user_id);
+    if (!chatId) continue;
+
+    // Skip if a reminder was sent within the last 7 days
+    if (dispute.last_reminder_sent) {
+      const lastSent = new Date(dispute.last_reminder_sent).getTime();
+      if (now.getTime() - lastSent < SEVEN_DAYS_MS) continue;
+    }
+
+    const disputeAgeMs = now.getTime() - new Date(dispute.created_at).getTime();
+    const isEscalation = disputeAgeMs >= THIRTY_DAYS_MS;
+    const daysOld = Math.floor(disputeAgeMs / (24 * 60 * 60 * 1000));
+
+    const amountStr = dispute.disputed_amount
+      ? ` (£${Number(dispute.disputed_amount).toFixed(2)})`
+      : '';
+
+    let title: string;
+    let detail: string;
+    let recommendation: string;
+
+    if (isEscalation) {
+      title = `Your ${dispute.provider_name} dispute is ${daysOld} days old — time to escalate`;
+      detail =
+        `Your dispute with *${dispute.provider_name}*${amountStr} has been open for ${daysOld} days. ` +
+        `Under UK consumer law, if a company has not resolved your complaint within 8 weeks you have the right to escalate to the relevant ombudsman or regulator free of charge.`;
+      recommendation = `Ask me: "Escalate my ${dispute.provider_name} dispute" and I'll help you draft an ombudsman referral.`;
+    } else {
+      title = `Follow up on your ${dispute.provider_name} dispute`;
+      detail =
+        `Your dispute with *${dispute.provider_name}*${amountStr} was filed ${daysOld} days ago. ` +
+        `Have you received a response? Most companies must acknowledge complaints within 5 working days.`;
+      recommendation = `You can update the status in your dashboard, or ask me: "Help me follow up with ${dispute.provider_name}" for next steps.`;
+    }
+
+    // Insert a detected_issues record so the inline keyboard callbacks (resolve/snooze/dismiss) work
+    const { data: issue } = await supabase
+      .from('detected_issues')
+      .insert({
+        user_id: dispute.user_id,
+        issue_type: isEscalation ? 'dispute_escalation_due' : 'dispute_no_response',
+        title,
+        detail,
+        recommendation,
+        source_type: 'dispute',
+        source_id: dispute.id,
+        amount_impact: dispute.disputed_amount ?? null,
+        telegram_chat_id: String(chatId),
+        status: 'active',
+      })
+      .select('id')
+      .single();
+
+    if (!issue) continue;
+
+    const { ok, messageId } = await sendProactiveAlert({
+      chatId,
+      issue: {
+        id: issue.id,
+        title,
+        detail,
+        recommendation,
+        amount_impact: dispute.disputed_amount ? Number(dispute.disputed_amount) : null,
+        issue_type: isEscalation ? 'dispute_escalation_due' : 'dispute_no_response',
+      },
+      showFollowUpButtons: true,
+    });
+
+    if (ok) {
+      if (messageId) {
+        await supabase
+          .from('detected_issues')
+          .update({ telegram_message_id: messageId, delivered_at: now.toISOString() })
+          .eq('id', issue.id);
+      }
+
+      await supabase
+        .from('disputes')
+        .update({
+          last_reminder_sent: now.toISOString(),
+          reminder_count: (dispute.reminder_count ?? 0) + 1,
+        })
+        .eq('id', dispute.id);
+    }
+
+    results.push({
+      userId: dispute.user_id,
+      disputeId: dispute.id,
+      type: isEscalation ? 'escalation' : 'follow_up',
+      sent: ok,
+    });
+  }
+
+  const sent = results.filter((r) => r.sent).length;
+  console.log(
+    `[dispute-reminders] Checked ${disputes.length} stale disputes across ${sessions.length} users — sent ${sent} reminders`,
+  );
+
+  return NextResponse.json({
+    ok: true,
+    disputes_checked: disputes.length,
+    reminders_sent: sent,
+    results,
+  });
+}
