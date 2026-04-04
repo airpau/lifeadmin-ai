@@ -156,8 +156,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- Pre-renewal value summary (3 days before renewal, paid users only) ---
-    if (tier !== 'free') {
+    // --- Monthly value summary (1st of each month, paid users only) ---
+    if (tier !== 'free' && now.getDate() === 1) {
       // Check Stripe renewal date
       const { data: profile } = await admin
         .from('profiles')

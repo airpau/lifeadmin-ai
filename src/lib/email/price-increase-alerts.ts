@@ -21,7 +21,7 @@ function buildAlertRow(alert: PriceAlert): string {
           <td style="color: #ef4444; font-size: 13px; font-weight: 600; padding: 4px 0; text-align: right;">Now &pound;${alert.newAmount.toFixed(2)}</td>
         </tr>
         <tr>
-          <td colspan="2" style="color: #34d399; font-size: 12px; padding: 4px 0;">Extra &pound;${alert.annualImpact.toFixed(2)}/year</td>
+          <td colspan="2" style="color: #f59e0b; font-size: 12px; padding: 4px 0;">Extra &pound;${alert.annualImpact.toFixed(2)}/year</td>
         </tr>
       </table>
       <div style="margin-top: 8px;">
@@ -50,7 +50,7 @@ export function buildPriceIncreaseEmail(
 <body style="margin: 0; padding: 0; background-color: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
     <div style="text-align: center; padding: 24px 0;">
-      <h1 style="color: #ffffff; font-size: 22px; margin: 0;">Pay<span style="color: #34d399;">backer</span></h1>
+      <h1 style="color: #ffffff; font-size: 22px; margin: 0;">Pay<span style="color: #f59e0b;">backer</span></h1>
     </div>
 
     <div style="background: #0f172a; border-radius: 16px; padding: 32px; border: 1px solid #1e293b;">
@@ -61,7 +61,7 @@ export function buildPriceIncreaseEmail(
       </div>
 
       <p style="color: #e2e8f0; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
-        Hi ${userName}, we spotted ${alertArray.length === 1 ? 'a price increase' : `${alertArray.length} price increases`} on your payments${alertArray.length > 1 ? `, costing you an extra <strong style="color: #34d399;">&pound;${totalAnnualImpact.toFixed(2)}/year</strong>` : ''}.
+        Hi ${userName}, we spotted ${alertArray.length === 1 ? 'a price increase' : `${alertArray.length} price increases`} on your payments${alertArray.length > 1 ? `, costing you an extra <strong style="color: #f59e0b;">&pound;${totalAnnualImpact.toFixed(2)}/year</strong>` : ''}.
       </p>
 
       ${alertRows}

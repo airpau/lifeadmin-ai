@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ONBOARDING_SEQUENCE, sendOnboardingEmail } from '@/lib/email/onboarding-sequence';
+import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -62,13 +63,27 @@ export async function GET(request: NextRequest) {
       if (sentThisRun) break;
       // Send if enough days have passed and not already sent
       if (days >= seq.dayOffset && !alreadySent.has(`${profile.id}:${seq.key}`)) {
+        // Check global daily email cap before sending
+        const rateCheck = await canSendEmail(admin, profile.id, 'onboarding_email');
+        if (!rateCheck.allowed) {
+          results.push(`${email} → SKIPPED (${rateCheck.reason})`);
+          break;
+        }
+
         const sent = await sendOnboardingEmail(email, firstName, seq.key);
 
         if (sent) {
-          // Record as sent
+          // Record in onboarding_emails table for sequence deduplication
           await admin.from('onboarding_emails').insert({
             user_id: profile.id,
             email_key: seq.key,
+          });
+          // Record in tasks table so the global rate limiter counts this send
+          await admin.from('tasks').insert({
+            user_id: profile.id,
+            type: 'onboarding_email',
+            title: `Onboarding email: ${seq.key}`,
+            status: 'completed',
           });
           totalSent++;
           sentThisRun = true;
