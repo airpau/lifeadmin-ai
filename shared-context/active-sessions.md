@@ -58,3 +58,19 @@ MCP TASKS ADDED:
 
 ## 2026-04-01 21:50:29 - Claude Desktop
 **Summary:** Completed production readiness audit and comprehensive test plan. Audit found 6 critical blockers (income inflated 62%, spending inflated 130%, transfers in breakdown, wrong savings rate, bills dismiss persistence bug, subscription total not updating on dismiss), 7 high-priority issues, 12 medium/low issues. Created ~100-test-case test plan covering Money Hub, AI Disputes, Subscriptions, data consistency, navigation, edge functions, security, legal compliance, and performance. Both reports saved to outputs folder.
+
+## 2026-04-05 - Claude Code (Worktree: nervous-thompson)
+**Summary:** Configured Paperclip Cowork agents as the new autonomous execution layer. Railway agents are legacy and should be disabled (see handoff-notes.md).
+
+CHANGES MADE:
+1. `src/app/api/cron/daily-ceo-report/route.ts` — Added GitHub open PRs section and dev sprint completions to the 8am Telegram report. Requires GITHUB_TOKEN in Vercel env.
+2. Created `dev-sprint-runner` Cowork scheduled task (daily 7am) — reads task-queue.md, picks top Critical task, implements code, creates PR, notifies Paul via Telegram, logs to business_log.
+3. Created `paperclip-business-monitor` Cowork scheduled task (daily 6pm) — checks PR status, sprint completions, flags urgent items. Only sends Telegram if something actionable.
+4. `shared-context/handoff-notes.md` — Added Railway disable instructions.
+5. `shared-context/task-queue.md` — Added IMMEDIATE section with Railway disable + GITHUB_TOKEN + first sprint run.
+
+NEXT STEPS:
+1. Paul: Suspend Railway agent-server service (Railway.app → project → agent-server → Settings → Suspend)
+2. Paul: Add GITHUB_TOKEN to Vercel env (repo scope, for PR listing in CEO report)
+3. Paul: Click "Run now" on dev-sprint-runner in Paperclip sidebar to pre-approve tools and kick off first sprint
+4. After first sprint: review the PR and merge to deploy the first automated fix

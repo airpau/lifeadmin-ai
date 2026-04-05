@@ -1,4 +1,14 @@
-# Task Queue (Updated 27 Mar 2026)
+# Task Queue (Updated 5 Apr 2026)
+
+## IMMEDIATE — Paul to action today
+- [ ] **DISABLE Railway agents** — Go to Railway.app → your project → agent-server service → Settings → Suspend Service. These are legacy and wasting compute. Paperclip Cowork tasks are the new execution layer.
+- [ ] **Add GITHUB_TOKEN to Vercel env** — Required for the daily-ceo-report to show open PRs. Generate at github.com/settings/tokens (repo scope). Add to Vercel project environment variables.
+- [ ] **Run dev-sprint-runner** — The daily sprint task is live. Click "Run now" in the Paperclip sidebar (dev-sprint-runner) to pre-approve tools and kick off the first sprint task today.
+
+## Agent Execution Layer — Cowork Scheduled Tasks (LIVE as of 5 Apr 2026)
+- [x] dev-sprint-runner — Daily 7am. Picks top Critical task, implements, creates PR, Telegrams Paul.
+- [x] paperclip-business-monitor — Daily 6pm. Checks PR status, sprint completions, flags urgent items.
+- [x] daily-ceo-report updated — Now includes open GitHub PRs and sprint completions (needs GITHUB_TOKEN)
 
 ## URGENT - Email Spam Fix
 - [ ] Implement global email rate limiter (max 2 emails per user per day)
