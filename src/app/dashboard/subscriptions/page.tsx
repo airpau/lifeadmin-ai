@@ -92,7 +92,6 @@ interface CancellationEmail {
   body: string;
 }
 
-const CATEGORIES = ['streaming', 'software', 'fitness', 'news', 'shopping', 'gaming', 'energy', 'broadband', 'mobile', 'insurance', 'mortgage', 'loan', 'council_tax', 'water', 'tv', 'other'];
 const BILLING_CYCLES = ['monthly', 'quarterly', 'yearly', 'one-time'];
 
 /** Normalise a raw bank merchant name (e.g. "DELIVEROO PLUS SUBS") to a clean display name */
@@ -2560,7 +2559,7 @@ export default function SubscriptionsPage() {
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                     className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
                   >
-                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {SORTED_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -2824,8 +2823,8 @@ export default function SubscriptionsPage() {
                     onChange={(e) => setNewSub({ ...newSub, category: e.target.value })}
                     className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
                   >
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                    {SORTED_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
                     ))}
                   </select>
                 </div>
