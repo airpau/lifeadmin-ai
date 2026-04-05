@@ -160,33 +160,5 @@
       "path": "/api/cron/telegram-scheduler",
       "schedule": "0 5,8,9,10,13,18 * * *"
     }
-  ],
-
-  "_disabled_crons_paperclip": [
-    {
-      "_note": "Disabled — replaced by Paperclip scheduled tasks. Legacy catch-all executor for Alex (CFO), Morgan (CTO), Jamie (CAO), Taylor (CMO), Jordan (Ads), Charlie (EA), Sam (Support), Riley (Support). Was already set to run once a year as a safety net.",
-      "path": "/api/cron/executive-agents",
-      "schedule": "0 0 1 1 *"
-    },
-    {
-      "_note": "Disabled — replaced by Paperclip scheduled tasks. Jordan (Head of Ads) — daily ad metrics pull from Google Ads + Meta Ads.",
-      "path": "/api/cron/ad-metrics",
-      "schedule": "0 7 * * *"
-    },
-    {
-      "_note": "Disabled — replaced by Paperclip scheduled tasks. Jordan (Head of Ads) — weekly campaign optimisation (auto-adjusts budgets based on CPA thresholds).",
-      "path": "/api/cron/ad-optimise",
-      "schedule": "0 6 * * 1"
-    },
-    {
-      "_note": "Disabled — replaced by Paperclip scheduled tasks. Jordan (Head of Ads) / Taylor (CMO) — weekly acquisition report sent to founder via Telegram.",
-      "path": "/api/cron/weekly-acquisition-report",
-      "schedule": "0 9 * * 1"
-    },
-    {
-      "_note": "Disabled — replaced by Paperclip scheduled tasks. Charlie (EA) — daily CEO digest sent to founder via Telegram (signups, disputes, content, agent activity, recommended actions).",
-      "path": "/api/cron/daily-ceo-report",
-      "schedule": "0 8 * * *"
-    }
   ]
 }
