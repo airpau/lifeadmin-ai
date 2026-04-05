@@ -183,6 +183,10 @@
       "_note": "Disabled — replaced by Paperclip scheduled tasks. Charlie (EA) — daily CEO digest sent to founder via Telegram (signups, disputes, content, agent activity, recommended actions).",
       "path": "/api/cron/daily-ceo-report",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-payment-reminders",
+      "schedule": "0 8 * * *"
     }
   ]
 }
