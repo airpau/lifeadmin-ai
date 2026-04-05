@@ -168,6 +168,16 @@ export async function executeToolCall(
         toolInput.transaction_id as string,
         toolInput.new_category as string,
       );
+    case 'get_weekly_outlook':
+      return getWeeklyOutlook(supabase, userId);
+    case 'get_monthly_recap':
+      return getMonthlyRecap(supabase, userId, toolInput.month as string | undefined);
+    case 'get_unused_subscriptions':
+      return getUnusedSubscriptions(supabase, userId);
+    case 'get_dispute_status':
+      return getDisputeStatus(supabase, userId);
+    case 'get_savings_total':
+      return getSavingsTotal(supabase, userId);
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -1805,4 +1815,321 @@ async function recategoriseTransaction(
   return {
     text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}". The change is now reflected in your Money Hub dashboard.`,
   };
+}
+
+// ============================================================
+// PROACTIVE INTELLIGENCE HANDLERS
+// ============================================================
+
+async function getWeeklyOutlook(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const todayDay = now.getDate();
+  const weekEndDay = todayDay + 7;
+  const todayStr = now.toISOString().split('T')[0];
+  const in30DaysStr = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const [billsRes, contractsRes] = await Promise.all([
+    supabase.rpc('get_expected_bills', { p_user_id: userId, p_year: year, p_month: month }),
+    supabase
+      .from('subscriptions')
+      .select('provider_name, contract_end_date, amount, billing_cycle')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .not('contract_end_date', 'is', null)
+      .gte('contract_end_date', todayStr)
+      .lte('contract_end_date', in30DaysStr)
+      .order('contract_end_date', { ascending: true }),
+  ]);
+
+  const allBills = (billsRes.data ?? []) as Array<{
+    provider_name: string; expected_amount: string; billing_day: number; occurrence_count: number;
+  }>;
+  const weekBills = allBills.filter(
+    (b) => b.billing_day >= todayDay && b.billing_day <= weekEndDay && b.occurrence_count >= 2 && b.occurrence_count <= 30,
+  );
+  const contracts = contractsRes.data ?? [];
+
+  if (weekBills.length === 0 && contracts.length === 0) {
+    return { text: 'No bills due this week and no contracts ending in the next 30 days. All clear!' };
+  }
+
+  let text = '📅 *This Week\'s Financial Outlook*\n\n';
+
+  if (weekBills.length > 0) {
+    const weekTotal = weekBills.reduce((s, b) => s + (parseFloat(b.expected_amount) || 0), 0);
+    text += `💸 *Bills due this week* — Total: *${fmt(weekTotal)}*\n`;
+    for (const bill of weekBills) {
+      const dayLabel = bill.billing_day === todayDay ? 'Today' : bill.billing_day === todayDay + 1 ? 'Tomorrow' : `Day ${bill.billing_day}`;
+      text += `  • *${bill.provider_name}* — ${fmt(parseFloat(bill.expected_amount))} (${dayLabel})\n`;
+    }
+  } else {
+    text += '✅ No bills expected this week\n';
+  }
+
+  if (contracts.length > 0) {
+    text += '\n📋 *Contracts ending in 30 days*\n';
+    for (const c of contracts) {
+      const daysLeft = Math.ceil((new Date(c.contract_end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const monthly = c.billing_cycle === 'yearly' ? Number(c.amount) / 12 : c.billing_cycle === 'quarterly' ? Number(c.amount) / 3 : Number(c.amount);
+      text += `  ${daysLeft <= 7 ? '🔴' : daysLeft <= 14 ? '🟠' : '🟡'} *${c.provider_name}* — ${fmt(monthly)}/month ends in ${daysLeft} days\n`;
+    }
+    text += '\n_Ask me to draft a switch letter or show available deals for any of these_';
+  }
+
+  return { text };
+}
+
+async function getMonthlyRecap(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  month?: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  // Default to previous month
+  const targetDate = month
+    ? (() => { const [y, m] = month.split('-').map(Number); return new Date(y, m - 1, 1); })()
+    : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const targetYear = targetDate.getFullYear();
+  const targetMonth = targetDate.getMonth() + 1;
+  const prevDate = new Date(targetYear, targetMonth - 2, 1);
+
+  const [spendRes, prevSpendRes, incomeRes, breakdownRes] = await Promise.all([
+    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevDate.getFullYear(), p_month: prevDate.getMonth() + 1 }),
+    supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+  ]);
+
+  const spending = parseFloat(spendRes.data) || 0;
+  const prevSpending = parseFloat(prevSpendRes.data) || 0;
+  const income = parseFloat(incomeRes.data) || 0;
+
+  if (spending === 0 && income === 0) {
+    return { text: `No financial data found for ${targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}. Connect a bank account at paybacker.co.uk/dashboard/money-hub.` };
+  }
+
+  const monthLabel = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const savingsRate = income > 0 ? ((income - spending) / income) * 100 : 0;
+  const spendingDiff = spending - prevSpending;
+
+  type SpendingRow = { category: string; category_total: string };
+  const top5 = ((breakdownRes.data as SpendingRow[]) ?? [])
+    .map((r) => ({ category: r.category, total: parseFloat(r.category_total) || 0 }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
+  let text = `📊 *${monthLabel} Financial Recap*\n\n`;
+  text += `💰 Income: *${fmt(income)}*\n`;
+  text += `💸 Spending: *${fmt(spending)}*\n`;
+  text += `${income - spending >= 0 ? '✅' : '❌'} Net: *${income - spending >= 0 ? '+' : ''}${fmt(income - spending)}*\n`;
+  text += `${savingsRate >= 20 ? '🎉' : savingsRate >= 10 ? '👍' : '⚠️'} Savings rate: *${savingsRate.toFixed(1)}%*\n`;
+
+  if (prevSpending > 0) {
+    text += `${spendingDiff > 0 ? '📈' : '📉'} vs prior month: *${spendingDiff > 0 ? '+' : ''}${fmt(spendingDiff)}*\n`;
+  }
+
+  if (top5.length > 0) {
+    text += '\n*Top Spending Categories*\n';
+    const EMOJI: Record<string, string> = { food: '🛒', transport: '🚗', streaming: '📺', utility: '⚡', utilities: '⚡', bills: '📄', mortgage: '🏠', insurance: '🛡️', fitness: '💪', mobile: '📱', broadband: '🌐', other: '💰' };
+    for (const c of top5) {
+      const emoji = EMOJI[c.category.toLowerCase()] ?? '💰';
+      const pct = spending > 0 ? ((c.total / spending) * 100).toFixed(0) : '0';
+      text += `  ${emoji} ${c.category}: *${fmt(c.total)}* (${pct}%)\n`;
+    }
+  }
+
+  return { text };
+}
+
+function normaliseMerchantName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/paypal\s*\*/gi, '')
+    .replace(/\b(ltd|limited|plc|llp|inc|corp|co\.uk)\b/g, '')
+    .replace(/\d{5,}/g, '')
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function merchantNamesMatch(a: string, b: string): boolean {
+  const na = normaliseMerchantName(a);
+  const nb = normaliseMerchantName(b);
+  if (!na || !nb) return false;
+  const shorter = na.length < nb.length ? na : nb;
+  const longer = na.length < nb.length ? nb : na;
+  return longer.includes(shorter.substring(0, Math.min(shorter.length, 8)));
+}
+
+async function getUnusedSubscriptions(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const nintyDaysAgoCutoff = new Date(ninetyDaysAgo);
+
+  const [subsRes, txnRes] = await Promise.all([
+    supabase
+      .from('subscriptions')
+      .select('id, provider_name, amount, billing_cycle, category, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .in('billing_cycle', ['monthly', 'quarterly']),
+    supabase
+      .from('bank_transactions')
+      .select('merchant_name, description, amount')
+      .eq('user_id', userId)
+      .lt('amount', 0)
+      .gte('timestamp', ninetyDaysAgo),
+  ]);
+
+  const subs = (subsRes.data ?? []).filter(
+    (s) => !s.created_at || new Date(s.created_at) < nintyDaysAgoCutoff,
+  );
+  const txns = txnRes.data ?? [];
+
+  if (subs.length === 0) {
+    return { text: 'No established monthly/quarterly subscriptions found.' };
+  }
+
+  const unused = subs.filter(
+    (sub) => !txns.some((t) => merchantNamesMatch(sub.provider_name, t.merchant_name || t.description || '')),
+  );
+
+  if (unused.length === 0) {
+    return { text: 'All your active subscriptions have matching transactions in the last 90 days — no obvious zombie subscriptions detected.' };
+  }
+
+  const monthlyTotal = unused.reduce((sum, s) => {
+    const amt = Number(s.amount);
+    return sum + (s.billing_cycle === 'quarterly' ? amt / 3 : amt);
+  }, 0);
+
+  let text = `💤 *Potentially Unused Subscriptions*\n_(No matching transactions in 90 days)_\n\n`;
+  for (const sub of unused.slice(0, 8)) {
+    const monthly = sub.billing_cycle === 'quarterly' ? Number(sub.amount) / 3 : Number(sub.amount);
+    text += `• *${sub.provider_name}* — ${fmt(Number(sub.amount))}/${sub.billing_cycle ?? 'month'} (~${fmt(monthly * 12)}/year)\n`;
+  }
+  if (unused.length > 8) text += `_...and ${unused.length - 8} more_\n`;
+
+  text += `\n*Total: ~${fmt(monthlyTotal)}/month* you may not be using\n`;
+  text += `\n_Ask me to cancel any of these or draft a cancellation email_`;
+
+  return { text };
+}
+
+async function getDisputeStatus(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  const FCA_DEADLINE_DAYS = 56;
+
+  const { data: disputes, error } = await supabase
+    .from('disputes')
+    .select('id, provider_name, issue_type, status, created_at, updated_at, disputed_amount, money_recovered')
+    .eq('user_id', userId)
+    .in('status', ['open', 'awaiting_response', 'escalated'])
+    .order('created_at', { ascending: true });
+
+  if (error || !disputes || disputes.length === 0) {
+    return { text: 'No active disputes. Use "write a complaint letter to [company]" to start one.' };
+  }
+
+  const STATUS_EMOJI: Record<string, string> = { open: '🔴', awaiting_response: '🟡', escalated: '🔥' };
+
+  let text = `📬 *Active Disputes (${disputes.length})*\n\n`;
+
+  for (const d of disputes) {
+    const daysSinceSent = Math.floor((now.getTime() - new Date(d.created_at).getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntilDeadline = FCA_DEADLINE_DAYS - daysSinceSent;
+    const emoji = STATUS_EMOJI[d.status] ?? '❓';
+
+    text += `${emoji} *${d.provider_name}* — ${d.issue_type}\n`;
+    text += `  Status: ${d.status} | Sent: ${daysSinceSent} days ago\n`;
+
+    if (daysUntilDeadline <= 0) {
+      text += `  🚨 FCA deadline PASSED — escalate to ombudsman now\n`;
+    } else if (daysUntilDeadline <= 14) {
+      text += `  ⚠️ FCA deadline in ${daysUntilDeadline} days\n`;
+    } else {
+      text += `  📅 ${daysUntilDeadline} days until FCA deadline\n`;
+    }
+
+    if (daysSinceSent >= 14) {
+      text += `  _No response in ${daysSinceSent} days — ask me to draft a follow-up_\n`;
+    }
+    text += '\n';
+  }
+
+  return { text: text.trim() };
+}
+
+async function getSavingsTotal(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data: savings, error } = await supabase
+    .from('verified_savings')
+    .select('amount_saved, saving_type, title, confirmed_at, annual_saving')
+    .eq('user_id', userId)
+    .order('confirmed_at', { ascending: false });
+
+  if (error || !savings || savings.length === 0) {
+    return {
+      text: 'No verified savings recorded yet.\n\nWhen you win a dispute, cancel a subscription, or stop a price rise, I\'ll track it here. Ask me to write a complaint letter to get started!',
+    };
+  }
+
+  const totalSaved = savings.reduce((sum, s) => sum + (Number(s.amount_saved) || 0), 0);
+  const annualSavingTotal = savings.reduce((sum, s) => sum + (Number(s.annual_saving) || 0), 0);
+
+  const byType: Record<string, number> = {};
+  for (const s of savings) {
+    const type = s.saving_type ?? 'other';
+    byType[type] = (byType[type] ?? 0) + (Number(s.amount_saved) || 0);
+  }
+
+  const TYPE_LABELS: Record<string, string> = {
+    dispute_won: '⚖️ Disputes won',
+    cancelled_subscription: '✂️ Cancelled subscriptions',
+    price_reverted: '📉 Price increases reversed',
+    refund: '↩️ Refunds',
+    other: '💰 Other savings',
+  };
+
+  let text = `🏆 *Your Total Savings with Paybacker*\n\n`;
+  text += `*${fmt(totalSaved)}* saved to date\n`;
+  if (annualSavingTotal > 0) text += `*${fmt(annualSavingTotal)}/year* in ongoing savings\n`;
+  text += '\n*Breakdown:*\n';
+
+  for (const [type, amount] of Object.entries(byType).sort(([, a], [, b]) => b - a)) {
+    const label = TYPE_LABELS[type] ?? `💰 ${type}`;
+    text += `  ${label}: *${fmt(amount)}*\n`;
+  }
+
+  if (savings.length > 0) {
+    text += '\n*Recent Savings:*\n';
+    for (const s of savings.slice(0, 5)) {
+      text += `  • ${s.title ?? 'Saving'}: *${fmt(Number(s.amount_saved))}*\n`;
+    }
+    if (savings.length > 5) text += `  _...and ${savings.length - 5} more_\n`;
+  }
+
+  // Next milestone
+  const MILESTONES = [50, 100, 250, 500, 1000, 2000, 5000];
+  const nextMilestone = MILESTONES.find((m) => m > totalSaved);
+  if (nextMilestone) {
+    text += `\n🎯 Next milestone: ${fmt(nextMilestone)} — ${fmt(nextMilestone - totalSaved)} to go!`;
+  } else {
+    text += `\n🏆 You've hit every milestone — legendary savings!`;
+  }
+
+  return { text };
 }
