@@ -1,5 +1,20 @@
 ## Active Handoff Notes
 
+### RAILWAY AGENTS — DISABLE IMMEDIATELY (2026-04-05)
+The Railway-hosted agent server (`agent-server/`) is legacy and must be disabled. These agents only monitor/report and waste compute.
+
+**To disable:** Go to Railway.app → your project → agent-server service → Settings → Suspend Service (or set env var `AGENTS_ENABLED=false` in Railway dashboard).
+
+**Replacement:** Cowork scheduled tasks (Paperclip agents) are now the execution layer. They run as Claude Code sessions on Paul's machine with full git, gh CLI, and code-writing capability.
+
+**Active Cowork tasks created 2026-04-05:**
+- `dev-sprint-runner` — Daily 7am. Picks top Critical task, implements it, creates PR, notifies Paul via Telegram.
+- `paperclip-business-monitor` — Daily 6pm. Monitors PR status, sprint completions, business health.
+
+The Vercel cron `/api/cron/executive-agents` was already effectively disabled (scheduled for Jan 1st once a year). The Railway Docker container is the only thing that needs to be suspended.
+
+---
+
 ### FCA COMPLIANCE — CRITICAL BLOCKER
 As of 31 March 2026, Paybacker MUST NOT display bank account balances anywhere in the UI. This is an FCA regulatory requirement — we do not have agent registration yet. Only transaction-derived data (spending, income, categories, scores) can be shown. See memory.md for full rules.
 

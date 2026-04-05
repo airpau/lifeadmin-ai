@@ -114,6 +114,27 @@ export async function GET(request: NextRequest) {
     year: 'numeric',
   });
 
+  // Fetch open GitHub PRs (non-blocking)
+  type GitHubPR = { number: number; title: string; html_url: string; created_at: string; user: { login: string } };
+  let openPRs: GitHubPR[] = [];
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (githubToken) {
+    try {
+      const prRes = await fetch(
+        'https://api.github.com/repos/airpau/lifeadmin-ai/pulls?state=open&per_page=10&sort=created&direction=desc',
+        {
+          headers: {
+            Authorization: `Bearer ${githubToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        },
+      );
+      if (prRes.ok) openPRs = (await prRes.json()) as GitHubPR[];
+    } catch (e) {
+      console.error('[daily-ceo-report] GitHub PR fetch failed:', e);
+    }
+  }
+
   // Run all queries in parallel
   const [
     newUsersResult,
@@ -125,6 +146,7 @@ export async function GET(request: NextRequest) {
     pendingContentResult,
     agentActivityResult,
     totalLettersResult,
+    sprintActivityResult,
   ] = await Promise.all([
     // New signups in last 24h
     supabase
@@ -184,6 +206,15 @@ export async function GET(request: NextRequest) {
       .from('tasks')
       .select('id', { count: 'exact', head: true })
       .eq('type', 'complaint_letter'),
+
+    // Dev sprint activity from last 24h
+    supabase
+      .from('business_log')
+      .select('title, content, created_at')
+      .eq('category', 'dev_sprint')
+      .gte('created_at', yesterday.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5),
   ]);
 
   // Process results
@@ -204,6 +235,7 @@ export async function GET(request: NextRequest) {
   const socialPosts = socialPostedResult.data ?? [];
   const pendingContent = pendingContentResult.data ?? [];
   const agentActivity = agentActivityResult.data ?? [];
+  const sprintActivity = sprintActivityResult.data ?? [];
 
   // Social posts grouped by platform
   const socialByPlatform: Record<string, number> = {};
@@ -274,10 +306,35 @@ export async function GET(request: NextRequest) {
   }
   lines.push('');
 
+  // Dev sprint work
+  lines.push('*Dev Sprint (Paperclip Agents):*');
+  if (sprintActivity.length > 0) {
+    for (const entry of sprintActivity) {
+      lines.push(`• ${esc(entry.title)}`);
+    }
+  } else {
+    lines.push('No sprint work today');
+  }
+  lines.push('');
+
+  // Open PRs awaiting review
+  lines.push('*PRs Awaiting Your Review:*');
+  if (openPRs.length > 0) {
+    for (const pr of openPRs.slice(0, 5)) {
+      lines.push(`• \\#${pr.number}: ${esc(pr.title)}`);
+      lines.push(`  github.com/airpau/lifeadmin\\-ai/pull/${pr.number}`);
+    }
+    if (openPRs.length > 5) lines.push(`• ...and ${openPRs.length - 5} more`);
+  } else {
+    lines.push('None — inbox clear');
+  }
+  lines.push('');
+
   // Agent activity
-  lines.push('*Agent Activity:*');
+  lines.push('*Other Agent Activity:*');
   if (Object.keys(agentByAgent).length > 0) {
     for (const [agent, titles] of Object.entries(agentByAgent).slice(0, 6)) {
+      if (agent === 'dev-sprint-runner') continue; // already shown above
       const summary = titles.slice(0, 2).map(esc).join(', ');
       const extra = titles.length > 2 ? ` (+${titles.length - 2} more)` : '';
       lines.push(`• ${esc(agent)}: ${summary}${extra}`);
@@ -286,7 +343,7 @@ export async function GET(request: NextRequest) {
       lines.push(`• ...and ${Object.keys(agentByAgent).length - 6} more agents`);
     }
   } else {
-    lines.push('No agent activity logged in the last 24h');
+    lines.push('No other agent activity in the last 24h');
   }
   lines.push('');
 
@@ -336,7 +393,7 @@ export async function GET(request: NextRequest) {
   await supabase.from('business_log').insert({
     category: 'ceo_report',
     title: `CEO Daily Report — ${now.toISOString().split('T')[0]}`,
-    content: `Sent to founder. Users: ${totalUsers} (+${newUsers} new), Active disputes: ${activeDisputes}, Pending approvals: ${pendingContent.length}, Agent entries: ${agentActivity.length}.`,
+    content: `Sent to founder. Users: ${totalUsers} (+${newUsers} new), Active disputes: ${activeDisputes}, Pending approvals: ${pendingContent.length}, Agent entries: ${agentActivity.length}, Open PRs: ${openPRs.length}, Sprint tasks today: ${sprintActivity.length}.`,
     created_by: 'daily-ceo-report',
   });
 
@@ -353,6 +410,8 @@ export async function GET(request: NextRequest) {
       socialPosts: socialPosts.length,
       pendingApprovals: pendingContent.length,
       agentEntries: agentActivity.length,
+      openPRs: openPRs.length,
+      sprintTasksToday: sprintActivity.length,
     },
   });
 }
