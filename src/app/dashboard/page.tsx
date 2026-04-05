@@ -11,12 +11,14 @@ import { createClient } from '@/lib/supabase/client';
 import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
+  Mail, ScanSearch, RefreshCw,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
 import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
+import BankPickerModal from '@/components/BankPickerModal';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -45,6 +47,13 @@ export default function DashboardPage() {
   const [comparisonCount, setComparisonCount] = useState(0);
   const [comparisonDeals, setComparisonDeals] = useState<Array<{ subscriptionName: string; currentPrice: number; dealProvider: string; dealPrice: number; annualSaving: number; dealUrl: string; category: string }>>([]);
   const [activeSubscriptions, setActiveSubscriptions] = useState<any[]>([]);
+  const [emailConnected, setEmailConnected] = useState(false);
+  const [emailAddress, setEmailAddress] = useState<string | null>(null);
+  const [emailLastScanned, setEmailLastScanned] = useState<string | null>(null);
+  const [emailScanning, setEmailScanning] = useState(false);
+  const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
+  const [showBankPicker, setShowBankPicker] = useState(false);
+  const [bankSyncing, setBankSyncing] = useState(false);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -186,6 +195,31 @@ export default function DashboardPage() {
         setUserTier(profile.data?.subscription_tier || 'free');
         hasBankConnection = (banks.count || 0) > 0;
         setBankConnected(hasBankConnection);
+
+        // Check email connection (Gmail or IMAP)
+        const { data: emailConns } = await supabase
+          .from('email_connections')
+          .select('id, email_address, provider_type, status, last_scanned_at')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .limit(1);
+        if (emailConns && emailConns.length > 0) {
+          setEmailConnected(true);
+          setEmailAddress(emailConns[0].email_address);
+          setEmailLastScanned(emailConns[0].last_scanned_at);
+        } else {
+          // Also check gmail_tokens table as fallback
+          const { data: gmailToken } = await supabase
+            .from('gmail_tokens')
+            .select('id, email')
+            .eq('user_id', user.id)
+            .limit(1)
+            .single();
+          if (gmailToken) {
+            setEmailConnected(true);
+            setEmailAddress(gmailToken.email);
+          }
+        }
 
         // Check trial status
         if (profile.data?.founding_member && profile.data?.founding_member_expires && !profile.data?.stripe_subscription_id) {
@@ -580,6 +614,114 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {/* Getting Started — connection status & CTAs */}
+      {!(bankConnected && emailConnected && complaintsGenerated > 0) && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="h-5 w-5 text-mint-400" />
+            <h2 className="text-white font-semibold text-lg">Get the most from Paybacker</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Bank Account */}
+            <div className={`rounded-xl border p-4 ${bankConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Building2 className="h-5 w-5 text-slate-300" />
+                <span className="text-white font-medium text-sm">Bank Account</span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3">
+                {bankConnected ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    <span className="text-green-400 text-sm">Connected</span>
+                  </>
+                ) : (
+                  <span className="text-amber-400 text-sm">Not connected</span>
+                )}
+              </div>
+              {bankConnected ? (
+                <button
+                  onClick={async () => {
+                    setBankSyncing(true);
+                    try {
+                      await fetch('/api/bank/sync', { method: 'POST' });
+                    } catch {}
+                    setBankSyncing(false);
+                  }}
+                  disabled={bankSyncing}
+                  className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${bankSyncing ? 'animate-spin' : ''}`} />
+                  {bankSyncing ? 'Syncing...' : 'Sync Now'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowBankPicker(true)}
+                  className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
+                >
+                  Connect Bank
+                </button>
+              )}
+            </div>
+
+            {/* Email Inbox */}
+            <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Mail className="h-5 w-5 text-slate-300" />
+                <span className="text-white font-medium text-sm">Email Inbox</span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3">
+                {emailConnected ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    <span className="text-green-400 text-sm">Connected</span>
+                  </>
+                ) : (
+                  <span className="text-amber-400 text-sm">Not connected</span>
+                )}
+              </div>
+              <Link
+                href="/dashboard/scanner"
+                className={`flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center ${
+                  emailConnected
+                    ? 'bg-navy-800 hover:bg-navy-700 text-white font-medium'
+                    : 'bg-mint-400 hover:bg-mint-500 text-navy-950'
+                }`}
+              >
+                {emailConnected ? 'Scan Inbox' : 'Connect Email'}
+              </Link>
+            </div>
+
+            {/* First Letter */}
+            <div className={`rounded-xl border p-4 ${complaintsGenerated > 0 ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="h-5 w-5 text-slate-300" />
+                <span className="text-white font-medium text-sm">First Letter</span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3">
+                {complaintsGenerated > 0 ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    <span className="text-green-400 text-sm">{complaintsGenerated} written</span>
+                  </>
+                ) : (
+                  <span className="text-amber-400 text-sm">None yet</span>
+                )}
+              </div>
+              <Link
+                href="/dashboard/complaints"
+                className={`flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center ${
+                  complaintsGenerated > 0
+                    ? 'bg-navy-800 hover:bg-navy-700 text-white font-medium'
+                    : 'bg-mint-400 hover:bg-mint-500 text-navy-950'
+                }`}
+              >
+                Write Letter
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Alerts */}
       {expiringContracts > 0 && (
         <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
@@ -607,6 +749,67 @@ export default function DashboardPage() {
           </div>
           <Link href="/dashboard/subscriptions" className="text-blue-400 hover:text-blue-300 text-sm font-medium flex items-center gap-1">
             Connect <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
+
+      {/* Email Scan Card */}
+      {emailConnected ? (
+        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Mail className="h-5 w-5 text-purple-400" />
+            <div>
+              <p className="text-white font-semibold text-sm">
+                {emailScanning ? 'Scanning your emails...' : 'Email Scanner'}
+              </p>
+              <p className="text-slate-400 text-xs">
+                {emailScanResults !== null
+                  ? `Found ${emailScanResults} opportunities`
+                  : emailAddress
+                    ? `Connected: ${emailAddress}${emailLastScanned ? ` \u00b7 Last scanned: ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
+                    : 'Scan your inbox to find bills, overcharges & savings'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              setEmailScanning(true);
+              setEmailScanResults(null);
+              try {
+                const res = await fetch('/api/gmail/scan', { method: 'POST' });
+                const data = await res.json();
+                if (data.opportunities) {
+                  setEmailScanResults(data.opportunities.length);
+                } else if (data.error) {
+                  setEmailScanResults(0);
+                }
+              } catch {
+                setEmailScanResults(0);
+              } finally {
+                setEmailScanning(false);
+              }
+            }}
+            disabled={emailScanning}
+            className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap ml-4"
+          >
+            {emailScanning ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
+            ) : (
+              <><ScanSearch className="h-4 w-4" /> Scan Emails</>
+            )}
+          </button>
+        </div>
+      ) : (
+        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Mail className="h-5 w-5 text-purple-400" />
+            <div>
+              <p className="text-white font-semibold text-sm">Scan your emails for savings</p>
+              <p className="text-slate-400 text-xs">Connect your email to find hidden bills, overcharges, and money-saving opportunities</p>
+            </div>
+          </div>
+          <Link href="/dashboard/scanner" className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1 whitespace-nowrap ml-4">
+            Connect Email <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       )}
@@ -883,6 +1086,9 @@ export default function DashboardPage() {
           <p className="text-slate-500 text-xs">Add your subscriptions and contracts with end dates. Get alerts before renewals and find better deals.</p>
         </Link>
       </div>
+
+      {/* Bank Picker Modal */}
+      <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
     </div>
   );
 }
