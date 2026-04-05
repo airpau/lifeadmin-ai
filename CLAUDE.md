@@ -209,6 +209,14 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 - Commit messages: Conventional Commits format
 - Always include Co-Authored-By: Claude when pair programming
 
+### Git Lock Prevention
+- NEVER run multiple git operations on the main working directory simultaneously
+- Always use git worktrees for parallel code tasks (Claude Code does this automatically)
+- If you encounter a .git/index.lock error, check if the lock file is stale (> 5 min old) and remove it
+- Never force-remove a fresh lock file — another operation may be in progress
+- Use `scripts/git-safe.sh <git-args>` in scripts instead of calling git directly
+- See `.claude/worktree-config.json` for full lock policy details
+
 ### CRITICAL: Deployment Safety Rules
 1. **NEVER deploy without a clean git state** — all changes must be committed before deploying
 2. **ALWAYS run `npx tsc --noEmit` before deploying** — zero type errors required
