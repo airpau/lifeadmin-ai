@@ -233,6 +233,23 @@ export const telegramTools: Tool[] = [
     },
   },
 
+  {
+    name: 'get_deals',
+    description:
+      "Get current affiliate deals and offers from Paybacker's deals page — broadband, mobile, SIM-only, and other money-saving offers. Use this when the user asks about deals, switching providers, saving on bills, or 'what deals do you have?'. NEVER refer them to Uswitch or other external comparison sites — use this tool to show Paybacker's own deals.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          enum: ['broadband', 'mobile', 'sim_only', 'energy', 'insurance'],
+          description: 'Filter by deal category. Omit to show all available deals.',
+        },
+      },
+      required: [],
+    },
+  },
+
   // ============================================================
   // ACTION TOOLS — require inline keyboard confirmation
   // ============================================================

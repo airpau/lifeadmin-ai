@@ -74,6 +74,8 @@ export async function executeToolCall(
       return getUpcomingRenewals(supabase, userId);
     case 'get_price_alerts':
       return getPriceAlerts(supabase, userId);
+    case 'get_deals':
+      return getDeals(supabase, toolInput.category as string | undefined);
     case 'get_savings_goals':
       return getSavingsGoals(supabase, userId);
     case 'get_savings_challenges':
@@ -1686,6 +1688,64 @@ async function addContract(
   if (params.remaining_balance) text += ` · Remaining: ${fmt(params.remaining_balance)}`;
   text += `\n\nYou'll get renewal reminders before the contract ends.`;
 
+  return { text };
+}
+
+// ============================================================
+// DEALS HANDLER
+// ============================================================
+
+async function getDeals(
+  supabase: ReturnType<typeof getAdmin>,
+  category?: string,
+): Promise<ToolResult> {
+  let query = supabase
+    .from('affiliate_deals')
+    .select('*')
+    .eq('is_active', true)
+    .order('price_monthly', { ascending: true });
+
+  if (category) {
+    query = query.eq('category', category);
+  }
+
+  const { data: deals, error } = await query;
+
+  if (error) {
+    return { text: `Failed to fetch deals: ${error.message}` };
+  }
+
+  if (!deals || deals.length === 0) {
+    const catLabel = category ? ` for ${category}` : '';
+    return { text: `No deals available${catLabel} right now. Check back soon — new offers are added regularly.` };
+  }
+
+  // Group by category
+  const grouped: Record<string, typeof deals> = {};
+  for (const deal of deals) {
+    if (!grouped[deal.category]) grouped[deal.category] = [];
+    grouped[deal.category].push(deal);
+  }
+
+  let text = `*Deals available on Paybacker*\n\n`;
+
+  for (const [cat, catDeals] of Object.entries(grouped)) {
+    const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ');
+    text += `*${catLabel}*\n`;
+    for (const deal of catDeals) {
+      text += `• *${deal.provider}* — ${deal.plan_name}: ${fmt(deal.price_monthly)}/mo`;
+      if (deal.price_promotional && deal.price_promotional < deal.price_monthly) {
+        text += ` (was ${fmt(deal.price_monthly)}, now ${fmt(deal.price_promotional)}/${deal.promotional_period ?? 'promo'})`;
+      }
+      if (deal.speed_mbps) text += ` · ${deal.speed_mbps}Mbps`;
+      if (deal.data_allowance) text += ` · ${deal.data_allowance}`;
+      if (deal.contract_length) text += ` · ${deal.contract_length}`;
+      text += `\n`;
+    }
+    text += `\n`;
+  }
+
+  text += `View all deals at paybacker.co.uk/deals`;
   return { text };
 }
 
