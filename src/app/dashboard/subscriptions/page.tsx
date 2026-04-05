@@ -2332,7 +2332,9 @@ export default function SubscriptionsPage() {
                       <div>
                         <h4 className="text-base font-semibold text-white">{normaliseProviderName(selectedSub.provider_name)}</h4>
                         <p className="text-sm text-slate-400">
-                          {formatGBP(selectedSub.amount)}/{selectedSub.billing_cycle === 'yearly' ? 'year' : selectedSub.billing_cycle === 'quarterly' ? 'quarter' : 'month'}
+                          {selectedSub.billing_cycle === 'one-time'
+                            ? `${formatGBP(selectedSub.amount)} one-off`
+                            : `${formatGBP(selectedSub.amount)}/${selectedSub.billing_cycle === 'yearly' ? 'year' : selectedSub.billing_cycle === 'quarterly' ? 'quarter' : 'month'}`}
                           {selectedSub.category && ` · ${getCategoryLabel(selectedSub.category)}`}
                         </p>
                       </div>
@@ -2392,14 +2394,31 @@ export default function SubscriptionsPage() {
                     </div>
                   )}
 
-                  {/* Generate button */}
-                  <button
-                    onClick={() => handleCancelRequest(selectedSub)}
-                    className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Generate Cancellation Email
-                  </button>
+                  {/* Generate button — same eligibility guards as the card-level button */}
+                  {selectedSub.needs_review ? (
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-3 rounded-xl text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Review this subscription before generating a cancellation letter
+                    </div>
+                  ) : selectedSub.status !== 'active' ? (
+                    <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 text-slate-400 px-4 py-3 rounded-xl text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Cancellation emails are only available for active subscriptions
+                    </div>
+                  ) : isStatutoryService(selectedSub.provider_name) ? (
+                    <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 text-slate-400 px-4 py-3 rounded-xl text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      This is a statutory charge and cannot be cancelled via letter
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleCancelRequest(selectedSub)}
+                      className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Generate Cancellation Email
+                    </button>
+                  )}
                 </>
               ) : (
                 <div className="text-center py-12">
