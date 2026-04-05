@@ -1,5 +1,18 @@
 /**
- * Paybacker User Bot — Workflow Engine
+ * USER-FACING BOT — Paybacker User Bot — Workflow Engine
+ *
+ * SAFETY: This bot is USER-FACING. It must ONLY send messages about the
+ * authenticated user's own financial data (their subscriptions, spending,
+ * disputes, contracts, savings goals, etc.).
+ *
+ * NEVER send through this bot:
+ *   - Admin metrics (total user counts, platform-wide dispute stats)
+ *   - Agent activity logs or CEO report data
+ *   - Content approval queues or social post drafts
+ *   - System health or infrastructure status
+ *   - Any data from another user's account
+ *
+ * For admin/founder notifications use: src/lib/telegram/admin-notify.ts
  *
  * Closed-loop financial agent for Pro users:
  * 1. DETECT  — proactive cron alerts pushed to Telegram

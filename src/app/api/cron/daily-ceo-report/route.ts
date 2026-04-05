@@ -1,5 +1,5 @@
 /**
- * CEO Daily Report Cron — 8am UTC
+ * ADMIN NOTIFICATION — CEO Daily Report Cron — 8am UTC
  *
  * Sends Paul a Telegram summary each morning covering:
  * - New signups in the last 24h
@@ -9,10 +9,14 @@
  * - Agent activity from business_log
  * - Recommended actions based on the data
  * - Total platform stats
+ *
+ * Uses sendAdminNotification() which hard-gates delivery to TELEGRAM_ADMIN_CHAT_ID only.
+ * This message must NEVER be sent via the user bot to user chat IDs.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { sendAdminNotification } from '@/lib/telegram/admin-notify';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -22,39 +26,6 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
-}
-
-function splitMessage(text: string, limit = 4000): string[] {
-  if (text.length <= limit) return [text];
-  const chunks: string[] = [];
-  let i = 0;
-  while (i < text.length) {
-    let end = i + limit;
-    if (end < text.length) {
-      const nl = text.lastIndexOf('\n', end);
-      if (nl > i + limit / 2) end = nl + 1;
-    }
-    chunks.push(text.slice(i, end));
-    i = end;
-  }
-  return chunks;
-}
-
-async function sendTelegram(token: string, chatId: number, text: string): Promise<boolean> {
-  const chunks = splitMessage(text);
-  for (const chunk of chunks) {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'Markdown' }),
-    });
-    const data = (await res.json()) as { ok: boolean; description?: string };
-    if (!data.ok) {
-      console.error('[daily-ceo-report] Telegram error:', data.description);
-      return false;
-    }
-  }
-  return true;
 }
 
 // Escape chars that break Telegram Markdown v1 in dynamic text
@@ -68,42 +39,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
-  }
-
   const supabase = getAdmin();
-
-  // Resolve Paul's Telegram chat ID from profiles, then telegram_sessions, then env fallback
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, telegram_chat_id')
-    .eq('email', 'aireypaul@googlemail.com')
-    .single();
-
-  let chatId: number | null = profile?.telegram_chat_id
-    ? Number(profile.telegram_chat_id)
-    : null;
-
-  if (!chatId && profile?.id) {
-    const { data: session } = await supabase
-      .from('telegram_sessions')
-      .select('telegram_chat_id')
-      .eq('user_id', profile.id)
-      .eq('is_active', true)
-      .single();
-    if (session?.telegram_chat_id) chatId = Number(session.telegram_chat_id);
-  }
-
-  if (!chatId && process.env.TELEGRAM_FOUNDER_CHAT_ID) {
-    chatId = Number(process.env.TELEGRAM_FOUNDER_CHAT_ID);
-  }
-
-  if (!chatId) {
-    console.error('[daily-ceo-report] Could not resolve founder Telegram chat ID');
-    return NextResponse.json({ error: "Could not find founder's Telegram chat ID" }, { status: 500 });
-  }
 
   const now = new Date();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -387,7 +323,7 @@ export async function GET(request: NextRequest) {
   );
 
   const message = lines.join('\n');
-  const ok = await sendTelegram(token, chatId, message);
+  const ok = await sendAdminNotification(message);
 
   // Log to business_log
   await supabase.from('business_log').insert({

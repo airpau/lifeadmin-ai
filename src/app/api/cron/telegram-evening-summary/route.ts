@@ -1,3 +1,4 @@
+// USER NOTIFICATION — sends each linked Pro user their own financial data only
 /**
  * Telegram Evening Summary Cron
  *
