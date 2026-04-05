@@ -222,6 +222,36 @@ export default function DashboardPage() {
           }
         }
 
+        // Load saved email scan opportunities from tasks table
+        const { data: savedOpps } = await supabase
+          .from('tasks')
+          .select('id, title, description, type, provider_name, status, priority, created_at')
+          .eq('user_id', user.id)
+          .eq('type', 'opportunity')
+          .in('status', ['pending_review', 'suggested'])
+          .order('created_at', { ascending: false })
+          .limit(30);
+        if (savedOpps && savedOpps.length > 0) {
+          const mapped = savedOpps.map((t: any) => {
+            const parsed = (() => { try { return JSON.parse(t.description || '{}'); } catch { return {}; } })();
+            return {
+              id: parsed.id || t.id,
+              type: parsed.type || 'opportunity',
+              category: parsed.category || 'other',
+              title: t.title || parsed.title || 'Opportunity',
+              description: parsed.description || t.description || '',
+              amount: parsed.amount || 0,
+              confidence: parsed.confidence || 60,
+              provider: t.provider_name || parsed.provider || 'Unknown',
+              suggestedAction: parsed.suggestedAction || 'track',
+              paymentFrequency: parsed.paymentFrequency || null,
+              status: t.status,
+            };
+          });
+          setEmailOpportunities(mapped);
+          setEmailScanResults(mapped.length);
+        }
+
         // Check trial status
         if (profile.data?.founding_member && profile.data?.founding_member_expires && !profile.data?.stripe_subscription_id) {
           const expiresAt = new Date(profile.data.founding_member_expires);
@@ -427,21 +457,26 @@ export default function DashboardPage() {
 
   const handleEmailScan = async () => {
     setEmailScanning(true);
-    setEmailScanResults(null);
-    setEmailOpportunities([]);
     try {
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const data = await res.json();
       if (data.opportunities && data.opportunities.length > 0) {
-        setEmailScanResults(data.opportunities.length);
-        setEmailOpportunities(data.opportunities);
+        // Merge new opportunities with existing, dedup by title
+        setEmailOpportunities(prev => {
+          const existingTitles = new Set(prev.map((o: any) => o.title));
+          const newOpps = data.opportunities.filter((o: any) => !existingTitles.has(o.title));
+          const merged = [...newOpps, ...prev];
+          setEmailScanResults(merged.length);
+          return merged;
+        });
       } else if (data.error) {
-        setEmailScanResults(0);
+        // Don't clear existing results on error
+        if (emailOpportunities.length === 0) setEmailScanResults(0);
       } else {
-        setEmailScanResults(0);
+        if (emailOpportunities.length === 0) setEmailScanResults(0);
       }
     } catch {
-      setEmailScanResults(0);
+      if (emailOpportunities.length === 0) setEmailScanResults(0);
     } finally {
       setEmailScanning(false);
     }
