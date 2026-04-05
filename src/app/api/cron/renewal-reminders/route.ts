@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     const { data: renewingSubs } = await supabase
       .from('subscriptions')
-      .select('user_id, provider_name, amount, category, next_billing_date, billing_cycle')
+      .select('user_id, provider_name, amount, category, next_billing_date, billing_cycle, contract_type, provider_type')
       .is('dismissed_at', null)
       .eq('status', 'active')
       .not('next_billing_date', 'is', null)
@@ -94,6 +94,8 @@ export async function GET(request: NextRequest) {
           category: s.category,
           next_billing_date: s.next_billing_date,
           billing_cycle: s.billing_cycle,
+          contract_type: s.contract_type,
+          provider_type: s.provider_type,
         })),
         days
       );
