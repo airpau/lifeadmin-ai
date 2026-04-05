@@ -667,6 +667,21 @@ export const telegramTools: Tool[] = [
     },
   },
   {
+    name: 'get_upcoming_payments',
+    description:
+      "Get the user's upcoming subscription payments, bills, and loan payments due within the next 7 days (or a custom number of days). Returns provider name, amount, due date, and payment type. Use this when the user asks what's due this week, upcoming payments, payment schedule, or what they owe soon.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: {
+          type: 'number',
+          description: 'Number of days ahead to look. Defaults to 7.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'recategorise_transaction',
     description:
       "Change the category of a specific bank transaction by its ID. The change is immediately reflected in the Money Hub dashboard (writes to user_category). First use list_transactions to find the transaction ID, then use this tool to change its category.",

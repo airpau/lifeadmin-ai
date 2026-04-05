@@ -76,6 +76,8 @@ export async function executeToolCall(
       return getPriceAlerts(supabase, userId);
     case 'get_deals':
       return getDeals(supabase, toolInput.category as string | undefined);
+    case 'get_upcoming_payments':
+      return getUpcomingPayments(supabase, userId, toolInput.days as number | undefined);
     case 'get_savings_goals':
       return getSavingsGoals(supabase, userId);
     case 'get_savings_challenges':
@@ -1805,4 +1807,66 @@ async function recategoriseTransaction(
   return {
     text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}". The change is now reflected in your Money Hub dashboard.`,
   };
+}
+
+async function getUpcomingPayments(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  days?: number,
+): Promise<ToolResult> {
+  const windowDays = days ?? 7;
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const endDate = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+  const endStr = endDate.toISOString().split('T')[0];
+
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('provider_name, amount, billing_cycle, next_billing_date, category')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .not('next_billing_date', 'is', null)
+    .gte('next_billing_date', todayStr)
+    .lte('next_billing_date', endStr)
+    .order('next_billing_date', { ascending: true });
+
+  if (error || !data || data.length === 0) {
+    return { text: `No payments due in the next ${windowDays} days.` };
+  }
+
+  const LOAN_CATEGORIES = new Set(['mortgage', 'loan']);
+  const BILL_CATEGORIES = new Set(['utility', 'council_tax', 'water', 'broadband', 'mobile', 'bills']);
+  const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'credit card', 'lendinvest', 'skipton', 'novuna', 'zopa', 'barclaycard', 'mbna', 'amex', 'american express', 'securepay'];
+
+  const getType = (name: string, category: string | null): string => {
+    const lower = name.toLowerCase();
+    if (FINANCE_KEYWORDS.some((kw) => lower.includes(kw))) return 'loan';
+    if (LOAN_CATEGORIES.has(category ?? '')) return 'loan';
+    if (BILL_CATEGORIES.has(category ?? '')) return 'bill';
+    return 'subscription';
+  };
+
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const fmtPaymentDate = (dateStr: string): string => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+  };
+
+  const total = data.reduce((sum, s) => sum + Math.abs(Number(s.amount)), 0);
+  const label = windowDays === 7 ? 'this week' : `in the next ${windowDays} days`;
+
+  let text = `\u{1F4B0} *Upcoming payments ${label}:*\n`;
+  for (const s of data) {
+    const dateLabel = fmtPaymentDate(s.next_billing_date);
+    const type = getType(s.provider_name, s.category);
+    const typeLabel = type !== 'subscription' ? ` _(${type})_` : '';
+    text += `\n\u{1F4C5} ${dateLabel} \u2014 *${s.provider_name}*: ${fmt(Number(s.amount))}${typeLabel}`;
+  }
+
+  text += `\n\n*Total due: ${fmt(total)}*`;
+  text += '\n\n_Reply "details [payment name]" for more info._';
+
+  return { text };
 }
