@@ -6,6 +6,16 @@ function getSupabase() {
   return createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+// Accepts either a UUID or a TKT-XXXX ticket number, returns the UUID id.
+async function resolveTicketId(sb: ReturnType<typeof getSupabase>, ticketId: string): Promise<string> {
+  if (/^TKT-\d+$/i.test(ticketId)) {
+    const { data, error } = await sb.from('support_tickets').select('id').eq('ticket_number', ticketId.toUpperCase()).single();
+    if (error || !data) throw new Error(`Ticket ${ticketId} not found`);
+    return data.id;
+  }
+  return ticketId;
+}
+
 interface ToolDef {
   name: string;
   description: string;
@@ -60,15 +70,21 @@ const getTicket: ToolDef = {
   schema: {
     type: 'object',
     properties: {
-      ticket_id: { type: 'string', format: 'uuid', description: 'Ticket ID' },
+      ticket_id: { type: 'string', description: 'Ticket ID — either a UUID or TKT-XXXX reference number' },
     },
     required: ['ticket_id'],
   },
   handler: async (args) => {
     const sb = getSupabase();
+    let resolvedId: string;
+    try {
+      resolvedId = await resolveTicketId(sb, args.ticket_id);
+    } catch (e: any) {
+      return `Error: ${e.message}`;
+    }
     const [ticketRes, messagesRes] = await Promise.all([
-      sb.from('support_tickets').select('*').eq('id', args.ticket_id).single(),
-      sb.from('ticket_messages').select('*').eq('ticket_id', args.ticket_id).order('created_at', { ascending: true }),
+      sb.from('support_tickets').select('*').eq('id', resolvedId).single(),
+      sb.from('ticket_messages').select('*').eq('ticket_id', resolvedId).order('created_at', { ascending: true }),
     ]);
 
     if (ticketRes.error) {
@@ -97,7 +113,7 @@ const respondToTicket: ToolDef = {
   schema: {
     type: 'object',
     properties: {
-      ticket_id: { type: 'string', format: 'uuid', description: 'Ticket ID' },
+      ticket_id: { type: 'string', description: 'Ticket ID — either a UUID or TKT-XXXX reference number' },
       message: { type: 'string', description: 'Response message to the user' },
       email_user: { type: 'boolean', default: true, description: 'Also send the response via email to the user' },
     },
@@ -105,11 +121,17 @@ const respondToTicket: ToolDef = {
   },
   handler: async (args, agentRole) => {
     const sb = getSupabase();
+    let resolvedId: string;
+    try {
+      resolvedId = await resolveTicketId(sb, args.ticket_id);
+    } catch (e: any) {
+      return `Error: ${e.message}`;
+    }
 
     // GUARDRAIL: Prevent duplicate responses - check if an agent already replied
     const { data: existingReplies } = await sb.from('ticket_messages')
       .select('sender_type')
-      .eq('ticket_id', args.ticket_id)
+      .eq('ticket_id', resolvedId)
       .eq('sender_type', 'agent');
 
     if (existingReplies && existingReplies.length > 0) {
@@ -133,7 +155,7 @@ const respondToTicket: ToolDef = {
 
     // Insert message
     const { error: msgErr } = await sb.from('ticket_messages').insert({
-      ticket_id: args.ticket_id,
+      ticket_id: resolvedId,
       sender_type: 'agent',
       sender_name: agentRole === 'support_agent' ? 'Riley (AI Support)' : 'Sam (Support Lead)',
       message: args.message,
@@ -146,12 +168,12 @@ const respondToTicket: ToolDef = {
     // Update ticket status
     const update: Record<string, any> = { status: 'awaiting_reply' };
     // Set first_response_at if this is the first response
-    const { data: ticket } = await sb.from('support_tickets').select('first_response_at, user_id, ticket_number').eq('id', args.ticket_id).single();
+    const { data: ticket } = await sb.from('support_tickets').select('first_response_at, user_id, ticket_number').eq('id', resolvedId).single();
     if (ticket && !ticket.first_response_at) {
       update.first_response_at = new Date().toISOString();
     }
 
-    await sb.from('support_tickets').update(update).eq('id', args.ticket_id);
+    await sb.from('support_tickets').update(update).eq('id', resolvedId);
 
     // Email user if requested
     const shouldEmail = args.email_user !== false;
@@ -160,7 +182,7 @@ const respondToTicket: ToolDef = {
       if (profile?.email) {
         try {
           const resend = new Resend(config.RESEND_API_KEY);
-          const ticketRef = ticket.ticket_number || args.ticket_id.slice(0, 8).toUpperCase();
+          const ticketRef = ticket.ticket_number || resolvedId.slice(0, 8).toUpperCase();
           // Clean message: strip markdown bold/headers for email
           const cleanMsg = args.message
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -213,7 +235,7 @@ const escalateTicket: ToolDef = {
   schema: {
     type: 'object',
     properties: {
-      ticket_id: { type: 'string', format: 'uuid', description: 'Ticket ID to escalate' },
+      ticket_id: { type: 'string', description: 'Ticket ID to escalate — either a UUID or TKT-XXXX reference number' },
       reason: { type: 'string', description: 'Why this needs human attention' },
       new_priority: { type: 'string', enum: ['medium', 'high', 'urgent'], default: 'high' },
     },
@@ -221,9 +243,15 @@ const escalateTicket: ToolDef = {
   },
   handler: async (args, agentRole) => {
     const sb = getSupabase();
+    let resolvedId: string;
+    try {
+      resolvedId = await resolveTicketId(sb, args.ticket_id);
+    } catch (e: any) {
+      return `Error: ${e.message}`;
+    }
 
     // Get ticket details
-    const { data: ticket } = await sb.from('support_tickets').select('ticket_number, subject, user_id, first_response_at').eq('id', args.ticket_id).single();
+    const { data: ticket } = await sb.from('support_tickets').select('ticket_number, subject, user_id, first_response_at').eq('id', resolvedId).single();
     const ticketRef = ticket?.ticket_number || 'Unknown';
 
     // Determine if this is a feature request or a bug
@@ -235,11 +263,11 @@ const escalateTicket: ToolDef = {
       assigned_to: isFeatureRequest ? 'Feature Review' : isBug ? 'Claude Code' : 'Human Required',
       priority: args.new_priority || 'high',
       status: 'in_progress',
-    }).eq('id', args.ticket_id);
+    }).eq('id', resolvedId);
 
     // Internal escalation note
     await sb.from('ticket_messages').insert({
-      ticket_id: args.ticket_id,
+      ticket_id: resolvedId,
       sender_type: 'system',
       sender_name: agentRole === 'support_agent' ? 'Riley' : 'Sam',
       message: `Escalated: ${args.reason}`,
@@ -249,12 +277,12 @@ const escalateTicket: ToolDef = {
     // Only send if no agent has replied yet
     const { data: existingAgentReplies } = await sb.from('ticket_messages')
       .select('id')
-      .eq('ticket_id', args.ticket_id)
+      .eq('ticket_id', resolvedId)
       .eq('sender_type', 'agent');
 
     if (!existingAgentReplies || existingAgentReplies.length === 0) {
       await sb.from('ticket_messages').insert({
-        ticket_id: args.ticket_id,
+        ticket_id: resolvedId,
         sender_type: 'agent',
         sender_name: 'Paybacker Support',
         message: `Hi there,\n\nThanks for getting in touch. We've received your message and our team is looking into it.\n\nYour issue has been escalated to a specialist who will get back to you as soon as possible. You can reply to this email to add any further details.\n\nThanks for your patience,\nPaybacker Support Team`,
@@ -262,7 +290,7 @@ const escalateTicket: ToolDef = {
 
       // Update first_response_at
       if (ticket && !ticket.first_response_at) {
-        await sb.from('support_tickets').update({ first_response_at: new Date().toISOString() }).eq('id', args.ticket_id);
+        await sb.from('support_tickets').update({ first_response_at: new Date().toISOString() }).eq('id', resolvedId);
       }
 
       // Email the user
@@ -327,7 +355,7 @@ const updateTicketStatus: ToolDef = {
   schema: {
     type: 'object',
     properties: {
-      ticket_id: { type: 'string', format: 'uuid' },
+      ticket_id: { type: 'string', description: 'Ticket ID — either a UUID or TKT-XXXX reference number' },
       status: { type: 'string', enum: ['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed'] },
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
       assigned_to: { type: 'string' },
@@ -336,6 +364,12 @@ const updateTicketStatus: ToolDef = {
   },
   handler: async (args) => {
     const sb = getSupabase();
+    let resolvedId: string;
+    try {
+      resolvedId = await resolveTicketId(sb, args.ticket_id);
+    } catch (e: any) {
+      return `Error: ${e.message}`;
+    }
     const update: Record<string, any> = {};
     if (args.status) update.status = args.status;
     if (args.priority) update.priority = args.priority;
@@ -344,7 +378,7 @@ const updateTicketStatus: ToolDef = {
       update.resolved_at = new Date().toISOString();
     }
 
-    const { error } = await sb.from('support_tickets').update(update).eq('id', args.ticket_id);
+    const { error } = await sb.from('support_tickets').update(update).eq('id', resolvedId);
     if (error) {
       return `Error: ${error.message}`;
     }
