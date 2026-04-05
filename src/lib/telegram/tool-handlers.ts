@@ -75,7 +75,7 @@ export async function executeToolCall(
     case 'get_price_alerts':
       return getPriceAlerts(supabase, userId);
     case 'get_deals':
-      return getDeals(supabase, toolInput.category as string | undefined);
+      return getDeals(supabase, userId, toolInput.category as string | undefined);
     case 'get_savings_goals':
       return getSavingsGoals(supabase, userId);
     case 'get_savings_challenges':
@@ -168,6 +168,36 @@ export async function executeToolCall(
         toolInput.transaction_id as string,
         toolInput.new_category as string,
       );
+    case 'get_loyalty_status':
+      return getLoyaltyStatus(supabase, userId);
+    case 'get_referral_link':
+      return getReferralLink(supabase, userId);
+    case 'get_net_worth':
+      return getNetWorth(supabase, userId);
+    case 'get_expected_bills':
+      return getExpectedBills(supabase, userId);
+    case 'get_overcharge_assessments':
+      return getOverchargeAssessments(supabase, userId);
+    case 'get_profile':
+      return getProfile(supabase, userId);
+    case 'get_tasks':
+      return getTasks(supabase, userId, toolInput.status as string | undefined, toolInput.limit as number | undefined);
+    case 'get_scanner_results':
+      return getScannerResults(supabase, userId, toolInput.status as string | undefined);
+    case 'generate_cancellation_email':
+      return generateCancellationEmail(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        category: toolInput.category as string,
+        amount: toolInput.amount as number | undefined,
+        account_email: toolInput.account_email as string | undefined,
+      });
+    case 'create_support_ticket':
+      return createSupportTicket(supabase, userId, {
+        subject: toolInput.subject as string,
+        description: toolInput.description as string,
+        category: (toolInput.category as string | undefined) ?? 'general',
+        priority: (toolInput.priority as string | undefined) ?? 'medium',
+      });
     default:
       return { text: `Unknown tool: ${toolName}` };
   }
@@ -1697,19 +1727,34 @@ async function addContract(
 
 async function getDeals(
   supabase: ReturnType<typeof getAdmin>,
+  userId: string,
   category?: string,
 ): Promise<ToolResult> {
-  let query = supabase
+  // Fetch deals and (if category filter) user's current subscriptions in parallel
+  let dealsQuery = supabase
     .from('affiliate_deals')
     .select('*')
     .eq('is_active', true)
     .order('price_monthly', { ascending: true });
 
   if (category) {
-    query = query.eq('category', category);
+    dealsQuery = dealsQuery.eq('category', category);
   }
 
-  const { data: deals, error } = await query;
+  // Normalise category for subscription lookup (deals use 'broadband', subs may use same)
+  const categoryForSubs = category ?? null;
+
+  const [{ data: deals, error }, { data: userSubs }] = await Promise.all([
+    dealsQuery,
+    categoryForSubs
+      ? supabase
+          .from('subscriptions')
+          .select('provider_name, amount, billing_cycle, category')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .eq('category', categoryForSubs)
+      : Promise.resolve({ data: null }),
+  ]);
 
   if (error) {
     return { text: `Failed to fetch deals: ${error.message}` };
@@ -1720,32 +1765,101 @@ async function getDeals(
     return { text: `No deals available${catLabel} right now. Check back soon — new offers are added regularly.` };
   }
 
-  // Group by category
+  // Calculate user's current monthly spend for this category
+  const currentSubs = userSubs ?? [];
+  const currentMonthlySpend = currentSubs.reduce((sum, sub) => {
+    const monthly =
+      sub.billing_cycle === 'yearly'
+        ? parseFloat(String(sub.amount)) / 12
+        : sub.billing_cycle === 'quarterly'
+        ? parseFloat(String(sub.amount)) / 3
+        : parseFloat(String(sub.amount));
+    return sum + (isNaN(monthly) ? 0 : monthly);
+  }, 0);
+
+  // Group deals by category
   const grouped: Record<string, typeof deals> = {};
   for (const deal of deals) {
     if (!grouped[deal.category]) grouped[deal.category] = [];
     grouped[deal.category].push(deal);
   }
 
-  let text = `*Deals available on Paybacker*\n\n`;
+  let text = category
+    ? `*${category.charAt(0).toUpperCase() + category.slice(1).replace('_', ' ')} Deals on Paybacker*\n\n`
+    : `*Deals available on Paybacker*\n\n`;
 
   for (const [cat, catDeals] of Object.entries(grouped)) {
-    const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ');
-    text += `*${catLabel}*\n`;
+    if (!category) {
+      const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1).replace('_', ' ');
+      text += `*${catLabel}*\n`;
+    }
     for (const deal of catDeals) {
+      const effectivePrice = deal.price_promotional && deal.price_promotional < deal.price_monthly
+        ? parseFloat(String(deal.price_promotional))
+        : parseFloat(String(deal.price_monthly));
+
       text += `• *${deal.provider}* — ${deal.plan_name}: ${fmt(deal.price_monthly)}/mo`;
       if (deal.price_promotional && deal.price_promotional < deal.price_monthly) {
-        text += ` (was ${fmt(deal.price_monthly)}, now ${fmt(deal.price_promotional)}/${deal.promotional_period ?? 'promo'})`;
+        text += ` _(${fmt(deal.price_promotional)}/mo for ${deal.promotional_period ?? 'promo period'})_`;
       }
       if (deal.speed_mbps) text += ` · ${deal.speed_mbps}Mbps`;
       if (deal.data_allowance) text += ` · ${deal.data_allowance}`;
       if (deal.contract_length) text += ` · ${deal.contract_length}`;
+
+      // Per-deal saving vs current total spend
+      if (currentMonthlySpend > 0 && currentSubs.length > 0 && effectivePrice < currentMonthlySpend) {
+        const monthlySaving = currentMonthlySpend - effectivePrice;
+        const annualSaving = monthlySaving * 12;
+        text += `\n  ↳ Switch & save *${fmt(monthlySaving)}/mo* (*${fmt(annualSaving)}/year*)`;
+      }
+
       text += `\n`;
     }
     text += `\n`;
   }
 
-  text += `View all deals at paybacker.co.uk/deals`;
+  // Total savings summary when the user has subscriptions in this category
+  if (currentMonthlySpend > 0 && currentSubs.length > 0 && category) {
+    const catLabel = category.charAt(0).toUpperCase() + category.slice(1).replace('_', ' ');
+    text += `*Your ${catLabel} Spending Summary*\n`;
+    text += `You currently pay *${fmt(currentMonthlySpend)}/mo* across ${currentSubs.length} provider${currentSubs.length !== 1 ? 's' : ''}:\n`;
+    for (const sub of currentSubs) {
+      const monthly =
+        sub.billing_cycle === 'yearly'
+          ? parseFloat(String(sub.amount)) / 12
+          : sub.billing_cycle === 'quarterly'
+          ? parseFloat(String(sub.amount)) / 3
+          : parseFloat(String(sub.amount));
+      text += `  • ${sub.provider_name}: ${fmt(monthly)}/mo\n`;
+    }
+
+    // Find the cheapest deal for a direct comparison
+    const cheapestDeal = deals.reduce((min, d) => {
+      const p = d.price_promotional && d.price_promotional < d.price_monthly
+        ? parseFloat(String(d.price_promotional))
+        : parseFloat(String(d.price_monthly));
+      const minP = min.price_promotional && min.price_promotional < min.price_monthly
+        ? parseFloat(String(min.price_promotional))
+        : parseFloat(String(min.price_monthly));
+      return p < minP ? d : min;
+    }, deals[0]);
+
+    const cheapestPrice =
+      cheapestDeal.price_promotional && cheapestDeal.price_promotional < cheapestDeal.price_monthly
+        ? parseFloat(String(cheapestDeal.price_promotional))
+        : parseFloat(String(cheapestDeal.price_monthly));
+
+    if (cheapestPrice < currentMonthlySpend) {
+      const totalMonthlySaving = currentMonthlySpend - cheapestPrice;
+      const totalAnnualSaving = totalMonthlySaving * 12;
+      text += `\n*Best saving: switch all to ${cheapestDeal.provider} ${cheapestDeal.plan_name}*\n`;
+      text += `${fmt(currentMonthlySpend)}/mo → ${fmt(cheapestPrice)}/mo\n`;
+      text += `*You'd save ${fmt(totalMonthlySaving)}/mo = ${fmt(totalAnnualSaving)}/year*\n`;
+    }
+    text += `\n`;
+  }
+
+  text += `_View all deals at paybacker.co.uk/deals_`;
   return { text };
 }
 
@@ -1805,4 +1919,629 @@ async function recategoriseTransaction(
   return {
     text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}". The change is now reflected in your Money Hub dashboard.`,
   };
+}
+
+// ============================================================
+// NEW TOOLS — Loyalty, Referrals, Net Worth, Bills, Overcharges,
+//             Profile, Tasks, Scanner, Cancellation, Support
+// ============================================================
+
+async function getLoyaltyStatus(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const [pointsRes, badgesRes, eventsRes, profileRes] = await Promise.all([
+    supabase
+      .from('user_points')
+      .select('balance, lifetime_earned, current_streak, longest_streak')
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('user_badges')
+      .select('badge_name, badge_emoji, earned_at')
+      .eq('user_id', userId)
+      .order('earned_at', { ascending: false })
+      .limit(10),
+    supabase
+      .from('point_events')
+      .select('event_type, points, description, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('profiles')
+      .select('created_at')
+      .eq('id', userId)
+      .single(),
+  ]);
+
+  const balance = pointsRes.data?.balance ?? 0;
+  const lifetime = pointsRes.data?.lifetime_earned ?? 0;
+  const streak = pointsRes.data?.current_streak ?? 0;
+
+  // Determine tier
+  let tier = 'Bronze';
+  let tierEmoji = '🥉';
+  if (profileRes.data?.created_at) {
+    const months = Math.floor((Date.now() - new Date(profileRes.data.created_at).getTime()) / (1000 * 60 * 60 * 24 * 30));
+    if (months >= 18 && lifetime >= 5000) { tier = 'Platinum'; tierEmoji = '💎'; }
+    else if (months >= 9 && lifetime >= 2000) { tier = 'Gold'; tierEmoji = '🥇'; }
+    else if (months >= 3 && lifetime >= 500) { tier = 'Silver'; tierEmoji = '🥈'; }
+  }
+
+  // Next tier requirements
+  const tierGoals: Record<string, string> = {
+    Bronze: 'Reach Silver: 3 months + 500 pts',
+    Silver: 'Reach Gold: 9 months + 2,000 pts',
+    Gold: 'Reach Platinum: 18 months + 5,000 pts',
+    Platinum: 'You\'re at the top tier!',
+  };
+
+  // Redemption options
+  const redemptions = [
+    { points: 500, label: '£5 off next invoice' },
+    { points: 900, label: '£10 off next invoice' },
+    { points: 1500, label: 'Free month of Essential (£4.99)' },
+    { points: 3000, label: 'Free month of Pro (£9.99)' },
+    { points: 500, label: 'Donate £5 to Shelter' },
+  ];
+
+  let text = `*${tierEmoji} Loyalty Rewards — ${tier} Tier*\n\n`;
+  text += `*Points balance:* ${balance.toLocaleString()} pts\n`;
+  text += `*Lifetime earned:* ${lifetime.toLocaleString()} pts\n`;
+  text += `*Active streak:* ${streak} month${streak !== 1 ? 's' : ''}\n\n`;
+
+  text += `*Next tier:* ${tierGoals[tier]}\n\n`;
+
+  text += `*Redeem your points:*\n`;
+  for (const r of redemptions) {
+    const canRedeem = balance >= r.points;
+    text += `• ${r.label} — ${r.points} pts ${canRedeem ? '✅' : '🔒'}\n`;
+  }
+
+  const badges = badgesRes.data ?? [];
+  if (badges.length > 0) {
+    text += `\n*Badges earned (${badges.length}):*\n`;
+    for (const b of badges.slice(0, 5)) {
+      text += `${b.badge_emoji} ${b.badge_name}\n`;
+    }
+    if (badges.length > 5) text += `_...and ${badges.length - 5} more_\n`;
+  }
+
+  const events = eventsRes.data ?? [];
+  if (events.length > 0) {
+    text += `\n*Recent activity:*\n`;
+    for (const e of events) {
+      text += `• +${e.points} pts — ${e.description} (${fmtDate(e.created_at)})\n`;
+    }
+  }
+
+  return { text };
+}
+
+async function getReferralLink(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('referral_code')
+    .eq('id', userId)
+    .single();
+
+  let code = profile?.referral_code;
+
+  if (!code) {
+    // Generate a code
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    code = 'PB-' + Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    await supabase.from('profiles').update({ referral_code: code }).eq('id', userId);
+  }
+
+  const shareUrl = `https://paybacker.co.uk/join?ref=${code}`;
+
+  const { data: referrals } = await supabase
+    .from('referrals')
+    .select('referred_email, status, created_at')
+    .eq('referrer_id', userId)
+    .order('created_at', { ascending: false });
+
+  const list = referrals ?? [];
+  const signedUp = list.filter(r => r.status === 'signed_up' || r.status === 'subscribed').length;
+  const subscribed = list.filter(r => r.status === 'subscribed').length;
+
+  let text = `*Your Paybacker Referral Link*\n\n`;
+  text += `🔗 ${shareUrl}\n\n`;
+  text += `*Your code:* \`${code}\`\n\n`;
+  text += `*How it works:*\n`;
+  text += `• Share your link with friends\n`;
+  text += `• When they sign up: you earn 100 loyalty points\n`;
+  text += `• When they subscribe: you BOTH get 1 free month\n\n`;
+
+  text += `*Your referral stats:*\n`;
+  text += `• Total referred: ${list.length}\n`;
+  text += `• Signed up: ${signedUp}\n`;
+  text += `• Subscribed (free month earned): ${subscribed}\n`;
+
+  if (list.length > 0) {
+    text += `\n*Recent referrals:*\n`;
+    for (const r of list.slice(0, 5)) {
+      const masked = r.referred_email
+        ? r.referred_email.replace(/(.{2}).*(@.*)/, '$1***$2')
+        : 'Unknown';
+      const statusLabel = r.status === 'subscribed' ? '✅ Subscribed' : '⏳ Signed up';
+      text += `• ${masked} — ${statusLabel}\n`;
+    }
+  }
+
+  return { text };
+}
+
+async function getNetWorth(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const [assetsRes, liabilitiesRes] = await Promise.all([
+    supabase.from('money_hub_assets').select('asset_name, asset_type, estimated_value').eq('user_id', userId),
+    supabase.from('money_hub_liabilities').select('liability_name, liability_type, outstanding_balance, monthly_payment, interest_rate').eq('user_id', userId),
+  ]);
+
+  const assets = assetsRes.data ?? [];
+  const liabilities = liabilitiesRes.data ?? [];
+
+  if (assets.length === 0 && liabilities.length === 0) {
+    return {
+      text: `No net worth data found. Add your assets and liabilities on the Money Hub page at paybacker.co.uk/dashboard/money-hub to track your net worth.`,
+    };
+  }
+
+  const totalAssets = assets.reduce((s, a) => s + (parseFloat(String(a.estimated_value)) || 0), 0);
+  const totalLiabilities = liabilities.reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
+  const netWorth = totalAssets - totalLiabilities;
+
+  let text = `*Net Worth Summary*\n\n`;
+  text += `*Total assets:* ${fmt(totalAssets)}\n`;
+  text += `*Total liabilities:* ${fmt(totalLiabilities)}\n`;
+  text += `*Net worth:* *${netWorth >= 0 ? '' : '-'}${fmt(Math.abs(netWorth))}*\n`;
+
+  if (assets.length > 0) {
+    text += `\n*Assets:*\n`;
+    for (const a of assets) {
+      text += `• ${a.asset_name} (${a.asset_type}) — ${fmt(a.estimated_value)}\n`;
+    }
+  }
+
+  if (liabilities.length > 0) {
+    text += `\n*Liabilities:*\n`;
+    for (const l of liabilities) {
+      const rate = l.interest_rate ? ` @ ${l.interest_rate}%` : '';
+      const monthly = l.monthly_payment ? ` (${fmt(l.monthly_payment)}/mo)` : '';
+      text += `• ${l.liability_name} — ${fmt(l.outstanding_balance)}${rate}${monthly}\n`;
+    }
+  }
+
+  return { text };
+}
+
+async function getExpectedBills(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const { data: rawBills, error } = await supabase.rpc('get_expected_bills', {
+    p_user_id: userId,
+    p_year: year,
+    p_month: month,
+  });
+
+  if (error) {
+    return { text: `Unable to load expected bills: ${error.message}` };
+  }
+
+  const bills = (rawBills ?? []).filter(
+    (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
+  );
+
+  if (bills.length === 0) {
+    return {
+      text: `No expected bills found for this month. Connect a bank account at paybacker.co.uk/dashboard/money-hub to start tracking your recurring payments.`,
+    };
+  }
+
+  // Check which have been paid this month
+  const startOfMonth = new Date(year, month - 1, 1).toISOString();
+  const { data: paidTxns } = await supabase
+    .from('bank_transactions')
+    .select('merchant_name, description')
+    .eq('user_id', userId)
+    .lt('amount', 0)
+    .gte('timestamp', startOfMonth);
+
+  const paidNames = (paidTxns ?? []).map(t =>
+    ((t.merchant_name || t.description || '').toLowerCase().substring(0, 20)),
+  );
+
+  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  let paid = 0;
+  let unpaid = 0;
+  let totalExpected = 0;
+
+  let text = `*Expected Bills — ${monthLabel}*\n\n`;
+
+  const sorted = [...bills].sort((a: any, b: any) => a.billing_day - b.billing_day);
+  for (const bill of sorted) {
+    const amount = parseFloat(bill.expected_amount) || 0;
+    totalExpected += amount;
+    const nameNorm = (bill.provider_name || '').toLowerCase().substring(0, 15);
+    const isPaid = paidNames.some(p => p.includes(nameNorm.substring(0, 8)) || nameNorm.includes(p.substring(0, 8)));
+    const status = isPaid ? '✅' : '⏳';
+    if (isPaid) paid++; else unpaid++;
+    const day = bill.billing_day ? ` (day ${bill.billing_day})` : '';
+    text += `${status} ${bill.provider_name}${day} — *${fmt(amount)}*\n`;
+  }
+
+  text += `\n*Total expected:* ${fmt(totalExpected)}\n`;
+  text += `*Paid:* ${paid} | *Outstanding:* ${unpaid}`;
+
+  return { text };
+}
+
+async function getOverchargeAssessments(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase
+    .from('overcharge_assessments')
+    .select('provider_name, subscription_category, current_price, market_avg_price, overcharge_score, estimated_annual_saving, signals, status')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('overcharge_score', { ascending: false });
+
+  if (error) {
+    return { text: `Unable to load overcharge assessments: ${error.message}` };
+  }
+
+  if (!data || data.length === 0) {
+    return {
+      text: `No active overcharge assessments found. Assessments are generated automatically when you have a connected bank account with recurring payments.`,
+    };
+  }
+
+  const totalSaving = data.reduce((s, a) => s + (parseFloat(String(a.estimated_annual_saving)) || 0), 0);
+
+  let text = `*Overcharge Assessments*\n`;
+  text += `Potential annual saving: *${fmt(totalSaving)}*\n\n`;
+
+  for (const a of data) {
+    const score = a.overcharge_score ?? 0;
+    const risk = score >= 80 ? '🔴 High' : score >= 60 ? '🟠 Medium' : '🟡 Low';
+    text += `*${a.provider_name}* (${a.subscription_category})\n`;
+    text += `  Risk: ${risk} | Score: ${score}/100\n`;
+    if (a.current_price && a.market_avg_price) {
+      text += `  You pay: ${fmt(a.current_price)}/mo | Market avg: ${fmt(a.market_avg_price)}/mo\n`;
+    }
+    text += `  Potential saving: *${fmt(a.estimated_annual_saving)}/year*\n\n`;
+  }
+
+  return { text };
+}
+
+async function getProfile(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, first_name, last_name, email, phone, address, postcode, subscription_tier, subscription_status, created_at')
+    .eq('id', userId)
+    .single();
+
+  if (!profile) {
+    return { text: `Profile not found.` };
+  }
+
+  const name = profile.full_name || [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Not set';
+  const tier = profile.subscription_tier ?? 'free';
+  const tierLabel: Record<string, string> = {
+    free: 'Free',
+    essential: 'Essential (£4.99/mo)',
+    pro: 'Pro (£9.99/mo)',
+  };
+  const status = profile.subscription_status ?? 'active';
+  const memberSince = profile.created_at ? fmtDate(profile.created_at) : 'Unknown';
+
+  let text = `*Your Account Profile*\n\n`;
+  text += `*Name:* ${name}\n`;
+  text += `*Email:* ${profile.email ?? 'Not set'}\n`;
+  text += `*Phone:* ${profile.phone ?? 'Not set'}\n`;
+  text += `*Address:* ${[profile.address, profile.postcode].filter(Boolean).join(', ') || 'Not set'}\n\n`;
+  text += `*Plan:* ${tierLabel[tier] ?? tier}\n`;
+  text += `*Status:* ${status}\n`;
+  text += `*Member since:* ${memberSince}\n`;
+
+  if (tier === 'free') {
+    text += `\n_Upgrade to Essential or Pro for unlimited letters, bank sync, and full Money Hub access. Upgrade at paybacker.co.uk/dashboard/upgrade_`;
+  }
+
+  return { text };
+}
+
+async function getTasks(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  status?: string,
+  limit?: number,
+): Promise<ToolResult> {
+  const targetStatus = status && status !== 'all' ? status : null;
+  const maxResults = limit ?? 20;
+
+  let query = supabase
+    .from('tasks')
+    .select('id, title, description, type, status, priority, created_at, provider_name')
+    .eq('user_id', userId)
+    .neq('type', 'opportunity') // opportunities have their own tool
+    .order('created_at', { ascending: false })
+    .limit(maxResults);
+
+  if (targetStatus) {
+    query = query.eq('status', targetStatus);
+  } else {
+    query = query.in('status', ['pending', 'pending_review', 'in_progress']);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return { text: `Unable to load tasks: ${error.message}` };
+  }
+
+  if (!data || data.length === 0) {
+    const statusLabel = targetStatus ?? 'pending';
+    return { text: `No ${statusLabel} tasks found. Tasks are created when you use the dispute tool, opportunity scanner, or create them manually.` };
+  }
+
+  const priorityEmoji: Record<string, string> = { urgent: '🔴', high: '🟠', medium: '🟡', low: '⚪' };
+
+  let text = `*Your Tasks (${data.length})*\n\n`;
+  for (const t of data) {
+    const p = priorityEmoji[t.priority ?? 'medium'] ?? '🟡';
+    const provider = t.provider_name ? ` — ${t.provider_name}` : '';
+    text += `${p} *${t.title}*${provider}\n`;
+    text += `   ${t.type.replace(/_/g, ' ')} | ${fmtDate(t.created_at)}\n\n`;
+  }
+
+  return { text };
+}
+
+async function getScannerResults(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  status?: string,
+): Promise<ToolResult> {
+  const targetStatus = status && status !== 'all' ? status : 'pending_review';
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, title, description, priority, status, created_at, provider_name, source')
+    .eq('user_id', userId)
+    .eq('type', 'opportunity')
+    .eq('status', targetStatus)
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  if (error) {
+    return { text: `Unable to load scanner results: ${error.message}` };
+  }
+
+  if (!data || data.length === 0) {
+    if (targetStatus === 'pending_review') {
+      return {
+        text: `No new scanner findings. Connect your Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, forgotten subscriptions, and refund opportunities.`,
+      };
+    }
+    return { text: `No scanner results found with status "${targetStatus}".` };
+  }
+
+  const priorityEmoji: Record<string, string> = { high: '🔴', medium: '🟠', low: '🟡' };
+
+  let text = `*Email Scanner Findings (${data.length})*\n\n`;
+
+  for (const item of data) {
+    const p = priorityEmoji[item.priority ?? 'medium'] ?? '🟡';
+    const provider = item.provider_name ? ` — ${item.provider_name}` : '';
+    text += `${p} *${item.title}*${provider}\n`;
+
+    // The description is stored as JSON from the scan
+    try {
+      const parsed = JSON.parse(item.description ?? '{}');
+      if (parsed.description) {
+        text += `   ${parsed.description}\n`;
+      }
+      if (parsed.amount && parsed.amount > 0) {
+        text += `   Potential saving: *${fmt(parsed.amount)}/year*\n`;
+      }
+    } catch {
+      if (item.description && item.description.length < 200) {
+        text += `   ${item.description}\n`;
+      }
+    }
+
+    text += `   Found: ${fmtDate(item.created_at)}\n\n`;
+  }
+
+  text += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+
+  return { text };
+}
+
+async function generateCancellationEmail(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider_name: string;
+    category: string;
+    amount?: number;
+    account_email?: string;
+  },
+): Promise<ToolResult> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, first_name, last_name, email')
+    .eq('id', userId)
+    .single();
+
+  const fullName =
+    profile?.full_name ??
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
+    'Customer';
+
+  const CATEGORY_LEGAL_CONTEXT: Record<string, string> = {
+    broadband: `Reference Communications Act 2003 and Ofcom General Conditions. If out of contract: confirm right to cancel with 30 days notice. If in contract: request early termination charge details.`,
+    mobile: `Reference Communications Act 2003 and Ofcom General Conditions. Request PAC code or STAC code. If out of contract: 30 days notice. If in contract: request early termination charges.`,
+    energy: `Reference Ofgem Standards of Conduct and Ofgem Supplier Guaranteed Standards. Request final meter reading and final bill. Ask for any credit balance to be refunded within 10 working days (Ofgem requirement).`,
+    insurance: `Reference Consumer Insurance (Disclosure and Representations) Act 2012 and FCA ICOBS. Request confirmation of any pro-rata refund for the unexpired portion.`,
+    streaming: `Reference Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013. Request confirmation of cancellation and final billing date.`,
+    fitness: `Reference Consumer Rights Act 2015. If gym has changed terms or facilities: reference right to cancel due to material change. Request written confirmation of cancellation.`,
+    software: `Reference Consumer Contracts Regulations 2013 and Consumer Rights Act 2015 for digital content. Request cancellation confirmation and data deletion rights under GDPR.`,
+    mortgage: `Reference FCA Mortgage Conduct of Business rules (MCOB). Request Early Repayment Charge (ERC) statement and full settlement figure.`,
+    loan: `Reference Consumer Credit Act 1974, Section 94 (right to early settlement). Request settlement figure and any early repayment charges.`,
+    utility: `Reference Water Industry Act 1991 (water) or Ofgem Standards of Conduct (energy). Request final bill and refund of any credit balance.`,
+    council_tax: `Reference Council Tax (Administration and Enforcement) Regulations 1992. Write as a formal request to the council, not a consumer cancellation.`,
+    gambling: `Reference Gambling Act 2005 and UK Gambling Commission Social Responsibility Code. Request immediate account closure and return of remaining balance.`,
+    other: `Reference Consumer Rights Act 2015 and Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013. Request written confirmation of cancellation.`,
+  };
+
+  const legalContext = CATEGORY_LEGAL_CONTEXT[params.category] ?? CATEGORY_LEGAL_CONTEXT.other;
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const costLine = params.amount ? `Cost: £${params.amount}/month` : '';
+  const accountLine = params.account_email ? `Account email: ${params.account_email}` : (profile?.email ? `Account email: ${profile.email}` : '');
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const prompt = `Write a formal cancellation letter from a UK consumer to ${params.provider_name}.
+
+Customer name: ${fullName}
+Today's date: ${today}
+Provider: ${params.provider_name}
+Category: ${params.category}
+${costLine}
+${accountLine}
+
+Legal context:
+${legalContext}
+
+Requirements:
+- Professional, formal tone
+- Use correct legal references for this category (NOT generic Consumer Contracts Regulations unless appropriate)
+- Request written confirmation of cancellation and final billing date
+- Ask for any refund due
+- Under 200 words
+- Do NOT include subject line — body only, starting with "Dear ${params.provider_name} Customer Services,"
+- Close with "Yours faithfully," and the customer name
+
+Return as JSON: { "subject": "...", "body": "..." }`;
+
+  let subject = `Cancellation Request — ${params.provider_name}`;
+  let body = '';
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 800,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const rawText = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map(b => b.text)
+      .join('');
+
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      subject = parsed.subject ?? subject;
+      body = parsed.body ?? rawText;
+    } else {
+      body = rawText;
+    }
+  } catch (err: any) {
+    return { text: `Failed to generate cancellation email: ${err.message}` };
+  }
+
+  // Save to tasks for history
+  await supabase.from('tasks').insert({
+    user_id: userId,
+    type: 'cancellation_email',
+    title: `Cancellation: ${params.provider_name}`,
+    description: `Cancellation email generated for ${params.provider_name} (${params.category})`,
+    provider_name: params.provider_name,
+    status: 'completed',
+    priority: 'medium',
+  });
+
+  let text = `*Cancellation Email — ${params.provider_name}*\n\n`;
+  text += `*Subject:* ${subject}\n\n`;
+  text += `---\n${body}\n---\n\n`;
+  text += `_Copy and send this to ${params.provider_name}'s customer services. Keep a record of when you send it._`;
+
+  return { text };
+}
+
+async function createSupportTicket(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    subject: string;
+    description: string;
+    category: string;
+    priority: string;
+  },
+): Promise<ToolResult> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('email')
+    .eq('id', userId)
+    .single();
+
+  const { data: ticket, error } = await supabase
+    .from('support_tickets')
+    .insert({
+      user_id: userId,
+      subject: params.subject,
+      description: params.description,
+      category: params.category,
+      priority: params.priority,
+      source: 'chatbot',
+      status: 'open',
+      metadata: { channel: 'telegram' },
+    })
+    .select('id, created_at')
+    .single();
+
+  if (error || !ticket) {
+    return { text: `Failed to create support ticket: ${error?.message ?? 'Unknown error'}` };
+  }
+
+  // Insert first message
+  await supabase.from('ticket_messages').insert({
+    ticket_id: ticket.id,
+    sender_type: 'user',
+    sender_name: profile?.email ?? 'User',
+    message: params.description,
+  });
+
+  const ref = ticket.id.substring(0, 8).toUpperCase();
+
+  let text = `*Support Ticket Created*\n\n`;
+  text += `*Reference:* #${ref}\n`;
+  text += `*Subject:* ${params.subject}\n`;
+  text += `*Priority:* ${params.priority}\n`;
+  text += `*Status:* Open\n\n`;
+  text += `Our team will respond within 24 hours. You'll receive an email at ${profile?.email ?? 'your registered email'} when we reply.\n\n`;
+  text += `_You can also view your ticket at paybacker.co.uk/dashboard/pocket-agent_`;
+
+  return { text };
 }
