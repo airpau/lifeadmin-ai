@@ -401,7 +401,27 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Run recurring detection
+      // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring
+      // These DB functions must run for every user after every sync (they are idempotent)
+      const enrichmentFunctions = [
+        { name: 'fix_ee_card_merchant_names', args: { p_user_id: connection.user_id } },
+        { name: 'auto_categorise_transactions', args: { p_user_id: connection.user_id } },
+        { name: 'detect_and_sync_recurring_transactions', args: { p_user_id: connection.user_id } },
+      ] as const;
+
+      for (const fn of enrichmentFunctions) {
+        try {
+          const { error: enrichErr } = await supabase.rpc(fn.name, fn.args);
+          if (enrichErr) {
+            console.error(`Bank sync: ${fn.name} RPC error for user ${connection.user_id}:`, enrichErr.message);
+          }
+        } catch (enrichEx: any) {
+          // Non-fatal — enrichment failure must never abort the sync
+          console.error(`Bank sync: ${fn.name} threw for user ${connection.user_id}:`, enrichEx.message);
+        }
+      }
+
+      // Run recurring detection (JS-side; the DB function above is also called server-side)
       const recurringDetected = await detectRecurring(connection.user_id, supabase);
 
       // Update last synced

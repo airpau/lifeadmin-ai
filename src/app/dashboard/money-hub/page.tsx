@@ -1013,7 +1013,7 @@ export default function MoneyHubPage() {
               {[
                 { label: 'Monthly income', value: '£3,200', color: 'text-green-400' },
                 { label: 'Monthly outgoings', value: '£2,140', color: 'text-red-400' },
-                { label: 'Net position', value: '+£1,060', color: 'text-mint-400' },
+                { label: 'Savings rate', value: '33.1%', color: 'text-mint-400' },
                 { label: 'Subscriptions', value: '£127/mo', color: 'text-amber-400' },
               ].map(item => (
                 <div key={item.label} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
