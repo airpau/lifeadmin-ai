@@ -243,6 +243,8 @@ export default function MoneyHubPage() {
 
   // Inline recategorisation
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
+  // Top merchant inline recategorise (tracks index of merchant being recategorised)
+  const [merchantRecatIdx, setMerchantRecatIdx] = useState<number | null>(null);
 
   // Monthly trends hover
   const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
@@ -1093,15 +1095,39 @@ export default function MoneyHubPage() {
   }
   const totalIncome = Object.values(incomeBreakdown).reduce((s, v) => s + v, 0);
 
-  // Deduplicate spending categories (merge entries with same category)
+  // Deduplicate spending categories (merge entries with same category, exclude transfers)
   const deduplicatedSpending = (() => {
     const map = new Map<string, number>();
     for (const cat of data.spending.categories) {
       const key = cat.category.toLowerCase().trim();
+      // Transfers between own accounts are not spending
+      if (key === 'transfers' || key === 'transfer') continue;
       map.set(key, (map.get(key) || 0) + cat.total);
     }
     return Array.from(map.entries()).map(([category, total]) => ({ category, total }));
   })();
+
+  // Total derived from the filtered set — excludes transfers so percentages add up to 100%
+  const filteredSpendingTotal = deduplicatedSpending.reduce((s, c) => s + c.total, 0);
+
+  // Regular Payments subcategory breakdown
+  const regularPaymentsBreakdown = (() => {
+    const MORTGAGE_LOAN_CATS = new Set(['mortgage', 'loans', 'loan', 'credit']);
+    const COUNCIL_TAX_CATS = new Set(['council_tax']);
+    let mortgageLoans = 0;
+    let councilTax = 0;
+    let subscriptionsAndBills = 0;
+    for (const sub of (data.subscriptions.list || [])) {
+      const amt = parseFloat(String(sub.amount)) || 0;
+      const monthly = sub.billing_cycle === 'yearly' ? amt / 12 : sub.billing_cycle === 'quarterly' ? amt / 3 : amt;
+      const cat = (sub.category || '').toLowerCase();
+      if (MORTGAGE_LOAN_CATS.has(cat)) mortgageLoans += monthly;
+      else if (COUNCIL_TAX_CATS.has(cat)) councilTax += monthly;
+      else subscriptionsAndBills += monthly;
+    }
+    return { mortgageLoans, councilTax, subscriptionsAndBills };
+  })();
+  const hasRegularPaymentsBreakdown = regularPaymentsBreakdown.mortgageLoans > 0 || regularPaymentsBreakdown.councilTax > 0;
 
   // Monthly trends averages
   const trends = data.spending.monthlyTrends || [];
@@ -1879,7 +1905,7 @@ export default function MoneyHubPage() {
           <div className="space-y-2">
             {deduplicatedSpending.map(cat => {
               const info = CATEGORY_LABELS[cat.category] || CATEGORY_LABELS.other;
-              const pct = data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0;
+              const pct = filteredSpendingTotal > 0 ? (cat.total / filteredSpendingTotal) * 100 : 0;
               const budget = data.budgets.find((b: any) => b.category === cat.category);
               const budgetPct = budget ? (cat.total / budget.monthly_limit) * 100 : 0;
               return (
@@ -1899,7 +1925,7 @@ export default function MoneyHubPage() {
                                 {budgetPct.toFixed(0)}% of £{fmt(budget.monthly_limit)}
                               </span>
                             )}
-                            <span className="text-slate-400 text-[10px]">{(data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0).toFixed(1)}%</span>
+                            <span className="text-slate-400 text-[10px]">{(filteredSpendingTotal > 0 ? (cat.total / filteredSpendingTotal) * 100 : 0).toFixed(1)}%</span>
                             <span className="text-white text-xs font-bold">£{fmt(cat.total)}</span>
                           </div>
                         </div>
@@ -1908,14 +1934,14 @@ export default function MoneyHubPage() {
                         </div>
                       </div>
                     </button>
-                    {/* Inline recategorise dropdown trigger */}
+                    {/* Drill-down / recategorise trigger */}
                     {isPaid && (
                       <button
                         onClick={() => loadDrillDown(cat.category)}
                         className="text-slate-600 hover:text-mint-400 p-1"
                         title="View transactions and recategorise"
                       >
-                        <ArrowRight className="h-3 w-3" />
+                        <Edit3 className="h-3 w-3" />
                       </button>
                     )}
                   </div>
@@ -1930,7 +1956,7 @@ export default function MoneyHubPage() {
             {deduplicatedSpending.length > 0 && (
               <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
                 <span className="text-slate-400 text-sm font-medium">Total spending</span>
-                <span className="text-white font-bold text-sm">£{fmt(data.spending.totalSpent)}</span>
+                <span className="text-white font-bold text-sm">£{fmt(filteredSpendingTotal)}</span>
               </div>
             )}
           </div>
@@ -1941,9 +1967,47 @@ export default function MoneyHubPage() {
               <h3 className="text-white text-sm font-semibold mb-3">Top Merchants</h3>
               <div className="space-y-2">
                 {data.spending.topMerchants.slice(0, 7).map((m, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-300 truncate max-w-[200px]">{cleanMerchantName(m.merchant)}</span>
-                    <span className="text-white font-medium">£{fmt(m.total)}</span>
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-300 truncate max-w-[180px]">{cleanMerchantName(m.merchant)}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">£{fmt(m.total)}</span>
+                        <button
+                          onClick={() => setMerchantRecatIdx(merchantRecatIdx === i ? null : i)}
+                          className="text-slate-600 hover:text-mint-400 p-0.5 transition-colors"
+                          title="Recategorise this merchant"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    {merchantRecatIdx === i && (
+                      <div className="flex items-center gap-2 pl-1">
+                        <span className="text-slate-500 text-[10px]">Move to:</span>
+                        <select
+                          className="flex-1 bg-navy-800 border border-navy-600 rounded text-[10px] text-slate-300 px-1.5 py-1"
+                          defaultValue=""
+                          onChange={async (e) => {
+                            if (!e.target.value) return;
+                            await recategorise(m.merchant, e.target.value);
+                            setMerchantRecatIdx(null);
+                          }}
+                        >
+                          <option value="" disabled>Select category...</option>
+                          {Object.entries(CATEGORY_LABELS)
+                            .filter(([c]) => !['transfers', 'transfer', 'income'].includes(c))
+                            .map(([c, info]) => (
+                              <option key={c} value={c}>{info.icon} {info.label}</option>
+                            ))}
+                        </select>
+                        <button
+                          onClick={() => setMerchantRecatIdx(null)}
+                          className="text-slate-500 hover:text-white text-[10px]"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2167,6 +2231,32 @@ export default function MoneyHubPage() {
             <p className="text-slate-500 text-xs">/year</p>
           </div>
         </div>
+        {hasRegularPaymentsBreakdown && (
+          <div className="border-t border-navy-700/50 pt-3 space-y-1.5">
+            {regularPaymentsBreakdown.subscriptionsAndBills > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Subscriptions &amp; Bills</span>
+                <span className="text-white font-medium">£{fmt(regularPaymentsBreakdown.subscriptionsAndBills)}/mo</span>
+              </div>
+            )}
+            {regularPaymentsBreakdown.mortgageLoans > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Mortgages &amp; Loans</span>
+                <span className="text-white font-medium">£{fmt(regularPaymentsBreakdown.mortgageLoans)}/mo</span>
+              </div>
+            )}
+            {regularPaymentsBreakdown.councilTax > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Council Tax</span>
+                <span className="text-white font-medium">£{fmt(regularPaymentsBreakdown.councilTax)}/mo</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm pt-1 border-t border-navy-700/30">
+              <span className="text-slate-300 font-medium">Total</span>
+              <span className="text-white font-bold">£{fmt(data.subscriptions.monthlyTotal)}/mo</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ═══ SECTION 7: Contracts Expiring ═══ */}

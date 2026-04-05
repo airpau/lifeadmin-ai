@@ -185,6 +185,30 @@ const STRIP_SUFFIXES = /\s+(pymts?|payments?|subs?|subscriptions?|ltd|plc|uk|gbr
 const STRIP_PREFIXES = /^(paypal \*|paypal\*|patreon\*\s*|amzn mktp|amzn |sqr\*|google \*|apple\.com\/bill|izettle\*|www\.|http[s]?:\/\/)/i;
 
 /**
+ * Detect banking reference patterns that look nothing like merchant names.
+ * Called after initial cleaning, before the merchant map lookup.
+ * Returns a clean display name, or null if not a banking reference.
+ */
+function detectBankingReference(cleaned: string): string | null {
+  const l = cleaned.toLowerCase();
+  // "A/C 12345678" or "A/C XXXXXXXX" — account reference / transfer (checked first: digits only, no currency)
+  if (/^a\/c\s+[\d*x]+$/.test(l)) return 'Account Transfer';
+  // "A/C £334.17" — interest charge with amount in description (currency symbol required)
+  if (/^a\/c\s+[£$€][\d.,]+$/.test(l)) return 'Account Interest';
+  // "CR INTEREST", "CR INT" — credit interest
+  if (/^cr\.?\s*int(erest)?(\s|$)/.test(l)) return 'Credit Interest';
+  // "DR INTEREST", "DR INT" — debit interest
+  if (/^dr\.?\s*int(erest)?(\s|$)/.test(l)) return 'Debit Interest';
+  // "ARRANGED O/D..." — overdraft
+  if (/^arranged\s+o\/d/.test(l)) return 'Overdraft Fee';
+  // "INT'L ..." — international payment reference
+  if (/^int['']?l(\s|$)/.test(l)) return 'International Payment';
+  // "BALANCE TRANSFER" — credit card balance transfer
+  if (/^balance\s+transfer/.test(l)) return 'Balance Transfer';
+  return null;
+}
+
+/**
  * Normalise a raw bank transaction description to a clean display name.
  * Uses the shared merchant map and falls back to title-casing.
  */
@@ -196,9 +220,11 @@ export function normaliseMerchantName(raw: string): string {
   // Remove leading card number prefix (e.g. "9384 ", "4239 ")
   cleaned = cleaned.replace(/^\d{4}\s+/, '');
 
-  // Remove date stamps (e.g. "19MAR26", "17/03/26")
+  // Remove date stamps (e.g. "19MAR26", "17/03/26", "11MAR", "6jan")
   cleaned = cleaned.replace(/\d{2}[A-Z]{3}\d{2}\s*/g, '');
   cleaned = cleaned.replace(/\d{2}\/\d{2}\/\d{2}\s*/g, '');
+  // Also handle short dates without year at the start (e.g. "11mar ", "6JAN ")
+  cleaned = cleaned.replace(/^\d{1,2}[A-Za-z]{3}\s+/, '');
 
   // Remove debit indicator "D " at start
   cleaned = cleaned.replace(/^D\s+/, '');
@@ -223,6 +249,10 @@ export function normaliseMerchantName(raw: string): string {
   // Remove suffixes
   cleaned = cleaned.replace(STRIP_SUFFIXES, '');
   cleaned = cleaned.trim();
+
+  // Detect banking references (e.g. "A/C £334.17" after date strip = "Account Interest")
+  const bankingRef = detectBankingReference(cleaned);
+  if (bankingRef) return bankingRef;
 
   // Try exact match on cleaned lowercase
   const lower = cleaned.toLowerCase();
