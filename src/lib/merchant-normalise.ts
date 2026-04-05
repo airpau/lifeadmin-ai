@@ -191,10 +191,10 @@ const STRIP_PREFIXES = /^(paypal \*|paypal\*|patreon\*\s*|amzn mktp|amzn |sqr\*|
  */
 function detectBankingReference(cleaned: string): string | null {
   const l = cleaned.toLowerCase();
-  // "A/C £334.17" — interest charge with amount in description (after date stripped)
-  if (/^a\/c\s+[£$€]?[\d.,]+$/.test(l)) return 'Account Interest';
-  // "A/C 12345678" or "A/C XXXXXXXX" — account reference / transfer
+  // "A/C 12345678" or "A/C XXXXXXXX" — account reference / transfer (checked first: digits only, no currency)
   if (/^a\/c\s+[\d*x]+$/.test(l)) return 'Account Transfer';
+  // "A/C £334.17" — interest charge with amount in description (currency symbol required)
+  if (/^a\/c\s+[£$€][\d.,]+$/.test(l)) return 'Account Interest';
   // "CR INTEREST", "CR INT" — credit interest
   if (/^cr\.?\s*int(erest)?(\s|$)/.test(l)) return 'Credit Interest';
   // "DR INTEREST", "DR INT" — debit interest

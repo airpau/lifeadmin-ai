@@ -1107,6 +1107,9 @@ export default function MoneyHubPage() {
     return Array.from(map.entries()).map(([category, total]) => ({ category, total }));
   })();
 
+  // Total derived from the filtered set — excludes transfers so percentages add up to 100%
+  const filteredSpendingTotal = deduplicatedSpending.reduce((s, c) => s + c.total, 0);
+
   // Regular Payments subcategory breakdown
   const regularPaymentsBreakdown = (() => {
     const MORTGAGE_LOAN_CATS = new Set(['mortgage', 'loans', 'loan', 'credit']);
@@ -1902,7 +1905,7 @@ export default function MoneyHubPage() {
           <div className="space-y-2">
             {deduplicatedSpending.map(cat => {
               const info = CATEGORY_LABELS[cat.category] || CATEGORY_LABELS.other;
-              const pct = data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0;
+              const pct = filteredSpendingTotal > 0 ? (cat.total / filteredSpendingTotal) * 100 : 0;
               const budget = data.budgets.find((b: any) => b.category === cat.category);
               const budgetPct = budget ? (cat.total / budget.monthly_limit) * 100 : 0;
               return (
@@ -1922,7 +1925,7 @@ export default function MoneyHubPage() {
                                 {budgetPct.toFixed(0)}% of £{fmt(budget.monthly_limit)}
                               </span>
                             )}
-                            <span className="text-slate-400 text-[10px]">{(data.spending.totalSpent > 0 ? (cat.total / data.spending.totalSpent) * 100 : 0).toFixed(1)}%</span>
+                            <span className="text-slate-400 text-[10px]">{(filteredSpendingTotal > 0 ? (cat.total / filteredSpendingTotal) * 100 : 0).toFixed(1)}%</span>
                             <span className="text-white text-xs font-bold">£{fmt(cat.total)}</span>
                           </div>
                         </div>
@@ -1953,7 +1956,7 @@ export default function MoneyHubPage() {
             {deduplicatedSpending.length > 0 && (
               <div className="mt-3 pt-3 border-t border-navy-700/50 flex justify-between items-center">
                 <span className="text-slate-400 text-sm font-medium">Total spending</span>
-                <span className="text-white font-bold text-sm">£{fmt(data.spending.totalSpent)}</span>
+                <span className="text-white font-bold text-sm">£{fmt(filteredSpendingTotal)}</span>
               </div>
             )}
           </div>
