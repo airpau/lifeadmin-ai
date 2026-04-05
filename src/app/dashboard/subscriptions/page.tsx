@@ -2559,6 +2559,9 @@ export default function SubscriptionsPage() {
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                     className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400"
                   >
+                    {!SORTED_CATEGORIES.some((c) => c.value === editForm.category) && editForm.category && (
+                      <option key={editForm.category} value={editForm.category}>{editForm.category}</option>
+                    )}
                     {SORTED_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </select>
                 </div>
