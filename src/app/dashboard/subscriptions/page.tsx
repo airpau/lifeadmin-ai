@@ -2336,45 +2336,116 @@ export default function SubscriptionsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Cancellation method info */}
-              {selectedSub && cancelInfo && (
-                <div className="bg-navy-950 rounded-xl p-5 border border-navy-700/50">
-                  <h4 className="text-sm font-semibold text-mint-400 mb-3">How to cancel {selectedSub.provider_name}</h4>
-                  <p className="text-sm text-slate-300 mb-3">{cancelInfo.method}</p>
-                  {cancelInfo.tips && (
-                    <p className="text-xs text-slate-400 mb-3">{cancelInfo.tips}</p>
-                  )}
-                  <div className="space-y-2">
-                    {cancelInfo.email && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Mail className="h-3.5 w-3.5 text-slate-500" />
-                        <a href={`mailto:${cancelInfo.email}`} className="text-mint-400 hover:text-mint-300 underline">{cancelInfo.email}</a>
+              {selectedSub ? (
+                <>
+                  {/* Subscription summary */}
+                  <div className="bg-navy-950 rounded-xl p-5 border border-navy-700/50">
+                    <div className="flex items-center gap-3 mb-3">
+                      {selectedSub.logo_url ? (
+                        <Image
+                          src={selectedSub.logo_url}
+                          alt={selectedSub.provider_name}
+                          width={32}
+                          height={32}
+                          className="rounded-md shrink-0"
+                        />
+                      ) : (
+                        <span className="w-8 h-8 rounded-md bg-mint-400/20 text-mint-400 flex items-center justify-center text-sm font-bold shrink-0">
+                          {normaliseProviderName(selectedSub.provider_name).charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <div>
+                        <h4 className="text-base font-semibold text-white">{normaliseProviderName(selectedSub.provider_name)}</h4>
+                        <p className="text-sm text-slate-400">
+                          {selectedSub.billing_cycle === 'one-time'
+                            ? `${formatGBP(selectedSub.amount)} one-off`
+                            : `${formatGBP(selectedSub.amount)}/${selectedSub.billing_cycle === 'yearly' ? 'year' : selectedSub.billing_cycle === 'quarterly' ? 'quarter' : 'month'}`}
+                          {selectedSub.category && ` · ${getCategoryLabel(selectedSub.category)}`}
+                        </p>
                       </div>
-                    )}
-                    {cancelInfo.phone && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-slate-500 text-xs">Tel</span>
-                        <a href={`tel:${cancelInfo.phone.split('/')[0].trim().replace(/\s/g, '')}`} className="text-mint-400 hover:text-mint-300">{cancelInfo.phone}</a>
-                      </div>
-                    )}
-                    {cancelInfo.url && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-slate-500 text-xs">Web</span>
-                        <a href={cancelInfo.url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:text-mint-300 underline truncate">{cancelInfo.url.replace('https://', '')}</a>
+                    </div>
+                    {(selectedSub.contract_type || selectedSub.contract_end_date || (selectedSub.early_exit_fee != null && selectedSub.early_exit_fee > 0)) && (
+                      <div className="space-y-1.5 text-xs border-t border-navy-700/50 pt-3 mt-1">
+                        {selectedSub.contract_type && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Contract type</span>
+                            <span className="text-slate-300 capitalize">{selectedSub.contract_type.replace(/_/g, ' ')}</span>
+                          </div>
+                        )}
+                        {selectedSub.contract_end_date && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Contract ends</span>
+                            <span className="text-slate-300">{new Date(selectedSub.contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          </div>
+                        )}
+                        {selectedSub.early_exit_fee != null && selectedSub.early_exit_fee > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Early exit fee</span>
+                            <span className="text-amber-400">{formatGBP(selectedSub.early_exit_fee)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                </div>
-              )}
 
-              {selectedSub && !cancelInfo && (
-                <div className="bg-navy-950 rounded-xl p-5 border border-navy-700/50">
-                  <h4 className="text-sm font-semibold text-slate-400 mb-2">Cancel {selectedSub.provider_name}</h4>
-                  <p className="text-xs text-slate-500">Generate a cancellation letter below. Our AI will suggest the best approach based on the subscription type.</p>
-                </div>
-              )}
+                  {/* Cancellation method info (when available) */}
+                  {cancelInfo && (
+                    <div className="bg-navy-950 rounded-xl p-5 border border-navy-700/50">
+                      <h4 className="text-sm font-semibold text-mint-400 mb-3">How to cancel</h4>
+                      <p className="text-sm text-slate-300 mb-3">{cancelInfo.method}</p>
+                      {cancelInfo.tips && (
+                        <p className="text-xs text-slate-400 mb-3">{cancelInfo.tips}</p>
+                      )}
+                      <div className="space-y-2">
+                        {cancelInfo.email && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Mail className="h-3.5 w-3.5 text-slate-500" />
+                            <a href={`mailto:${cancelInfo.email}`} className="text-mint-400 hover:text-mint-300 underline">{cancelInfo.email}</a>
+                          </div>
+                        )}
+                        {cancelInfo.phone && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-slate-500 text-xs">Tel</span>
+                            <a href={`tel:${cancelInfo.phone.split('/')[0].trim().replace(/\s/g, '')}`} className="text-mint-400 hover:text-mint-300">{cancelInfo.phone}</a>
+                          </div>
+                        )}
+                        {cancelInfo.url && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-slate-500 text-xs">Web</span>
+                            <a href={cancelInfo.url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:text-mint-300 underline truncate">{cancelInfo.url.replace('https://', '')}</a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-              {!selectedSub && (
+                  {/* Generate button — same eligibility guards as the card-level button */}
+                  {selectedSub.needs_review ? (
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-3 rounded-xl text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Review this subscription before generating a cancellation letter
+                    </div>
+                  ) : selectedSub.status !== 'active' ? (
+                    <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 text-slate-400 px-4 py-3 rounded-xl text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Cancellation emails are only available for active subscriptions
+                    </div>
+                  ) : isStatutoryService(selectedSub.provider_name) ? (
+                    <div className="flex items-center gap-2 bg-slate-500/10 border border-slate-500/20 text-slate-400 px-4 py-3 rounded-xl text-sm">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      This is a statutory charge and cannot be cancelled via letter
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleCancelRequest(selectedSub)}
+                      className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Generate Cancellation Email
+                    </button>
+                  )}
+                </>
+              ) : (
                 <div className="text-center py-12">
                   <Mail className="h-16 w-16 text-slate-600 mx-auto mb-4" />
                   <p className="text-slate-400">
