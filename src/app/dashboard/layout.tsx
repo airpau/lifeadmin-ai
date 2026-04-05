@@ -34,7 +34,7 @@ const navItems = [
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
   { name: 'Disputes', href: '/dashboard/disputes', icon: FileText },
-  { name: 'Contract Vault', href: '/dashboard/contracts', icon: FolderLock },
+  { name: 'Contract Vault', href: '/dashboard/contract-vault', icon: FolderLock },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
