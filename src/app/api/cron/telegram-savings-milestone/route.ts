@@ -93,7 +93,19 @@ export async function GET(request: NextRequest) {
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
   if (proSessions.length === 0) return NextResponse.json({ ok: true, sent: 0 });
 
-  for (const session of proSessions) {
+  // Check alert preferences — respect users who opted out of proactive alerts
+  const { data: allPrefs } = await supabase
+    .from('telegram_alert_preferences')
+    .select('user_id, proactive_alerts')
+    .in('user_id', proSessions.map((s) => s.user_id));
+
+  const prefMap = new Map((allPrefs ?? []).map((p) => [p.user_id, p]));
+  const eligible = proSessions.filter((s) => {
+    const pref = prefMap.get(s.user_id);
+    return !pref || pref.proactive_alerts !== false;
+  });
+
+  for (const session of eligible) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {

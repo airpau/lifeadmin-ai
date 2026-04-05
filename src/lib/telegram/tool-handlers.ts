@@ -1927,7 +1927,9 @@ async function getMonthlyRecap(
   let text = `📊 *${monthLabel} Financial Recap*\n\n`;
   text += `💰 Income: *${fmt(income)}*\n`;
   text += `💸 Spending: *${fmt(spending)}*\n`;
-  text += `${income - spending >= 0 ? '✅' : '❌'} Net: *${income - spending >= 0 ? '+' : ''}${fmt(income - spending)}*\n`;
+  const net = income - spending;
+  const netSign = net >= 0 ? '+' : '-';
+  text += `${net >= 0 ? '✅' : '❌'} Net: *${netSign}${fmt(net)}*\n`;
   text += `${savingsRate >= 20 ? '🎉' : savingsRate >= 10 ? '👍' : '⚠️'} Savings rate: *${savingsRate.toFixed(1)}%*\n`;
 
   if (prevSpending > 0) {

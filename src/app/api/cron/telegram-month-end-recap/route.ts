@@ -212,7 +212,9 @@ export async function GET(request: NextRequest) {
         const rateEmoji = savingsRate >= 20 ? '🎉' : savingsRate >= 10 ? '👍' : '⚠️';
         sections.push(`\n  ${rateEmoji} Savings rate: *${savingsRate.toFixed(1)}%*`);
         const netPosition = income - spending;
-        sections.push(`\n  ${netPosition >= 0 ? '✅' : '❌'} Net position: *${netPosition >= 0 ? '+' : ''}${fmt(netPosition)}*`);
+        // fmt() uses Math.abs, so we must add the sign manually for both cases.
+        const netSign = netPosition >= 0 ? '+' : '-';
+        sections.push(`\n  ${netPosition >= 0 ? '✅' : '❌'} Net position: *${netSign}${fmt(netPosition)}*`);
       }
 
       // Top 5 categories

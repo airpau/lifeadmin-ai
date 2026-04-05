@@ -126,9 +126,24 @@ export async function GET(request: NextRequest) {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  // Day-of-month window: today through today+7
-  const todayDay = now.getDate();
-  const weekEndDay = todayDay + 7;
+  // Build the 7-day window as real Date objects so month-boundary weeks work
+  // correctly (e.g. Jan 28 → Feb 3 includes bills due on Feb 1, 2, 3).
+  const windowStart = new Date(now);
+  windowStart.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(windowStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  // Helper: convert a billing_day for a given year/month into a real Date,
+  // clamped to the last day of that month to handle short months.
+  function billingDayToDate(billingDay: number, y: number, m: number): Date {
+    const lastDay = new Date(y, m, 0).getDate();
+    return new Date(y, m - 1, Math.min(billingDay, lastDay));
+  }
+
+  // Detect if the 7-day window crosses into next month
+  const nextMonthDate = new Date(year, month, 1); // 1st of next month
+  const crossesMonthBoundary = windowEnd >= nextMonthDate;
+  const nextYear = nextMonthDate.getFullYear();
+  const nextMonth = nextMonthDate.getMonth() + 1;
 
   // Contract expiry window: next 30 days
   const todayStr = now.toISOString().split('T')[0];
@@ -138,20 +153,36 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
-      // get_expected_bills returns all expected bills for the month
-      const { data: rawBills } = await supabase.rpc('get_expected_bills', {
-        p_user_id: userId,
-        p_year: year,
-        p_month: month,
+      // Fetch bills for the current month; also fetch next month's bills when
+      // the 7-day window crosses a month boundary.
+      const billFetches = [
+        supabase.rpc('get_expected_bills', { p_user_id: userId, p_year: year, p_month: month }),
+      ];
+      if (crossesMonthBoundary) {
+        billFetches.push(
+          supabase.rpc('get_expected_bills', { p_user_id: userId, p_year: nextYear, p_month: nextMonth }),
+        );
+      }
+      const billResults = await Promise.all(billFetches);
+
+      // Combine and tag each bill with the month it belongs to
+      type RawBill = { provider_name: string; expected_amount: string | number; billing_day: number; occurrence_count: number };
+      const allBills: Array<RawBill & { fetchYear: number; fetchMonth: number }> = [];
+      billResults.forEach((res, idx) => {
+        const fy = idx === 0 ? year : nextYear;
+        const fm = idx === 0 ? month : nextMonth;
+        for (const b of (res.data ?? []) as RawBill[]) {
+          allBills.push({ ...b, fetchYear: fy, fetchMonth: fm });
+        }
       });
 
-      // Filter bills due this week by billing_day
-      const weekBills = (rawBills ?? []).filter((b: { billing_day: number; occurrence_count: number }) =>
-        b.billing_day >= todayDay &&
-        b.billing_day <= weekEndDay &&
-        b.occurrence_count >= 2 &&
-        b.occurrence_count <= 30,
-      );
+      // Filter to bills whose actual expected date falls within the 7-day window.
+      // Using real Date objects avoids integer overflow across month boundaries.
+      const weekBills = allBills.filter((b) => {
+        if (b.occurrence_count < 2 || b.occurrence_count > 30) return false;
+        const billDate = billingDayToDate(b.billing_day, b.fetchYear, b.fetchMonth);
+        return billDate >= windowStart && billDate < windowEnd;
+      });
 
       // Contracts/subscriptions ending in next 30 days
       const { data: upcomingContracts } = await supabase
@@ -185,9 +216,10 @@ export async function GET(request: NextRequest) {
         sections.push(`\n\n💸 *Bills Due This Week*\nTotal: *${fmt(weekTotal)}*`);
 
         for (const bill of weekBills) {
-          const dayLabel = bill.billing_day === todayDay ? 'Today' :
-            bill.billing_day === todayDay + 1 ? 'Tomorrow' :
-              `Day ${bill.billing_day}`;
+          const billDate = billingDayToDate(bill.billing_day, bill.fetchYear, bill.fetchMonth);
+          const diffDays = Math.round((billDate.getTime() - windowStart.getTime()) / (1000 * 60 * 60 * 24));
+          const dayLabel = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' :
+            billDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
           const amount = parseFloat(String(bill.expected_amount)) || 0;
           sections.push(`\n  • *${bill.provider_name}* — ${fmt(amount)} (${dayLabel})`);
         }

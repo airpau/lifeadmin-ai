@@ -57,8 +57,16 @@ export async function GET(request: NextRequest) {
 
   // 8-week FCA deadline = 56 days
   const FCA_DEADLINE_DAYS = 56;
-  // Re-send follow-up at most every 7 days
-  const RESEND_INTERVAL_DAYS = 7;
+
+  // ISO week number — used as the time bucket for reference keys so each new
+  // week gets a fresh DB row rather than conflicting with the previous one.
+  const isoWeek = (d: Date): number => {
+    const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    return Math.ceil((((tmp.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+  const weekKey = `w${isoWeek(now)}_${now.getFullYear()}`;
 
   // Get all active sessions
   const { data: sessions } = await supabase
@@ -131,18 +139,20 @@ export async function GET(request: NextRequest) {
         const isUrgent = daysUntilFcaDeadline <= 14 && daysUntilFcaDeadline > 0;
         const isPastDeadline = daysUntilFcaDeadline <= 0;
 
-        // Check when we last sent a follow-up for this dispute
-        const sevenDaysAgo = new Date(now.getTime() - RESEND_INTERVAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        // Check if we already sent a follow-up for this dispute this ISO week.
+        // Using a week-bucketed key (dispute.id + week number) means each week
+        // gets a fresh unique row — old rows never block new ones, and within
+        // a single week the unique constraint prevents duplicates.
+        const refKey = `${dispute.id}_${weekKey}`;
         const { data: recentAlert } = await supabase
           .from('notification_log')
           .select('id')
           .eq('user_id', userId)
           .eq('notification_type', 'dispute_followup')
-          .eq('reference_key', dispute.id)
-          .gte('sent_at', sevenDaysAgo)
+          .eq('reference_key', refKey)
           .single();
 
-        if (recentAlert) continue; // Already sent within last 7 days
+        if (recentAlert) continue; // Already sent this week
 
         let message: string;
 
@@ -179,7 +189,7 @@ export async function GET(request: NextRequest) {
           await supabase.from('notification_log').insert({
             user_id: userId,
             notification_type: 'dispute_followup',
-            reference_key: dispute.id,
+            reference_key: refKey,
           }).select().single();
         } else {
           errors.push(`Failed chat ${chatId}`);
