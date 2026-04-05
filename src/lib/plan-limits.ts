@@ -55,19 +55,24 @@ export async function checkUsageLimit(
   // Fetch user's current tier and Stripe subscription info
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
     .eq('id', userId)
     .single();
 
   const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
 
-  // Verify paid tier has an active Stripe subscription — prevents manual tier inflation
+  // Verify paid tier has an active Stripe subscription or founding member trial
   const isPaid = tier !== 'free';
   const hasActiveStripe = profile?.stripe_subscription_id &&
     ['active', 'trialing'].includes(profile?.subscription_status ?? '');
 
-  const effectiveTier: PlanTier = (isPaid && !hasActiveStripe) ? 'free' : tier;
-  if (isPaid && !hasActiveStripe) {
+  // Founding member trial: tier != free, status = trialing, no Stripe, valid trial_ends_at
+  const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
+    profile?.subscription_status === 'trialing' &&
+    profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+
+  const effectiveTier: PlanTier = (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
+  if (isPaid && !hasActiveStripe && !isFoundingTrial) {
     console.warn(`[plan-limits] User ${userId} has tier=${tier} but no active Stripe subscription. Treating as free.`);
   }
 

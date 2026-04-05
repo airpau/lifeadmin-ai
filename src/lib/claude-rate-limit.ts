@@ -40,7 +40,7 @@ export async function getUserTier(userId: string): Promise<string> {
   const admin = getAdmin();
   const { data } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
     .eq('id', userId)
     .single();
 
@@ -50,7 +50,12 @@ export async function getUserTier(userId: string): Promise<string> {
     data?.stripe_subscription_id &&
     ['active', 'trialing'].includes(data?.subscription_status ?? '');
 
-  return isPaid && !hasActiveStripe ? 'free' : tier;
+  // Founding member trial: tier != free, status = trialing, no Stripe, valid trial_ends_at
+  const isFoundingTrial = isPaid && !data?.stripe_subscription_id &&
+    data?.subscription_status === 'trialing' &&
+    data?.trial_ends_at && new Date(data.trial_ends_at) > new Date();
+
+  return isPaid && !hasActiveStripe && !isFoundingTrial ? 'free' : tier;
 }
 
 /**
