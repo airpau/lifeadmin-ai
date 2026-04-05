@@ -638,6 +638,224 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
 }
 
 // ============================================================
+// Dispute Progress Tracker
+// ============================================================
+function DisputeProgressTracker({ dispute, providerInfo }: {
+  dispute: Dispute;
+  providerInfo: any;
+}) {
+  const correspondence = dispute.correspondence || [];
+  const hasLetter = correspondence.some(c => c.entry_type === 'ai_letter');
+  const hasCompanyResponse = correspondence.some(c =>
+    ['company_email', 'company_letter', 'company_response'].includes(c.entry_type)
+  );
+  const hasFollowUp = correspondence.filter(c => c.entry_type === 'ai_letter').length > 1;
+  const isEscalatedStatus = ['escalated', 'ombudsman'].includes(dispute.status);
+  const resolved = isResolved(dispute.status);
+
+  let currentStage = 1;
+  if (resolved) currentStage = 6;
+  else if (isEscalatedStatus) currentStage = 5;
+  else if (hasFollowUp && hasCompanyResponse) currentStage = 4;
+  else if (hasCompanyResponse) currentStage = 3;
+  else if (hasLetter) currentStage = 2; // includes hasFollowUp-without-response case
+
+  const responseDays: number = providerInfo?.complaints_response_days ?? 14;
+  const firstLetter = correspondence.find(c => c.entry_type === 'ai_letter');
+  const deadlineDate = firstLetter
+    ? new Date(new Date(firstLetter.entry_date).getTime() + responseDays * 24 * 60 * 60 * 1000)
+    : null;
+  const deadlinePassed = deadlineDate ? deadlineDate < new Date() : false;
+
+  const outcomeLabel = resolved
+    ? (dispute.status === 'resolved_won' || dispute.status === 'won' ? 'Won'
+      : dispute.status === 'resolved_partial' || dispute.status === 'partial' ? 'Partial'
+      : 'Not resolved')
+    : null;
+
+  const steps = [
+    { stage: 1, label: 'Letter Sent', shortLabel: 'Letter', sub: null as string | null },
+    {
+      stage: 2,
+      label: 'Awaiting Reply',
+      shortLabel: 'Awaiting',
+      sub: currentStage === 2 && deadlineDate
+        ? (deadlinePassed ? 'Deadline passed' : `Due ${formatDate(deadlineDate.toISOString())}`)
+        : null,
+    },
+    { stage: 3, label: 'Reply Received', shortLabel: 'Reply', sub: null as string | null },
+    { stage: 4, label: 'Follow-up Sent', shortLabel: 'Follow-up', sub: null as string | null },
+    {
+      stage: 5,
+      label: 'Escalated',
+      shortLabel: 'Escalated',
+      sub: currentStage === 5 && providerInfo?.ombudsman_name ? (providerInfo.ombudsman_name as string) : null,
+    },
+    { stage: 6, label: 'Resolved', shortLabel: 'Resolved', sub: outcomeLabel },
+  ];
+
+  const totalSteps = steps.length;
+  // Fill ends at center of currentStage circle
+  // Each step center at (i + 0.5) / totalSteps * 100%; fill = (currentStage - 1) / totalSteps * 100%
+  const fillStartPct = (0.5 / totalSteps) * 100; // 8.33%
+  const fillWidthPct = ((currentStage - 1) / totalSteps) * 100; // 0 to 83.33%
+
+  return (
+    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Dispute Progress</p>
+      <div className="relative pb-1">
+        {/* Background track */}
+        <div
+          className="absolute top-3 h-0.5 bg-navy-700"
+          style={{ left: `${fillStartPct}%`, right: `${fillStartPct}%` }}
+        />
+        {/* Filled track */}
+        {fillWidthPct > 0 && (
+          <div
+            className="absolute top-3 h-0.5 bg-mint-400 transition-all duration-500"
+            style={{ left: `${fillStartPct}%`, width: `${fillWidthPct}%` }}
+          />
+        )}
+        {/* Steps */}
+        <div className="flex justify-between">
+          {steps.map((step) => {
+            const done = resolved ? step.stage <= currentStage : step.stage < currentStage;
+            const current = !done && step.stage === currentStage;
+            return (
+              <div key={step.stage} className="flex flex-col items-center" style={{ width: `${100 / totalSteps}%` }}>
+                <div className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all ${
+                  done
+                    ? 'bg-mint-400 border-mint-400'
+                    : current
+                    ? 'bg-navy-900 border-amber-400'
+                    : 'bg-navy-900 border-navy-700'
+                }`}>
+                  {done ? (
+                    <svg className="h-3 w-3 text-navy-950" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : current ? (
+                    <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-navy-700" />
+                  )}
+                </div>
+                <span className={`mt-2 text-center font-medium transition-all leading-tight px-0.5 ${
+                  done ? 'text-mint-400' : current ? 'text-amber-400' : 'text-slate-600'
+                } text-[9px] sm:text-[10px]`}>
+                  <span className="hidden sm:block">{step.label}</span>
+                  <span className="sm:hidden">{step.shortLabel}</span>
+                </span>
+                {step.sub && (
+                  <span className={`text-[8px] sm:text-[9px] mt-0.5 text-center leading-tight px-0.5 ${
+                    deadlinePassed && step.stage === 2 ? 'text-orange-400' : 'text-slate-500'
+                  }`}>
+                    {step.sub}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Preview Confirm Modal
+// ============================================================
+function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
+  formData: {
+    provider_name: string;
+    issue_type: string;
+    issue_summary: string;
+    desired_outcome: string;
+    disputed_amount: string;
+    account_number: string;
+  };
+  issueLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-12">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl"
+      >
+        <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
+          <div>
+            <h2 className="text-lg font-bold text-white">Review your dispute</h2>
+            <p className="text-slate-400 text-sm mt-0.5">Check the details before we write your letter</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-mint-400/10 text-mint-400 border border-mint-400/20 font-medium">
+              {issueLabel}
+            </span>
+          </div>
+          <p className="text-2xl font-bold text-white">{formData.provider_name}</p>
+          <div className="space-y-3">
+            <div className="bg-navy-950 rounded-xl p-4">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">What happened</p>
+              <p className="text-sm text-slate-300 leading-relaxed line-clamp-4">{formData.issue_summary}</p>
+            </div>
+            <div className="bg-navy-950 rounded-xl p-4">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">What you want</p>
+              <p className="text-sm text-slate-300">{formData.desired_outcome}</p>
+            </div>
+            {(formData.disputed_amount || formData.account_number) && (
+              <div className="flex gap-3">
+                {formData.disputed_amount && (
+                  <div className="bg-navy-950 rounded-xl p-4 flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Amount</p>
+                    <p className="text-sm text-amber-400 font-semibold">£{formData.disputed_amount}</p>
+                  </div>
+                )}
+                {formData.account_number && (
+                  <div className="bg-navy-950 rounded-xl p-4 flex-1">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Account</p>
+                    <p className="text-sm text-slate-300">{formData.account_number}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 flex items-start gap-2">
+            <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-400">
+              Our AI will write a formal complaint letter citing the exact UK consumer law that protects you in this situation.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-3 p-6 pt-0">
+          <button
+            onClick={onClose}
+            className="px-5 py-3 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg transition-all text-sm font-medium"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-3 rounded-lg transition-all"
+          >
+            <Sparkles className="h-4 w-4" />
+            Generate Letter
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ============================================================
 // Dispute Detail View — the thread
 // ============================================================
 function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () => void }) {
@@ -897,6 +1115,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           )}
         </div>
       </div>
+
+      {/* Progress Tracker */}
+      <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
 
       {/* Provider Info Card */}
       {providerInfo && (
@@ -1373,6 +1594,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   });
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [incidentDate, setIncidentDate] = useState('');
   const [previousContact, setPreviousContact] = useState('');
@@ -1555,6 +1777,18 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         tier={upgradeModal.tier}
       />
 
+      {showPreviewModal && (
+        <PreviewConfirmModal
+          formData={formData}
+          issueLabel={ISSUE_TYPE_LABELS[formData.issue_type] || formData.issue_type}
+          onClose={() => setShowPreviewModal(false)}
+          onConfirm={() => {
+            setShowPreviewModal(false);
+            formRef.current?.requestSubmit();
+          }}
+        />
+      )}
+
       <button onClick={onCancel} className="flex items-center gap-1 text-slate-400 hover:text-white mb-4 text-sm transition-all">
         <ChevronLeft className="h-4 w-4" /> Back
       </button>
@@ -1731,12 +1965,16 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
               Cancel
             </button>
             <button
-              type="submit"
+              type="button"
               disabled={saving}
+              onClick={() => {
+                if (formRef.current && !formRef.current.reportValidity()) return;
+                setShowPreviewModal(true);
+              }}
               className="flex-1 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              <Sparkles className="h-5 w-5" />
-              {saving ? 'Starting dispute...' : 'Start dispute'}
+              <Eye className="h-5 w-5" />
+              {saving ? 'Starting dispute...' : 'Preview & Confirm'}
             </button>
           </div>
         </form>
