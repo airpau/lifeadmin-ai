@@ -158,14 +158,16 @@ async function fetchEmailDetail(accessToken: string, messageId: string): Promise
     from: get('From'),
     date: get('Date'),
     snippet: msg.snippet || '',
-    // Extract useful content — strip HTML, keep up to 800 chars for better data extraction
-    body: body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800),
+    // Extract useful content — strip HTML, keep up to 1500 chars for better date/amount extraction
+    body: body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1500),
   };
 }
 
 export interface Opportunity {
   id: string;
-  type: 'overcharge' | 'renewal' | 'forgotten_subscription' | 'price_increase';
+  emailId: string;
+  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card';
+  category: 'streaming' | 'software' | 'fitness' | 'broadband' | 'mobile' | 'utility' | 'insurance' | 'loan' | 'credit_card' | 'mortgage' | 'council_tax' | 'transport' | 'food' | 'shopping' | 'gambling' | 'other';
   title: string;
   description: string;
   amount: number;
@@ -173,7 +175,15 @@ export interface Opportunity {
   provider: string;
   detected: string;
   status: 'new';
-  emailId: string;
+  suggestedAction: 'track' | 'cancel' | 'switch_deal' | 'dispute' | 'claim_refund' | 'claim_compensation' | 'monitor';
+  contractEndDate: string | null;
+  nextPaymentDate: string | null;
+  paymentAmount: number | null;
+  previousAmount: number | null;
+  priceChangeDate: string | null;
+  paymentFrequency: 'monthly' | 'quarterly' | 'yearly' | 'one-time' | null;
+  accountNumber: string | null;
+  urgency: 'immediate' | 'soon' | 'routine';
 }
 
 // Multiple focused queries run in parallel for comprehensive scanning.
@@ -205,20 +215,35 @@ const SCAN_QUERY_SENDERS_3 = [
   'from:(ryanair OR easyjet OR "british airways" OR jet2 OR wizz OR tui OR booking OR airbnb)',
 ].join(' OR ') + ' newer_than:730d';
 
+// Query E: deal expirations, contract endings, renewal notices (HIGH PRIORITY)
+const SCAN_QUERY_EXPIRATIONS =
+  'subject:("contract end" OR "deal ending" OR "deal expires" OR "coming to an end" OR "out of contract" OR "minimum term" OR "fixed term" OR "renewal date" OR "auto-renew" OR "will renew" OR "renewing soon" OR "expires on" OR "expiring" OR "end date" OR "notice period" OR "30 days notice" OR "your tariff" OR "switching" OR "leaving us" OR "final month" OR "last chance") newer_than:365d';
+
+// Query F: upcoming payments and payment reminders
+const SCAN_QUERY_PAYMENTS =
+  'subject:("payment due" OR "payment reminder" OR "upcoming payment" OR "next payment" OR "direct debit" OR "amount due" OR "will be charged" OR "will be debited" OR "scheduled payment" OR "payment date" OR "billing date" OR "your bill is ready" OR "new bill" OR "monthly bill" OR "quarterly bill" OR "annual payment") newer_than:180d';
+
+// Query G: price increases and tariff changes
+const SCAN_QUERY_PRICE_CHANGES =
+  'subject:("price increase" OR "price change" OR "new prices" OR "price update" OR "tariff change" OR "rate increase" OR "going up" OR "increasing" OR "new rate" OR "updated price" OR "cost increase" OR "premium increase" OR "fee increase" OR "charges changing" OR "April price" OR "annual increase" OR "CPI" OR "RPI" OR "inflation") newer_than:365d';
+
 export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel for comprehensive scanning
   // Scan up to 250 emails per query for thorough coverage (2 years of history)
-  const [subjectMessages, senderMessages1, senderMessages2, senderMessages3] = await Promise.all([
+  const [subjectMessages, senderMessages1, senderMessages2, senderMessages3, expirationMessages, paymentMessages, priceChangeMessages] = await Promise.all([
     fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_3, 250),
+    fetchEmailList(accessToken, SCAN_QUERY_EXPIRATIONS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_PAYMENTS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_PRICE_CHANGES, 100),
   ]);
 
   const seen = new Set<string>();
-  const allMessages = [...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3].filter((m) => {
+  const allMessages = [...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3, ...expirationMessages, ...paymentMessages, ...priceChangeMessages].filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
     return true;
@@ -266,17 +291,17 @@ export async function scanEmailsForOpportunities(
     group.subjects.push(e.subject);
     group.snippets.push(e.snippet);
     group.dates.push(e.date);
-    group.bodies.push((e.body || '').substring(0, 200));
+    group.bodies.push((e.body || '').substring(0, 500));
     group.emailIds.push(e.id);
   }
 
-  // Build compact summary grouped by sender
+  // Build compact summary grouped by sender — include multiple body excerpts for date/amount extraction
   const senderSummary = Array.from(senderMap.entries())
     .map(([, group], i) => {
-      const recentSubjects = group.subjects.slice(0, 5).join(' | ');
-      const recentSnippet = group.snippets[0] || '';
-      const recentBody = group.bodies[0] || '';
-      return `--- Provider ${i + 1} (${group.emailIds.length} emails) ---\nFrom: ${group.from}\nRecent subjects: ${recentSubjects}\nLatest snippet: ${recentSnippet}\nLatest body excerpt: ${recentBody}\nDate range: ${group.dates[group.dates.length - 1]} to ${group.dates[0]}\nEmail ID: ${group.emailIds[0]}`;
+      const recentSubjects = group.subjects.slice(0, 8).join(' | ');
+      const recentSnippets = group.snippets.slice(0, 3).join('\n  ');
+      const recentBodies = group.bodies.slice(0, 3).join('\n  ');
+      return `--- Provider ${i + 1} (${group.emailIds.length} emails) ---\nFrom: ${group.from}\nRecent subjects: ${recentSubjects}\nSnippets:\n  ${recentSnippets}\nBody excerpts:\n  ${recentBodies}\nDates: ${group.dates.slice(0, 5).join(', ')}\nEmail ID: ${group.emailIds[0]}`;
     })
     .join('\n\n');
 
@@ -294,51 +319,92 @@ export async function scanEmailsForOpportunities(
   });
 
   try {
+    const today = new Date().toISOString().split('T')[0];
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
-      max_tokens: 4096,
-    system: `You are a UK consumer finance analyst. Your job is to find EVERY financial opportunity in these emails. Be aggressive: if an email is from a known provider, that IS an opportunity.
+      max_tokens: 8192,
+    system: `You are a UK consumer finance analyst scanning a user's inbox. Your job is to find EVERY financial opportunity. Today's date: ${today}.
 
-CRITICAL: The sender email address and subject line are your primary signals. Even if the body is truncated, you can identify:
-- Any email from Netflix, Spotify, Disney+, Amazon, Apple = active subscription (suggest tracking/cancelling if unused)
-- Any email from BT, Sky, Virgin Media, Vodafone, EE, Three = broadband/mobile contract (suggest checking if overpaying)
-- Any email from British Gas, EDF, Octopus, OVO, E.ON = energy bill (suggest switching if on standard variable tariff)
-- Any email from an airline (Ryanair, easyJet, BA, Jet2, Wizz, TUI) = check for flight delay compensation under UK261 (up to £520 per person for delays over 3 hours)
-- Any email from a debt collector or solicitor = suggest formal dispute response citing Consumer Credit Act 1974
-- Any email mentioning "price increase", "new prices", "tariff change" = dispute opportunity
-- Any email mentioning "renewal", "renewing", "contract end" = switching opportunity
-- Any email from insurance companies = renewal comparison opportunity
-- Any email from banks, loan companies, credit cards = track balances and suggest better rates
-- Any email from councils = council tax band challenge opportunity
-- Any email from HMRC = potential tax rebate opportunity
+## PRIORITY DETECTION CATEGORIES (extract dates and amounts wherever possible)
 
-Return a JSON array. Each entry must have:
-- id: unique string (e.g. "opp_1")
-- emailId: the email id
-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay" | "debt_dispute" | "tax_rebate"
-- category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "gambling" | "other"
-- title: short actionable title (max 80 chars)
-- description: 2-3 sentences explaining what was found and what the user should do. Include specific UK consumer rights where relevant.
-- amount: GBP amount if visible, 0 if unknown
-- confidence: 0-100 (80+ = definitely from a known provider, 60-79 = likely financial, 40-59 = possible)
-- provider: company name (clean format)
-- detected: "${new Date().toISOString().split('T')[0]}"
-- status: "new"
-- suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_refund" | "claim_compensation" | "monitor"
-- contractEndDate: ISO date if found, null otherwise
-- paymentAmount: exact amount if found, null otherwise
-- paymentFrequency: "monthly" | "quarterly" | "yearly" | "one-time" | null
-- accountNumber: reference number if found, null otherwise
+### 1. DEAL EXPIRATIONS & CONTRACT ENDINGS (highest value)
+Look for: "contract end", "deal ending", "out of contract", "minimum term ending", "fixed rate ending", "renewal date", "expires", "auto-renew", "your deal", "tariff ending"
+- Extract the EXACT END DATE if mentioned (e.g. "your deal ends on 15 March 2026" → contractEndDate: "2026-03-15")
+- If already expired or ending within 30 days → confidence: 95, suggestedAction: "switch_deal"
+- If ending within 90 days → confidence: 85, suggestedAction: "switch_deal"
+- Common patterns: broadband contracts (18/24 month), energy fixed tariffs, mobile contracts, insurance policies
 
-IMPORTANT:
-- You MUST return at least one entry for every unique provider/service you can identify from the emails. A normal inbox should have 10-50+ opportunities.
-- Group emails by provider: if you see 5 emails from Netflix, create ONE opportunity for Netflix.
-- For flight bookings, always suggest checking for delay compensation.
-- For debt collection emails, always suggest a formal dispute response.
-- For any subscription over 1 year old, suggest reviewing if still needed.
+### 2. UPCOMING PAYMENTS & BILLS
+Look for: "payment due", "amount due", "will be charged", "direct debit", "next payment", "your bill", "billing date", amounts like "£XX.XX"
+- Extract EXACT AMOUNT (e.g. "Your next bill is £45.99" → paymentAmount: 45.99)
+- Extract PAYMENT DATE if mentioned (e.g. "due on 1st April" → nextPaymentDate: "2026-04-01")
+- Extract FREQUENCY from context (monthly direct debit → "monthly", annual renewal → "yearly")
+
+### 3. PRICE INCREASES (dispute opportunity)
+Look for: "price increase", "new prices from", "going up", "increasing by", "tariff change", "April price rise", "CPI", "RPI + 3.9%"
+- Extract OLD and NEW amounts if both mentioned (e.g. "from £30 to £34" → previousAmount: 30, paymentAmount: 34)
+- Extract INCREASE DATE (e.g. "from 1 April 2026" → priceChangeDate: "2026-04-01")
+- These are HIGH VALUE — users can often negotiate or switch. UK Consumer Rights Act 2015 s.62 on unfair terms.
+
+### 4. UNKNOWN SUBSCRIPTIONS (not caught by bank scans)
+Look for: recurring emails from services that charge (newsletters with premium tiers, apps, cloud storage, gaming, SaaS tools, meal kits, beauty boxes)
+- If same sender appears regularly with billing/receipt/payment subjects → likely active subscription
+- Extract amount if visible in any email body
+
+### 5. STANDARD DETECTION (as before)
+- Streaming/software/fitness subscriptions → review if still needed
+- Energy/broadband/mobile from known providers → switching opportunity
+- Insurance emails → renewal comparison
+- Airline emails → flight delay compensation (UK261, up to £520)
+- Bank/lender emails → rate monitoring
+- Council/HMRC emails → tax challenge opportunity
+- Debt collector emails → dispute citing Consumer Credit Act 1974
+
+## DATA EXTRACTION RULES
+- ALWAYS try to extract amounts: look for £ signs, "GBP", numbers near "payment", "bill", "charge", "price", "cost", "fee", "premium"
+- ALWAYS try to extract dates: look for DD/MM/YYYY, "1st January", "March 2026", "next month", relative dates
+- For relative dates, calculate from today (${today})
+- If a subject says "Your March 2026 bill - £45.99" → paymentAmount: 45.99, paymentFrequency: "monthly"
+- If body mentions "£9.99/month" → paymentAmount: 9.99, paymentFrequency: "monthly"
+
+## OUTPUT FORMAT
+Return a JSON array. Each entry:
+{
+  "id": "opp_1",
+  "emailId": "the_email_id",
+  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry",
+  "category": "streaming|software|fitness|broadband|mobile|utility|insurance|loan|credit_card|mortgage|council_tax|transport|food|shopping|gambling|other",
+  "title": "short actionable title max 80 chars",
+  "description": "2-3 sentences: what was found, exact dates/amounts, what user should do, UK consumer rights if relevant",
+  "amount": 0,
+  "confidence": 70,
+  "provider": "Clean Company Name",
+  "detected": "${today}",
+  "status": "new",
+  "suggestedAction": "track|cancel|switch_deal|dispute|claim_refund|claim_compensation|monitor",
+  "contractEndDate": "YYYY-MM-DD or null",
+  "nextPaymentDate": "YYYY-MM-DD or null",
+  "paymentAmount": 45.99,
+  "previousAmount": null,
+  "priceChangeDate": "YYYY-MM-DD or null",
+  "paymentFrequency": "monthly|quarterly|yearly|one-time|null",
+  "accountNumber": "reference if found or null",
+  "urgency": "immediate|soon|routine"
+}
+
+urgency values:
+- "immediate": deal expired, payment overdue, price increase imminent (within 14 days)
+- "soon": contract ending within 90 days, payment due within 30 days
+- "routine": ongoing monitoring, subscription review
+
+## RULES
+- Return at least one entry for EVERY unique provider/service identified
+- A normal UK inbox should produce 10-30+ opportunities. Fewer than 10 = too conservative.
+- Group by provider: multiple emails from same company = ONE opportunity (use the most recent/relevant email data)
 - Include confidence >= 40. When in doubt, include it.
+- For deal expirations and price increases, ALWAYS include the extracted date even if approximate (e.g. "April 2026" → "2026-04-01")
 - Return ONLY the JSON array, no markdown, no explanation.`,
-    messages: [{ role: 'user', content: `Analyse these email providers and find financial opportunities:\n\n${truncatedSummary}` }],
+    messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],
   });
 
   const content = message.content[0];

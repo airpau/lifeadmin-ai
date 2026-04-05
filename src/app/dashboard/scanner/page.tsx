@@ -398,20 +398,63 @@ export default function ScannerPage() {
         {scanResults.length > 0 && (
           <div className="space-y-3 mt-4">
             <h3 className="text-white font-semibold text-sm">{scanResults.length} opportunities found from email scan</h3>
-            {scanResults.map((opp: any, i: number) => (
-              <div key={opp.id || i} className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-white font-medium text-sm">{opp.title}</p>
-                    <p className="text-slate-500 text-xs">{opp.provider} · {opp.category}</p>
-                    <p className="text-slate-400 text-xs mt-1">{opp.description}</p>
+            {scanResults.map((opp: any, i: number) => {
+              const urgencyColors: Record<string, string> = {
+                immediate: 'bg-red-500/10 text-red-400 border-red-500/20',
+                soon: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+                routine: 'bg-mint-400/10 text-mint-400 border-mint-400/20',
+              };
+              const urgencyClass = urgencyColors[opp.urgency] || urgencyColors.routine;
+              return (
+                <div key={opp.id || i} className={`bg-navy-950/50 border rounded-xl p-4 ${opp.urgency === 'immediate' ? 'border-red-500/30' : opp.urgency === 'soon' ? 'border-amber-500/30' : 'border-navy-700/50'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-white font-medium text-sm">{opp.title}</p>
+                        {opp.urgency && opp.urgency !== 'routine' && (
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${urgencyClass} uppercase font-semibold`}>
+                            {opp.urgency}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-500 text-xs">{opp.provider} · {opp.category}</p>
+                      <p className="text-slate-400 text-xs mt-1">{opp.description}</p>
+                      {/* Extracted financial details */}
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {opp.paymentAmount != null && opp.paymentAmount > 0 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-navy-800 text-white font-medium">
+                            £{Number(opp.paymentAmount).toFixed(2)}{opp.paymentFrequency ? `/${opp.paymentFrequency === 'monthly' ? 'mo' : opp.paymentFrequency === 'yearly' ? 'yr' : opp.paymentFrequency === 'quarterly' ? 'qtr' : ''}` : ''}
+                          </span>
+                        )}
+                        {opp.previousAmount != null && opp.paymentAmount != null && opp.previousAmount > 0 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
+                            was £{Number(opp.previousAmount).toFixed(2)} → £{Number(opp.paymentAmount).toFixed(2)}
+                          </span>
+                        )}
+                        {opp.contractEndDate && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                            ends {new Date(opp.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                        {opp.nextPaymentDate && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                            due {new Date(opp.nextPaymentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                        {opp.priceChangeDate && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
+                            increase from {new Date(opp.priceChangeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${urgencyClass}`}>
+                      {(opp.suggestedAction || 'track').replace(/_/g, ' ')}
+                    </span>
                   </div>
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-mint-400/10 text-mint-400 whitespace-nowrap flex-shrink-0">
-                    {(opp.suggestedAction || 'track').replace(/_/g, ' ')}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

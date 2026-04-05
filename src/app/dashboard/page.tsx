@@ -953,18 +953,29 @@ export default function DashboardPage() {
 
           const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
           const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
-          const isRenewal = oppType === 'renewal' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir');
+          const isRenewal = oppType === 'renewal' || oppType === 'deal_expiry' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir') || descLower.includes('deal end');
           const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
           const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
           const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
           const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
           const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
+          const isUpcomingPayment = oppType === 'upcoming_payment';
+          const isPriceIncrease = oppType === 'price_increase';
+
+          // Extracted structured data from new scan format
+          const contractEndDate = parsedDesc?.contractEndDate || null;
+          const nextPaymentDate = parsedDesc?.nextPaymentDate || null;
+          const paymentAmount = parsedDesc?.paymentAmount || null;
+          const previousAmount = parsedDesc?.previousAmount || null;
+          const priceChangeDate = parsedDesc?.priceChangeDate || null;
+          const paymentFrequency = parsedDesc?.paymentFrequency || null;
+          const urgency = parsedDesc?.urgency || null;
           
           const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
           const needsDeal = isRenewal || isInsurance;
           const needsSubscription = isSubscription;
 
-          return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, needsComplaint, needsDeal, needsSubscription };
+          return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, isUpcomingPayment, isPriceIncrease, needsComplaint, needsDeal, needsSubscription, contractEndDate, nextPaymentDate, paymentAmount, previousAmount, priceChangeDate, paymentFrequency, urgency };
         });
 
         // Deduplicate tasks by provider+type combo (keep the first/highest priority)
@@ -991,7 +1002,12 @@ export default function DashboardPage() {
         if (taskFilter === 'subscriptions') filtered = filtered.filter(t => t.needsSubscription);
 
         const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
-        filtered.sort((a, b) => (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0));
+        const urgencyScore: Record<string, number> = { immediate: 10, soon: 5, routine: 0 };
+        filtered.sort((a, b) => {
+          const aScore = (urgencyScore[a.urgency] || 0) + (priorityScore[a.priority] || 0);
+          const bScore = (urgencyScore[b.urgency] || 0) + (priorityScore[b.priority] || 0);
+          return bScore - aScore;
+        });
 
         const displayTasks = showAllTasks ? filtered : filtered.slice(0, 5);
 
@@ -1030,7 +1046,8 @@ export default function DashboardPage() {
                     : task.isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
                     : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
 
-                  const isHighPriority = task.priority === 'high';
+                  const isHighPriority = task.priority === 'high' || task.urgency === 'immediate';
+                  const isSoon = task.urgency === 'soon';
 
                   const complaintParams = new URLSearchParams();
                   if (task.provider) complaintParams.set('company', task.provider);
@@ -1040,17 +1057,49 @@ export default function DashboardPage() {
                   const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
 
                   return (
-                    <div key={task.id} className={`bg-navy-900 border rounded-xl p-4 transition-all ${isHighPriority ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-navy-700/50'}`}>
+                    <div key={task.id} className={`bg-navy-900 border rounded-xl p-4 transition-all ${isHighPriority ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : isSoon ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-navy-700/50'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
+                        {task.urgency === 'immediate' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold border border-red-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
+                        {task.urgency === 'soon' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20 uppercase tracking-widest"><Clock className="h-3 w-3" /> Soon</span>}
+                        {!task.urgency && isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
                         {task.provider && <span className="text-slate-500 text-xs">{cleanMerchantName(task.provider)}</span>}
                         {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
                       </div>
                       <p className="text-white text-sm font-medium">{task.title}</p>
                       <p className="text-slate-400 text-xs mt-1 line-clamp-2 first-letter:capitalize">{task.descText}</p>
+                      {/* Extracted financial details from email scan */}
+                      {(task.paymentAmount || task.contractEndDate || task.nextPaymentDate || task.priceChangeDate || task.previousAmount) && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {task.paymentAmount != null && Number(task.paymentAmount) > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-navy-800 text-white font-medium">
+                              £{Number(task.paymentAmount).toFixed(2)}{task.paymentFrequency ? `/${task.paymentFrequency === 'monthly' ? 'mo' : task.paymentFrequency === 'yearly' ? 'yr' : task.paymentFrequency === 'quarterly' ? 'qtr' : ''}` : ''}
+                            </span>
+                          )}
+                          {task.previousAmount != null && task.paymentAmount != null && Number(task.previousAmount) > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                              £{Number(task.previousAmount).toFixed(2)} → £{Number(task.paymentAmount).toFixed(2)}
+                            </span>
+                          )}
+                          {task.contractEndDate && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                              ends {new Date(task.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                          {task.nextPaymentDate && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                              due {new Date(task.nextPaymentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                          {task.priceChangeDate && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
+                              increase from {new Date(task.priceChangeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
