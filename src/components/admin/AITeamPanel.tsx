@@ -2,430 +2,278 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Brain, TrendingUp, Users, Headphones, Bot, Megaphone, ClipboardList, Target, Palette,
-  Rocket, Heart, Shield, Eye, Sparkles,
-  Play, Pause, Loader2, Clock, ChevronDown, ChevronUp,
-  RefreshCw, Activity, Zap, BarChart3, MessageSquare,
+  Headphones, Activity, Briefcase, Zap, BarChart3, Megaphone,
+  Sun, BookOpen, Receipt, Search,
+  ChevronDown, ChevronUp, RefreshCw, Loader2, Clock, AlertTriangle,
 } from 'lucide-react';
 
-interface Agent {
+interface BusinessLogEntry {
   id: string;
-  role: string;
+  category: string;
+  title: string;
+  content: string;
+  created_by: string;
+  created_at: string;
+}
+
+interface AgentStatus {
+  id: string;
   name: string;
-  description: string;
+  role: string;
   schedule: string;
-  status: string;
-  last_run_at: string | null;
-  latest_report: {
-    id: string;
-    title: string;
-    content: string;
-    data: Record<string, any>;
-    recommendations: string[];
-    status: string;
-    created_at: string;
-  } | null;
+  status: 'healthy' | 'warning' | 'missed' | 'never';
+  last_run: string | null;
+  next_run: string | null;
+  latest_summary: string | null;
+  latest_title: string | null;
+  recent_entries: BusinessLogEntry[];
 }
 
-interface RailwayStatus {
-  status: string;
-  agents: number;
-  enabled: boolean;
-  uptime: number;
+interface TeamSummary {
+  healthy: number;
+  warning: number;
+  missed: number;
+  total: number;
 }
 
-interface LearningData {
-  goals: Record<string, { active: number; completed: number; failed: number }>;
-  predictions: Record<string, { total: number; correct: number; accuracy: number; pending: number }>;
-  memories: Record<string, { total: number; byType: Record<string, number>; avgImportance: number }>;
-}
-
-const roleIcons: Record<string, any> = {
-  cfo: TrendingUp,
-  cto: Brain,
-  cao: Users,
-  cmo: Megaphone,
-  exec_assistant: ClipboardList,
-  head_of_ads: Target,
-  cco: Palette,
-  cgo: Rocket,
-  cro: Heart,
-  clo: Shield,
-  cio: Eye,
-  cxo: Sparkles,
-  cfraudo: Shield,
-  support_lead: Headphones,
-  support_agent: Bot,
-};
-
-const roleColors: Record<string, string> = {
-  cfo: 'text-green-400 bg-green-500/10 border-green-500/30',
-  cto: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
-  cao: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
-  cmo: 'text-pink-400 bg-pink-500/10 border-pink-500/30',
-  exec_assistant: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
-  head_of_ads: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
-  cco: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
-  cgo: 'text-lime-400 bg-lime-500/10 border-lime-500/30',
-  cro: 'text-red-400 bg-red-500/10 border-red-500/30',
-  clo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
-  cio: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
-  cxo: 'text-teal-400 bg-teal-500/10 border-teal-500/30',
-  cfraudo: 'text-red-400 bg-red-500/10 border-red-500/30',
-  support_lead: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-  support_agent: 'text-slate-400 bg-slate-500/10 border-slate-500/30',
+const agentIcons: Record<string, React.ElementType> = {
+  'riley-support-agent': Headphones,
+  'heartbeat-monitor': Activity,
+  'ceo-briefing': Briefcase,
+  'dev-sprint-runner': Zap,
+  'paperclip-business-monitor': BarChart3,
+  'social-media-agent': Megaphone,
+  'morning-briefing': Sun,
+  'obsidian-ideas': BookOpen,
+  'receipt-scanner': Receipt,
+  'upwork-scout': Search,
 };
 
 const CRON_SECRET = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
 
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return 'Never';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function timeUntil(dateStr: string | null): string {
+  if (!dateStr) return 'Unknown';
+  const diff = new Date(dateStr).getTime() - Date.now();
+  if (diff <= 0) return 'Now';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `in ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `in ${hours}h ${mins % 60}m`;
+  return `in ${Math.floor(hours / 24)}d`;
+}
+
+function StatusDot({ status }: { status: AgentStatus['status'] }) {
+  const classes: Record<AgentStatus['status'], string> = {
+    healthy: 'bg-[#34d399] shadow-[0_0_6px_#34d399]',
+    warning: 'bg-[#f59e0b] shadow-[0_0_6px_#f59e0b]',
+    missed: 'bg-red-500 shadow-[0_0_6px_#ef4444]',
+    never: 'bg-slate-600',
+  };
+  return (
+    <span
+      className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${classes[status]} ${status === 'healthy' ? 'animate-pulse' : ''}`}
+    />
+  );
+}
+
+function StatusLabel({ status }: { status: AgentStatus['status'] }) {
+  const map: Record<AgentStatus['status'], { label: string; cls: string }> = {
+    healthy: { label: 'Healthy', cls: 'text-[#34d399]' },
+    warning: { label: 'Overdue', cls: 'text-[#f59e0b]' },
+    missed: { label: 'Missed', cls: 'text-red-400' },
+    never: { label: 'No runs', cls: 'text-slate-500' },
+  };
+  const { label, cls } = map[status];
+  return <span className={`text-xs font-medium ${cls}`}>{label}</span>;
+}
+
 export default function AITeamPanel() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [summary, setSummary] = useState<TeamSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
-  const [runningAgent, setRunningAgent] = useState<string | null>(null);
-  const [railwayStatus, setRailwayStatus] = useState<RailwayStatus | null>(null);
-  const [learning, setLearning] = useState<LearningData | null>(null);
-  const [tab, setTab] = useState<'agents' | 'learning'>('agents');
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const loadAgents = async () => {
+  const load = async () => {
     setLoading(true);
-    const res = await fetch('/api/admin/agents', {
-      headers: { Authorization: `Bearer ${CRON_SECRET}` },
-    }).then(r => r.json());
-
-    if (res.agents) setAgents(res.agents);
-    setLoading(false);
-  };
-
-  const loadRailwayStatus = async () => {
     try {
-      const res = await fetch('/api/admin/agents/railway-status', {
-        headers: { Authorization: `Bearer ${CRON_SECRET}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRailwayStatus(data.railway);
-        if (data.learning) setLearning(data.learning);
-      }
-    } catch {}
-  };
-
-  const toggleStatus = async (agent: Agent) => {
-    const newStatus = agent.status === 'active' ? 'paused' : 'active';
-    await fetch(`/api/admin/agents/${agent.id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${CRON_SECRET}`,
-      },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    await loadAgents();
-  };
-
-  const [triggerResult, setTriggerResult] = useState<string | null>(null);
-
-  const triggerRun = async (agent: Agent) => {
-    setRunningAgent(agent.id);
-    setTriggerResult(null);
-    try {
-      const res = await fetch(`/api/admin/agents/${agent.id}`, {
-        method: 'POST',
+      const res = await fetch('/api/admin/team-status', {
         headers: { Authorization: `Bearer ${CRON_SECRET}` },
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setTriggerResult(`${agent.name} completed. Cost: $${data.cost?.toFixed(4) || '0'}`);
-      } else {
-        setTriggerResult(`${agent.name} failed: ${data.error || res.statusText}`);
-      }
-    } catch (err: any) {
-      setTriggerResult(`${agent.name} request failed: ${err.message}`);
+      if (data.agents) setAgents(data.agents);
+      if (data.summary) setSummary(data.summary);
+    } finally {
+      setLoading(false);
     }
-    setRunningAgent(null);
-    await loadAgents();
-    setTimeout(() => setTriggerResult(null), 10000);
   };
 
-  useEffect(() => {
-    loadAgents();
-    loadRailwayStatus();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   if (loading) {
     return (
-      <div className="text-center py-8">
-        <Loader2 className="h-6 w-6 text-amber-500 animate-spin mx-auto" />
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-5 w-5 text-[#34d399] animate-spin" />
       </div>
     );
   }
 
-  const timeAgo = (dateStr: string | null) => {
-    if (!dateStr) return 'Never';
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-  };
-
-  const formatUptime = (secs: number) => {
-    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
-    if (secs < 86400) return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-    return `${Math.floor(secs / 86400)}d ${Math.floor((secs % 86400) / 3600)}h`;
-  };
-
   return (
     <div>
-      {/* Trigger result toast */}
-      {triggerResult && (
-        <div className={`rounded-xl px-4 py-3 mb-4 text-sm font-medium ${triggerResult.includes('failed') ? 'bg-red-500/10 border border-red-500/30 text-red-400' : 'bg-green-500/10 border border-green-500/30 text-green-400'}`}>
-          {triggerResult}
-        </div>
-      )}
-
-      {/* Railway Server Status */}
-      <div className={`rounded-2xl border p-4 mb-4 ${
-        railwayStatus?.status === 'healthy'
-          ? 'bg-green-500/5 border-green-500/30'
-          : 'bg-red-500/5 border-red-500/30'
-      }`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${railwayStatus?.status === 'healthy' ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-            <div>
-              <p className="text-white text-sm font-semibold">
-                Agent Server {railwayStatus?.status === 'healthy' ? 'Online' : railwayStatus ? 'Error' : 'Checking...'}
-              </p>
-              <p className="text-slate-500 text-xs">
-                {railwayStatus ? (
-                  <>Claude Agent SDK on Railway - {railwayStatus.agents} agents - Uptime: {formatUptime(railwayStatus.uptime)}</>
-                ) : 'Connecting to Railway...'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="bg-amber-500/10 text-amber-400 text-xs px-2 py-1 rounded-lg font-medium">
-              <Zap className="h-3 w-3 inline mr-1" />Autonomous
-            </span>
-            <button onClick={() => { loadAgents(); loadRailwayStatus(); }} className="text-slate-400 hover:text-white">
-              <RefreshCw className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setTab('agents')}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-            tab === 'agents' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
-          }`}
-        >
-          <Activity className="h-3 w-3 inline mr-1" />Agents ({agents.length})
-        </button>
-        <button
-          onClick={() => setTab('learning')}
-          className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-            tab === 'learning' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'
-          }`}
-        >
-          <BarChart3 className="h-3 w-3 inline mr-1" />Learning
-        </button>
-      </div>
-
-      {/* Learning Tab */}
-      {tab === 'learning' && learning && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-              <p className="text-slate-500 text-xs mb-1">Total Memories</p>
-              <p className="text-white text-2xl font-bold">
-                {Object.values(learning.memories).reduce((s, m) => s + m.total, 0)}
-              </p>
-            </div>
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-              <p className="text-slate-500 text-xs mb-1">Active Goals</p>
-              <p className="text-white text-2xl font-bold">
-                {Object.values(learning.goals).reduce((s, g) => s + g.active, 0)}
-              </p>
-            </div>
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-              <p className="text-slate-500 text-xs mb-1">Predictions Made</p>
-              <p className="text-white text-2xl font-bold">
-                {Object.values(learning.predictions).reduce((s, p) => s + p.total, 0)}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
-            <h4 className="text-white text-sm font-semibold mb-3">Agent Learning Progress</h4>
-            <div className="space-y-2">
-              {Object.entries(learning.memories).map(([role, mem]) => {
-                const pred = learning.predictions[role];
-                const goals = learning.goals[role];
-                return (
-                  <div key={role} className="flex items-center gap-3 text-xs">
-                    <span className="text-slate-400 w-24 truncate">{role}</span>
-                    <div className="flex-1 flex items-center gap-4">
-                      <span className="text-slate-500">
-                        <MessageSquare className="h-3 w-3 inline mr-1" />{mem.total} memories
-                      </span>
-                      {pred && pred.total > 0 && (
-                        <span className={pred.accuracy >= 60 ? 'text-green-400' : 'text-amber-400'}>
-                          {pred.accuracy}% accuracy ({pred.correct}/{pred.total - pred.pending})
-                        </span>
-                      )}
-                      {goals && goals.active > 0 && (
-                        <span className="text-cyan-400">{goals.active} active goals</span>
-                      )}
-                      {goals && goals.completed > 0 && (
-                        <span className="text-green-400">{goals.completed} completed</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {Object.keys(learning.memories).length === 0 && (
-                <p className="text-slate-500 text-sm text-center py-4">No learning data yet. Agents will start learning after their first runs.</p>
+      {/* Health summary bar */}
+      {summary && (
+        <div className="rounded-2xl border border-slate-800 bg-[#0a1628]/60 p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#34d399] animate-pulse inline-block" />
+                <span className="text-[#34d399] text-sm font-semibold">{summary.healthy}</span>
+                <span className="text-slate-500 text-xs">healthy</span>
+              </div>
+              {summary.warning > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b] inline-block" />
+                  <span className="text-[#f59e0b] text-sm font-semibold">{summary.warning}</span>
+                  <span className="text-slate-500 text-xs">overdue</span>
+                </div>
+              )}
+              {summary.missed > 0 && (
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+                  <span className="text-red-400 text-sm font-semibold">{summary.missed}</span>
+                  <span className="text-slate-500 text-xs">missed</span>
+                </div>
               )}
             </div>
+            <div className="flex items-center gap-3">
+              <span className="text-slate-500 text-xs">{summary.total} Paperclip agents</span>
+              <button
+                onClick={load}
+                className="text-slate-400 hover:text-white transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Agents Tab */}
-      {tab === 'agents' && (
-        <div className="space-y-3">
-          {agents.map((agent) => {
-            const Icon = roleIcons[agent.role] || Bot;
-            const colorClass = roleColors[agent.role] || roleColors.support_agent;
-            const isExpanded = expandedAgent === agent.id;
-            const isRunning = runningAgent === agent.id;
+      {/* Agent cards */}
+      <div className="space-y-2">
+        {agents.map(agent => {
+          const Icon = agentIcons[agent.id] || Activity;
+          const isExpanded = expanded === agent.id;
 
-            return (
-              <div key={agent.id} className={`bg-slate-900/50 border rounded-2xl overflow-hidden ${colorClass.split(' ')[2]}`}>
-                {/* Agent Header */}
-                <div className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${colorClass.split(' ').slice(0, 2).join(' ')}`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold text-sm">{agent.name}</h3>
-                        <p className="text-slate-500 text-xs">{agent.description}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${
-                        agent.status === 'active' ? 'bg-green-400' :
-                        agent.status === 'paused' ? 'bg-amber-400' : 'bg-red-400'
-                      }`} />
-                      <span className="text-slate-500 text-xs">{agent.status}</span>
-                    </div>
+          return (
+            <div
+              key={agent.id}
+              className={`rounded-2xl border overflow-hidden transition-colors ${
+                agent.status === 'healthy'
+                  ? 'border-slate-800 bg-[#0a1628]/60'
+                  : agent.status === 'warning'
+                  ? 'border-[#f59e0b]/20 bg-[#0a1628]/60'
+                  : agent.status === 'missed'
+                  ? 'border-red-500/20 bg-[#0a1628]/60'
+                  : 'border-slate-800 bg-[#0a1628]/40'
+              }`}
+            >
+              {/* Card header */}
+              <div className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-slate-800/60 flex-shrink-0 mt-0.5">
+                    <Icon className="h-4 w-4 text-slate-300" />
                   </div>
 
-                  <div className="flex items-center gap-4 mt-3">
-                    <div className="flex items-center gap-1 text-slate-500 text-xs">
-                      <Clock className="h-3 w-3" />
-                      Last: {timeAgo(agent.last_run_at)}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <StatusDot status={agent.status} />
+                      <h3 className="text-white text-sm font-semibold leading-none">{agent.name}</h3>
+                      <StatusLabel status={agent.status} />
                     </div>
-                    <span className="text-slate-700 text-xs font-mono">{agent.schedule}</span>
+                    <p className="text-slate-500 text-xs mb-2">{agent.role}</p>
 
-                    {/* Learning badges */}
-                    {learning?.memories[agent.role] && (
-                      <span className="text-slate-600 text-xs">
-                        {learning.memories[agent.role].total} memories
-                      </span>
+                    {/* Meta row */}
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-slate-600 text-xs font-mono">{agent.schedule}</span>
+                      <div className="flex items-center gap-1 text-slate-500 text-xs">
+                        <Clock className="h-3 w-3" />
+                        Last: <span className="text-slate-400">{timeAgo(agent.last_run)}</span>
+                      </div>
+                      {agent.next_run && (
+                        <div className="flex items-center gap-1 text-slate-500 text-xs">
+                          Next: <span className={
+                            agent.status === 'missed' ? 'text-red-400' :
+                            agent.status === 'warning' ? 'text-[#f59e0b]' : 'text-slate-400'
+                          }>{timeUntil(agent.next_run)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Latest summary */}
+                    {agent.latest_summary && (
+                      <p className="text-slate-400 text-xs mt-2 line-clamp-2 leading-relaxed">
+                        {agent.latest_summary.slice(0, 160)}{agent.latest_summary.length > 160 ? '...' : ''}
+                      </p>
                     )}
-                    {learning?.predictions[agent.role] && learning.predictions[agent.role].total > 0 && (
-                      <span className={`text-xs ${learning.predictions[agent.role].accuracy >= 60 ? 'text-green-500' : 'text-amber-500'}`}>
-                        {learning.predictions[agent.role].accuracy}% accuracy
-                      </span>
-                    )}
-
-                    <div className="flex-1" />
-
-                    <button
-                      onClick={() => toggleStatus(agent)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                        agent.status === 'active'
-                          ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
-                          : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
-                      }`}
-                    >
-                      {agent.status === 'active' ? <Pause className="h-3 w-3 inline mr-1" /> : <Play className="h-3 w-3 inline mr-1" />}
-                      {agent.status === 'active' ? 'Pause' : 'Resume'}
-                    </button>
-
-                    <button
-                      onClick={() => triggerRun(agent)}
-                      disabled={isRunning}
-                      className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1"
-                    >
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                      Run Now
-                    </button>
-
-                    <button
-                      onClick={() => setExpandedAgent(isExpanded ? null : agent.id)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
                   </div>
+
+                  <button
+                    onClick={() => setExpanded(isExpanded ? null : agent.id)}
+                    className="text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0 mt-1"
+                  >
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
                 </div>
-
-                {/* Latest Report (expanded) */}
-                {isExpanded && agent.latest_report && (
-                  <div className="border-t border-slate-800 p-5 bg-slate-950/30">
-                    <h4 className="text-white text-sm font-semibold mb-2">{agent.latest_report.title}</h4>
-                    <p className="text-slate-400 text-xs mb-1">
-                      {new Date(agent.latest_report.created_at).toLocaleString('en-GB')} -
-                      <span className={`ml-1 ${agent.latest_report.status === 'sent' ? 'text-green-400' : 'text-slate-500'}`}>
-                        {agent.latest_report.status}
-                      </span>
-                    </p>
-                    <p className="text-slate-300 text-sm whitespace-pre-wrap mt-2">{agent.latest_report.content}</p>
-
-                    {agent.latest_report.recommendations.length > 0 && (
-                      <div className="mt-3 bg-slate-900/50 rounded-lg p-3">
-                        <p className="text-amber-400 text-xs font-semibold mb-1">Recommendations</p>
-                        <ul className="text-slate-400 text-xs space-y-1">
-                          {agent.latest_report.recommendations.map((r, i) => (
-                            <li key={i} className="flex gap-2">
-                              <span className="text-amber-500">-</span> {r}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {Object.keys(agent.latest_report.data).length > 0 && (
-                      <div className="mt-3 bg-slate-900/50 rounded-lg p-3">
-                        <p className="text-amber-400 text-xs font-semibold mb-1">Metrics</p>
-                        <pre className="text-slate-400 text-xs overflow-x-auto">
-                          {JSON.stringify(agent.latest_report.data, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {isExpanded && !agent.latest_report && (
-                  <div className="border-t border-slate-800 p-5 bg-slate-950/30">
-                    <p className="text-slate-500 text-sm text-center">No reports yet. Click "Run Now" to trigger the first autonomous run.</p>
-                  </div>
-                )}
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              {/* Expanded: recent log entries */}
+              {isExpanded && (
+                <div className="border-t border-slate-800 bg-slate-950/30">
+                  {agent.recent_entries.length === 0 ? (
+                    <p className="text-slate-500 text-xs text-center py-5">
+                      No business_log entries yet for <code className="font-mono">{agent.id}</code>
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-slate-800/50">
+                      {agent.recent_entries.map((entry, i) => (
+                        <div key={entry.id} className="px-4 py-3">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="text-white text-xs font-medium leading-tight">
+                              {entry.title}
+                            </span>
+                            <span className="text-slate-600 text-xs flex-shrink-0">
+                              {timeAgo(entry.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-slate-400 text-xs leading-relaxed">
+                            {entry.content.slice(0, 200)}{entry.content.length > 200 ? '...' : ''}
+                          </p>
+                          {i === 0 && agent.recent_entries.length > 1 && (
+                            <div className="mt-1">
+                              <span className="text-[#34d399] text-xs font-medium">Latest</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
