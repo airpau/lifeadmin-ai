@@ -18,9 +18,9 @@ const PAYMENT_PROVIDER_TYPES = new Set(['loan', 'mortgage', 'credit_card']);
 const PAYMENT_CATEGORIES = new Set(['loan', 'mortgage', 'credit_card', 'finance', 'debt']);
 
 function isScheduledPayment(sub: RenewalSubscription): boolean {
-  if (sub.contract_type && PAYMENT_CONTRACT_TYPES.has(sub.contract_type)) return true;
-  if (sub.provider_type && PAYMENT_PROVIDER_TYPES.has(sub.provider_type)) return true;
-  if (sub.category && PAYMENT_CATEGORIES.has(sub.category)) return true;
+  if (sub.contract_type && PAYMENT_CONTRACT_TYPES.has(sub.contract_type.toLowerCase())) return true;
+  if (sub.provider_type && PAYMENT_PROVIDER_TYPES.has(sub.provider_type.toLowerCase())) return true;
+  if (sub.category && PAYMENT_CATEGORIES.has(sub.category.toLowerCase())) return true;
   return false;
 }
 
