@@ -280,6 +280,7 @@ export default function MoneyHubPage() {
 
   // Expired bank connections
   const [expiredConnections, setExpiredConnections] = useState<Array<{ id: string; bank_name: string; status: string }>>([]);
+  const [bankPromptDismissed, setBankPromptDismissed] = useState(false);
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -491,6 +492,13 @@ export default function MoneyHubPage() {
 
   const handleReconnectBank = () => {
     setShowBankPicker(true);
+  };
+
+  const handleDismissBankPrompt = async () => {
+    setBankPromptDismissed(true);
+    try {
+      await fetch('/api/user/dismiss-bank-prompt', { method: 'POST' });
+    } catch { /* non-critical */ }
   };
 
   // ─── Category drill-down ──────────────────────────────────────────────────
@@ -866,19 +874,29 @@ export default function MoneyHubPage() {
       })
       .finally(() => setLoading(false));
 
-    // Fetch user ID and expired bank connections
+    // Fetch user ID, expired bank connections, and prompt dismissal state
     (async () => {
       try {
         const sb = createClient();
         const { data: { user } } = await sb.auth.getUser();
         if (user) {
           setUserId(user.id);
-          const { data: conns } = await sb.from('bank_connections')
-            .select('id, bank_name, status')
-            .eq('user_id', user.id)
-            .in('status', ['expired', 'token_expired']);
+          const [{ data: conns }, { data: profile }] = await Promise.all([
+            sb.from('bank_connections')
+              .select('id, bank_name, status')
+              .eq('user_id', user.id)
+              .in('status', ['expired', 'token_expired']),
+            sb.from('profiles')
+              .select('bank_prompt_dismissed_at')
+              .eq('id', user.id)
+              .single(),
+          ]);
           if (conns && conns.length > 0) {
             setExpiredConnections(conns);
+          }
+          if (profile?.bank_prompt_dismissed_at) {
+            const daysSince = (Date.now() - new Date(profile.bank_prompt_dismissed_at).getTime()) / 86_400_000;
+            setBankPromptDismissed(daysSince < 30);
           }
         }
       } catch { /* silent */ }
@@ -1402,24 +1420,22 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ Expired Bank Connection Banner ═══ */}
-      {expiredConnections.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
-            <div>
-              <p className="font-medium text-amber-200">
-                Bank connection expired
-              </p>
-              <p className="text-sm text-amber-300/70">
-                Your {expiredConnections.map(c => c.bank_name || 'bank').join(' and ')} connection{expiredConnections.length > 1 ? 's have' : ' has'} expired. Reconnect to resume automatic syncing.
-              </p>
-            </div>
-          </div>
+      {expiredConnections.length > 0 && !bankPromptDismissed && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <span className="text-amber-300 flex-1">
+            {expiredConnections.map(c => c.bank_name || 'Bank').join(' & ')} connection expired.{' '}
+            <button onClick={handleReconnectBank} className="underline hover:text-amber-200 transition-colors">
+              Reconnect
+            </button>{' '}
+            to resume auto-sync.
+          </span>
           <button
-            onClick={handleReconnectBank}
-            className="shrink-0 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 font-medium px-4 py-2 rounded-lg text-sm transition-all"
+            onClick={handleDismissBankPrompt}
+            className="text-amber-400/60 hover:text-amber-300 transition-colors ml-1"
+            title="Dismiss for 30 days"
           >
-            Reconnect Bank
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}

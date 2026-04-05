@@ -196,6 +196,7 @@ export default function SubscriptionsPage() {
     manualSyncsToday: 0,
   });
   const [subComparisons, setSubComparisons] = useState<Record<string, any[]>>({});
+  const [bankPromptDismissed, setBankPromptDismissed] = useState(false);
 
   // Fetch contract renewal alerts
   const fetchContractAlerts = useCallback(async () => {
@@ -319,8 +320,15 @@ export default function SubscriptionsPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      supabase.from('profiles').select('subscription_tier').eq('id', user.id).single()
-        .then(({ data }) => { if (data?.subscription_tier) setUserTier(data.subscription_tier); });
+      supabase.from('profiles').select('subscription_tier, bank_prompt_dismissed_at').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (data?.subscription_tier) setUserTier(data.subscription_tier);
+          if (data?.bank_prompt_dismissed_at) {
+            const dismissedAt = new Date(data.bank_prompt_dismissed_at).getTime();
+            const daysSince = (Date.now() - dismissedAt) / 86_400_000;
+            setBankPromptDismissed(daysSince < 30);
+          }
+        });
     });
   }, [fetchSubscriptions, fetchBankConnection, fetchComparisons, fetchContractAlerts]);
 
@@ -898,6 +906,13 @@ export default function SubscriptionsPage() {
     }
   };
 
+  const handleDismissBankPrompt = async () => {
+    setBankPromptDismissed(true);
+    try {
+      await fetch('/api/user/dismiss-bank-prompt', { method: 'POST' });
+    } catch { /* non-critical */ }
+  };
+
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkResults, setBulkResults] = useState<{ sub: Subscription; email: any; error?: string }[] | null>(null);
 
@@ -1418,8 +1433,19 @@ export default function SubscriptionsPage() {
               );
             }
 
+            if (isFirst && bankPromptDismissed) return null;
+
             return (
-              <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+              <div className="relative bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+                {isFirst && (
+                  <button
+                    onClick={handleDismissBankPrompt}
+                    className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
+                    title="Dismiss for 30 days"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                   <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
                     <Building2 className="h-6 w-6 text-blue-400" />
