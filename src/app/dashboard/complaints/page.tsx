@@ -656,9 +656,9 @@ function DisputeProgressTracker({ dispute, providerInfo }: {
   let currentStage = 1;
   if (resolved) currentStage = 6;
   else if (isEscalatedStatus) currentStage = 5;
-  else if (hasFollowUp) currentStage = 4;
+  else if (hasFollowUp && hasCompanyResponse) currentStage = 4;
   else if (hasCompanyResponse) currentStage = 3;
-  else if (hasLetter) currentStage = 2;
+  else if (hasLetter) currentStage = 2; // includes hasFollowUp-without-response case
 
   const responseDays: number = providerInfo?.complaints_response_days ?? 14;
   const firstLetter = correspondence.find(c => c.entry_type === 'ai_letter');
