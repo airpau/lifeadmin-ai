@@ -249,6 +249,102 @@ export const telegramTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'get_loyalty_status',
+    description:
+      "Get the user's loyalty rewards status — points balance, tier (Bronze/Silver/Gold/Platinum), badges earned, active streak, and available redemptions. Use when they ask about their points, rewards, tier, badges, or perks.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_referral_link',
+    description:
+      "Get the user's referral link and stats — unique referral URL, how many friends they've referred, and how many have subscribed (earning them 1 free month per paid referral). Use when they ask about referring friends, their referral code, or referral rewards.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_net_worth',
+    description:
+      "Get the user's net worth breakdown from Money Hub — total assets (property, savings, investments, vehicles) vs total liabilities (mortgages, loans, credit cards), with an overall net worth figure. Use when they ask about net worth, total assets, total debts, or their financial position.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_expected_bills',
+    description:
+      "Get the user's expected bills for the current month — recurring payments predicted to come out this month, which have already been paid, and the total outstanding. Use when they ask what bills are coming up, what's been paid, or what's still due this month.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_overcharge_assessments',
+    description:
+      "Get AI-generated overcharge assessments — subscriptions and contracts where the user is likely paying more than the market rate, with confidence score and estimated annual saving if they switch or dispute. Use when they ask if they're overpaying, what they could save, or what overcharges have been detected.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_profile',
+    description:
+      "Get the user's account profile — name, email address, subscription plan (Free/Essential/Pro), phone number, address, and postcode. Use when they ask about their account details, what plan they're on, their email address, or their profile information.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_tasks',
+    description:
+      "Get the user's financial tasks and action items — things flagged for action from disputes, opportunity scanner findings, and manual entries. Shows title, status, priority, and date created. Use when they ask about their to-do list, pending actions, or tasks.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['all', 'pending_review', 'completed', 'dismissed'],
+          description: 'Filter by task status. Defaults to pending_review (outstanding tasks).',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max tasks to return. Defaults to 20.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_scanner_results',
+    description:
+      "Get opportunity scanner findings from the user's email inbox scan — detected overcharges, forgotten subscriptions, price increases, flight delay compensation opportunities, refund opportunities, and more. Use when they ask what the scanner found, about their inbox scan results, or what financial opportunities were detected in their emails.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['all', 'pending_review', 'actioned', 'dismissed'],
+          description: 'Filter by status. Defaults to pending_review (new findings that need reviewing).',
+        },
+      },
+      required: [],
+    },
+  },
 
   // ============================================================
   // ACTION TOOLS — require inline keyboard confirmation
@@ -679,6 +775,63 @@ export const telegramTools: Tool[] = [
         },
       },
       required: [],
+    },
+  },
+  {
+    name: 'generate_cancellation_email',
+    description:
+      'Generate a formal cancellation letter for a subscription, contract, or service citing the correct UK consumer law for that category. Returns a ready-to-send email subject and body. Use when the user wants to cancel a specific provider — this generates the letter with the right legal references (Ofcom for broadband/mobile, Ofgem for energy, FCA for insurance/mortgage, etc.).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The provider or company to cancel (e.g. "Sky", "BT", "Netflix", "British Gas").',
+        },
+        category: {
+          type: 'string',
+          enum: ['broadband', 'mobile', 'energy', 'insurance', 'streaming', 'fitness', 'software', 'mortgage', 'loan', 'utility', 'council_tax', 'gambling', 'other'],
+          description: 'Type of subscription or contract — used to include the correct UK legal references.',
+        },
+        amount: {
+          type: 'number',
+          description: 'Monthly cost in GBP (e.g. 49.99). Optional but improves the letter quality.',
+        },
+        account_email: {
+          type: 'string',
+          description: "The user's account email address with this provider. Optional — include if known.",
+        },
+      },
+      required: ['provider_name', 'category'],
+    },
+  },
+  {
+    name: 'create_support_ticket',
+    description:
+      "Create a support ticket with the Paybacker help team. Use when the user has a problem, bug report, billing question, or account issue that needs human support. Returns a ticket reference. Don't use for general questions you can answer — only use when the user genuinely needs help from the Paybacker team.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        subject: {
+          type: 'string',
+          description: 'Short subject line for the ticket (e.g. "Bank connection not syncing", "Incorrect charge on account").',
+        },
+        description: {
+          type: 'string',
+          description: 'Full description of the issue or request.',
+        },
+        category: {
+          type: 'string',
+          enum: ['billing', 'technical', 'account', 'bank_connection', 'email_scan', 'general'],
+          description: 'Category for the support ticket. Defaults to general.',
+        },
+        priority: {
+          type: 'string',
+          enum: ['low', 'medium', 'high'],
+          description: 'Priority level. Defaults to medium.',
+        },
+      },
+      required: ['subject', 'description'],
     },
   },
   {
