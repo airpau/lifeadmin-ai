@@ -459,7 +459,7 @@ export default function MoneyHubPage() {
       const responseData = await res.json();
 
       if (responseData.summary?.token_expired > 0) {
-        const expired = (responseData.results || []).filter((r: any) => r.status === 'token_expired');
+        const expired = (responseData.results || []).filter((r: any) => ['token_expired', 'expired', 'expired_legacy'].includes(r.status));
         setExpiredConnections(expired.map((r: any) => ({ id: r.connection_id || '', bank_name: r.bank_name || 'Bank', status: 'expired' })));
         showToast('Bank connection expired. Please reconnect your bank.', 'error');
       } else if (responseData.summary?.synced > 0) {
@@ -885,7 +885,7 @@ export default function MoneyHubPage() {
             sb.from('bank_connections')
               .select('id, bank_name, status')
               .eq('user_id', user.id)
-              .in('status', ['expired', 'token_expired']),
+              .in('status', ['expired', 'token_expired', 'expired_legacy']),
             sb.from('profiles')
               .select('bank_prompt_dismissed_at')
               .eq('id', user.id)
