@@ -81,7 +81,6 @@ export async function GET(request: NextRequest) {
   const results = await Promise.allSettled(
     routes.map((path) =>
       fetch(`${baseUrl}${path}`, { headers }).then((r) => ({
-        path,
         status: r.status,
         ok: r.ok,
       })),
