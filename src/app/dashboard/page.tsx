@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [emailLastScanned, setEmailLastScanned] = useState<string | null>(null);
   const [emailScanning, setEmailScanning] = useState(false);
   const [emailScanResults, setEmailScanResults] = useState<number | null>(null);
+  const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankSyncing, setBankSyncing] = useState(false);
   const supabase = createClient();
@@ -424,6 +425,28 @@ export default function DashboardPage() {
     fetchData();
   }, [supabase]);
 
+  const handleEmailScan = async () => {
+    setEmailScanning(true);
+    setEmailScanResults(null);
+    setEmailOpportunities([]);
+    try {
+      const res = await fetch('/api/gmail/scan', { method: 'POST' });
+      const data = await res.json();
+      if (data.opportunities && data.opportunities.length > 0) {
+        setEmailScanResults(data.opportunities.length);
+        setEmailOpportunities(data.opportunities);
+      } else if (data.error) {
+        setEmailScanResults(0);
+      } else {
+        setEmailScanResults(0);
+      }
+    } catch {
+      setEmailScanResults(0);
+    } finally {
+      setEmailScanning(false);
+    }
+  };
+
 
 
   if (loading) {
@@ -679,16 +702,22 @@ export default function DashboardPage() {
                   <span className="text-amber-400 text-sm">Not connected</span>
                 )}
               </div>
-              <Link
-                href="/dashboard/scanner"
-                className={`flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center ${
-                  emailConnected
-                    ? 'bg-navy-800 hover:bg-navy-700 text-white font-medium'
-                    : 'bg-mint-400 hover:bg-mint-500 text-navy-950'
-                }`}
-              >
-                {emailConnected ? 'Scan Inbox' : 'Connect Email'}
-              </Link>
+              {emailConnected ? (
+                <button
+                  onClick={handleEmailScan}
+                  disabled={emailScanning}
+                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white"
+                >
+                  {emailScanning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</> : 'Scan Inbox'}
+                </button>
+              ) : (
+                <Link
+                  href="/dashboard/scanner"
+                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-mint-400 hover:bg-mint-500 text-navy-950"
+                >
+                  Connect Email
+                </Link>
+              )}
             </div>
 
             {/* First Letter */}
@@ -755,49 +784,97 @@ export default function DashboardPage() {
 
       {/* Email Scan Card */}
       {emailConnected ? (
-        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Mail className="h-5 w-5 text-purple-400" />
-            <div>
-              <p className="text-white font-semibold text-sm">
-                {emailScanning ? 'Scanning your emails...' : 'Email Scanner'}
-              </p>
-              <p className="text-slate-400 text-xs">
-                {emailScanResults !== null
-                  ? `Found ${emailScanResults} opportunities`
-                  : emailAddress
-                    ? `Connected: ${emailAddress}${emailLastScanned ? ` \u00b7 Last scanned: ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
-                    : 'Scan your inbox to find bills, overcharges & savings'}
-              </p>
+        <div className="mb-6">
+          <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Mail className="h-5 w-5 text-purple-400" />
+              <div>
+                <p className="text-white font-semibold text-sm">
+                  {emailScanning ? 'Scanning your emails...' : 'Email Scanner'}
+                </p>
+                <p className="text-slate-400 text-xs">
+                  {emailScanResults !== null
+                    ? `Found ${emailScanResults} opportunities`
+                    : emailAddress
+                      ? `Connected: ${emailAddress}${emailLastScanned ? ` \u00b7 Last scanned: ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
+                      : 'Scan your inbox to find bills, overcharges & savings'}
+                </p>
+              </div>
             </div>
+            <button
+              onClick={handleEmailScan}
+              disabled={emailScanning}
+              className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap ml-4"
+            >
+              {emailScanning ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
+              ) : (
+                <><ScanSearch className="h-4 w-4" /> Scan Emails</>
+              )}
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              setEmailScanning(true);
-              setEmailScanResults(null);
-              try {
-                const res = await fetch('/api/gmail/scan', { method: 'POST' });
-                const data = await res.json();
-                if (data.opportunities) {
-                  setEmailScanResults(data.opportunities.length);
-                } else if (data.error) {
-                  setEmailScanResults(0);
-                }
-              } catch {
-                setEmailScanResults(0);
-              } finally {
-                setEmailScanning(false);
-              }
-            }}
-            disabled={emailScanning}
-            className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap ml-4"
-          >
-            {emailScanning ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
-            ) : (
-              <><ScanSearch className="h-4 w-4" /> Scan Emails</>
-            )}
-          </button>
+
+          {/* Scan Results */}
+          {emailOpportunities.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="text-white font-semibold text-sm px-1">{emailOpportunities.length} opportunities found</p>
+              {emailOpportunities.map((opp: any, i: number) => {
+                const actionLabel: Record<string, { text: string; color: string }> = {
+                  track: { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' },
+                  cancel: { text: 'Cancel', color: 'bg-red-600 hover:bg-red-700' },
+                  switch_deal: { text: 'Find Deal', color: 'bg-emerald-600 hover:bg-emerald-700' },
+                  dispute: { text: 'Dispute', color: 'bg-orange-600 hover:bg-orange-700' },
+                  claim_compensation: { text: 'Claim', color: 'bg-green-600 hover:bg-green-700' },
+                  claim_refund: { text: 'Claim Refund', color: 'bg-green-600 hover:bg-green-700' },
+                  monitor: { text: 'Monitor', color: 'bg-navy-700 hover:bg-navy-600' },
+                };
+                const action = actionLabel[opp.suggestedAction] || actionLabel.track;
+                const typeColors: Record<string, string> = {
+                  subscription: 'text-blue-400 bg-blue-500/10',
+                  renewal: 'text-amber-400 bg-amber-500/10',
+                  price_increase: 'text-orange-400 bg-orange-500/10',
+                  overcharge: 'text-red-400 bg-red-500/10',
+                  utility_bill: 'text-cyan-400 bg-cyan-500/10',
+                  flight_delay: 'text-sky-400 bg-sky-500/10',
+                  forgotten_subscription: 'text-purple-400 bg-purple-500/10',
+                  insurance: 'text-emerald-400 bg-emerald-500/10',
+                  refund_opportunity: 'text-green-400 bg-green-500/10',
+                  loan: 'text-violet-400 bg-violet-500/10',
+                };
+                const typeColor = typeColors[opp.type] || 'text-slate-400 bg-slate-500/10';
+                return (
+                  <div key={opp.id || i} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-white font-medium text-sm">{opp.title}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${typeColor}`}>
+                            {(opp.type || 'opportunity').replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <p className="text-slate-500 text-xs">{opp.provider}{opp.category ? ` · ${opp.category}` : ''}{opp.paymentFrequency ? ` · ${opp.paymentFrequency}` : ''}</p>
+                        <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description}</p>
+                      </div>
+                      <button
+                        className={`${action.color} text-white text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap transition-all flex-shrink-0`}
+                        onClick={() => {
+                          if (opp.suggestedAction === 'switch_deal') {
+                            window.location.href = '/dashboard/deals';
+                          } else if (opp.suggestedAction === 'dispute' || opp.suggestedAction === 'claim_compensation' || opp.suggestedAction === 'claim_refund') {
+                            window.location.href = '/dashboard/disputes';
+                          } else {
+                            window.location.href = '/dashboard/subscriptions';
+                          }
+                        }}
+                      >
+                        {action.text}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
