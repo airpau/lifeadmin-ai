@@ -187,6 +187,7 @@ export default function ProfilePage() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
   const [showReport, setShowReport] = useState(false);
+  const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -253,6 +254,13 @@ export default function ProfilePage() {
       })
       .catch(() => {});
   }, [supabase, searchParams]);
+
+  useEffect(() => {
+    fetch('/api/telegram/link-code')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setTelegramLinked(data?.linked === true))
+      .catch(() => setTelegramLinked(false));
+  }, []);
 
   const startEditing = () => {
     setEditForm({
@@ -883,12 +891,25 @@ export default function ProfilePage() {
         <p className="text-slate-400 text-sm mb-4">
           Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
         </p>
-        <Link
-          href="/dashboard/pocket-agent"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
-        >
-          Set Up Pocket Agent
-        </Link>
+        {telegramLinked === true ? (
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
+            <span className="text-green-400 text-sm font-medium">Pocket Agent Connected</span>
+            <Link
+              href="/dashboard/pocket-agent"
+              className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-xl text-sm font-medium transition-colors border border-navy-700/50"
+            >
+              Manage
+            </Link>
+          </div>
+        ) : (
+          <Link
+            href="/dashboard/pocket-agent"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
+          >
+            Set Up Pocket Agent
+          </Link>
+        )}
       </div>
       {/* Danger Zone — Delete Account */}
       <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
