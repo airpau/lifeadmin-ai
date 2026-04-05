@@ -1,0 +1,29 @@
+{
+  "_description": "Git worktree and lock-safety configuration for Claude Code sessions. This file documents conventions — Claude Code reads this to understand how parallel tasks should be structured.",
+
+  "parallelTaskStrategy": {
+    "rule": "Each parallel code task MUST run in its own git worktree. Never operate multiple tasks simultaneously on the same working directory.",
+    "how": "Claude Code creates worktrees automatically when you use the --worktree flag or when the openclaw harness spawns tasks. Each worktree has an isolated index, so git operations cannot conflict.",
+    "worktreeNamingPattern": "claude/<adjective>-<surname>  (e.g. confident-moore, nervous-thompson)"
+  },
+
+  "indexLockPolicy": {
+    "staleAgeSeconds": 300,
+    "waitTimeoutSeconds": 30,
+    "autoRemoveStale": true,
+    "helperScript": "scripts/git-safe.sh",
+    "rules": [
+      "NEVER force-remove a lock younger than 5 minutes — another operation may be live",
+      "Use scripts/git-safe.sh <git-args> instead of calling git directly in scripts",
+      "The pre-commit hook in .git/hooks/pre-commit clears stale locks automatically",
+      "If you hit a lock error: check age with `stat .git/index.lock`, then decide"
+    ]
+  },
+
+  "checkBeforeGitOp": [
+    "Is .git/index.lock present?",
+    "If yes: how old is it? (stat -f %m .git/index.lock on macOS)",
+    "If older than 5 min: safe to remove",
+    "If newer: wait up to 30s, then re-check"
+  ]
+}
