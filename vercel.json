@@ -155,6 +155,46 @@
     {
       "path": "/api/cron/overcharge-assessment",
       "schedule": "0 10 * * 0"
+    },
+    {
+      "path": "/api/cron/telegram-payment-reminders",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-weekly-summary",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/telegram-month-end-recap",
+      "schedule": "0 9 1 * *"
+    },
+    {
+      "path": "/api/cron/telegram-budget-alerts",
+      "schedule": "0 8,13,18 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-unused-subscription-alert",
+      "schedule": "0 9 * * 3"
+    },
+    {
+      "path": "/api/cron/telegram-contract-expiry",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-price-increase-detection",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-dispute-tracker",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-savings-milestone",
+      "schedule": "0 10 * * 0"
+    },
+    {
+      "path": "/api/cron/telegram-payday-summary",
+      "schedule": "0 10 * * *"
     }
   ],
 
@@ -182,10 +222,6 @@
     {
       "_note": "Disabled — replaced by Paperclip scheduled tasks. Charlie (EA) — daily CEO digest sent to founder via Telegram (signups, disputes, content, agent activity, recommended actions).",
       "path": "/api/cron/daily-ceo-report",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/telegram-payment-reminders",
       "schedule": "0 8 * * *"
     }
   ]

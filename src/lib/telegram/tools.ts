@@ -706,4 +706,63 @@ export const telegramTools: Tool[] = [
       required: ['transaction_id', 'new_category'],
     },
   },
+
+  // ============================================================
+  // PROACTIVE INTELLIGENCE TOOLS — on-demand equivalents of cron alerts
+  // ============================================================
+  {
+    name: 'get_weekly_outlook',
+    description:
+      "Get a week-ahead financial lookahead: bills due this week, total outgoings, and contracts/subscriptions ending in the next 30 days. Uses the same get_expected_bills RPC as the Money Hub dashboard. Use when the user asks 'what's due this week?', 'any bills coming up?', or 'what should I expect financially?'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_monthly_recap',
+    description:
+      "Get a full financial recap for a given month: total income, total spending, savings rate, top 5 spending categories, and net position. Uses get_monthly_spending_total, get_monthly_spending, and get_monthly_income_total RPCs — the same source as the Money Hub dashboard. Use when the user asks 'how was my March?', 'show my monthly summary', or 'what did I spend last month?'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        month: {
+          type: 'string',
+          description: 'Month in YYYY-MM format (e.g. 2026-03). Defaults to previous month if omitted.',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_unused_subscriptions',
+    description:
+      "Find active subscriptions that have had no matching bank transactions in the last 90 days — potential zombie subscriptions the user is paying for but not using. Use when the user asks 'what am I not using?', 'any subscriptions I should cancel?', or 'find unused payments'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_dispute_status',
+    description:
+      "Get all active disputes with their age in days, days until the FCA 8-week deadline, and recommended next action. Use when the user asks 'how are my disputes going?', 'any complaints I need to follow up?', or 'what's the status of my complaints?'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_savings_total',
+    description:
+      "Get the user's total verified savings since joining Paybacker — money confirmed saved through disputes, cancellations, price reversions, and refunds. Also shows the breakdown by saving type. Use when the user asks 'how much have I saved?', 'what's my total savings?', or 'show my Paybacker savings'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
