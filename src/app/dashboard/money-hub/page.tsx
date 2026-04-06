@@ -23,6 +23,16 @@ import BankPickerModal from '@/components/BankPickerModal';
 interface MoneyHubData {
   tier: string;
   score: number;
+  healthScore?: {
+    overall: number;
+    tier: 'vulnerable' | 'coping' | 'healthy';
+    pillars: {
+      spend: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+      save: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+      borrow: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+      plan: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+    };
+  };
   overview: {
     monthlyIncome: number;
     monthlyOutgoings: number;
@@ -338,6 +348,16 @@ export default function MoneyHubPage() {
     } catch { /* silent */ }
   };
 
+  const fetchForecast = async () => {
+    setForecastLoading(true);
+    try {
+      const res = await fetch('/api/money-hub/forecast');
+      const d = await res.json();
+      if (!d.error) setForecast(d);
+    } catch { /* silent */ }
+    setForecastLoading(false);
+  };
+
   const dismissBill = async (bill: ExpectedBill) => {
     if (!userId || !bill.bill_key) return;
     const now = new Date();
@@ -426,6 +446,13 @@ export default function MoneyHubPage() {
 
   // Custom widgets (Pro AI)
   const [customWidgets, setCustomWidgets] = useState<CustomWidget[]>([]);
+
+  // Forecast data
+  const [forecast, setForecast] = useState<any>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+
+  // Financial Health Score expanded view
+  const [scoreExpanded, setScoreExpanded] = useState(false);
 
   // ─── Data fetching ────────────────────────────────────────────────────────
 
@@ -1017,6 +1044,7 @@ export default function MoneyHubPage() {
 
     // Fetch expected bills (DB function handles deduplication & dismissed filtering)
     fetchExpectedBills();
+    fetchForecast();
 
     // Fetch previous month data for recap
     setLoadingPrevMonth(true);
@@ -1226,16 +1254,20 @@ export default function MoneyHubPage() {
   }
   const totalIncome = Object.values(incomeBreakdown).reduce((s, v) => s + v, 0);
 
-  // Deduplicate spending categories (merge entries with same category, exclude transfers)
+  // Deduplicate spending categories (merge entries with same category, exclude transfers and income)
   const deduplicatedSpending = (() => {
     const map = new Map<string, number>();
     for (const cat of data.spending.categories) {
-      const key = cat.category.toLowerCase().trim();
-      // Transfers between own accounts are not spending
-      if (key === 'transfers' || key === 'transfer') continue;
+      const key = (cat.category || '').toLowerCase().trim();
+      // Exclude all transfer and income categories (soft and hard categories)
+      if (!key || key === 'transfers' || key === 'transfer' || key === 'income') continue;
+      // Also exclude any empty or invalid categories
+      if (key === '' || key === 'null' || key === 'undefined') continue;
       map.set(key, (map.get(key) || 0) + cat.total);
     }
-    return Array.from(map.entries()).map(([category, total]) => ({ category, total }));
+    return Array.from(map.entries())
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total); // Sort by total descending
   })();
 
   // Total derived from the filtered set — excludes transfers so percentages add up to 100%
@@ -1475,14 +1507,52 @@ export default function MoneyHubPage() {
               </span>
             )}
           </button>
-          <div className="text-right">
-            <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-mint-400' : 'text-red-400'}`}>
-              {data.score}
-            </div>
-            <p className="text-slate-500 text-xs">Financial Health Score</p>
+          <div className="text-right relative">
+            <button onClick={() => setScoreExpanded(!scoreExpanded)} className="text-right hover:opacity-80 transition-opacity">
+              <div className={`text-4xl font-bold ${(data.healthScore?.overall ?? data.score) >= 80 ? 'text-green-400' : (data.healthScore?.overall ?? data.score) >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                {data.healthScore?.overall ?? data.score}
+              </div>
+              <p className={`text-xs font-medium ${data.healthScore?.tier === 'healthy' ? 'text-green-400' : data.healthScore?.tier === 'coping' ? 'text-amber-400' : 'text-red-400'}`}>
+                {data.healthScore?.tier ? data.healthScore.tier.charAt(0).toUpperCase() + data.healthScore.tier.slice(1) : 'Financial Health'}
+              </p>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Financial Health Score Breakdown */}
+      {scoreExpanded && data.healthScore && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-semibold text-lg">Financial Health Score</h3>
+            <button onClick={() => setScoreExpanded(false)} className="text-slate-500 hover:text-white"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Object.values(data.healthScore.pillars).map((pillar: any) => (
+              <div key={pillar.label} className="bg-navy-950/50 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-400 text-xs font-medium">{pillar.label}</span>
+                  <span className={`text-lg font-bold ${pillar.score >= 80 ? 'text-green-400' : pillar.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{pillar.score}</span>
+                </div>
+                <div className="w-full bg-navy-700 rounded-full h-1.5 mb-3">
+                  <div className={`h-1.5 rounded-full ${pillar.score >= 80 ? 'bg-green-400' : pillar.score >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${pillar.score}%` }} />
+                </div>
+                <div className="space-y-2">
+                  {pillar.metrics.map((m: any) => (
+                    <div key={m.name}>
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-500">{m.name}</span>
+                        <span className="text-slate-400">{m.score}/100</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{m.tip}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* FCA Compliance Banner */}
       {showFcaBanner && (
@@ -1490,7 +1560,7 @@ export default function MoneyHubPage() {
           <Shield className="h-5 w-5 text-sky-400 shrink-0 mt-0.5" />
           <div className="flex-1 pr-6">
             <p className="text-sky-300 text-sm">
-              Your financial data is powered by secure Open Banking transaction analysis. Bank balance display coming soon.
+              Your financial data is powered by FCA-regulated Open Banking via Yapily and TrueLayer. Read-only access ensures your accounts stay secure.
             </p>
           </div>
           <button onClick={dismissFcaBanner} className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors">
@@ -1829,6 +1899,97 @@ export default function MoneyHubPage() {
         );
       })()}
 
+      {/* ═══ Cash Flow Forecast ═══ */}
+      {forecast && isCurrentMonthView && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-mint-400" />
+            This Month&apos;s Forecast
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">Projected Income</p>
+              <p className="text-green-400 font-bold text-lg">£{fmt(forecast.projectedIncome)}</p>
+              {forecast.vsLastMonth?.incomeChange !== null && (
+                <p className={`text-[10px] ${forecast.vsLastMonth.incomeChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {forecast.vsLastMonth.incomeChange >= 0 ? '+' : ''}{forecast.vsLastMonth.incomeChange}% vs last month
+                </p>
+              )}
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">Projected Spending</p>
+              <p className="text-red-400 font-bold text-lg">£{fmt(forecast.projectedSpending)}</p>
+              {forecast.vsLastMonth?.spendingChange !== null && (
+                <p className={`text-[10px] ${forecast.vsLastMonth.spendingChange <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {forecast.vsLastMonth.spendingChange >= 0 ? '+' : ''}{forecast.vsLastMonth.spendingChange}% vs last month
+                </p>
+              )}
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">End-of-Month Position</p>
+              <p className={`font-bold text-lg ${forecast.projectedNetPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {forecast.projectedNetPosition >= 0 ? '+' : ''}£{fmt(Math.abs(forecast.projectedNetPosition))}
+              </p>
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">Bills Remaining</p>
+              <p className="text-amber-400 font-bold text-lg">£{fmt(forecast.totalBillsRemaining)}</p>
+              <p className="text-slate-500 text-[10px]">{forecast.expectedBills?.filter((b: any) => !b.paid).length || 0} unpaid</p>
+            </div>
+          </div>
+
+          {/* Expected Income */}
+          {forecast.incomeForecast?.length > 0 && (
+            <div className="mb-4">
+              <p className="text-slate-400 text-xs font-medium mb-2">Expected Income</p>
+              <div className="space-y-1.5">
+                {forecast.incomeForecast.map((inc: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      {inc.received_this_month ? <CheckCircle2 className="h-3.5 w-3.5 text-green-400" /> : <Clock className="h-3.5 w-3.5 text-slate-500" />}
+                      <span className="text-white text-sm">{inc.source}</span>
+                      <span className="text-slate-500 text-[10px]">{inc.income_type}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-sm font-medium ${inc.received_this_month ? 'text-green-400' : 'text-slate-300'}`}>
+                        £{fmt(inc.received_this_month ? inc.actual_amount : inc.expected_amount)}
+                      </span>
+                      {!inc.received_this_month && <span className="text-slate-500 text-[10px] ml-1">~day {inc.expected_day}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Expected Bills */}
+          {forecast.expectedBills?.length > 0 && (
+            <div>
+              <p className="text-slate-400 text-xs font-medium mb-2">Expected Bills</p>
+              <div className="space-y-1.5">
+                {forecast.expectedBills.filter((b: any) => !b.paid).slice(0, 8).map((bill: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-amber-400" />
+                      <span className="text-white text-sm">{bill.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-red-400 text-sm font-medium">£{fmt(bill.amount)}</span>
+                      <span className="text-slate-500 text-[10px] ml-1">~day {bill.billing_day}</span>
+                    </div>
+                  </div>
+                ))}
+                {forecast.expectedBills.filter((b: any) => b.paid).length > 0 && (
+                  <p className="text-green-400/60 text-[10px] px-3 pt-1">
+                    {forecast.expectedBills.filter((b: any) => b.paid).length} bills already paid this month ✓
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ═══ SPARSE MONTH: "Month So Far" Section ═══ */}
       {showSparseMonthContent && isCurrentMonthView && hasNoCurrentMonthTxns && (
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 text-center">
@@ -2106,6 +2267,17 @@ export default function MoneyHubPage() {
                             )}
                             <span className="text-slate-400 text-[10px]">{(filteredSpendingTotal > 0 ? (cat.total / filteredSpendingTotal) * 100 : 0).toFixed(1)}%</span>
                             <span className="text-white text-xs font-bold">£{fmt(cat.total)}</span>
+                            {prevMonthData && (() => {
+                              const prevCat = prevMonthData.categories.find(c => c.category === cat.category);
+                              if (!prevCat) return null;
+                              const change = ((cat.total - prevCat.total) / prevCat.total) * 100;
+                              if (Math.abs(change) < 5) return null;
+                              return (
+                                <span className={`text-[10px] ml-1 ${change > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                  {change > 0 ? '↑' : '↓'}{Math.abs(change).toFixed(0)}%
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                         <div className="w-full bg-navy-700 rounded-full h-1.5">
