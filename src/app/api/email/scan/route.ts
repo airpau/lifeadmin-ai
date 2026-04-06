@@ -193,12 +193,14 @@ Return a JSON array. Each entry must have:
 - accountNumber: reference number if found, null otherwise
 
 IMPORTANT:
-- You MUST return at least one entry for every unique provider/service you can identify from the emails. A normal inbox should have 10-50+ opportunities.
+- ONLY include genuine financial opportunities — subscriptions, bills, recurring payments, overcharges, compensation claims.
+- DO NOT include personal emails, legal correspondence, court cases, solicitor letters, charity updates, newsletters, marketing emails, social media notifications, or anything that is NOT a financial product/service the user pays for.
+- DO NOT include emails from: courts, tribunals, law firms, solicitors, police, crime services, charities, political organisations, schools, or community groups.
 - Group emails by provider: if you see 5 emails from Netflix, create ONE opportunity for Netflix.
 - For flight bookings, always suggest checking for delay compensation.
 - For debt collection emails, always suggest a formal dispute response.
 - For any subscription over 1 year old, suggest reviewing if still needed.
-- Include confidence >= 40. When in doubt, include it.
+- Only include items with confidence >= 60. Quality over quantity — 5 accurate results beats 30 with false positives.
 - Return ONLY the JSON array, no markdown, no explanation.`,
       messages: [
         { role: 'user', content: `Analyse these email providers and find financial opportunities:\n\n${truncatedSummary}` },

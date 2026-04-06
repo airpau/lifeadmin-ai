@@ -1149,8 +1149,8 @@ export default function ScannerPage() {
                           <span className="text-sm font-semibold text-white">{opp.confidence}%</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {/* Add to subscriptions - for subscriptions, bills, utilities */}
-                          {['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) && (
+                          {/* Add to subscriptions - for subscriptions, bills, utilities, or when suggestedAction is monitor/track */}
+                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction)) && (
                             <button
                               disabled={actionLoading === opp.id}
                               onClick={async () => {
