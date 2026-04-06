@@ -55,6 +55,8 @@ export default function DashboardPage() {
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankSyncing, setBankSyncing] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null }>>([]);
+  const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -182,7 +184,7 @@ export default function DashboardPage() {
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
-          supabase.from('bank_connections').select('id', { count: 'exact', head: true })
+          supabase.from('bank_connections').select('id, bank_name, account_display_names')
             .eq('user_id', user.id).eq('status', 'active'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
             .eq('user_id', user.id).eq('status', 'pending_review')
@@ -194,20 +196,21 @@ export default function DashboardPage() {
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
-        hasBankConnection = (banks.count || 0) > 0;
+        hasBankConnection = (banks.data || []).length > 0;
         setBankConnected(hasBankConnection);
+        setBankAccounts(banks.data || []);
 
         // Check email connection (Gmail or IMAP)
         const { data: emailConns } = await supabase
           .from('email_connections')
           .select('id, email_address, provider_type, status, last_scanned_at')
           .eq('user_id', user.id)
-          .eq('status', 'active')
-          .limit(1);
+          .eq('status', 'active');
         if (emailConns && emailConns.length > 0) {
           setEmailConnected(true);
           setEmailAddress(emailConns[0].email_address);
           setEmailLastScanned(emailConns[0].last_scanned_at);
+          setEmailAccounts(emailConns.map(e => ({ id: e.id, email_address: e.email_address, provider_type: e.provider_type })));
         } else {
           // Also check gmail_tokens table as fallback
           const { data: gmailToken } = await supabase
@@ -650,7 +653,7 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
           <p className="text-slate-400 text-sm">Subscriptions tracked</p>
         </Link>
-        <Link href="/dashboard/money-hub" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
+        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
           <p className="text-slate-400 text-sm">Subscriptions & bills</p>
@@ -786,6 +789,103 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Your Connections — always visible */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-white font-semibold text-lg">Your Connections</h2>
+        </div>
+        <div className="space-y-3">
+          {/* Bank accounts */}
+          {bankAccounts.length > 0 ? (
+            bankAccounts.map(b => (
+              (b.account_display_names && b.account_display_names.length > 0)
+                ? b.account_display_names.map((name, i) => (
+                  <div key={`${b.id}-${i}`} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                        <Building2 className="h-4 w-4 text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-medium">{b.bank_name || 'Bank'} · {name}</p>
+                        <p className="text-slate-500 text-xs">Bank account</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Active</span>
+                  </div>
+                ))
+                : (
+                  <div key={b.id} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                        <Building2 className="h-4 w-4 text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-medium">{b.bank_name || 'Bank Account'}</p>
+                        <p className="text-slate-500 text-xs">Bank account</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Active</span>
+                  </div>
+                )
+            ))
+          ) : (
+            <div className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30 border-dashed">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                  <Building2 className="h-4 w-4 text-blue-400" />
+                </div>
+                <p className="text-slate-400 text-sm">No bank account connected</p>
+              </div>
+            </div>
+          )}
+
+          {/* Email accounts */}
+          {emailAccounts.length > 0 ? (
+            emailAccounts.map(e => (
+              <div key={e.id} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                    <Mail className="h-4 w-4 text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-medium">{e.email_address}</p>
+                    <p className="text-slate-500 text-xs">{e.provider_type || 'Email'} account</p>
+                  </div>
+                </div>
+                <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Active</span>
+              </div>
+            ))
+          ) : (
+            <div className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30 border-dashed">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                  <Mail className="h-4 w-4 text-purple-400" />
+                </div>
+                <p className="text-slate-400 text-sm">No email connected</p>
+              </div>
+            </div>
+          )}
+
+          {/* Add connection buttons */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => setShowBankPicker(true)}
+              className="flex items-center gap-1.5 text-sm text-mint-400 bg-mint-400/10 px-3 py-1.5 rounded-lg border border-mint-400/30 hover:bg-mint-400/20 transition-all"
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Add Bank Account
+            </button>
+            <Link
+              href="/dashboard/scanner"
+              className="flex items-center gap-1.5 text-sm text-purple-400 bg-purple-500/10 px-3 py-1.5 rounded-lg border border-purple-500/30 hover:bg-purple-500/20 transition-all"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Add Email
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* Alerts */}
       {expiringContracts > 0 && (
         <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
@@ -802,20 +902,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {!bankConnected && (
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-blue-400" />
-            <div>
-              <p className="text-white font-semibold text-sm">Connect your bank account</p>
-              <p className="text-slate-400 text-xs">Automatically detect all your subscriptions and recurring payments</p>
-            </div>
-          </div>
-          <Link href="/dashboard/subscriptions" className="text-blue-400 hover:text-blue-300 text-sm font-medium flex items-center gap-1">
-            Connect <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      )}
 
       {/* Email Scan Card */}
       {emailConnected ? (
