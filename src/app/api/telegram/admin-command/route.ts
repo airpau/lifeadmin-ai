@@ -134,40 +134,52 @@ PENDING PROPOSALS:
 ${(proposals.data || []).map(p => `  [${p.status}] ${p.title}: ${p.description?.substring(0, 100)}`).join('\n') || '  None'}`;
 }
 
+const PAPERCLIP_AGENTS = [
+  { id: 'riley-support-agent', name: 'Riley (support-agent)', schedule: 'every 15 mins' },
+  { id: 'heartbeat-monitor', name: 'Heartbeat Monitor', schedule: 'every 30 mins' },
+  { id: 'dev-sprint-runner', name: 'Dev Sprint Runner', schedule: 'daily 10am' },
+  { id: 'ceo-briefing', name: 'CEO Briefing', schedule: 'daily 7:30am' },
+  { id: 'paperclip-business-monitor', name: 'Business Monitor', schedule: '3x daily (8am/1pm/6pm)' },
+  { id: 'daily-social-media-post', name: 'Social Media Post', schedule: 'daily 9am' },
+  { id: 'daily-morning-briefing', name: 'Morning Briefing', schedule: 'daily 8:30am' },
+  { id: 'daily-ceo-report', name: 'CEO Report', schedule: 'daily 8am' },
+  { id: 'obsidian-ideas-monitor', name: 'Obsidian Ideas Monitor', schedule: 'daily 9am' },
+  { id: 'daily-receipt-scanner', name: 'Receipt Scanner', schedule: 'daily 8pm' },
+];
+
 // Fetch team status data
 async function getTeamData(supabase: ReturnType<typeof getAdmin>): Promise<string> {
-  const [agents, recentReports, businessLog] = await Promise.all([
+  const agentIds = PAPERCLIP_AGENTS.map(a => a.id);
+
+  const [agentActivity, businessLog] = await Promise.all([
     supabase
-      .from('ai_executives')
-      .select('name, role, status, last_run_at')
-      .order('role'),
-    supabase
-      .from('executive_reports')
-      .select('title, content, created_at')
+      .from('business_log')
+      .select('category, title, created_by, created_at')
+      .in('created_by', agentIds)
       .order('created_at', { ascending: false })
-      .limit(8),
+      .limit(30),
     supabase
       .from('business_log')
       .select('category, title, created_by, created_at')
       .order('created_at', { ascending: false })
-      .limit(10),
+      .limit(15),
   ]);
 
-  const agentList = (agents.data || []);
+  const activity = agentActivity.data || [];
   const now = Date.now();
-  const statusLines = agentList.map(a => {
-    const lastRun = a.last_run_at ? new Date(a.last_run_at) : null;
-    const minsAgo = lastRun ? Math.round((now - lastRun.getTime()) / 60000) : null;
-    const freshness = minsAgo === null ? 'never' : minsAgo < 60 ? `${minsAgo}m ago` : `${Math.round(minsAgo / 60)}h ago`;
-    return `  ${a.name} (${a.role}): ${a.status || 'unknown'} — last run ${freshness}`;
+
+  // Find last run time for each agent
+  const statusLines = PAPERCLIP_AGENTS.map(agent => {
+    const lastEntry = activity.find(l => l.created_by === agent.id);
+    if (!lastEntry) return `  ${agent.name} [${agent.schedule}]: no recent activity`;
+    const minsAgo = Math.round((now - new Date(lastEntry.created_at).getTime()) / 60000);
+    const freshness = minsAgo < 60 ? `${minsAgo}m ago` : `${Math.round(minsAgo / 60)}h ago`;
+    return `  ${agent.name} [${agent.schedule}]: last active ${freshness} — ${lastEntry.title}`;
   });
 
-  return `TEAM STATUS:
-AGENTS (${agentList.length} total):
-${statusLines.join('\n') || '  None registered'}
-
-RECENT REPORTS:
-${(recentReports.data || []).map(r => `  ${r.title} — ${new Date(r.created_at).toLocaleString('en-GB')}`).join('\n') || '  None'}
+  return `PAPERCLIP TEAM STATUS:
+ACTIVE AGENTS (${PAPERCLIP_AGENTS.length} total):
+${statusLines.join('\n')}
 
 RECENT ACTIVITY LOG:
 ${(businessLog.data || []).map(l => `  [${l.created_by || 'system'}] ${l.title}`).join('\n') || '  None'}`;
@@ -257,16 +269,16 @@ async function handleCommand(
 
   if (prefix === 'support') {
     contextData = await getSupportData(supabase, commandBody);
-    systemRole = 'You are Sam, Paybacker\'s Support Lead AI. Answer concisely about support tickets and operations. Use bullet points. Keep responses under 400 words.';
+    systemRole = 'You are the Paybacker Support Command Centre. Riley (support-agent) runs every 15 mins to handle tickets automatically. Answer concisely about support tickets and operations using the live data. Use bullet points. Keep responses under 400 words.';
   } else if (prefix === 'sprint') {
     contextData = await getSprintData(supabase);
-    systemRole = 'You are Morgan, Paybacker\'s CTO AI. Answer concisely about development tasks, sprint progress, and tech status. Use bullet points. Keep responses under 400 words.';
+    systemRole = 'You are the Paybacker Dev Command Centre. The dev-sprint-runner agent picks up the highest-priority task daily at 10am and creates PRs. Answer concisely about development tasks, sprint progress, and tech status using the live data. Use bullet points. Keep responses under 400 words.';
   } else if (prefix === 'team') {
     contextData = await getTeamData(supabase);
-    systemRole = 'You are Charlie, Paybacker\'s EA AI. Answer concisely about the AI team status and recent activity. Use bullet points. Keep responses under 400 words.';
+    systemRole = 'You are the Paybacker Team Status Centre. Active Paperclip agents: Riley/support-agent (every 15m), heartbeat-monitor (every 30m), dev-sprint-runner (daily 10am), ceo-briefing (daily 7:30am), paperclip-business-monitor (3x daily), daily-social-media-post (9am), daily-morning-briefing (8:30am), daily-ceo-report (8am), obsidian-ideas-monitor (9am), daily-receipt-scanner (8pm). Answer concisely about agent status and recent activity using the live data. Use bullet points. Keep responses under 400 words.';
   } else if (prefix === 'report') {
     contextData = await getReportData(supabase);
-    systemRole = 'You are Alex, Paybacker\'s CFO AI. Answer concisely about business metrics, revenue, and daily reports. Use bullet points. Keep responses under 400 words.';
+    systemRole = 'You are the Paybacker Business Intelligence Centre. The ceo-briefing agent compiles overnight activity each morning and daily-ceo-report covers sprint burndown and deployment status. Answer concisely about business metrics, revenue, and daily reports using the live data. Use bullet points. Keep responses under 400 words.';
   } else {
     // General command — pull all contexts and let Claude figure it out
     const [support, sprint, team, report] = await Promise.all([
@@ -276,7 +288,7 @@ async function handleCommand(
       getReportData(supabase),
     ]);
     contextData = [support, sprint, team, report].join('\n\n---\n\n');
-    systemRole = 'You are the Paybacker AI Command Centre. The founder has sent a command via Telegram. Understand the intent and answer using the live data provided. Be concise and actionable. Use bullet points. Keep responses under 500 words.';
+    systemRole = 'You are the Paybacker AI Command Centre. Active Paperclip agents handle all autonomous operations: Riley/support-agent (tickets), heartbeat-monitor (platform health), dev-sprint-runner (code PRs), ceo-briefing (founder digest), paperclip-business-monitor (cross-agent checks), daily-social-media-post, daily-morning-briefing, daily-ceo-report, obsidian-ideas-monitor, daily-receipt-scanner. The founder has sent a command via Telegram. Understand the intent and answer using the live data provided. Be concise and actionable. Use bullet points. Keep responses under 500 words.';
   }
 
   const message = await anthropic.messages.create({
