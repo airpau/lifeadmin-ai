@@ -114,6 +114,8 @@ const INCOME_LABELS: Record<string, { label: string; color: string; icon: string
   freelance: { label: 'Freelance', color: '#3b82f6', icon: '💻' },
   benefits: { label: 'Benefits', color: '#8b5cf6', icon: '🏛️' },
   rental: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
+  rental_airbnb: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
+  rental_direct: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
   investment: { label: 'Investments', color: '#06b6d4', icon: '📈' },
   refund: { label: 'Refunds', color: '#10b981', icon: '💸' },
   transfer: { label: 'Transfers', color: '#64748b', icon: '🔄' },
@@ -436,17 +438,11 @@ export default function MoneyHubPage() {
   const syncMoneyHub = async () => {
     setSyncing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/bank-sync?trigger=manual`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      // Use the local sync-now API route (Pro-only, with rate limiting)
+      const res = await fetch('/api/bank/sync-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (res.status === 429) {
         const responseData = await res.json();
@@ -455,42 +451,46 @@ export default function MoneyHubPage() {
         return;
       }
 
-      if (res.status === 404) {
-        showToast('No active bank connections found. Connect your bank first.', 'error');
+      if (res.status === 403) {
+        const responseData = await res.json();
+        showToast(responseData.error || 'Manual sync requires a Pro plan.', 'error');
+        setSyncing(false);
+        return;
+      }
+
+      if (res.status === 401) {
+        const responseData = await res.json();
+        if (responseData.reconnectRequired) {
+          showToast('Bank connection expired. Please reconnect your bank.', 'error');
+        } else {
+          showToast('Please sign in to sync.', 'error');
+        }
+        setSyncing(false);
+        return;
+      }
+
+      if (!res.ok) {
+        const responseData = await res.json().catch(() => ({}));
+        showToast(responseData.error || 'Sync failed. Please try again.', 'error');
         setSyncing(false);
         return;
       }
 
       const responseData = await res.json();
+      const synced = responseData.synced || 0;
+      const recurring = responseData.recurring_detected || 0;
 
-      if (responseData.summary?.token_expired > 0) {
-        const expired = (responseData.results || []).filter((r: any) => ['token_expired', 'expired', 'expired_legacy'].includes(r.status));
-        setExpiredConnections(expired.map((r: any) => ({ id: r.connection_id || '', bank_name: r.bank_name || 'Bank', status: 'expired' })));
-        showToast('Bank connection expired. Please reconnect your bank.', 'error');
-      } else if (responseData.summary?.synced > 0) {
-        showToast(`Synced ${responseData.summary.total_new || 0} new transactions`, 'success');
+      if (synced > 0) {
+        // Also categorise the new transactions
+        await fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
         await refreshData();
         router.refresh();
-      } else if (responseData.summary?.no_new_data > 0) {
-        showToast('No new transactions to sync', 'info');
-      } else if (responseData.summary?.errors > 0) {
-        showToast('Sync encountered errors. Please try again later.', 'error');
+        showToast(`Synced ${synced} transaction${synced !== 1 ? 's' : ''}${recurring > 0 ? `, ${recurring} new recurring detected` : ''}`, 'success');
       } else {
-        // Fallback — still refresh data after successful edge function call
-        await refreshData();
+        showToast('No new transactions to sync', 'info');
       }
-    } catch (err) {
-      // Edge function not deployed yet — fall back to the local sync routes
-      try {
-        // Step 1: Pull fresh transactions from bank into DB
-        await fetch('/api/bank/sync', { method: 'POST' });
-        // Step 2: Categorise the new transactions
-        await fetch('/api/money-hub/sync', { method: 'POST' });
-        await refreshData();
-        showToast('Sync complete', 'success');
-      } catch {
-        showToast('Sync failed. Please try again.', 'error');
-      }
+    } catch {
+      showToast('Sync failed. Please try again.', 'error');
     }
     setSyncing(false);
   };
