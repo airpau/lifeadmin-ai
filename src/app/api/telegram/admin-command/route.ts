@@ -244,6 +244,15 @@ function toRole(name: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  // P1: Validate Telegram webhook secret before processing anything
+  const webhookSecret = process.env.TELEGRAM_ADMIN_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const incomingSecret = request.headers.get('x-telegram-bot-api-secret-token');
+    if (incomingSecret !== webhookSecret) {
+      return NextResponse.json({ ok: false }, { status: 403 });
+    }
+  }
+
   try {
     const body = await request.json();
     const message = body.message;
@@ -437,9 +446,16 @@ export async function POST(request: NextRequest) {
       }
 
       await new Promise(resolve => setTimeout(resolve, 3000));
+      // P2: Scope report query to the specific agent by joining via ai_executives
+      const { data: agentRecord } = await supabase
+        .from('ai_executives')
+        .select('id')
+        .ilike('name', agentName)
+        .single();
       const { data: latestReport } = await supabase
         .from('executive_reports')
         .select('title, content, recommendations, created_at')
+        .eq('agent_id', agentRecord?.id ?? '')
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
