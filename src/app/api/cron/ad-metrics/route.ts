@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
   ]);
 
   // Notify via Telegram
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  const telegramToken = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_ALLOWED_CHAT_IDS?.split(',')[0];
   if (telegramToken && chatId) {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString('en-GB');

@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Notify via Telegram
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  const telegramToken = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_ALLOWED_CHAT_IDS?.split(',')[0];
   if (telegramToken && chatId && actions.length > 0) {
     const msg = `Weekly Ad Optimisation:\n\n${actions.map(a => `${a.campaign}: ${a.action}\n  ${a.reason}`).join('\n\n')}`;

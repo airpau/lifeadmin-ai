@@ -697,7 +697,7 @@ function buildTelegramMessage(
 
 async function sendTelegram(text: string) {
   try {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const botToken = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
     if (!botToken || !chatId) return;
 

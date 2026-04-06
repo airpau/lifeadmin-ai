@@ -332,7 +332,7 @@ const escalateTicket: ToolDef = {
 
     // Notify founder via Telegram
     try {
-      const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+      const telegramToken = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
       const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
       if (telegramToken && chatId) {
         const emoji = isFeatureRequest ? '💡' : isBug ? '🐛' : '⚠️';

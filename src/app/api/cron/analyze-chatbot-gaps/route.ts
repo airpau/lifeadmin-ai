@@ -14,7 +14,7 @@ function getAdmin() {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 async function sendTelegram(message: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (!token || !chatId) return;
   // Split long messages to stay under Telegram's 4096 char limit

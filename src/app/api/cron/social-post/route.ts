@@ -279,7 +279,7 @@ Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract descrip
   });
 
   // Notify founder via Telegram
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  const telegramToken = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
   const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (telegramToken && founderChatId) {
     const msg = `Daily social post published:\n\nFB: ${results.facebook?.ok ? 'Posted' : results.facebook?.error || 'Failed'}\nIG: ${results.instagram?.ok ? 'Posted' : results.instagram?.error || results.instagram?.skipped || 'Failed'}\nX: ${results.twitter?.ok ? 'Posted' : results.twitter?.error || 'Failed'}\n\nCaption: ${caption.substring(0, 150)}...`;

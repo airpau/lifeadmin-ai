@@ -13,7 +13,7 @@ function getAdmin() {
 }
 
 async function sendTelegram(message: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
   if (!token || !chatId) return;
   try {
