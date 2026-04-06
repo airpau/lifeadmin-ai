@@ -10,6 +10,7 @@ function getAdmin() {
 
 interface DetectedLiability {
   lender: string;
+  lender_key: string;
   liability_type: 'loan' | 'credit_card' | 'car_finance' | 'overdraft' | 'other';
   monthly_payment: number;
   payment_count: number;
@@ -18,6 +19,7 @@ interface DetectedLiability {
   total_paid: number;
   /** Rough estimate: null if we can't reliably estimate */
   estimated_balance: number | null;
+  balance_explanation: string | null;
   already_tracked: boolean;
 }
 
@@ -39,7 +41,7 @@ export async function GET() {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
-    const [txnResult, existingLiabilities] = await Promise.all([
+    const [txnResult, existingLiabilities, dismissedResult] = await Promise.all([
       admin.from('bank_transactions')
         .select('merchant_name, description, amount, timestamp, user_category')
         .eq('user_id', user.id)
@@ -50,11 +52,15 @@ export async function GET() {
       admin.from('money_hub_liabilities')
         .select('liability_name, liability_type, monthly_payment')
         .eq('user_id', user.id),
+      admin.from('dismissed_detected_liabilities')
+        .select('lender_key')
+        .eq('user_id', user.id),
     ]);
 
     const txns = txnResult.data || [];
     const existing = existingLiabilities.data || [];
     const existingNames = new Set(existing.map(l => (l.liability_name || '').toLowerCase()));
+    const dismissedKeys = new Set((dismissedResult.data || []).map((d: any) => d.lender_key));
 
     // Group by normalised lender name
     const lenderMap = new Map<string, {
@@ -81,8 +87,11 @@ export async function GET() {
     // Build detected liabilities (only recurring — 2+ payments)
     const detected: DetectedLiability[] = [];
 
-    for (const [, entry] of lenderMap) {
+    for (const [key, entry] of lenderMap) {
       if (entry.payments.length < 2) continue;
+
+      // Skip dismissed liabilities
+      if (dismissedKeys.has(key)) continue;
 
       const avgPayment = entry.payments.reduce((s, p) => s + p, 0) / entry.payments.length;
       const totalPaid = entry.payments.reduce((s, p) => s + p, 0);
@@ -108,18 +117,19 @@ export async function GET() {
 
       // Rough balance estimate for fixed-term loans (not credit cards)
       let estimatedBalance: number | null = null;
+      let balanceExplanation: string | null = null;
       if (liabilityType === 'loan' || liabilityType === 'car_finance') {
-        // If we have ~12 months of payments, estimate ~24-60 months remaining (conservative: 36)
-        // This is very rough — user should correct it
         const monthsOfData = entry.payments.length;
         if (monthsOfData >= 3) {
-          // Assume loan is roughly halfway through (conservative estimate)
+          // Rough estimate: average monthly payment × 24 months remaining
           estimatedBalance = Math.round(avgPayment * 24);
+          balanceExplanation = `Rough estimate based on your average payment of £${avgPayment.toFixed(2)}/mo × 24 months. Please enter the actual balance if you know it.`;
         }
       }
 
       detected.push({
         lender: entry.merchant,
+        lender_key: key,
         liability_type: liabilityType,
         monthly_payment: Math.round(avgPayment * 100) / 100,
         payment_count: entry.payments.length,
@@ -127,6 +137,7 @@ export async function GET() {
         last_payment: lastDate,
         total_paid: Math.round(totalPaid * 100) / 100,
         estimated_balance: estimatedBalance,
+        balance_explanation: balanceExplanation,
         already_tracked: alreadyTracked,
       });
     }

@@ -771,6 +771,17 @@ export default function MoneyHubPage() {
     setAddingDetected(null);
   };
 
+  const dismissDetectedLiability = async (item: any) => {
+    try {
+      await fetch('/api/money-hub/detect-liabilities/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lender_key: item.lender_key, lender_name: item.lender }),
+      });
+      setDetectedLiabilities(prev => prev.filter(d => d.lender_key !== item.lender_key));
+    } catch { /* silent */ }
+  };
+
   // ─── Savings Goals ────────────────────────────────────────────────────────
 
   const saveGoal = async () => {
@@ -2685,39 +2696,53 @@ export default function MoneyHubPage() {
                     </p>
                     <div className="space-y-2">
                       {detectedLiabilities.filter(d => !d.already_tracked).map((d: any) => (
-                        <div key={d.lender} className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                        <div key={d.lender_key || d.lender} className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2.5">
                           <div className="flex items-center justify-between mb-1">
                             <div>
                               <span className="text-white text-sm font-medium">{d.lender}</span>
                               <span className="text-xs px-1.5 py-0.5 bg-navy-800 rounded text-slate-400 capitalize ml-2">{d.liability_type.replace('_', ' ')}</span>
                             </div>
-                            <span className="text-amber-400 text-xs font-medium">£{fmt(d.monthly_payment)}/mo</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-400 text-xs font-medium">£{fmt(d.monthly_payment)}/mo</span>
+                              <button
+                                onClick={() => dismissDetectedLiability(d)}
+                                className="text-slate-600 hover:text-red-400 transition-colors"
+                                title="Dismiss — won't show again"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
                           <div className="text-xs text-slate-500 mb-2">
                             {d.payment_count} payments detected · £{fmt(d.total_paid)} paid total · Since {d.first_payment}
                           </div>
 
                           {addingDetected === d.lender ? (
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-slate-400 text-xs">Outstanding balance: £</span>
-                              <input
-                                type="number"
-                                value={detectedBalanceInput}
-                                onChange={e => setDetectedBalanceInput(e.target.value)}
-                                placeholder={d.estimated_balance ? String(d.estimated_balance) : 'Enter balance'}
-                                className="bg-navy-800 border border-navy-700/50 rounded px-2 py-1 text-xs text-white w-28 focus:outline-none focus:border-amber-400"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => addDetectedLiability(d)}
-                                disabled={!detectedBalanceInput}
-                                className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-1 rounded font-medium disabled:opacity-50"
-                              >
-                                Add
-                              </button>
-                              <button onClick={() => { setAddingDetected(null); setDetectedBalanceInput(''); }} className="text-slate-500 text-xs">
-                                Cancel
-                              </button>
+                            <div className="mt-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-400 text-xs">Outstanding balance: £</span>
+                                <input
+                                  type="number"
+                                  value={detectedBalanceInput}
+                                  onChange={e => setDetectedBalanceInput(e.target.value)}
+                                  placeholder={d.estimated_balance ? String(d.estimated_balance) : 'Enter balance'}
+                                  className="bg-navy-800 border border-navy-700/50 rounded px-2 py-1 text-xs text-white w-28 focus:outline-none focus:border-amber-400"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => addDetectedLiability(d)}
+                                  disabled={!detectedBalanceInput}
+                                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-1 rounded font-medium disabled:opacity-50"
+                                >
+                                  Add
+                                </button>
+                                <button onClick={() => { setAddingDetected(null); setDetectedBalanceInput(''); }} className="text-slate-500 text-xs">
+                                  Cancel
+                                </button>
+                              </div>
+                              {d.balance_explanation && (
+                                <p className="text-slate-500 text-[10px] mt-1.5 italic">{d.balance_explanation}</p>
+                              )}
                             </div>
                           ) : (
                             <button
