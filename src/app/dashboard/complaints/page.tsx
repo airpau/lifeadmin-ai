@@ -13,6 +13,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { capture } from '@/lib/posthog';
 import UpgradeModal from '@/components/UpgradeModal';
+import { AI_LETTER_DISCLAIMER_HTML } from '@/lib/legal-disclaimer';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 
@@ -210,7 +211,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
       @media print{body{margin:20mm 25mm}}</style></head><body>
       <pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
       ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
-      <div class="disclaimer">This letter was generated with AI assistance using publicly available legal information from legislation.gov.uk. It does not constitute legal advice. If you are unsure about your rights, please consult a qualified solicitor, Citizens Advice (citizensadvice.org.uk), or your relevant ombudsman.</div>
+      <div class="disclaimer">${AI_LETTER_DISCLAIMER_HTML}</div>
       <script>window.onload=()=>{window.print()}<\/script></body></html>`);
     printWindow.document.close();
   };
@@ -288,7 +289,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
               </div>
             </div>
           )}
-          <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">This letter was generated with AI assistance using publicly available legal information from legislation.gov.uk. It does not constitute legal advice. If you are unsure about your rights, please consult a qualified solicitor, Citizens Advice (citizensadvice.org.uk), or your relevant ombudsman.</p>
+          <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
         </div>
         <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
           <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium">
