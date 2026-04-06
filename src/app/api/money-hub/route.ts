@@ -114,17 +114,25 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
-    // Income breakdown from DB — merge similar "other" variants into one
+    // Income breakdown from DB — merge variants into parent categories
     const incomeByType: Record<string, number> = {};
     const mergeAsOtherIncome = ['other', 'other_income', 'unknown', 'uncategorised', ''];
+    // Merge rental sub-types (rental_airbnb, rental_direct) into 'rental'
+    const mergeAsRentalIncome = ['rental', 'rental_airbnb', 'rental_direct'];
     let otherIncomeTotal = 0;
+    let rentalIncomeTotal = 0;
     for (const row of (incomeBreakdownRes.data || []) as Array<{ source: string; source_total: string }>) {
       const key = row.source.toLowerCase().trim();
       if (mergeAsOtherIncome.includes(key)) {
         otherIncomeTotal += parseFloat(row.source_total) || 0;
+      } else if (mergeAsRentalIncome.includes(key)) {
+        rentalIncomeTotal += parseFloat(row.source_total) || 0;
       } else {
-        incomeByType[row.source] = parseFloat(row.source_total) || 0;
+        incomeByType[row.source] = (incomeByType[row.source] || 0) + (parseFloat(row.source_total) || 0);
       }
+    }
+    if (rentalIncomeTotal > 0) {
+      incomeByType['rental'] = rentalIncomeTotal;
     }
     if (otherIncomeTotal > 0) {
       incomeByType['other'] = otherIncomeTotal;
