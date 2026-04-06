@@ -133,22 +133,23 @@ export default function AnnualReportPage() {
           <div className="relative w-32 h-32 flex-shrink-0">
             <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
               <circle cx="60" cy="60" r="52" fill="none" stroke="#1e293b" strokeWidth="10" />
-              <circle cx="60" cy="60" r="52" fill="none" stroke={data.financialHealth.ringColor} strokeWidth="10" strokeLinecap="round"
-                strokeDasharray={`${(data.financialHealth.overallScore / 100) * 327} 327`} />
+              <circle cx="60" cy="60" r="52" fill="none" stroke={data.financialHealth.tier === 'healthy' ? '#4ADE80' : data.financialHealth.tier === 'coping' ? '#FBBF24' : '#F87171'} strokeWidth="10" strokeLinecap="round"
+                strokeDasharray={`${(data.financialHealth.overall / 100) * 327} 327`} />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-4xl font-bold text-white">{data.financialHealth.overallScore}</span>
+              <span className="text-4xl font-bold text-white">{data.financialHealth.overall}</span>
               <span className="text-xs text-slate-400">/ 100</span>
             </div>
           </div>
           <div className="flex-1 w-full">
-            <p className={`text-xl font-bold ${data.financialHealth.tierColor} mb-1`}>{data.financialHealth.tierLabel}</p>
+            <p className={`text-xl font-bold ${data.financialHealth.tier === 'healthy' ? 'text-green-400' : data.financialHealth.tier === 'coping' ? 'text-amber-400' : 'text-red-400'} mb-1`}>
+              {data.financialHealth.tier.charAt(0).toUpperCase() + data.financialHealth.tier.slice(1)}
+            </p>
             <div className="space-y-2 mt-3">
-              {data.financialHealth.components.map(c => (
-                <div key={c.name}>
-                  <div className="flex justify-between text-xs mb-0.5"><span className="text-slate-400">{c.name}</span><span className="text-slate-300">{c.score}%</span></div>
-                  <div className="bg-navy-800 rounded-full h-2"><div className="h-2 rounded-full transition-all" style={{ width: `${c.score}%`, backgroundColor: data.financialHealth.ringColor }} /></div>
-                  <p className="text-[10px] text-slate-500 mt-0.5">{c.description}</p>
+              {Object.entries(data.financialHealth.pillars).map(([key, pillar]) => (
+                <div key={key}>
+                  <div className="flex justify-between text-xs mb-0.5"><span className="text-slate-400">{pillar.label}</span><span className="text-slate-300">{pillar.score}%</span></div>
+                  <div className="bg-navy-800 rounded-full h-2"><div className="h-2 rounded-full transition-all" style={{ width: `${pillar.score}%`, backgroundColor: data.financialHealth.tier === 'healthy' ? '#4ADE80' : data.financialHealth.tier === 'coping' ? '#FBBF24' : '#F87171' }} /></div>
                 </div>
               ))}
             </div>
