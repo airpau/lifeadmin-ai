@@ -283,7 +283,22 @@ export default function DashboardPage() {
         // potentialSavings will be calculated after all data loads (see below)
 
         const subsList = subs.data || [];
-        setSubscriptionCount(subsList.length);
+        // Filter out finance payments and deduplicate — match subscriptions page logic
+        const DEBT_KW = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
+        const CREDIT_KW = ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
+        const isFinance = (name: string) => {
+          const l = name.toLowerCase();
+          return DEBT_KW.some(kw => l.includes(kw)) || CREDIT_KW.some(kw => l.includes(kw));
+        };
+        const filteredSubs = subsList.filter(s => !isFinance(s.provider_name));
+        const seenNames = new Map<string, boolean>();
+        const dedupedSubs = filteredSubs.filter(s => {
+          const normName = cleanMerchantName(s.provider_name).toLowerCase();
+          if (seenNames.has(normName)) return false;
+          seenNames.set(normName, true);
+          return true;
+        });
+        setSubscriptionCount(dedupedSubs.length);
         setActiveSubscriptions(subsList);
 
         // Calculate monthly spend via RPC for consistency with subscriptions page
@@ -651,7 +666,7 @@ export default function DashboardPage() {
         <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <CreditCard className="h-6 w-6 text-mint-400 mb-3" />
           <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
-          <p className="text-slate-400 text-sm">Subscriptions tracked</p>
+          <p className="text-slate-400 text-sm">Subscriptions & bills</p>
         </Link>
         <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
