@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { fetchAccounts } from '@/lib/truelayer';
+import { fetchAccounts, fetchBalances } from '@/lib/truelayer';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { encrypt } from '@/lib/encrypt';
 
@@ -124,8 +124,11 @@ export async function GET(request: NextRequest) {
     // We call the sync endpoint server-to-server; pass user cookies via auth
     // For simplicity in MVP, we inline the sync logic here
     await syncTransactionsForConnection(connection, user.id, supabase, tokens.access_token);
+
+    // Also fetch and store initial balance
+    await fetchAndStoreBalance(connection, accountIds, supabase, tokens.access_token);
   } catch (err) {
-    console.error('Initial sync failed (non-fatal):', err);
+    console.error('Initial sync or balance fetch failed (non-fatal):', err);
   }
 
   return NextResponse.redirect(
@@ -199,4 +202,32 @@ async function syncTransactionsForConnection(
   });
 
   return totalSynced;
+}
+
+async function fetchAndStoreBalance(
+  connection: { id: string; account_ids: string[] | null },
+  accountIds: string[],
+  supabase: ReturnType<typeof createClient> extends Promise<infer T> ? T : never,
+  accessToken: string
+) {
+  // Fetch balance for the first account (representative balance)
+  if (accountIds.length === 0) return;
+
+  const firstAccountId = accountIds[0];
+  try {
+    const balance = await fetchBalances(accessToken, firstAccountId);
+    if (balance) {
+      const now = new Date().toISOString();
+      await supabase
+        .from('bank_connections')
+        .update({
+          current_balance: balance.current,
+          available_balance: balance.available,
+          balance_updated_at: now,
+        })
+        .eq('id', connection.id);
+    }
+  } catch (err) {
+    console.log('Balance fetch failed on callback (non-fatal):', err);
+  }
 }
