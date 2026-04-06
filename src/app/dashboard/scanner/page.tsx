@@ -105,6 +105,7 @@ export default function ScannerPage() {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [imapMode, setImapMode] = useState(false);
   const [scanningEmailId, setScanningEmailId] = useState<string | null>(null);
   const [emailScanResults, setEmailScanResults] = useState<Record<string, number>>({});
   const [scanResults, setScanResults] = useState<any[]>([]);
@@ -190,6 +191,7 @@ export default function ScannerPage() {
       setShowConnectModal(false);
       setConnectEmail('');
       setConnectPassword('');
+      setImapMode(false);
       loadEmailConnections();
     } catch (err: any) {
       setConnectError(err.message || 'Connection failed');
@@ -477,10 +479,10 @@ export default function ScannerPage() {
 
       {/* Connect Email Modal */}
       {showConnectModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); }}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
           <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); }}
+              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all"
             >
               <X className="h-5 w-5" />
@@ -521,14 +523,14 @@ export default function ScannerPage() {
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
                   </button>
-                  <button onClick={() => setConnectEmail('@yahoo.')} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">📨</span>
                     <div>
                       <p className="text-white text-sm font-medium">Yahoo Mail</p>
                       <p className="text-slate-500 text-[10px]">Password required</p>
                     </div>
                   </button>
-                  <button onClick={() => setConnectEmail('@')} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">✉️</span>
                     <div>
                       <p className="text-white text-sm font-medium">Other</p>
@@ -539,19 +541,19 @@ export default function ScannerPage() {
               </div>
 
               {/* IMAP fields for Yahoo/Other */}
-              {connectEmail && connectEmail.includes('@') && (
+              {imapMode && (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
                     <input
                       type="email"
-                      value={connectEmail === '@yahoo.' || connectEmail === '@' ? '' : connectEmail}
+                      value={connectEmail}
                       onChange={(e) => setConnectEmail(e.target.value)}
                       placeholder="you@example.com"
                       className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
                       autoFocus
                     />
-                    {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && connectEmail !== '@yahoo.' && connectEmail !== '@' && (
+                    {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && (
                       <p className="text-xs text-mint-400 mt-1.5 flex items-center gap-1">
                         <CheckCircle2 className="h-3 w-3" />
                         Detected: {detectedProvider.name}
@@ -587,7 +589,7 @@ export default function ScannerPage() {
 
                   <button
                     onClick={handleConnectEmail}
-                    disabled={connecting || !connectEmail || connectEmail === '@yahoo.' || connectEmail === '@' || !connectPassword}
+                    disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword}
                     className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
                   >
                     {connecting ? (
