@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     .from('bank_connections')
     .update({ status: 'revoked', updated_at: new Date().toISOString() })
     .eq('user_id', user.id)
-    .eq('status', 'active');
+    .in('status', ['active', 'expired', 'token_expired', 'expired_legacy', 'expiring_soon']);
 
   if (connectionId) {
     query = query.eq('id', connectionId);
