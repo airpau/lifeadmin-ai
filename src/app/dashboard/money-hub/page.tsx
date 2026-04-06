@@ -281,6 +281,11 @@ export default function MoneyHubPage() {
   // Expired bank connections
   const [expiredConnections, setExpiredConnections] = useState<Array<{ id: string; bank_name: string; status: string }>>([]);
   const [bankPromptDismissed, setBankPromptDismissed] = useState(false);
+  // Bank accounts collapse/expand
+  const [bankAccountsExpanded, setBankAccountsExpanded] = useState(true);
+  // Removing/renewing bank connections
+  const [removingBankId, setRemovingBankId] = useState<string | null>(null);
+  const [renewingBankId, setRenewingBankId] = useState<string | null>(null);
 
   // Toast notifications
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -499,6 +504,61 @@ export default function MoneyHubPage() {
     try {
       await fetch('/api/user/dismiss-bank-prompt', { method: 'POST' });
     } catch { /* non-critical */ }
+  };
+
+  const handleRemoveBank = async (connectionId: string) => {
+    setRemovingBankId(connectionId);
+    try {
+      const res = await fetch('/api/bank/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
+      if (res.ok) {
+        if (data) {
+          setData({ ...data, accounts: data.accounts.filter(a => a.id !== connectionId) });
+        }
+        setExpiredConnections(prev => prev.filter(c => c.id !== connectionId));
+        showToast('Bank connection removed', 'success');
+      } else {
+        showToast('Failed to remove connection', 'error');
+      }
+    } catch {
+      showToast('Failed to remove connection', 'error');
+    } finally {
+      setRemovingBankId(null);
+    }
+  };
+
+  const handleRenewBank = async (connectionId: string) => {
+    setRenewingBankId(connectionId);
+    try {
+      const res = await fetch('/api/bank/renew-consent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
+      if (res.ok) {
+        const renewed = expiredConnections.find(c => c.id === connectionId);
+        setExpiredConnections(prev => prev.filter(c => c.id !== connectionId));
+        if (renewed && data) {
+          setData({ ...data, accounts: [...data.accounts, { ...renewed, status: 'active', last_synced_at: '' }] });
+        }
+        showToast('Bank connection renewed', 'success');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.reconnectRequired) {
+          setShowBankPicker(true);
+          showToast('Please reconnect your bank account', 'info');
+        } else {
+          showToast(errData.error || 'Could not renew — try reconnecting', 'error');
+        }
+      }
+    } catch {
+      showToast('Failed to renew connection', 'error');
+    } finally {
+      setRenewingBankId(null);
+    }
   };
 
   // ─── Category drill-down ──────────────────────────────────────────────────
@@ -1420,23 +1480,44 @@ export default function MoneyHubPage() {
       )}
 
       {/* ═══ Expired Bank Connection Banner ═══ */}
-      {expiredConnections.length > 0 && !bankPromptDismissed && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2 text-xs">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-          <span className="text-amber-300 flex-1">
-            {expiredConnections.map(c => c.bank_name || 'Bank').join(' & ')} connection expired.{' '}
-            <button onClick={handleReconnectBank} className="underline hover:text-amber-200 transition-colors">
-              Reconnect
-            </button>{' '}
-            to resume auto-sync.
-          </span>
-          <button
-            onClick={handleDismissBankPrompt}
-            className="text-amber-400/60 hover:text-amber-300 transition-colors ml-1"
-            title="Dismiss for 30 days"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+      {expiredConnections.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-400" />
+            <p className="font-medium text-amber-200 text-sm">Expired bank connection{expiredConnections.length > 1 ? 's' : ''}</p>
+          </div>
+          {expiredConnections.map(conn => (
+            <div key={conn.id} className="flex items-center justify-between bg-amber-500/5 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Building2 className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-amber-200 text-sm">{conn.bank_name || 'Bank Account'}</span>
+                <span className="text-amber-400/60 text-xs">{conn.status === 'token_expired' ? 'Token expired' : conn.status === 'expired_legacy' ? 'Legacy' : 'Expired'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleRenewBank(conn.id)}
+                  disabled={renewingBankId === conn.id}
+                  className="text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 px-3 py-1 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {renewingBankId === conn.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Renew'}
+                </button>
+                <button
+                  onClick={() => setShowBankPicker(true)}
+                  className="text-xs bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 px-3 py-1 rounded-lg transition-all"
+                >
+                  Reconnect
+                </button>
+                <button
+                  onClick={() => handleRemoveBank(conn.id)}
+                  disabled={removingBankId === conn.id}
+                  className="text-xs text-red-400/70 hover:text-red-400 transition-all p-1"
+                  title="Remove connection"
+                >
+                  {removingBankId === conn.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1467,52 +1548,81 @@ export default function MoneyHubPage() {
           Only show: bank name, connection status, last sync time.
           Balance display can be added once FCA approval is obtained.
         */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white font-[family-name:var(--font-heading)] flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-purple-400" /> Bank Accounts
-          </h2>
-          {isPro && (
-            <Link href="/dashboard/subscriptions" className="text-mint-400 text-xs flex items-center gap-1">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => setBankAccountsExpanded(!bankAccountsExpanded)}
+            className="flex items-center gap-2 text-lg font-semibold text-white font-[family-name:var(--font-heading)] hover:text-mint-400 transition-all"
+          >
+            <Building2 className="h-5 w-5 text-purple-400" />
+            Bank Accounts
+            <span className="text-slate-500 text-sm font-normal">({data.accounts.length})</span>
+            {bankAccountsExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowBankPicker(true)} className="text-mint-400 text-xs flex items-center gap-1 hover:text-mint-300 transition-all">
               <Plus className="h-3 w-3" /> Connect another
-            </Link>
-          )}
+            </button>
+          </div>
         </div>
-        {data.accounts.length === 0 ? (
-          <div className="text-center py-6">
-            <p className="text-slate-400 text-sm mb-3">No bank accounts connected</p>
-            <Link href="/dashboard/subscriptions" className="text-mint-400 text-sm">Connect bank account</Link>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {data.accounts.map(acc => (
-              <div key={acc.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50">
-                <div className="flex items-center gap-3">
-                  <Building2 className="h-4 w-4 text-green-400" />
-                  <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
-                  {/* Only fetch/display balance if FCA approved */}
-                  {FEATURE_FLAGS.SHOW_BANK_BALANCES && (
-                    <span className="text-emerald-400 font-bold ml-4">£---</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{acc.status}</span>
-                  {acc.last_synced_at && (
-                    <span className="text-slate-500 text-xs">
-                      Synced {(() => {
-                        const mins = Math.round((Date.now() - new Date(acc.last_synced_at).getTime()) / 60000);
-                        if (mins < 1) return 'just now';
-                        if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
-                        const hrs = Math.floor(mins / 60);
-                        if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
-                        const days = Math.floor(hrs / 24);
-                        return `${days} day${days === 1 ? '' : 's'} ago`;
-                      })()}
-                    </span>
-                  )}
-                </div>
+        {bankAccountsExpanded && (
+          <>
+            {data.accounts.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-slate-400 text-sm mb-3">No bank accounts connected</p>
+                <button onClick={() => setShowBankPicker(true)} className="text-mint-400 text-sm hover:text-mint-300 transition-all">Connect bank account</button>
               </div>
-            ))}
-          </div>
+            ) : (
+              <div className="space-y-2 mt-3">
+                {data.accounts.map(acc => (
+                  <div key={acc.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50 group">
+                    <div className="flex items-center gap-3">
+                      <Building2 className={`h-4 w-4 ${acc.status === 'active' ? 'text-green-400' : 'text-amber-400'}`} />
+                      <span className="text-white text-sm font-medium">{acc.bank_name || 'Bank Account'}</span>
+                      {FEATURE_FLAGS.SHOW_BANK_BALANCES && (
+                        <span className="text-emerald-400 font-bold ml-4">£---</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs ${acc.status === 'active' ? 'text-green-400' : acc.status === 'expired' || acc.status === 'token_expired' ? 'text-amber-400' : 'text-slate-500'}`}>
+                        {acc.status === 'token_expired' ? 'Expired' : acc.status}
+                      </span>
+                      {acc.last_synced_at && (
+                        <span className="text-slate-500 text-xs">
+                          Synced {(() => {
+                            const mins = Math.round((Date.now() - new Date(acc.last_synced_at).getTime()) / 60000);
+                            if (mins < 1) return 'just now';
+                            if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+                            const hrs = Math.floor(mins / 60);
+                            if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+                            const days = Math.floor(hrs / 24);
+                            return `${days} day${days === 1 ? '' : 's'} ago`;
+                          })()}
+                        </span>
+                      )}
+                      {acc.status !== 'active' && (
+                        <button
+                          onClick={() => handleRenewBank(acc.id)}
+                          disabled={renewingBankId === acc.id}
+                          className="text-xs text-amber-400 hover:text-amber-300 transition-all ml-1"
+                          title="Renew connection"
+                        >
+                          {renewingBankId === acc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveBank(acc.id)}
+                        disabled={removingBankId === acc.id}
+                        className="text-xs text-slate-600 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100 ml-1"
+                        title="Remove connection"
+                      >
+                        {removingBankId === acc.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 

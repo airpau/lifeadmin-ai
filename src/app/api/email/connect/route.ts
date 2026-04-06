@@ -53,23 +53,24 @@ export async function POST(req: NextRequest) {
     const encryptedPassword = encryptPassword(password);
     const providerName = getProviderName(email);
 
-    // Upsert into email_connections
+    // Upsert into email_connections (columns must match DB schema)
     const { data, error } = await supabase
       .from('email_connections')
       .upsert(
         {
           user_id: user.id,
-          email,
-          provider: providerName,
+          email_address: email,
+          provider_type: providerName,
+          auth_method: 'imap',
           imap_host: imapHost,
           imap_port: imapPort,
-          encrypted_password: encryptedPassword,
+          imap_password_encrypted: encryptedPassword,
           status: 'active',
-          connected_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         },
-        { onConflict: 'user_id,email' },
+        { onConflict: 'user_id,email_address' },
       )
-      .select('id, email, provider, status, connected_at, last_scanned_at')
+      .select('id, email_address, provider_type, status, created_at, last_scanned_at')
       .single();
 
     if (error) {

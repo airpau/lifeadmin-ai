@@ -282,6 +282,15 @@ export default function SubscriptionsPage() {
     const cat = searchParams.get('category');
     if (cat) setFilterCategory(cat);
 
+    // Auto-open bank picker if redirected from profile
+    const connectBank = searchParams.get('connectBank');
+    if (connectBank === 'true') {
+      setShowBankPicker(true);
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('connectBank');
+      window.history.replaceState({}, '', cleanUrl.toString());
+    }
+
     const isNew = searchParams.get('new');
     if (isNew === '1') {
       const provider = searchParams.get('provider');

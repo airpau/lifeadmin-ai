@@ -100,6 +100,7 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
 
   const activeBanks = bankConns.filter(b => b.status === 'active');
   const activeEmails = emailConns.filter(e => e.status === 'active');
+  const allEmails = emailConns; // Include all statuses for display
 
   return (
     <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
@@ -150,7 +151,7 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
                 <CheckCircle2 className="h-3.5 w-3.5" /> Connected ({activeBanks.length})
               </span>
             ) : (
-              <a href="/dashboard/subscriptions" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+              <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
                 Connect
               </a>
             )}

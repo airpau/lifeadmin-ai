@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     // IMAP connections — decrypt password
     let password: string;
     try {
-      password = decryptPassword(conn.imap_password_encrypted || conn.encrypted_password);
+      password = decryptPassword(conn.imap_password_encrypted);
     } catch (err: any) {
       console.error('[email/scan] Decryption error:', err.message);
       return NextResponse.json({ error: 'Failed to decrypt credentials' }, { status: 500 });
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     const emails = await scanEmailsViaImap(
       conn.imap_host,
       conn.imap_port,
-      conn.email,
+      conn.email_address,
       password,
       730,
     );
