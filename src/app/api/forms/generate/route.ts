@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { awardPoints } from '@/lib/loyalty';
+import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
 
 export const maxDuration = 60;
 
@@ -198,6 +199,11 @@ Return as JSON with keys:
     if (!jsonMatch) throw new Error('Could not parse response');
 
     const result = JSON.parse(jsonMatch[0]);
+
+    // Append legal disclaimer to generated letter
+    if (result.letter) {
+      result.letter = result.letter + AI_LETTER_DISCLAIMER;
+    }
 
     // Save to tasks
     const { data: task } = await supabase.from('tasks').insert({
