@@ -1492,7 +1492,7 @@ export default function SubscriptionsPage() {
           type="bank_scan"
           subscriptionCount={baseSubscriptions.filter(s => s.status === 'active').length}
           monthlyCost={flexibleTotalMonthly + statutoryTotalMonthly}
-          userTier={userTier}
+          userTier={userTier ?? undefined}
           className="mb-6"
         />
       )}
