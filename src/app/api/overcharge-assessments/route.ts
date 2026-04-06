@@ -62,8 +62,30 @@ export async function POST() {
 
   const totalSaving = assessments.reduce((sum, a) => sum + a.estimatedAnnualSaving, 0);
 
+  // Normalise to snake_case matching the GET (DB) response format
+  // so the frontend renders correctly regardless of whether data came from GET or POST
+  const normalised = assessments.map(a => ({
+    id: a.subscriptionId,
+    user_id: a.userId,
+    subscription_id: a.subscriptionId,
+    merchant_name: a.merchantName,
+    category: a.category,
+    current_monthly: a.currentMonthly,
+    current_annual: a.currentAnnual,
+    market_avg_monthly: a.marketAvgMonthly,
+    market_best_monthly: a.marketBestMonthly,
+    historical_avg_monthly: a.historicalAvgMonthly,
+    overcharge_score: a.overchargeScore,
+    confidence: a.confidence,
+    estimated_annual_saving: a.estimatedAnnualSaving,
+    signals: a.signals,
+    best_deal_provider: a.bestDealProvider,
+    best_deal_url: a.bestDealUrl,
+    best_deal_monthly: a.bestDealMonthly,
+  }));
+
   return NextResponse.json({
-    assessments,
+    assessments: normalised,
     summary: {
       total: assessments.length,
       highScoreCount: assessments.filter(a => a.overchargeScore >= 60).length,

@@ -224,6 +224,13 @@ export async function POST() {
       }
     }
 
+    // For positive-amount transactions with a real income_type, ensure user_category is 'income'
+    // so the income RPCs (which require user_category='income') count them correctly.
+    const realIncomeTypes = new Set(['salary', 'rental', 'rental_airbnb', 'rental_direct', 'freelance', 'benefits', 'investment', 'refund', 'loan_repayment', 'gift', 'other']);
+    if (amount > 0 && incomeType && realIncomeTypes.has(incomeType) && finalCategory !== 'transfers') {
+      finalCategory = 'income';
+    }
+
     if (finalCategory) {
       await admin.from('bank_transactions').update({
         user_category: finalCategory,
@@ -231,6 +238,14 @@ export async function POST() {
       }).eq('id', txn.id);
       categorised++;
       if (incomeType) incomeDetected++;
+    } else if (amount > 0 && incomeType && realIncomeTypes.has(incomeType)) {
+      // Income detected but no spending category — still save it
+      await admin.from('bank_transactions').update({
+        user_category: 'income',
+        income_type: incomeType,
+      }).eq('id', txn.id);
+      categorised++;
+      incomeDetected++;
     } else {
       // Queue for AI classification
       needsAI.push({ id: txn.id, description: desc, amount, category: txn.category || '' });
@@ -287,8 +302,12 @@ Return ONLY the JSON array.`,
             for (const r of results) {
               const txn = batch[r.index - 1];
               if (txn && r.category) {
+                // For credits with a real income_type, set user_category='income'
+                // so income RPCs count them correctly
+                const aiRealIncome = r.income_type && !['transfer', 'credit_loan'].includes(r.income_type);
+                const aiUserCategory = (txn.amount > 0 && aiRealIncome) ? 'income' : r.category;
                 await admin.from('bank_transactions').update({
-                  user_category: r.category,
+                  user_category: aiUserCategory,
                   income_type: r.income_type || null,
                 }).eq('id', txn.id);
                 categorised++;

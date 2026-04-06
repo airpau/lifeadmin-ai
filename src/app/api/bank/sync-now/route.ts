@@ -245,8 +245,9 @@ export async function POST(request: NextRequest) {
             .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
 
           if (!error) totalSynced += rows.length;
-        } catch {
-          // Non-fatal per-account error — continue with next account
+          else console.error(`Sync: upsert error for TrueLayer account ${accountId}:`, error);
+        } catch (err: any) {
+          console.error(`Sync: TrueLayer fetch error for account ${accountId}:`, err?.message || err);
         }
       }
     } else {
@@ -319,8 +320,9 @@ export async function POST(request: NextRequest) {
             .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
 
           if (!error) totalSynced += rows.length;
-        } catch {
-          // Non-fatal per-account error — continue with next account
+          else console.error(`Sync: upsert error for Yapily account ${accountId}:`, error);
+        } catch (err: any) {
+          console.error(`Sync: Yapily fetch error for account ${accountId}:`, err?.message || err);
         }
       }
     }
