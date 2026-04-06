@@ -120,15 +120,14 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {activeEmails.length > 0 ? (
+            {activeEmails.length > 0 && (
               <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Connected
               </span>
-            ) : (
-              <a href="/dashboard/scanner" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
-                Connect
-              </a>
             )}
+            <a href="/dashboard/scanner" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+              {activeEmails.length > 0 ? '+ Add Email' : 'Connect'}
+            </a>
           </div>
         </div>
 
@@ -149,15 +148,14 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {activeBanks.length > 0 ? (
+              {activeBanks.length > 0 && (
                 <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Connected
                 </span>
-              ) : (
-                <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
-                  Connect
-                </a>
               )}
+              <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+                {activeBanks.length > 0 ? '+ Add Bank' : 'Connect'}
+              </a>
             </div>
           </div>
           {activeBanks.length > 0 && (
