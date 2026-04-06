@@ -2104,18 +2104,18 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-col items-end gap-2 shrink-0">
+                  <div className="flex flex-col items-end gap-2 shrink-0 z-10 relative">
                     <div className="text-right">
                       <p className="text-xl font-bold text-white">{formatGBP(sub.amount)}</p>
                       <p className="text-xs text-slate-500">{sub.billing_cycle}</p>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setBillUploadSubId(sub.id);
                         }}
-                        className="text-slate-600 hover:text-purple-400 transition-all"
+                        className="text-slate-600 hover:text-purple-400 transition-all p-1"
                         title="Upload bill to extract contract dates"
                       >
                         <Upload className="h-4 w-4" />
@@ -2125,7 +2125,7 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           openEditModal(sub);
                         }}
-                        className="text-slate-600 hover:text-mint-400 transition-all"
+                        className="text-slate-600 hover:text-mint-400 transition-all p-1"
                         title="Edit"
                       >
                         <Pencil className="h-4 w-4" />
@@ -2135,7 +2135,7 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           handleDeleteSubscription(sub.id);
                         }}
-                        className="text-slate-600 hover:text-red-400 transition-all"
+                        className="text-slate-600 hover:text-red-400 transition-all p-1"
                         title="Delete"
                       >
                         <X className="h-4 w-4" />
