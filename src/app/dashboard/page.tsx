@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
-  Mail, ScanSearch, RefreshCw,
+  Mail, ScanSearch, RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [bankSyncing, setBankSyncing] = useState(false);
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
+  const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -804,12 +805,21 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Your Connections — always visible */}
+      {/* Your Connections — collapsible */}
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={() => setConnectionsCollapsed(!connectionsCollapsed)}
+          className="flex items-center justify-between w-full text-left"
+        >
           <h2 className="text-white font-semibold text-lg">Your Connections</h2>
-        </div>
-        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">
+              {bankAccounts.reduce((c, b) => c + (b.account_display_names?.length || 1), 0)} bank{bankAccounts.reduce((c, b) => c + (b.account_display_names?.length || 1), 0) !== 1 ? 's' : ''}, {emailAccounts.length} email{emailAccounts.length !== 1 ? 's' : ''}
+            </span>
+            {connectionsCollapsed ? <ChevronDown className="h-5 w-5 text-slate-400" /> : <ChevronUp className="h-5 w-5 text-slate-400" />}
+          </div>
+        </button>
+        {!connectionsCollapsed && <div className="space-y-3 mt-4">
           {/* Bank accounts */}
           {bankAccounts.length > 0 ? (
             bankAccounts.map(b => (
@@ -898,7 +908,7 @@ export default function DashboardPage() {
               Add Email
             </Link>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Alerts */}
