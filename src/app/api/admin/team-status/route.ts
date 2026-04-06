@@ -139,27 +139,27 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdmin();
-  const agentIds = PAPERCLIP_AGENTS.map(a => a.id);
 
-  // Fetch last 10 entries per agent in one query
-  const { data: logs, error } = await supabase
-    .from('business_log')
-    .select('id, category, title, content, created_by, created_at')
-    .in('created_by', agentIds)
-    .order('created_at', { ascending: false })
-    .limit(100);
+  // Fetch per-agent to avoid high-frequency agents consuming the global limit
+  const perAgentResults = await Promise.all(
+    PAPERCLIP_AGENTS.map(agent =>
+      supabase
+        .from('business_log')
+        .select('id, category, title, content, created_by, created_at')
+        .eq('created_by', agent.id)
+        .order('created_at', { ascending: false })
+        .limit(10)
+    )
+  );
 
-  if (error) {
+  const hasError = perAgentResults.some(r => r.error);
+  if (hasError) {
     return NextResponse.json({ error: 'Failed to fetch business_log' }, { status: 500 });
   }
 
-  // Group entries by created_by
-  const grouped: Record<string, typeof logs> = {};
-  for (const entry of logs || []) {
-    if (!grouped[entry.created_by]) grouped[entry.created_by] = [];
-    if (grouped[entry.created_by]!.length < 5) {
-      grouped[entry.created_by]!.push(entry);
-    }
+  const grouped: Record<string, NonNullable<(typeof perAgentResults)[number]['data']>> = {};
+  for (let i = 0; i < PAPERCLIP_AGENTS.length; i++) {
+    grouped[PAPERCLIP_AGENTS[i].id] = perAgentResults[i].data || [];
   }
 
   const agents = PAPERCLIP_AGENTS.map(agent => {
