@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall, getUserTier } from '@/lib/claude-rate-limit';
-import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
+
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -171,11 +171,6 @@ Return as JSON with keys: subject (string), body (string)`;
     if (!jsonMatch) throw new Error('Could not parse response');
 
     const result = JSON.parse(jsonMatch[0]);
-
-    // Append legal disclaimer to generated cancellation letter
-    if (result.body) {
-      result.body = result.body + AI_LETTER_DISCLAIMER;
-    }
 
     // Note: We do NOT update subscription status here. Generating a cancellation
     // letter does not mean the user has cancelled yet. Status should only change

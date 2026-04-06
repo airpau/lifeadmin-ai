@@ -289,7 +289,10 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
               </div>
             </div>
           )}
-          <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
+          <div className="flex items-start gap-2.5 mt-3 px-3 py-2.5 rounded-lg bg-navy-950/60 border border-navy-700/40">
+            <svg className="h-3.5 w-3.5 text-slate-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <p className="text-[10px] text-slate-500 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
+          </div>
         </div>
         <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
           <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium">

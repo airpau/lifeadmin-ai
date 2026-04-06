@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
 
 // Lazy singleton — defer construction to first call so Next.js build-time
 // page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
@@ -180,10 +179,8 @@ Return a JSON object only — no prose, no markdown fences. Keys: letter, legalR
 
   const result = JSON.parse(jsonMatch[0]);
 
-  const letterWithDisclaimer = result.letter + AI_LETTER_DISCLAIMER;
-
   return {
-    letter: letterWithDisclaimer,
+    letter: result.letter,
     legalReferences: result.legalReferences || [],
     estimatedSuccess: result.estimatedSuccess || 70,
     nextSteps: result.nextSteps || [],
