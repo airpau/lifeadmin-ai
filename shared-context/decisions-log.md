@@ -130,3 +130,33 @@ Email scanner was broken across multiple layers — returned 0 results, spinner 
 **Decision:** Reclassify inter-account transfers as transfers, not income
 **Reason:** Income was massively over-inflated because money moving between Paul's own accounts (JPG OPERATIO DIRECTOR, AIRPROP LTD FLEXIPAY, AIREY P A CD LLOYDS, JPG OPERATIO LOAN REPAYMENTS) was being counted as income. 114 transactions reclassified from income to transfers, removing £71,962 of double-counted income. Added merchant_rules entries for these patterns so the system catches them for ALL users. Created get_monthly_income_total() and get_monthly_income() functions as the server-side source of truth for income calculations.
 **Made by:** Paul / Claude Cowork
+
+## 2026-04-06 11:53:58 - CASA security scan submitted to Google for OAuth verification - only outstanding item
+**Decision:** CASA security scan submitted to Google for OAuth verification - only outstanding item
+**Reason:** Google confirmed CASA scan was the only remaining blocker for Gmail OAuth verification (submitted 24 March). Scan submitted 5 April 2026.
+**Made by:** Paul
+
+## 2026-04-06 11:53:59 - Meta App Review no longer needed - Instagram API already working
+**Decision:** Meta App Review no longer needed - Instagram API already working
+**Reason:** Instagram posting is functional without a published Meta app. Remove from blockers list.
+**Made by:** Paul
+
+## 2026-04-06 11:54:01 - Google Ads Basic API access permanently rejected - remove from task queue
+**Decision:** Google Ads Basic API access permanently rejected - remove from task queue
+**Reason:** Google Ads rejected the Basic API access application twice. Not pursuing further.
+**Made by:** Paul
+
+## 2026-04-06 11:54:03 - AI letter disclaimer footer should display on web page only, not embedded in letter text
+**Decision:** AI letter disclaimer footer should display on web page only, not embedded in letter text
+**Reason:** The disclaimer is for the UI display context, not part of the letter the user sends to companies.
+**Made by:** Paul
+
+## 2026-04-06 11:54:04 - Google Play Console developer account created for Paybacker LTD (organisation)
+**Decision:** Google Play Console developer account created for Paybacker LTD (organisation)
+**Reason:** Android app development is next priority after Yahoo Mail and Paperclip agents are working. DUNS: 234681454, developer name: Paybacker.
+**Made by:** Paul + Claude
+
+## 2026-04-07 01:45:26 - Google Sheets OAuth verification (drive.file scope) to be submitted as a SEPARATE application, only after the current Gmail OAuth verification is approved.
+**Decision:** Google Sheets OAuth verification (drive.file scope) to be submitted as a SEPARATE application, only after the current Gmail OAuth verification is approved.
+**Reason:** Avoid complicating or delaying the in-flight Gmail OAuth review. Sheets feature can be tested in unverified mode (up to 100 users) in the interim. Gmail unblocks email scanning which is higher priority.
+**Made by:** Paul
