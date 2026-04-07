@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import { cleanMerchantName } from '@/lib/merchant-utils';
+import GoogleSheetsConnect from '@/components/GoogleSheetsConnect';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal from '@/components/BankPickerModal';
@@ -1660,6 +1661,9 @@ export default function MoneyHubPage() {
           </span>
         )}
       </div>
+
+      {/* ═══ Google Sheets Export ═══ */}
+      <GoogleSheetsConnect />
 
       {/* ═══ SECTION 2: Bank Accounts ═══ */}
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
