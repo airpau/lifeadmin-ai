@@ -10,8 +10,9 @@ export const runtime = 'nodejs';
  */
 export async function GET(request: NextRequest) {
   const auth = request.headers.get('authorization');
+  const querySecret = request.nextUrl.searchParams.get('secret');
   const secret = process.env.CRON_SECRET;
-  if (!secret || auth !== `Bearer ${secret}`) {
+  if (!secret || (auth !== `Bearer ${secret}` && querySecret !== secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
