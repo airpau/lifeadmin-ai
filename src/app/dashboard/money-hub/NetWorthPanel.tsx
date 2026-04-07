@@ -1,5 +1,7 @@
-import { formatGBP } from '@/lib/format';
-import { PiggyBank, Lock, Settings } from 'lucide-react';
+'use client';
+
+import { fmtNum } from '@/lib/format';
+import { PiggyBank, Lock, Settings, TrendingUp, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import NetWorthManagementModal from './NetWorthManagementModal';
@@ -16,7 +18,9 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
           Net Worth
         </h3>
         <div className="flex items-center gap-3">
-          <span className="text-mint-400 font-bold text-xl">£{formatGBP(total)}</span>
+          <span className={`font-bold text-xl ${total >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
+            {total >= 0 ? '' : '-'}£{fmtNum(Math.abs(total))}
+          </span>
           {isPro && (
             <button onClick={() => setModalOpen(true)} className="text-slate-500 hover:text-white transition-colors" title="Manage Net Worth">
               <Settings className="h-4 w-4" />
@@ -39,38 +43,54 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
         </div>
       ) : (
         <div className="flex-1 flex flex-col">
+          {/* Assets vs Liabilities summary */}
           <div className="flex justify-between items-center bg-navy-950/50 rounded-xl p-4 border border-navy-800 mb-4">
             <div>
-              <p className="text-xs text-slate-400 mb-1">Total Assets</p>
-              <p className="text-lg text-green-400 font-semibold">£{formatGBP(assets)}</p>
+              <p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><TrendingUp className="h-3 w-3 text-green-400" /> Assets</p>
+              <p className="text-lg text-green-400 font-semibold">£{fmtNum(assets)}</p>
             </div>
-            <div className="px-4 text-slate-500">-</div>
+            <div className="px-4 text-slate-500 text-lg">−</div>
             <div className="text-right">
-              <p className="text-xs text-slate-400 mb-1">Total Liabilities</p>
-              <p className="text-lg text-red-400 font-semibold">£{formatGBP(liabilities)}</p>
+              <p className="text-xs text-slate-400 mb-1 flex items-center gap-1 justify-end"><TrendingDown className="h-3 w-3 text-red-400" /> Liabilities</p>
+              <p className="text-lg text-red-400 font-semibold">£{fmtNum(liabilities)}</p>
             </div>
           </div>
           
           <div className="space-y-4">
+            {/* Top assets */}
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Top Assets</p>
-              {assetsList.length === 0 ? <p className="text-xs text-slate-500">None manually added.</p> : assetsList.slice(0, 2).map((a: any) => (
-                <div key={a.id} className="flex justify-between text-sm py-1 border-b border-navy-800/50 last:border-0">
-                  <span className="text-slate-300">{a.asset_name}</span>
-                  <span className="text-green-400 font-medium">£{formatGBP(a.estimated_value)}</span>
-                </div>
-              ))}
+              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Assets</p>
+              {assetsList.length === 0 ? (
+                <p className="text-xs text-slate-500">Add assets manually to track net worth.</p>
+              ) : (
+                assetsList.slice(0, 3).map((a: any) => (
+                  <div key={a.id} className="flex justify-between text-sm py-1.5 border-b border-navy-800/50 last:border-0">
+                    <span className="text-slate-300">{a.asset_name}</span>
+                    <span className="text-green-400 font-medium">£{fmtNum(parseFloat(String(a.estimated_value)) || 0)}</span>
+                  </div>
+                ))
+              )}
             </div>
+
+            {/* Top liabilities */}
             <div>
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Top Liabilities</p>
-              {liabilitiesList.length === 0 ? <p className="text-xs text-slate-500">None manually added.</p> : liabilitiesList.slice(0, 2).map((l: any) => (
-                <div key={l.id} className="flex justify-between text-sm py-1 border-b border-navy-800/50 last:border-0">
-                  <span className="text-slate-300">{l.liability_name}</span>
-                  <span className="text-red-400 font-medium">£{formatGBP(l.outstanding_balance)}</span>
-                </div>
-              ))}
+              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Liabilities</p>
+              {liabilitiesList.length === 0 ? (
+                <p className="text-xs text-slate-500">No liabilities tracked.</p>
+              ) : (
+                liabilitiesList.slice(0, 3).map((l: any) => (
+                  <div key={l.id} className="flex justify-between text-sm py-1.5 border-b border-navy-800/50 last:border-0">
+                    <span className="text-slate-300">{l.liability_name}</span>
+                    <span className="text-red-400 font-medium">£{fmtNum(parseFloat(String(l.outstanding_balance)) || 0)}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
+
+          <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-navy-800/30">
+            Auto-sync with bank balances coming soon. Assets must be added manually.
+          </p>
         </div>
       )}
       

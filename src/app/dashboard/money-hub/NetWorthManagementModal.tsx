@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, PiggyBank, Building2, CreditCard } from 'lucide-react';
-import { formatGBP } from '@/lib/format';
+import { fmtNum } from '@/lib/format';
 
 export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdated }: { isOpen: boolean, onClose: () => void, data: any, onUpdated: () => void }) {
   const [activeTab, setActiveTab] = useState<'assets' | 'liabilities'>('assets');
@@ -85,7 +85,7 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
                 {assetsList.length === 0 ? <p className="text-slate-500 text-sm">No assets added yet.</p> : assetsList.map((a: any) => (
                   <div key={a.id} className="flex justify-between items-center py-3 border-b border-navy-800 last:border-0">
                     <div><p className="text-white text-sm">{a.asset_name}</p><p className="text-xs text-slate-500 capitalize">{a.asset_type}</p></div>
-                    <div className="flex items-center gap-4"><p className="text-green-400 font-semibold">£{formatGBP(a.estimated_value)}</p><button onClick={() => handleDelete(a.id, 'asset')} disabled={loading} className="text-slate-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button></div>
+                    <div className="flex items-center gap-4"><p className="text-green-400 font-semibold">£{fmtNum(a.estimated_value)}</p><button onClick={() => handleDelete(a.id, 'asset')} disabled={loading} className="text-slate-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button></div>
                   </div>
                 ))}
               </div>
@@ -107,7 +107,7 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
                 {liabilitiesList.length === 0 ? <p className="text-slate-500 text-sm">No liabilities added yet.</p> : liabilitiesList.map((l: any) => (
                   <div key={l.id} className="flex justify-between items-center py-3 border-b border-navy-800 last:border-0">
                     <div><p className="text-white text-sm">{l.liability_name}</p><p className="text-xs text-slate-500 capitalize">{l.liability_type}</p></div>
-                    <div className="flex items-center gap-4"><p className="text-red-400 font-semibold">£{formatGBP(l.outstanding_balance)}</p><button onClick={() => handleDelete(l.id, 'liability')} disabled={loading} className="text-slate-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button></div>
+                    <div className="flex items-center gap-4"><p className="text-red-400 font-semibold">£{fmtNum(l.outstanding_balance)}</p><button onClick={() => handleDelete(l.id, 'liability')} disabled={loading} className="text-slate-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button></div>
                   </div>
                 ))}
               </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
-import { formatGBP } from '@/lib/format';
+import { fmtNum } from '@/lib/format';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 
 interface CategoryDrillDownModalProps {
@@ -111,7 +111,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, sele
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-white font-bold">£{formatGBP(m.total)}</p>
+                        <p className="text-white font-bold">£{fmtNum(m.total)}</p>
                         <button 
                           onClick={() => setMerchantRecatIdx(merchantRecatIdx === idx ? null : idx)}
                           className="text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
@@ -158,7 +158,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, sele
                           <p className="text-slate-500 text-xs mt-0.5">{dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-white text-sm font-medium">£{formatGBP(Math.abs(txn.amount))}</p>
+                          <p className="text-white text-sm font-medium">£{fmtNum(Math.abs(txn.amount))}</p>
                           <button 
                             onClick={() => setRecatDropdown(isRecatOpen ? null : txn.id)}
                             className="text-[10px] text-slate-500 hover:text-purple-400 transition-colors"

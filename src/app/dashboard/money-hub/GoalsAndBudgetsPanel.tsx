@@ -1,5 +1,7 @@
-import { formatGBP } from '@/lib/format';
-import { Target, Lock, Settings } from 'lucide-react';
+'use client';
+
+import { fmtNum } from '@/lib/format';
+import { Target, Lock, Settings, Plus, PiggyBank } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import GoalsAndBudgetsModal from './GoalsAndBudgetsModal';
@@ -37,44 +39,76 @@ export default function GoalsAndBudgetsPanel({ data, isPro, refreshData }: { dat
         </div>
       ) : (
         <div className="flex-1 space-y-6">
+          {/* Budgets */}
           <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-3 font-semibold">Active Budgets</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Active Budgets</p>
+              {budgets.length === 0 && (
+                <button onClick={() => setModalOpen(true)} className="text-mint-400 hover:text-mint-300 text-xs flex items-center gap-1">
+                  <Plus className="h-3 w-3" /> Add
+                </button>
+              )}
+            </div>
             {budgets.length === 0 ? (
-              <p className="text-sm text-slate-500">No budgets set.</p>
+              <p className="text-sm text-slate-500">No budgets set. Add one to track spending limits.</p>
             ) : (
-              budgets.slice(0, 3).map((b: any) => (
+              budgets.slice(0, 4).map((b: any) => (
                 <div key={b.id} className="mb-3">
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white capitalize">{b.category.replace(/_/g, ' ')}</span>
-                    <span className="text-slate-400">£{formatGBP(b.spent)} / £{formatGBP(b.monthly_limit)}</span>
+                    <span className="text-white capitalize">{(b.category || '').replace(/_/g, ' ')}</span>
+                    <span className={`text-xs font-medium ${b.status === 'over_budget' ? 'text-red-400' : b.status === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>
+                      £{fmtNum(b.spent)} / £{fmtNum(b.monthly_limit)}
+                    </span>
                   </div>
                   <div className="w-full bg-navy-800 rounded-full h-1.5">
                     <div 
-                      className={`h-1.5 rounded-full ${b.status === 'over_budget' ? 'bg-red-400' : b.status === 'warning' ? 'bg-amber-400' : 'bg-green-400'}`} 
+                      className={`h-1.5 rounded-full transition-all ${b.status === 'over_budget' ? 'bg-red-400' : b.status === 'warning' ? 'bg-amber-400' : 'bg-green-400'}`} 
                       style={{ width: `${Math.min(b.percentage, 100)}%` }} 
                     />
                   </div>
+                  {b.status === 'over_budget' && (
+                    <p className="text-[10px] text-red-400 mt-0.5">Over by £{fmtNum(Math.abs(b.remaining))}</p>
+                  )}
                 </div>
               ))
             )}
           </div>
           
+          {/* Savings Goals */}
           <div>
-            <p className="text-xs text-slate-400 uppercase tracking-wider mb-3 font-semibold">Savings Goals</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1">
+                <PiggyBank className="h-3 w-3" /> Savings Goals
+              </p>
+              {goals.length === 0 && (
+                <button onClick={() => setModalOpen(true)} className="text-mint-400 hover:text-mint-300 text-xs flex items-center gap-1">
+                  <Plus className="h-3 w-3" /> Add
+                </button>
+              )}
+            </div>
             {goals.length === 0 ? (
-              <p className="text-sm text-slate-500">No goals set.</p>
+              <p className="text-sm text-slate-500">No goals set. Create one to start saving.</p>
             ) : (
-              goals.slice(0, 3).map((g: any) => (
-                <div key={g.id} className="mb-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white flex items-center gap-1">{g.emoji} {g.goal_name}</span>
-                    <span className="text-slate-400">£{formatGBP(g.current_amount)} / £{formatGBP(g.target_amount)}</span>
+              goals.slice(0, 3).map((g: any) => {
+                const pct = g.target_amount > 0 ? (g.current_amount / g.target_amount) * 100 : 0;
+                const remaining = Math.max(0, g.target_amount - g.current_amount);
+                return (
+                  <div key={g.id} className="mb-3">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-white flex items-center gap-1">{g.emoji} {g.goal_name}</span>
+                      <span className="text-slate-400 text-xs">£{fmtNum(g.current_amount)} / £{fmtNum(g.target_amount)}</span>
+                    </div>
+                    <div className="w-full bg-navy-800 rounded-full h-1.5">
+                      <div className="bg-mint-400 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                    {remaining > 0 && g.target_date && (
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        £{fmtNum(remaining)} to go · Target: {new Date(g.target_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
+                      </p>
+                    )}
                   </div>
-                  <div className="w-full bg-navy-800 rounded-full h-1.5">
-                    <div className="bg-mint-400 h-1.5 rounded-full" style={{ width: `${Math.min((g.current_amount / g.target_amount) * 100, 100)}%` }} />
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

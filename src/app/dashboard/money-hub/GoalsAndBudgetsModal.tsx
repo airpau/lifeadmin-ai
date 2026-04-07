@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, Target, PlusCircle } from 'lucide-react';
-import { formatGBP } from '@/lib/format';
+import { fmtNum } from '@/lib/format';
 
 export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated }: { isOpen: boolean, onClose: () => void, data: any, onUpdated: () => void }) {
   const [activeTab, setActiveTab] = useState<'budgets' | 'goals'>('budgets');
@@ -115,7 +115,7 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
               <div>
                 {budgets.length === 0 ? <p className="text-slate-500 text-sm">No budgets set.</p> : budgets.map((b: any) => (
                   <div key={b.id} className="flex justify-between items-center py-3 border-b border-navy-800 last:border-0">
-                    <div><p className="text-white text-sm capitalize">{b.category.replace(/_/g, ' ')}</p><p className="text-xs text-slate-500">Target: £{formatGBP(b.monthly_limit)}</p></div>
+                    <div><p className="text-white text-sm capitalize">{b.category.replace(/_/g, ' ')}</p><p className="text-xs text-slate-500">Target: £{fmtNum(b.monthly_limit)}</p></div>
                     <button onClick={() => handleDeleteBudget(b.id)} disabled={loading} className="text-slate-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 ))}
@@ -144,7 +144,7 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
                   <div key={g.id} className="flex justify-between items-center py-3 border-b border-navy-800 last:border-0">
                     <div>
                       <p className="text-white text-sm">{g.emoji} {g.goal_name}</p>
-                      <p className="text-xs text-slate-500">Saved: £{formatGBP(g.current_amount)} / £{formatGBP(g.target_amount)}</p>
+                      <p className="text-xs text-slate-500">Saved: £{fmtNum(g.current_amount)} / £{fmtNum(g.target_amount)}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <button onClick={() => handleAddMoneyToGoal(g.id, g.current_amount)} className="text-mint-400 hover:text-mint-300 transition-colors flex items-center gap-1 text-xs font-semibold bg-mint-400/10 px-2 py-1 rounded-full"><PlusCircle className="h-3 w-3 " /> Add</button>

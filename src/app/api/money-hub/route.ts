@@ -204,6 +204,7 @@ export async function GET(request: Request) {
         return { ...b, spent: parseFloat(spent.toFixed(2)), percentage: parseFloat(pct.toFixed(1)), remaining: parseFloat((b.monthly_limit - spent).toFixed(2)), status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track' };
       }) : [],
       goals: isPaid ? (goals || []).slice(0, isPro ? 100 : 3) : [],
+      alerts: isPro ? (alerts || []) : [],
     });
 
   } catch (err: any) {
