@@ -118,12 +118,12 @@ const COMPLAINT_WIN: SocialTemplate[] = [
 const PRODUCT_FEATURE: SocialTemplate[] = [
   {
     content: "Paybacker scans your inbox to find every subscription you are paying for, including the ones you forgot about. The average UK adult wastes £312 a year on unused subscriptions. We find them so you can cancel them. Try it free at paybacker.co.uk",
-    hashtags: "#SubscriptionTracker #FinTech #MoneySaving #PayBacker #LaunchingSoon",
+    hashtags: "#SubscriptionTracker #FinTech #MoneySaving #PayBacker",
     image_prompt: "Dark navy background, gold magnifying glass scanning email icons, subscription detection concept, fintech style",
   },
   {
     content: "Every complaint letter Paybacker generates cites the exact UK legislation that applies to your case. Consumer Rights Act 2015, Ofcom rules, FCA regulations. Companies respond faster when they know you know the law. Try it free at paybacker.co.uk",
-    hashtags: "#AI #ConsumerRights #UKLaw #Complaints #PayBacker #LaunchingSoon",
+    hashtags: "#AI #ConsumerRights #UKLaw #Complaints #PayBacker",
     image_prompt: "Dark navy background, gold document with legal scales, AI complaint letter concept, clean design",
   },
   {
@@ -138,7 +138,7 @@ const PRODUCT_FEATURE: SocialTemplate[] = [
   },
   {
     content: "Paybacker does not just find problems, it fixes them. Our AI generates formal complaint letters, cancellation emails, and refund requests tailored to your specific situation. Every document cites the relevant UK law. Try it free at paybacker.co.uk",
-    hashtags: "#AI #FinTech #ConsumerRights #Automation #PayBacker #LaunchingSoon",
+    hashtags: "#AI #FinTech #ConsumerRights #Automation #PayBacker",
     image_prompt: "Dark navy background, three gold document icons, complaint cancellation refund concept, fintech style",
   },
   {
@@ -153,7 +153,7 @@ const PRODUCT_FEATURE: SocialTemplate[] = [
   },
   {
     content: "Three steps. Connect your accounts. Paybacker scans for savings opportunities. Review the AI generated letters and send them. That is it. Your money, recovered. Try it free at paybacker.co.uk",
-    hashtags: "#HowItWorks #FinTech #AI #MoneySaving #PayBacker #LaunchingSoon",
+    hashtags: "#HowItWorks #FinTech #AI #MoneySaving #PayBacker",
     image_prompt: "Dark navy background, three gold numbered steps, simple process concept, modern fintech design",
   },
   {
@@ -163,7 +163,7 @@ const PRODUCT_FEATURE: SocialTemplate[] = [
   },
   {
     content: "Paybacker helps you compare deals on energy, broadband, insurance, and more. We surface where you are overpaying and show you better options. Switch and save without the research. Try it free at paybacker.co.uk",
-    hashtags: "#DealFinder #MoneySaving #Energy #Broadband #PayBacker #LaunchingSoon",
+    hashtags: "#DealFinder #MoneySaving #Energy #Broadband #PayBacker",
     image_prompt: "Dark navy background, gold comparison arrows, deal switching concept, clean fintech design",
   },
 ];

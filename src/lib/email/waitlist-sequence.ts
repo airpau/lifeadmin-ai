@@ -18,11 +18,11 @@ const Logo = () => `
   </a>
 `;
 
-const Footer = (listName = 'waitlist') => `
+const Footer = () => `
   <div style="${footer}">
     <p style="${footerText}">
       <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/>
-      You're receiving this because you joined the Paybacker ${listName}.<br/>
+      You're receiving this because you signed up at paybacker.co.uk.<br/>
       <a href="https://paybacker.co.uk/privacy-policy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
       <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
     </p>
@@ -44,26 +44,26 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'welcome',
     dayOffset: 0,
-    subject: "You're on the Paybacker waitlist",
+    subject: "Welcome to Paybacker — start saving today",
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">You're on the list, ${name}</h1>
+    <h1 style="${h1}">Welcome to Paybacker, ${name}</h1>
     <p style="${p}">
-      Thanks for joining Paybacker. We're building an AI that disputes overcharges, cancels forgotten subscriptions, and writes formal complaints — all automatically, all citing UK consumer law.
+      Thanks for signing up. Paybacker is an AI that disputes overcharges, cancels forgotten subscriptions, and writes formal complaint letters — all automatically, all citing UK consumer law.
     </p>
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT YOU GET AS AN EARLY MEMBER</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:14px;">GET STARTED IN MINUTES</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
-        <li>Early access invite before public launch</li>
-        <li>3 months free on any paid plan</li>
-        <li>Locked-in pricing — your rate never increases</li>
-        <li>Direct input on which features we build next</li>
+        <li>Connect your bank or inbox to detect hidden charges</li>
+        <li>Generate complaint letters citing exact UK legislation</li>
+        <li>Track every subscription, contract and renewal date</li>
+        <li>Start free — no credit card required</li>
       </ul>
     </div>
-    <p style="${p}">The average UK adult overpays by over £500/year on bills and forgotten subscriptions. We're fixing that.</p>
-    <a href="https://paybacker.co.uk" style="${cta}">Preview the app →</a>
+    <p style="${p}">The average UK adult overpays by over £500/year on bills and forgotten subscriptions. Let's find yours.</p>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start saving free →</a>
     <p style="${p}; margin-top:24px;">— Paul, Paybacker</p>
   </div>
   ${Footer()}
@@ -97,8 +97,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">Paybacker generates the complaint letter or cancellation email — citing UK consumer law — and shows it to you. Review it, edit if you like, and send it from your own email in under a minute.</p>
     </div>
 
-    <p style="${p}">Your early access invite is coming soon.</p>
-    <a href="https://paybacker.co.uk" style="${cta}">See how it works →</a>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Try Paybacker free →</a>
   </div>
   ${Footer()}
 </div>`,
@@ -137,7 +136,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <p style="color:#94a3b8;margin:0;line-height:1.7;font-size:14px;">A letter citing "Consumer Rights Act 2015, s.54" lands very differently than "I'm unhappy with my bill." Paybacker writes letters that cite all of this — automatically.</p>
     </div>
 
-    <a href="https://paybacker.co.uk" style="${cta}">Join the early access list →</a>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Try Paybacker free →</a>
   </div>
   ${Footer()}
 </div>`,
@@ -166,7 +165,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
 
     <p style="${p}">The difference is knowing exactly what to cite and how to frame it. That's what the AI does — in about 90 seconds.</p>
     <p style="${p}">— Paul, Paybacker</p>
-    <a href="https://paybacker.co.uk" style="${cta}">Get early access →</a>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start saving today →</a>
   </div>
   ${Footer()}
 </div>`,
@@ -198,7 +197,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <p style="${p}">For every subscription found, Paybacker drafts a cancellation email citing your right to cancel under the Consumer Contracts Regulations 2013. You review it and send it from your own email.</p>
     <p style="${p}">Most people are surprised by at least one thing. The average? Around £40–60/month in charges they'd genuinely forgotten about.</p>
 
-    <a href="https://paybacker.co.uk" style="${cta}">Get early access →</a>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start saving today →</a>
   </div>
   ${Footer()}
 </div>`,
@@ -208,26 +207,27 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'day14_urgency',
     dayOffset: 14,
-    subject: "Early access is opening soon — here's what you get",
+    subject: "Paybacker is live — start your first scan today",
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">Early access is almost here, ${name}</h1>
-    <p style="${p}">We're opening Paybacker to our first users very soon. As a waitlist member, you're at the front of the queue — and you get something regular users won't.</p>
+    <h1 style="${h1}">Paybacker is live, ${name}</h1>
+    <p style="${p}">The app is ready. You can sign up for free right now and run your first scan in about 3 minutes.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">YOUR EARLY ACCESS BENEFITS</p>
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">WHAT YOU CAN DO TODAY</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
-        <li>✅ <strong style="color:#e2e8f0;">3 months free</strong> on any paid plan</li>
-        <li>✅ <strong style="color:#e2e8f0;">Founding member</strong> — locked-in pricing forever</li>
-        <li>✅ <strong style="color:#e2e8f0;">Direct input</strong> on which agents we build next</li>
+        <li>✅ <strong style="color:#e2e8f0;">Free account</strong> — no credit card needed</li>
+        <li>✅ <strong style="color:#e2e8f0;">Inbox scan</strong> — find forgotten subscriptions in minutes</li>
+        <li>✅ <strong style="color:#e2e8f0;">3 complaint letters free</strong> — write your first one today</li>
+        <li>✅ <strong style="color:#e2e8f0;">Essential from £4.99/month</strong> — unlimited letters + daily bank sync</li>
       </ul>
     </div>
 
-    <p style="${p}">When you get your invite, you'll be able to connect your Gmail, run your first scan, and see exactly what you've been overpaying — in about 3 minutes.</p>
+    <p style="${p}">Connect your Gmail, run your first scan, and see exactly what you've been overpaying.</p>
 
-    <a href="https://paybacker.co.uk" style="${cta}">Preview the app →</a>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start saving free →</a>
   </div>
   ${Footer()}
 </div>`,
@@ -256,7 +256,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
 
     <p style="${p}">Paybacker tracks your contract end dates and sends you renewal reminders at 30, 14, and 7 days before, so you never miss the window to act.</p>
 
-    <a href="https://paybacker.co.uk" style="${cta}">Get early access →</a>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start saving today →</a>
   </div>
   ${Footer()}
 </div>`,
@@ -266,13 +266,13 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'day28_upgrade',
     dayOffset: 28,
-    subject: "Early access is open — your first month is on us",
+    subject: "Still overpaying? Here's what Paybacker finds in the first scan",
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">Early access is open, ${name} — your first month is free</h1>
-    <p style="${p}">Paybacker is now in early access. As a waitlist member, your first month is free on any paid plan.</p>
+    <h1 style="${h1}">Ready to find out what you're overpaying, ${name}?</h1>
+    <p style="${p}">Paybacker is live and free to start. Most people find something worth acting on in the first scan.</p>
 
     <div style="${box}">
       <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:15px;">WHAT YOU GET FROM DAY ONE</p>
@@ -287,11 +287,7 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
 
     <p style="${p}">Essential is £4.99/month — less than most forgotten subscriptions we find in the first scan.</p>
 
-    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Claim your free month →</a>
-
-    <p style="color:#64748b;font-size:13px;margin-top:16px;">
-      Use code <strong style="color:#f59e0b;">WAITLIST</strong> at checkout for your free first month.
-    </p>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start saving free →</a>
   </div>
   ${Footer()}
 </div>`,

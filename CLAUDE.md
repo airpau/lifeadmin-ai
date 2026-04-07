@@ -475,7 +475,7 @@ Social media posting is **admin-only infrastructure** — no user-facing UI. All
 - Dark navy (#0f172a) background, gold (#f59e0b) accents
 - NO TEXT in generated images (AI hallucinates garbled text)
 - Always use `paybacker.co.uk` (NEVER paybacker.com)
-- All posts must include pre-launch waitlist CTA: "Join the waitlist at paybacker.co.uk"
+- All posts must include a live-product CTA, e.g. "Try Paybacker free at paybacker.co.uk" or "Start saving today at paybacker.co.uk" — never "join the waitlist"
 - GEMINI_API_KEY is set in Vercel and .env.local (hello@paybacker.co.uk Google account)
 
 **Key files:**
@@ -492,8 +492,8 @@ Social media posting is **admin-only infrastructure** — no user-facing UI. All
 - META_APP_ID, META_APP_SECRET, META_ACCESS_TOKEN, META_PAGE_ID, META_INSTAGRAM_ACCOUNT_ID — all set in Vercel
 
 ### Current Mode
-`NEXT_PUBLIC_WAITLIST_MODE=true` — site shows waitlist CTAs instead of free trial buttons.
-To disable: set `NEXT_PUBLIC_WAITLIST_MODE=false` in Vercel env and redeploy.
+`NEXT_PUBLIC_WAITLIST_MODE=false` — site is live with free signup. Waitlist mode disabled.
+To re-enable waitlist mode: set `NEXT_PUBLIC_WAITLIST_MODE=true` in Vercel env and redeploy.
 
 ---
 
