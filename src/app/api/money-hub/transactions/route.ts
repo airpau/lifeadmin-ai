@@ -2,21 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
-import { loadLearnedRules, categoriseWithLearningSync as categorise } from '@/lib/learning-engine';
+import { loadLearnedRules } from '@/lib/learning-engine';
+import { matchesIncomeTypeFilter, normalizeIncomeTypeKey } from '@/lib/income-normalise';
+import {
+  buildMoneyHubOverrideMaps,
+  findMatchingCategoryOverride,
+  getMoneyHubMonthBounds,
+  normalizeSpendingCategoryKey,
+  resolveMoneyHubTransaction,
+} from '@/lib/money-hub-classification';
 
 export const runtime = 'nodejs';
 
 function getAdmin() {
   return createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
-
-function isTransfer(desc: string, bankCat: string): boolean {
-  const cat = bankCat.toUpperCase();
-  const d = desc.toLowerCase();
-  if (cat === 'TRANSFER') return true;
-  if (d.includes('personal transfer') || d.includes('to a/c ') || d.includes('via mobile xfer')) return true;
-  if (d.includes('barclaycard') || d.includes('mbna') || d.includes('halifax credit') || d.includes('hsbc bank visa')) return true;
-  return false;
 }
 
 export async function GET(request: NextRequest) {
@@ -28,88 +27,49 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
   const incomeType = searchParams.get('income_type');
-  const months = parseInt(searchParams.get('months') || '1');
   const selectedMonth = searchParams.get('month'); // e.g. "2026-02"
 
   const admin = getAdmin();
+  const { start, end } = getMoneyHubMonthBounds(selectedMonth);
 
-  // Calculate date range — respect selected month if provided
-  let since: Date;
-  let until: Date | null = null;
-  if (selectedMonth) {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    since = new Date(y, m - 1, 1);
-    until = new Date(y, m, 0, 23, 59, 59); // last day of month
-  } else {
-    since = new Date();
-    since.setMonth(since.getMonth() - months);
-  }
-
-  let query = admin.from('bank_transactions')
+  const query = admin.from('bank_transactions')
     .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
     .eq('user_id', user.id)
-    .gte('timestamp', since.toISOString())
+    .gte('timestamp', start.toISOString())
+    .lte('timestamp', end.toISOString())
     .order('timestamp', { ascending: false })
-    .limit(500);
-
-  if (until) {
-    query = query.lte('timestamp', until.toISOString());
-  }
+    .limit(5000);
 
   const [{ data: txns }, { data: overrideRows }] = await Promise.all([
     query,
     admin.from('money_hub_category_overrides')
-      .select('merchant_pattern, transaction_id')
+      .select('merchant_pattern, transaction_id, user_category')
       .eq('user_id', user.id),
   ]);
 
-  // Load learned rules for learning-aware categorisation
   await loadLearnedRules();
+  const overrides = buildMoneyHubOverrideMaps(overrideRows || []);
+  const resolvedTransactions = (txns || []).map((txn) => {
+    const overrideCategory = findMatchingCategoryOverride(
+      txn,
+      overrides.transactionOverrides,
+      overrides.merchantOverrides,
+    );
+    const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
 
-  // Generic auto-assigned categories that can be overridden by runtime categorisation.
-  // Allows mortgage transactions stored as 'bills' and groceries stored as 'shopping'
-  // to be correctly re-categorised for drill-down without requiring a full re-sync.
-  // Exception: if the user explicitly recategorised the transaction, respect their choice.
-  const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
-
-  const txnOverrideIds = new Set(
-    (overrideRows || []).filter(o => o.transaction_id).map(o => o.transaction_id as string)
-  );
-  const merchantOverridePatterns = (overrideRows || [])
-    .filter(o => !o.transaction_id && o.merchant_pattern !== 'txn_specific')
-    .map(o => (o.merchant_pattern as string).toLowerCase());
-
-  function isUserOverride(t: { id: string; merchant_name?: string; description?: string }): boolean {
-    if (txnOverrideIds.has(t.id)) return true;
-    const merchantLower = (t.merchant_name || '').toLowerCase();
-    const descLower = (t.description || '').toLowerCase();
-    return merchantOverridePatterns.some(p => p.length > 2 && (merchantLower.includes(p) || descLower.includes(p)));
-  }
-
-  // Map transactions with consistent category logic matching the RPCs exactly:
-  // - Spending RPC groups by: COALESCE(user_category, 'other')
-  // - Income RPC filters by: user_category = 'income' AND category != 'TRANSFER'
-  // - Both exclude: user_category IN ('transfers', 'income') for spending, category = 'TRANSFER'
-  let filtered = (txns || []).map(t => ({
-    ...t,
-    // This MUST match get_monthly_spending RPC: COALESCE(user_category, 'other')
-    spending_category: (t.user_category || 'other').toLowerCase(),
-    amount: parseFloat(t.amount),
-  }));
+    return {
+      ...txn,
+      amount: parseFloat(String(txn.amount)) || 0,
+      resolved,
+    };
+  });
 
   // Income drill-down mode
   if (incomeType) {
-    const mergeAsOther = ['other', 'unknown', 'uncategorised', ''];
-    // Match get_monthly_income RPC: user_category = 'income' AND amount > 0 AND category != 'TRANSFER'
-    filtered = filtered.filter(t => {
-      if (t.amount <= 0) return false;
-      if (t.user_category !== 'income') return false;
-      if ((t.category || '').toUpperCase() === 'TRANSFER') return false;
-      const type = (t.income_type || 'other').toLowerCase();
-      const target = (incomeType || 'other').toLowerCase();
-      if (target === 'other') return mergeAsOther.includes(type);
-      return type === target;
-    });
+    const filtered = resolvedTransactions.filter((txn) => (
+      txn.resolved.kind === 'income' &&
+      matchesIncomeTypeFilter(txn.resolved.incomeType, incomeType)
+    ));
 
     const sourceTotals: Record<string, { total: number; count: number }> = {};
     for (const t of filtered) {
@@ -129,7 +89,7 @@ export async function GET(request: NextRequest) {
         description: t.description,
         merchant: t.merchant_name,
         amount: t.amount,
-        category: t.income_type || 'other',
+        category: normalizeIncomeTypeKey(t.resolved.incomeType),
         date: t.timestamp?.substring(0, 10),
       })),
       merchants: sources,
@@ -138,23 +98,12 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Spending drill-down — match get_monthly_spending RPC exclusions exactly:
-  // amount < 0 AND user_category NOT IN ('transfers', 'income') AND category != 'TRANSFER'
-  // AND income_type NOT IN ('transfer', 'credit_loan')
-  filtered = filtered.filter(t => {
-    if (t.amount >= 0) return false;
-    const uc = (t.user_category || '').toLowerCase();
-    if (uc === 'transfers' || uc === 'income') return false;
-    if ((t.category || '').toUpperCase() === 'TRANSFER') return false;
-    const it = (t.income_type || '').toLowerCase();
-    if (it === 'transfer' || it === 'credit_loan') return false;
-    return true;
+  const targetCategory = normalizeSpendingCategoryKey(category);
+  const filtered = resolvedTransactions.filter((txn) => {
+    if (txn.resolved.kind !== 'spending' || !txn.resolved.spendingCategory) return false;
+    if (!targetCategory) return true;
+    return normalizeSpendingCategoryKey(txn.resolved.spendingCategory) === targetCategory;
   });
-
-  if (category) {
-    // Filter by spending_category which is COALESCE(user_category, 'other') — same as RPC
-    filtered = filtered.filter(t => t.spending_category === category.toLowerCase());
-  }
 
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
@@ -175,7 +124,7 @@ export async function GET(request: NextRequest) {
       description: t.description,
       merchant: t.merchant_name,
       amount: t.amount,
-      category: t.spending_category,
+      category: normalizeSpendingCategoryKey(t.resolved.spendingCategory),
       date: t.timestamp?.substring(0, 10),
     })),
     merchants,

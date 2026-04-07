@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
-import { loadLearnedRules, categoriseWithLearningSync } from '@/lib/learning-engine';
+import { loadLearnedRules } from '@/lib/learning-engine';
+import {
+  buildMoneyHubOverrideMaps,
+  findMatchingCategoryOverride,
+  normalizeSpendingCategoryKey,
+  resolveMoneyHubTransaction,
+} from '@/lib/money-hub-classification';
 
 export const runtime = 'nodejs';
 
@@ -48,75 +54,60 @@ export async function GET() {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const { data: transactions } = await supabase
-      .from('bank_transactions')
-      .select('amount, description, category, user_category, timestamp')
-      .eq('user_id', user.id)
-      .gte('timestamp', sixMonthsAgo.toISOString())
-      .order('timestamp', { ascending: false });
+    const [{ data: transactions }, { data: overrideRows }] = await Promise.all([
+      supabase
+        .from('bank_transactions')
+        .select('id, amount, description, merchant_name, category, user_category, income_type, timestamp')
+        .eq('user_id', user.id)
+        .gte('timestamp', sixMonthsAgo.toISOString())
+        .order('timestamp', { ascending: false }),
+      supabase
+        .from('money_hub_category_overrides')
+        .select('merchant_pattern, transaction_id, user_category')
+        .eq('user_id', user.id),
+    ]);
 
     if (!transactions || transactions.length === 0) {
       return NextResponse.json({ hasData: false });
     }
 
-    // Use user_category as source of truth (matches Money Hub RPCs)
-    // Fall back to runtime categorisation only if user_category is not set
     await loadLearnedRules();
+    const overrides = buildMoneyHubOverrideMaps(overrideRows || []);
+    const resolvedTransactions = transactions.map((txn) => {
+      const overrideCategory = findMatchingCategoryOverride(
+        txn,
+        overrides.transactionOverrides,
+        overrides.merchantOverrides,
+      );
+      const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
 
-    const categorised = transactions.map(tx => ({
-      ...tx,
-      spending_category: (tx.user_category || categoriseWithLearningSync(tx.description || '', tx.category || '', parseFloat(String(tx.amount))) || 'other').toLowerCase(),
-      amount: parseFloat(String(tx.amount)),
-    }));
+      return {
+        ...txn,
+        amount: parseFloat(String(txn.amount)) || 0,
+        resolved,
+      };
+    });
 
-    // Filter out internal transfers and credit card payments (not real spending)
-    const isTransfer = (tx: typeof categorised[0]) => {
-      const cat = tx.category?.toUpperCase() || '';
-      const desc = (tx.description || '').toLowerCase();
-
-      // All TRANSFER category transactions are internal movements
-      if (cat === 'TRANSFER') return true;
-
-      // Credit card payments (paying off balance, not actual purchases)
-      if (desc.includes('barclaycard') && !desc.includes('fee')) return true;
-      if (desc.includes('mbna') && desc.includes('tpp')) return true;
-      if (desc.includes('halifax credit')) return true;
-      if (desc.includes('hsbc bank visa')) return true;
-      if (desc.includes('virgin money') && desc.includes('tpp')) return true;
-      if (desc.includes('santander') && desc.includes('tpp')) return true;
-      if (desc.includes('securepay.bos')) return true;
-
-      // Bank-to-bank transfers
-      if (desc.includes('revolut') && !desc.includes('deliveroo') && !desc.includes('uber')) return true;
-      if (desc.includes('monzo') || desc.includes('starling')) return true;
-      if (desc.includes('savings') || desc.includes('isa ')) return true;
-      if (desc.includes('via mobile') && desc.includes('pymt')) return true;
-      if (desc.includes('via mobile xfer')) return true;
-      if (desc.includes('personal transfer')) return true;
-      if (desc.includes('to a/c ')) return true;
-
-      return false;
-    };
-
-    // Split debits and credits, excluding internal transfers
-    const debits = categorised.filter(tx => tx.amount < 0 && !isTransfer(tx));
-    const credits = categorised.filter(tx => tx.amount > 0);
+    const debits = resolvedTransactions.filter(
+      (txn) => txn.resolved.kind === 'spending' && !!txn.resolved.spendingCategory
+    );
+    const credits = resolvedTransactions.filter((txn) => txn.resolved.kind === 'income');
 
     // Category totals (debits only, absolute values)
     const categoryTotals: Record<string, number> = {};
     for (const tx of debits) {
-      const cat = tx.spending_category;
+      const cat = normalizeSpendingCategoryKey(tx.resolved.spendingCategory);
       categoryTotals[cat] = (categoryTotals[cat] || 0) + Math.abs(tx.amount);
     }
 
     // Monthly totals (last 6 months)
     const monthlySpend: Record<string, number> = {};
     const monthlyIncome: Record<string, number> = {};
-    for (const tx of categorised) {
+    for (const tx of resolvedTransactions) {
       const month = tx.timestamp.substring(0, 7); // YYYY-MM
-      if (tx.amount < 0) {
+      if (tx.resolved.kind === 'spending') {
         monthlySpend[month] = (monthlySpend[month] || 0) + Math.abs(tx.amount);
-      } else {
+      } else if (tx.resolved.kind === 'income') {
         monthlyIncome[month] = (monthlyIncome[month] || 0) + tx.amount;
       }
     }
@@ -156,7 +147,7 @@ export async function GET() {
       .map(tx => ({
         description: tx.description,
         amount: Math.abs(tx.amount),
-        category: tx.spending_category,
+        category: normalizeSpendingCategoryKey(tx.resolved.spendingCategory),
         date: tx.timestamp.substring(0, 10),
       }));
 
@@ -166,11 +157,11 @@ export async function GET() {
     // Use normalised merchant names for clean display
     const categoryTransactions: Record<string, Array<{ description: string; total: number; count: number; monthly_avg: number }>> = {};
     for (const tx of debits) {
-      const cat = tx.spending_category;
+      const cat = normalizeSpendingCategoryKey(tx.resolved.spendingCategory);
       if (!categoryTransactions[cat]) categoryTransactions[cat] = [];
 
       // Use normalised merchant name for grouping
-      const key = normaliseMerchantName(tx.description || 'Unknown');
+      const key = normaliseMerchantName(tx.merchant_name || tx.description || 'Unknown');
 
       const existing = categoryTransactions[cat].find(t => t.description === key);
       if (existing) {

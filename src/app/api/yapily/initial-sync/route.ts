@@ -35,11 +35,11 @@ export async function POST(request: NextRequest) {
 
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-  const fromDate = twelveMonthsAgo.toISOString();
+  const fromDate = twelveMonthsAgo.toISOString().split('T')[0];
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const toDate = tomorrow.toISOString();
+  const toDate = tomorrow.toISOString().split('T')[0];
 
   let totalSynced = 0;
   let apiCallsMade = 0;

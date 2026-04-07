@@ -101,13 +101,6 @@ export async function POST(request: NextRequest) {
           alreadySubscribed: true,
         }, { status: 400 });
       }
-
-      // Mark existing subscriptions to cancel at period end (not immediately)
-      // so the user keeps access if they abandon checkout
-      for (const sub of allActiveSubs) {
-        console.log(`Checkout: marking cancel_at_period_end for sub=${sub.id} price=${sub.items.data[0]?.price.id}`);
-        await stripePost(`/subscriptions/${sub.id}`, { cancel_at_period_end: 'true' });
-      }
     }
 
     // Always create a fresh Stripe checkout session requiring payment

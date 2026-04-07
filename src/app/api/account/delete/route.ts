@@ -95,6 +95,7 @@ export async function DELETE() {
       safeDelete(admin, 'ticket_messages', 'user_id', userId, errors),
       safeDelete(admin, 'chatbot_question_log', 'user_id', userId, errors),
       safeDelete(admin, 'nps_responses', 'user_id', userId, errors),
+      safeDelete(admin, 'email_connections', 'user_id', userId, errors),
       safeDelete(admin, 'gmail_tokens', 'user_id', userId, errors),
       safeDelete(admin, 'outlook_tokens', 'user_id', userId, errors),
       safeDelete(admin, 'usage_logs', 'user_id', userId, errors),

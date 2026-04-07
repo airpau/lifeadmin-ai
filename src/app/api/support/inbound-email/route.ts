@@ -160,6 +160,9 @@ export async function POST(request: NextRequest) {
   const svixId = request.headers.get('svix-id');
   const svixTimestamp = request.headers.get('svix-timestamp');
   const svixSignature = request.headers.get('svix-signature');
+  const authHeader = request.headers.get('authorization');
+  const webhookSecret = process.env.WEBHOOK_SECRET || process.env.CRON_SECRET;
+  let verified = false;
 
   if (svixId && svixTimestamp && svixSignature) {
     // Resend sends webhooks signed via Svix — verify if we have the signing secret
@@ -178,15 +181,19 @@ export async function POST(request: NextRequest) {
         console.error('[inbound-email] Svix signature verification failed:', err);
         return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
       }
+      verified = true;
     }
-    // If RESEND_WEBHOOK_SECRET is not set, allow through but log a warning
     if (!signingSecret) {
-      console.warn('[inbound-email] RESEND_WEBHOOK_SECRET not set — skipping signature verification');
+      if (webhookSecret && authHeader === `Bearer ${webhookSecret}`) {
+        verified = true;
+      } else {
+        console.error('[inbound-email] RESEND_WEBHOOK_SECRET not set — refusing unsigned Svix-style request');
+        return NextResponse.json({ error: 'Webhook misconfigured' }, { status: 500 });
+      }
     }
-  } else {
-    // No Svix headers — require a shared secret bearer token
-    const authHeader = request.headers.get('authorization');
-    const webhookSecret = process.env.WEBHOOK_SECRET || process.env.CRON_SECRET;
+  }
+
+  if (!verified) {
     if (!webhookSecret || authHeader !== `Bearer ${webhookSecret}`) {
       console.error('[inbound-email] Unauthorized: missing Svix headers and invalid bearer token');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

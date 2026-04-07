@@ -44,6 +44,26 @@ function getPlanTier(priceId: string): string {
   return PRICE_ID_TO_TIER[priceId] ?? 'essential';
 }
 
+async function scheduleLegacySubscriptionsForCancellation(
+  stripe: Stripe,
+  customerId: string,
+  currentSubscriptionId: string
+) {
+  const [activeSubs, trialingSubs] = await Promise.all([
+    stripe.subscriptions.list({ customer: customerId, status: 'active', limit: 10 }),
+    stripe.subscriptions.list({ customer: customerId, status: 'trialing', limit: 10 }),
+  ]);
+
+  const legacySubs = [...activeSubs.data, ...trialingSubs.data].filter(
+    (sub) => sub.id !== currentSubscriptionId && !sub.cancel_at_period_end
+  );
+
+  for (const sub of legacySubs) {
+    await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+    console.log(`Webhook: scheduled legacy subscription ${sub.id} for cancellation at period end`);
+  }
+}
+
 export async function POST(request: NextRequest) {
   console.log('=== WEBHOOK HIT at /api/webhooks/stripe ===');
 
@@ -113,6 +133,14 @@ export async function POST(request: NextRequest) {
           .eq('id', userId)
           .select('id, subscription_tier')
           .single();
+
+        if (!updateError && session.customer && session.subscription) {
+          await scheduleLegacySubscriptionsForCancellation(
+            stripe,
+            session.customer as string,
+            session.subscription as string
+          );
+        }
 
         // Awin server-to-server conversion tracking
         // Send actual sale amount (not commission) — commission group rate handles the percentage

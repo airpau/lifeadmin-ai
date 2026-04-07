@@ -166,6 +166,7 @@ export async function GET(request: NextRequest) {
 
     try {
       let totalSynced = 0;
+      let transactionSyncSucceeded = false;
 
       if (connection.provider === 'truelayer') {
         // === TrueLayer path ===
@@ -233,28 +234,35 @@ export async function GET(request: NextRequest) {
         }
 
         // Backfill bank name if missing
-        if (!connection.bank_name) {
+        let accountIds = connection.account_ids || [];
+
+        if (accountIds.length === 0 || !connection.bank_name) {
           try {
             const accounts = await fetchTrueLayerAccounts(accessToken);
             connectionApiCalls++;
             const bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
             const displayNames = accounts.map((a) => a.display_name || 'Account');
+            accountIds = accounts.map((a) => a.account_id);
             await supabase.from('bank_connections').update({
               bank_name: bankName,
               account_display_names: displayNames,
-              account_ids: accounts.map((a) => a.account_id),
+              account_ids: accountIds,
             }).eq('id', connection.id);
           } catch {
             // Non-fatal
           }
         }
 
+        if (accountIds.length === 0) {
+          throw new Error('No bank accounts available to sync');
+        }
+
         // Sync transactions for each account
-        const accountIds = connection.account_ids || [];
         for (const accountId of accountIds) {
           try {
             const transactions = await fetchTrueLayerTransactions(accessToken, accountId, ninetyDaysAgo);
             connectionApiCalls++;
+            transactionSyncSucceeded = true;
 
             if (transactions.length === 0) continue;
 
@@ -400,7 +408,9 @@ export async function GET(request: NextRequest) {
         const consentToken = decrypt(connection.consent_token);
 
         // Backfill bank name if missing
-        if (!connection.bank_name) {
+        let accountIds = connection.account_ids || [];
+
+        if (accountIds.length === 0 || !connection.bank_name) {
           try {
             const accounts = await getAccounts(consentToken);
             connectionApiCalls++;
@@ -408,24 +418,31 @@ export async function GET(request: NextRequest) {
             const displayNames = accounts.map((a) =>
               a.accountNames?.[0]?.name || a.type || 'Account'
             );
+            accountIds = accounts.map((a) => a.id);
             await supabase.from('bank_connections').update({
               bank_name: bankName,
               account_display_names: displayNames,
-              account_ids: accounts.map((a) => a.id),
+              account_ids: accountIds,
             }).eq('id', connection.id);
           } catch {
             // Non-fatal
           }
         }
 
+        if (accountIds.length === 0) {
+          throw new Error('No bank accounts available to sync');
+        }
+
         // Sync transactions
-        const accountIds = connection.account_ids || [];
         for (const accountId of accountIds) {
           try {
             const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-            const toDate = new Date().toISOString().split('T')[0];
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const toDate = tomorrow.toISOString().split('T')[0];
             const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
             connectionApiCalls++;
+            transactionSyncSucceeded = true;
 
             if (transactions.length === 0) continue;
 
@@ -452,6 +469,10 @@ export async function GET(request: NextRequest) {
             console.error(`Bank sync: error on account ${accountId}:`, err.message);
           }
         }
+      }
+
+      if (!transactionSyncSucceeded) {
+        throw new Error('All account sync attempts failed');
       }
 
       // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring

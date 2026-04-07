@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
-import { getTransactions } from '@/lib/yapily';
+import { getAccounts, getTransactions } from '@/lib/yapily';
 import {
   getAccessToken as getTrueLayerAccessToken,
+  fetchAccounts as fetchTrueLayerAccounts,
   fetchTransactions as fetchTrueLayerTransactions,
   fetchBalances,
   fetchPendingTransactions,
@@ -173,6 +174,8 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
 
   for (const conn of connections as BankConnection[]) {
+    let transactionSyncSucceeded = false;
+
     if (conn.provider === 'truelayer') {
       // === TrueLayer path ===
       if (!conn.access_token) {
@@ -221,11 +224,40 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const accountIds = conn.account_ids || [];
+      let accountIds = conn.account_ids || [];
+      if (accountIds.length === 0 || !conn.bank_name) {
+        try {
+          const accounts = await fetchTrueLayerAccounts(accessToken);
+          const bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
+          accountIds = accounts.map((a) => a.account_id);
+          const displayNames = accounts.map((a) => a.display_name || 'Account');
+          await supabase.from('bank_connections').update({
+            bank_name: bankName,
+            account_display_names: displayNames,
+            account_ids: accountIds,
+          }).eq('id', conn.id);
+        } catch (err: any) {
+          console.error(`Sync: TrueLayer account refresh error for ${conn.id}:`, err?.message || err);
+        }
+      }
+
+      if (accountIds.length === 0) {
+        await supabase.from('bank_sync_log').insert({
+          user_id: user.id,
+          connection_id: conn.id,
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'No bank accounts available to sync',
+        });
+        continue;
+      }
+
       for (const accountId of accountIds) {
         try {
           const transactions = await fetchTrueLayerTransactions(accessToken, accountId, ninetyDaysAgo);
           apiCallsMade++;
+          transactionSyncSucceeded = true;
 
           if (transactions.length === 0) continue;
 
@@ -345,13 +377,44 @@ export async function POST(request: NextRequest) {
 
       const consentToken = decrypt(conn.consent_token);
 
-      const accountIds = conn.account_ids || [];
+      let accountIds = conn.account_ids || [];
+      if (accountIds.length === 0 || !conn.bank_name) {
+        try {
+          const accounts = await getAccounts(consentToken);
+          const bankName = accounts[0]?.institution?.name || null;
+          accountIds = accounts.map((a) => a.id);
+          const displayNames = accounts.map((a) => a.accountNames?.[0]?.name || a.type || 'Account');
+          await supabase.from('bank_connections').update({
+            bank_name: bankName,
+            account_display_names: displayNames,
+            account_ids: accountIds,
+          }).eq('id', conn.id);
+        } catch (err: any) {
+          console.error(`Sync: Yapily account refresh error for ${conn.id}:`, err?.message || err);
+        }
+      }
+
+      if (accountIds.length === 0) {
+        await supabase.from('bank_sync_log').insert({
+          user_id: user.id,
+          connection_id: conn.id,
+          trigger_type: 'manual',
+          status: 'failed',
+          api_calls_made: apiCallsMade,
+          error_message: 'No bank accounts available to sync',
+        });
+        continue;
+      }
+
       for (const accountId of accountIds) {
         try {
           const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-          const toDate = new Date().toISOString().split('T')[0];
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const toDate = tomorrow.toISOString().split('T')[0];
           const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
           apiCallsMade++;
+          transactionSyncSucceeded = true;
 
           if (transactions.length === 0) continue;
 
@@ -378,6 +441,18 @@ export async function POST(request: NextRequest) {
           console.error(`Sync: Yapily fetch error for account ${accountId}:`, err?.message || err);
         }
       }
+    }
+
+    if (!transactionSyncSucceeded) {
+      await supabase.from('bank_sync_log').insert({
+        user_id: user.id,
+        connection_id: conn.id,
+        trigger_type: 'manual',
+        status: 'failed',
+        api_calls_made: apiCallsMade,
+        error_message: 'All account sync attempts failed',
+      });
+      continue;
     }
 
     // Update sync timestamps
