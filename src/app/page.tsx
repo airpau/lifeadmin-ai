@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle, Sparkles, TrendingUp, Scale, CreditCard, Banknote, Check, X, ArrowRight, ChevronRight, MessageCircle, Zap, FileEdit, Bell, BadgeCheck, Shield } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Scale, CreditCard, Banknote, Check, X, ArrowRight, ChevronRight, MessageCircle, Zap, FileEdit, Bell, BadgeCheck, Shield, PieChart, Activity, LayoutDashboard } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
 import PublicNavbar from '@/components/PublicNavbar';
@@ -600,6 +600,149 @@ export default function Home() {
                 Available on Telegram. WhatsApp coming soon.
               </p>
             </motion.div>
+          </div>
+        </section>
+
+        {/* Feature Section 2.5: Money Hub (The Connector) */}
+        <section className="py-20 md:py-28 border-t border-navy-700/50 relative overflow-hidden bg-navy-950">
+          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-500/5 via-transparent to-transparent" />
+          <div className="container mx-auto px-4 md:px-6 relative">
+            <motion.div
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-14"
+            >
+              <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-4 py-2 text-sm text-blue-400 border border-blue-500/20 mb-6">
+                <LayoutDashboard className="h-4 w-4" />
+                <span>The Control Centre</span>
+              </div>
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
+                The <span className="text-blue-400">Money Hub</span>
+              </h2>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
+                Your entire financial life in one place. The Money Hub connects all our tools — powering your disputes, uncovering forgotten subscriptions, and finding better deals automatically.
+              </p>
+            </motion.div>
+
+            <div className="max-w-5xl mx-auto relative">
+              {/* Central Hub UI */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="bg-navy-900 border border-navy-700/50 rounded-3xl p-6 md:p-10 shadow-[--shadow-card] relative z-10 mx-auto max-w-3xl"
+              >
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-center mb-10">
+                  <div className="bg-navy-800 rounded-2xl p-4 border border-navy-700/50">
+                    <p className="text-slate-400 text-xs mb-1">Monthly Income</p>
+                    <p className="text-white font-bold text-xl">£3,450</p>
+                  </div>
+                  <div className="bg-navy-800 rounded-2xl p-4 border border-navy-700/50">
+                    <p className="text-slate-400 text-xs mb-1">Total Outgoings</p>
+                    <p className="text-white font-bold text-xl">£2,120</p>
+                  </div>
+                  <div className="bg-navy-800 rounded-2xl p-4 border border-navy-700/50">
+                    <p className="text-slate-400 text-xs mb-1">Projected Savings</p>
+                    <p className="text-mint-400 font-bold text-xl">£1,330</p>
+                  </div>
+                  <div className="bg-navy-800 rounded-2xl p-4 border border-navy-700/50">
+                    <p className="text-slate-400 text-xs mb-1">Savings Rate</p>
+                    <p className="text-brand-400 font-bold text-xl">38.5%</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-navy-800 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                        <Activity className="h-5 w-5 text-red-500" />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium text-sm">Overcharge Detected</p>
+                        <p className="text-slate-400 text-xs">Virgin Media bill increased by £12</p>
+                      </div>
+                    </div>
+                    <button className="text-xs bg-navy-800 hover:bg-navy-700 text-white px-3 py-1.5 rounded-lg border border-navy-700 transition-colors">
+                      Draft Dispute
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between border-b border-navy-800 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                        <Bell className="h-5 w-5 text-yellow-500" />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium text-sm">Contract Ending Soon</p>
+                        <p className="text-slate-400 text-xs">Energy plan ends in 14 days</p>
+                      </div>
+                    </div>
+                    <button className="text-xs bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg border border-mint-400/20 transition-colors">
+                      Compare Deals
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                        <MessageCircle className="h-5 w-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <p className="text-white font-medium text-sm">Pocket Agent Insight</p>
+                        <p className="text-slate-400 text-xs">You spent £150 on takeaways this month</p>
+                      </div>
+                    </div>
+                    <button className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded-lg border border-amber-500/20 transition-colors">
+                      Chat Now
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Connecting Lines / Explanations for Desktop */}
+              <div className="hidden md:block absolute -left-12 top-1/4 max-w-xs text-right">
+                <div className="flex items-center justify-end gap-3 mb-2">
+                  <h4 className="text-white font-semibold text-sm">Open Banking Sync</h4>
+                  <div className="w-8 h-[1px] bg-navy-600" />
+                </div>
+                <p className="text-slate-400 text-xs leading-relaxed">
+                  Automatically pulling in everyday transactions to analyse where your money goes.
+                </p>
+              </div>
+
+              <div className="hidden md:block absolute -right-12 top-1/4 max-w-xs text-left">
+                <div className="flex items-center justify-start gap-3 mb-2">
+                  <div className="w-8 h-[1px] bg-navy-600" />
+                  <h4 className="text-white font-semibold text-sm">Disputes Engine</h4>
+                </div>
+                <p className="text-slate-400 text-xs leading-relaxed">
+                  Identifies unusual price hikes to trigger automatic AI complaints.
+                </p>
+              </div>
+
+              <div className="hidden md:block absolute -left-12 bottom-1/4 max-w-xs text-right">
+                <div className="flex items-center justify-end gap-3 mb-2">
+                  <h4 className="text-white font-semibold text-sm">Deals & Switching</h4>
+                  <div className="w-8 h-[1px] bg-navy-600" />
+                </div>
+                <p className="text-slate-400 text-xs leading-relaxed">
+                  Monitors existing subscriptions and recommends verified savings automatically.
+                </p>
+              </div>
+
+              <div className="hidden md:block absolute -right-12 bottom-1/4 max-w-xs text-left">
+                <div className="flex items-center justify-start gap-3 mb-2">
+                  <div className="w-8 h-[1px] bg-navy-600" />
+                  <h4 className="text-white font-semibold text-sm">Pocket Agent</h4>
+                </div>
+                <p className="text-slate-400 text-xs leading-relaxed">
+                  Feeds real-time data to your Telegram assistant so you can ask about any expense.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
