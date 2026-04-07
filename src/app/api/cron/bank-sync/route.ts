@@ -5,6 +5,8 @@ import {
   getAccessTokenWithClient,
   fetchAccounts as fetchTrueLayerAccounts,
   fetchTransactions as fetchTrueLayerTransactions,
+  fetchBalances,
+  fetchPendingTransactions,
 } from '@/lib/truelayer';
 import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
@@ -267,6 +269,7 @@ export async function GET(request: NextRequest) {
               merchant_name: tx.merchant_name || null,
               category: null,
               timestamp: tx.timestamp,
+              is_pending: false,
             }));
 
             const { error: upsertError } = await supabase
@@ -277,6 +280,56 @@ export async function GET(request: NextRequest) {
             else console.error(`Bank sync: upsert error for ${accountId}:`, upsertError);
           } catch (err: any) {
             console.error(`Bank sync: error on account ${accountId}:`, err.message);
+          }
+        }
+
+        // Fetch balances for each account
+        for (const accountId of accountIds) {
+          try {
+            const balance = await fetchBalances(accessToken, accountId);
+            connectionApiCalls++;
+            if (balance) {
+              await supabase
+                .from('bank_connections')
+                .update({
+                  current_balance: balance.current,
+                  available_balance: balance.available,
+                  balance_updated_at: now,
+                })
+                .eq('id', connection.id);
+            }
+          } catch (err: any) {
+            console.log(`Bank sync: balance fetch error for ${accountId}:`, err.message);
+          }
+        }
+
+        // Fetch and store pending transactions for each account
+        for (const accountId of accountIds) {
+          try {
+            const pendingTxs = await fetchPendingTransactions(accessToken, accountId);
+            connectionApiCalls++;
+
+            if (pendingTxs.length === 0) continue;
+
+            const pendingRows = pendingTxs.map((tx) => ({
+              user_id: connection.user_id,
+              connection_id: connection.id,
+              transaction_id: tx.transaction_id,
+              account_id: accountId,
+              amount: tx.amount,
+              currency: tx.currency || 'GBP',
+              description: tx.description || null,
+              merchant_name: tx.merchant_name || null,
+              category: null,
+              timestamp: tx.timestamp,
+              is_pending: true,
+            }));
+
+            await supabase
+              .from('bank_transactions')
+              .upsert(pendingRows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
+          } catch (err: any) {
+            console.log(`Bank sync: pending transactions error for ${accountId}:`, err.message);
           }
         }
       } else {

@@ -108,8 +108,8 @@ export async function learnFromCorrection(params: LearnParams) {
     if (params.displayName && params.displayName !== existing.display_name) {
       updates.display_name = params.displayName;
     }
-    if (params.category && params.category !== existing.category) {
-      updates.category = params.category;
+    if (params.category && params.category.toLowerCase() !== (existing.category || '').toLowerCase()) {
+      updates.category = params.category.toLowerCase();
     }
     if (params.providerType !== undefined) {
       updates.provider_type = params.providerType;
@@ -121,7 +121,7 @@ export async function learnFromCorrection(params: LearnParams) {
       updates.is_transfer = params.isTransfer;
     }
     if (params.incomeType !== undefined) {
-      updates.income_type = params.incomeType;
+      updates.income_type = params.incomeType.toLowerCase();
     }
     // Update amount range
     if (params.amount !== undefined) {
@@ -153,7 +153,7 @@ export async function learnFromCorrection(params: LearnParams) {
     raw_name: params.rawName,
     raw_name_normalised: pattern,
     display_name: params.displayName || params.rawName,
-    category: params.category || 'other',
+    category: (params.category || 'other').toLowerCase(),
     confidence: 1,
     source: 'user',
     created_by_user_id: params.userId,
@@ -161,7 +161,7 @@ export async function learnFromCorrection(params: LearnParams) {
   if (params.providerType) newRule.provider_type = params.providerType;
   if (params.isSubscription !== undefined) newRule.is_subscription = params.isSubscription;
   if (params.isTransfer !== undefined) newRule.is_transfer = params.isTransfer;
-  if (params.incomeType) newRule.income_type = params.incomeType;
+  if (params.incomeType) newRule.income_type = params.incomeType.toLowerCase();
   if (params.amount !== undefined) {
     const amt = Math.abs(params.amount);
     newRule.amount_min = amt;
@@ -393,6 +393,81 @@ export function categoriseWithLearningSync(
 }
 
 // ─── Transfer detection ─────────────────────────────────────────────────────
+
+const TRANSFER_KEYWORDS = [
+  'personal transfer', 'to a/c', 'from a/c', 'via mobile', 'internal',
+  'between accounts', 'savings transfer', 'tfr', 'trf', 'fps',
+  'online transfer', 'mobile transfer', 'bank transfer',
+  'standing order to', 'dd to savings', 'move to savings',
+  'credit card payment', 'card payment thank you', 'balance transfer',
+];
+
+const CREDIT_CARD_PROVIDERS = [
+  'barclaycard', 'mbna', 'halifax credit', 'hsbc credit',
+  'american express', 'amex', 'capital one', 'vanquis',
+  'aqua', 'marbles', 'tesco bank credit', 'virgin money',
+];
+
+/**
+ * Detect if a transaction description indicates it's a transfer.
+ */
+function isTransferByDescription(description: string): boolean {
+  const d = description.toLowerCase();
+
+  // Check transfer keywords
+  for (const kw of TRANSFER_KEYWORDS) {
+    if (d.includes(kw)) return true;
+  }
+
+  // Check credit card providers
+  for (const provider of CREDIT_CARD_PROVIDERS) {
+    if (d.includes(provider)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Mark transactions as transfers based on description patterns.
+ * Scans all transactions and flags those with transfer keywords.
+ */
+export async function markTransfersFromDescription(userId: string): Promise<number> {
+  const admin = getAdmin();
+
+  // Get transactions from last 6 months
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+  const { data: txns } = await admin
+    .from('bank_transactions')
+    .select('id, description, user_category, income_type')
+    .eq('user_id', userId)
+    .gte('timestamp', sixMonthsAgo.toISOString())
+    .order('timestamp', { ascending: false })
+    .limit(5000);
+
+  if (!txns || txns.length === 0) return 0;
+
+  const toUpdate: string[] = [];
+  for (const txn of txns) {
+    if (isTransferByDescription(txn.description || '')) {
+      toUpdate.push(txn.id);
+    }
+  }
+
+  // Update in batches of 50
+  let updated = 0;
+  for (let i = 0; i < toUpdate.length; i += 50) {
+    const batch = toUpdate.slice(i, i + 50);
+    const { count } = await admin
+      .from('bank_transactions')
+      .update({ user_category: 'transfers', income_type: 'transfer' })
+      .in('id', batch);
+    if (count) updated += count;
+  }
+
+  return updated;
+}
 
 /**
  * Detect transfers between a user's own bank accounts by finding matching

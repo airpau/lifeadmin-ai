@@ -404,8 +404,8 @@ function ReportPDFDocument({ data }: { data: AnnualReportData }) {
         {/* Financial Health Score */}
         <View style={styles.scoreBox}>
           <Text style={styles.scoreLabel}>FINANCIAL HEALTH SCORE</Text>
-          <Text style={styles.scoreValue}>{data.financialHealth.overallScore}/100</Text>
-          <Text style={styles.scoreCaption}>{data.financialHealth.tierLabel} — based on profile, subscriptions, pricing, disputes, and connectivity</Text>
+          <Text style={styles.scoreValue}>{data.financialHealth.overall}/100</Text>
+          <Text style={styles.scoreCaption}>{data.financialHealth.tier.charAt(0).toUpperCase() + data.financialHealth.tier.slice(1)} — based on spending, savings, borrowing, and planning</Text>
         </View>
 
         {/* Footer */}

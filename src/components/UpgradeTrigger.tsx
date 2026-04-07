@@ -63,8 +63,8 @@ export default function UpgradeTrigger({
 
   if (!mounted || dismissed) return null;
 
-  // Never show to paid users
-  if (userTier === 'essential' || userTier === 'pro') return null;
+  // Never show to paid users (or while tier is still loading)
+  if (!userTier || userTier === 'essential' || userTier === 'pro') return null;
 
   // Guard: only show when there's something meaningful to say
   if (type === 'bank_scan' && subscriptionCount === 0) return null;

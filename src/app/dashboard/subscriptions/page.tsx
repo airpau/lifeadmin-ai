@@ -113,7 +113,7 @@ export default function SubscriptionsPage() {
   const router = useRouter();
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [userTier, setUserTier] = useState('free');
+  const [userTier, setUserTier] = useState<string | null>(null);
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
   const [fraudStep, setFraudStep] = useState<'initial' | 'fraud_guidance'>('initial');
   const [loading, setLoading] = useState(true);
@@ -1492,7 +1492,7 @@ export default function SubscriptionsPage() {
           type="bank_scan"
           subscriptionCount={baseSubscriptions.filter(s => s.status === 'active').length}
           monthlyCost={flexibleTotalMonthly + statutoryTotalMonthly}
-          userTier={userTier}
+          userTier={userTier ?? undefined}
           className="mb-6"
         />
       )}
@@ -1866,7 +1866,7 @@ export default function SubscriptionsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Subscriptions list */}
-        <div className="space-y-4">
+        <div className="space-y-4 min-w-0 overflow-hidden">
           {activeDuplicateGroups.length > 0 && (
             <div className="bg-navy-900 border border-amber-500/30 rounded-xl p-4 mb-4">
               <div className="flex items-center justify-between gap-3 mb-3">
@@ -2007,8 +2007,8 @@ export default function SubscriptionsPage() {
                     </div>
                   </div>
                   
-                  <div className="flex-1 flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div className="flex-1 relative">
+                  <div className="flex-1 flex flex-col md:flex-row md:items-start justify-between gap-4 overflow-hidden">
+                    <div className="flex-1 min-w-0 relative">
                       <div className="flex items-center gap-3 mb-2">
                         {sub.logo_url ? (
                           <>
@@ -2104,18 +2104,18 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <div className="text-right">
+                  <div className="flex flex-col items-end gap-2 shrink-0 z-10 relative ml-4">
+                    <div className="text-right whitespace-nowrap">
                       <p className="text-xl font-bold text-white">{formatGBP(sub.amount)}</p>
                       <p className="text-xs text-slate-500">{sub.billing_cycle}</p>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setBillUploadSubId(sub.id);
                         }}
-                        className="text-slate-600 hover:text-purple-400 transition-all"
+                        className="text-slate-600 hover:text-purple-400 transition-all p-1"
                         title="Upload bill to extract contract dates"
                       >
                         <Upload className="h-4 w-4" />
@@ -2125,7 +2125,7 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           openEditModal(sub);
                         }}
-                        className="text-slate-600 hover:text-mint-400 transition-all"
+                        className="text-slate-600 hover:text-mint-400 transition-all p-1"
                         title="Edit"
                       >
                         <Pencil className="h-4 w-4" />
@@ -2135,7 +2135,7 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           handleDeleteSubscription(sub.id);
                         }}
-                        className="text-slate-600 hover:text-red-400 transition-all"
+                        className="text-slate-600 hover:text-red-400 transition-all p-1"
                         title="Delete"
                       >
                         <X className="h-4 w-4" />

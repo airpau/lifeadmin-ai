@@ -75,10 +75,9 @@ export async function GET() {
       .filter(t => parseFloat(String(t.amount)) > 0 && !isXfer(t))
       .reduce((s, t) => s + parseFloat(String(t.amount)), 0);
 
-    // totalSpent matches main API's monthlyOutgoings: ALL debits (no transfer filtering)
-    // Transfer filtering is only applied to category breakdown below
+    // totalSpent now excludes transfers to match main API
     const totalSpent = prevTxns
-      .filter(t => parseFloat(String(t.amount)) < 0)
+      .filter(t => parseFloat(String(t.amount)) < 0 && !isTransferSpend(t))
       .reduce((s, t) => s + Math.abs(parseFloat(String(t.amount))), 0);
 
     const savingsRate = totalIncome > 0 ? ((totalIncome - totalSpent) / totalIncome) * 100 : 0;

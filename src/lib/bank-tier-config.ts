@@ -31,8 +31,8 @@ export const TIER_CONFIG = {
     dailyCron: true,
     weeklyCron: false,
     manualSyncAllowed: true,
-    manualSyncCooldownHours: 6,
-    manualSyncDailyLimit: 3,
+    manualSyncCooldownHours: 1,
+    manualSyncDailyLimit: 10,
     upgradeMessage: null,
   },
 } as const satisfies Record<BankTier, {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { calculateHealthScore } from '@/lib/financial-health-score';
 
 export const runtime = 'nodejs';
 
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       admin.from('bank_transactions').select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
         .eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(10000),
-      admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id),
+      admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names, current_balance, available_balance').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
       admin.from('money_hub_budgets').select('*').eq('user_id', user.id),
       admin.from('money_hub_assets').select('*').eq('user_id', user.id),
@@ -114,17 +115,25 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total - a.total)
       .slice(0, 10);
 
-    // Income breakdown from DB — merge similar "other" variants into one
+    // Income breakdown from DB — merge variants into parent categories
     const incomeByType: Record<string, number> = {};
     const mergeAsOtherIncome = ['other', 'other_income', 'unknown', 'uncategorised', ''];
+    // Merge rental sub-types (rental_airbnb, rental_direct) into 'rental'
+    const mergeAsRentalIncome = ['rental', 'rental_airbnb', 'rental_direct'];
     let otherIncomeTotal = 0;
+    let rentalIncomeTotal = 0;
     for (const row of (incomeBreakdownRes.data || []) as Array<{ source: string; source_total: string }>) {
       const key = row.source.toLowerCase().trim();
       if (mergeAsOtherIncome.includes(key)) {
         otherIncomeTotal += parseFloat(row.source_total) || 0;
+      } else if (mergeAsRentalIncome.includes(key)) {
+        rentalIncomeTotal += parseFloat(row.source_total) || 0;
       } else {
-        incomeByType[row.source] = parseFloat(row.source_total) || 0;
+        incomeByType[row.source] = (incomeByType[row.source] || 0) + (parseFloat(row.source_total) || 0);
       }
+    }
+    if (rentalIncomeTotal > 0) {
+      incomeByType['rental'] = rentalIncomeTotal;
     }
     if (otherIncomeTotal > 0) {
       incomeByType['other'] = otherIncomeTotal;
@@ -152,8 +161,11 @@ export async function GET(request: Request) {
       outgoings: parseFloat(trendResults[i][1].data) || 0,
     }));
 
-    // Net worth
-    const bankBalances = 0; // TrueLayer balance would come from a separate API call
+    // Net worth — sum all connected bank account balances
+    const bankBalances = (bankConns.data || []).reduce((sum, conn) => {
+      const balance = parseFloat(String(conn.current_balance)) || 0;
+      return sum + balance;
+    }, 0);
     const totalAssets = (assets.data || []).reduce((s, a) => s + (parseFloat(String(a.estimated_value)) || 0), 0) + bankBalances;
     const totalLiabilities = (liabilities.data || []).reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
     const netWorth = totalAssets - totalLiabilities;
@@ -180,15 +192,51 @@ export async function GET(request: Request) {
       monthlyCost: parseFloat(String(s.amount)),
     }));
 
-    // Money Hub Score (0-100)
-    let score = 50;
-    if (monthlyIncome > monthlyOutgoings) score += 15;
-    if ((budgets.data || []).length > 0) score += 10;
-    if ((alerts.data || []).filter(a => a.status === 'active').length === 0) score += 10;
-    if (expiringContracts.length === 0) score += 5;
-    if (monthlySubCost < monthlyIncome * 0.1) score += 5;
-    if ((goals.data || []).length > 0) score += 5;
-    score = Math.min(100, Math.max(0, score));
+    // ── Financial Health Score v2 ──
+    // Gather expected bills data inline
+    let expectedBillsPaid = 0;
+    let expectedBillsTotal = 0;
+    try {
+      const { data: rawBills } = await admin.rpc('get_expected_bills', { p_user_id: user.id, p_year: viewYear, p_month: viewMonth });
+      if (rawBills) {
+        const validBills = rawBills.filter((b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30);
+        expectedBillsTotal = validBills.length;
+        // Check which are paid (matching against current month transactions)
+        const paidMerchants = thisMonthTxns.filter(t => parseFloat(t.amount) < 0).map(t => (t.merchant_name || t.description || '').substring(0, 30).toLowerCase());
+        expectedBillsPaid = validBills.filter((b: any) => {
+          const name = (b.provider_name || '').toLowerCase().substring(0, 15);
+          return paidMerchants.some(pm => pm.includes(name) || name.includes(pm.substring(0, 8)));
+        }).length;
+      }
+    } catch { /* expected bills not critical for score */ }
+
+    // Count alerts actioned
+    const { count: alertsActionedCount } = await admin.from('money_hub_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'actioned');
+    const { count: alertsTotalCount } = await admin.from('money_hub_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id);
+
+    const liquidSavings = (assets.data || []).filter(a => a.asset_type === 'savings').reduce((s, a) => s + (parseFloat(String(a.estimated_value)) || 0), 0);
+    const debtPayments = (liabilities.data || []).reduce((s, l) => s + (parseFloat(String(l.monthly_payment)) || 0), 0);
+    const creditCardBalance = (liabilities.data || []).filter(l => l.liability_type === 'credit_card').reduce((s, l) => s + (parseFloat(String(l.outstanding_balance)) || 0), 0);
+
+    const healthScore = calculateHealthScore({
+      monthlyIncome,
+      monthlyOutgoings,
+      budgets: (budgets.data || []).map((b: any) => ({ monthly_limit: b.monthly_limit, spent: categoryTotals[b.category?.toLowerCase()] || 0 })),
+      monthlyTrends,
+      liquidSavings,
+      goals: (goals.data || []).map((g: any) => ({ target_amount: g.target_amount || 0, current_amount: g.current_amount || 0 })),
+      totalMonthlyDebtPayments: debtPayments,
+      totalDebt: totalLiabilities,
+      previousMonthDebt: totalLiabilities,
+      creditCardBalance,
+      creditCardLimit: 0,
+      expectedBillsPaid,
+      expectedBillsTotal,
+      contractsTracked: activeSubs.filter(s => s.contract_end_date).length,
+      contractsTotal: activeSubs.length,
+      alertsActioned: alertsActionedCount || 0,
+      alertsTotal: alertsTotalCount || 0,
+    });
 
     // Days through month
     const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
@@ -200,7 +248,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       tier,
-      score,
+      score: healthScore.overall,
+      healthScore,
       selectedMonth: viewMonthStr,
       overview: {
         monthlyIncome: parseFloat(monthlyIncome.toFixed(2)),

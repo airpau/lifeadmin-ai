@@ -79,7 +79,7 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
 }
 
 function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string }>>([]);
+  const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string; account_display_names: string[] | null }>>([]);
   const [emailConns, setEmailConns] = useState<Array<{ id: string; email_address: string; provider_type: string; status: string }>>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -88,7 +88,7 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
       const [banks, emails] = await Promise.all([
-        supabase.from('bank_connections').select('id, bank_name, status, connected_at').eq('user_id', user.id),
+        supabase.from('bank_connections').select('id, bank_name, status, connected_at, account_display_names').eq('user_id', user.id),
         supabase.from('email_connections').select('id, email_address, provider_type, status').eq('user_id', user.id),
       ]);
       setBankConns(banks.data || []);
@@ -120,42 +120,65 @@ function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof cr
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {activeEmails.length > 0 ? (
+            {activeEmails.length > 0 && (
               <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5" /> Connected
               </span>
-            ) : (
-              <a href="/dashboard/scanner" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
-                Connect
-              </a>
             )}
+            <a href="/dashboard/scanner" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+              {activeEmails.length > 0 ? '+ Add Email' : 'Connect'}
+            </a>
           </div>
         </div>
 
         {/* Bank */}
-        <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-              <CreditCard className="h-6 w-6 text-blue-400" />
+        <div className="p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                <CreditCard className="h-6 w-6 text-blue-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Bank Accounts</h3>
+                <p className="text-sm text-slate-400">
+                  {activeBanks.length > 0
+                    ? `${activeBanks.reduce((sum, b) => sum + (b.account_display_names?.length || 1), 0)} account${activeBanks.reduce((sum, b) => sum + (b.account_display_names?.length || 1), 0) !== 1 ? 's' : ''} connected`
+                    : 'Automatic transaction categorisation'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-white font-semibold">Bank Account</h3>
-              <p className="text-sm text-slate-400">
-                {activeBanks.length > 0 ? activeBanks.map(b => b.bank_name || 'Bank Account').join(', ') : 'Automatic transaction categorisation'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {activeBanks.length > 0 ? (
-              <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Connected ({activeBanks.length})
-              </span>
-            ) : (
+            <div className="flex items-center gap-3">
+              {activeBanks.length > 0 && (
+                <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                </span>
+              )}
               <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
-                Connect
+                {activeBanks.length > 0 ? '+ Add Bank' : 'Connect'}
               </a>
-            )}
+            </div>
           </div>
+          {activeBanks.length > 0 && (
+            <div className="mt-3 ml-16 space-y-1.5">
+              {activeBanks.map(b => (
+                (b.account_display_names && b.account_display_names.length > 0)
+                  ? b.account_display_names.map((name, i) => (
+                    <div key={`${b.id}-${i}`} className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-slate-300">{b.bank_name || 'Bank'}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-slate-400">{name}</span>
+                    </div>
+                  ))
+                  : (
+                    <div key={b.id} className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      <span className="text-slate-300">{b.bank_name || 'Bank Account'}</span>
+                    </div>
+                  )
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

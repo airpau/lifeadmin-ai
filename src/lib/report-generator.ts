@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName, categoriseTransaction } from '@/lib/merchant-normalise';
 import { cleanMerchantName, isLoanOrMortgage, getReportCategoryLabel, getSwitchDifficulty } from '@/lib/merchant-utils';
-import { calculateFinancialHealthScore, type FinancialHealthResult } from '@/lib/financial-health-score';
+import { calculateHealthScore, type HealthScore } from '@/lib/financial-health-score';
 
 const getAdmin = () =>
   createClient(
@@ -97,7 +97,7 @@ export interface OnDemandReportData {
   currentMonth: string;
 
   // Section 1: Financial Health Score
-  financialHealth: FinancialHealthResult;
+  financialHealth: HealthScore;
 
   // Section 2: Money Snapshot
   currentMonthSpend: number;
@@ -140,7 +140,7 @@ export interface AnnualReportData {
   executiveSummary: string;
 
   // Financial Health
-  financialHealth: FinancialHealthResult;
+  financialHealth: HealthScore;
 
   // Income & Spending
   totalIncome: number;
@@ -522,22 +522,24 @@ export async function generateOnDemandReportData(
   const activeEmails = emailConns.filter(e => e.status === 'active').length;
   const actionedAlerts = allPriceAlerts.filter(a => a.status === 'actioned').length;
 
-  const financialHealth = calculateFinancialHealthScore({
-    profileFields: {
-      name: !!(profile?.full_name || (profile?.first_name && profile?.last_name)),
-      phone: !!profile?.phone,
-      address: !!profile?.address,
-      postcode: !!profile?.postcode,
-      email: !!profile?.email,
-    },
-    totalActiveSubscriptions: activeSubs.length,
-    subscriptionsWithCheaperDeal: subsWithCheaperDeal,
-    totalPriceAlerts: allPriceAlerts.length,
-    actionedPriceAlerts: actionedAlerts,
-    totalDisputes: disputes.length,
-    totalOpportunities: (pendingTasksRes.count || 0) + disputes.length,
-    connectedBankAccounts: activeBanks,
-    connectedEmailAccounts: activeEmails,
+  const financialHealth = calculateHealthScore({
+    monthlyIncome: currentMonthIncome,
+    monthlyOutgoings: currentMonthSpend,
+    budgets: [],
+    monthlyTrends: [],
+    liquidSavings: 0,
+    goals: [],
+    totalMonthlyDebtPayments: 0,
+    totalDebt: 0,
+    previousMonthDebt: 0,
+    creditCardBalance: 0,
+    creditCardLimit: 0,
+    expectedBillsPaid: activeSubs.length,
+    expectedBillsTotal: activeSubs.length,
+    contractsTracked: activeSubs.length,
+    contractsTotal: activeSubs.length,
+    alertsActioned: actionedAlerts,
+    alertsTotal: allPriceAlerts.length,
   });
 
   // --- Savings plan ---
@@ -949,22 +951,30 @@ export async function generateAnnualReportData(
   const activeEmails = emailConns.filter(e => e.status === 'active').length;
   const actionedAlerts = allPriceAlerts.filter(a => a.status === 'actioned').length;
 
-  const financialHealth = calculateFinancialHealthScore({
-    profileFields: {
-      name: !!(profile?.full_name || (profile?.first_name && profile?.last_name)),
-      phone: !!profile?.phone,
-      address: !!profile?.address,
-      postcode: !!profile?.postcode,
-      email: !!profile?.email,
-    },
-    totalActiveSubscriptions: activeSubs.length,
-    subscriptionsWithCheaperDeal: subsWithCheaperDeal,
-    totalPriceAlerts: allPriceAlerts.length,
-    actionedPriceAlerts: actionedAlerts,
-    totalDisputes: disputes.length,
-    totalOpportunities: (pendingTasksRes.count || 0) + disputes.length,
-    connectedBankAccounts: activeBanks,
-    connectedEmailAccounts: activeEmails,
+  // Convert monthlyTrends to the ScoreInput format (need income and outgoings)
+  const monthlyTrendsForScore = monthlyTrends.map(mt => ({
+    income: mt.income,
+    outgoings: mt.spend,
+  }));
+
+  const financialHealth = calculateHealthScore({
+    monthlyIncome: totalIncome > 0 ? Math.round(totalIncome / monthlyTrends.length) : 0,
+    monthlyOutgoings: totalOutgoings > 0 ? Math.round(totalOutgoings / monthlyTrends.length) : 0,
+    budgets: [],
+    monthlyTrends: monthlyTrendsForScore,
+    liquidSavings: 0,
+    goals: [],
+    totalMonthlyDebtPayments: 0,
+    totalDebt: 0,
+    previousMonthDebt: 0,
+    creditCardBalance: 0,
+    creditCardLimit: 0,
+    expectedBillsPaid: activeSubs.length,
+    expectedBillsTotal: activeSubs.length,
+    contractsTracked: activeSubs.length,
+    contractsTotal: activeSubs.length,
+    alertsActioned: actionedAlerts,
+    alertsTotal: allPriceAlerts.length,
   });
 
   // --- Savings plan ---

@@ -351,16 +351,29 @@ function ContractDetail({ contract, onBack, onDelete }: {
 // ============================================================
 // Upload Modal (with file upload + manual entry tabs)
 // ============================================================
-function UploadModal({ subscriptions, onClose, onUploaded }: {
+function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
   subscriptions: SubscriptionOption[];
   onClose: () => void;
   onUploaded: () => void;
+  initialProvider?: string;
 }) {
   const [tab, setTab] = useState<'upload' | 'manual'>('upload');
 
   // Shared state
   const [supplierId, setSupplierId] = useState('');
-  const [customSupplierName, setCustomSupplierName] = useState('');
+  const [customSupplierName, setCustomSupplierName] = useState(initialProvider || '');
+
+  useEffect(() => {
+    if (initialProvider && subscriptions.length > 0 && !supplierId) {
+      const existing = subscriptions.find(s => s.display_name.toLowerCase() === initialProvider.toLowerCase());
+      if (existing) {
+        setSupplierId(existing.id);
+      } else {
+        setSupplierId('other');
+        setCustomSupplierName(initialProvider);
+      }
+    }
+  }, [initialProvider, subscriptions, supplierId]);
 
   // Upload tab state
   const [file, setFile] = useState<File | null>(null);
@@ -700,6 +713,8 @@ export default function ContractsPage() {
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState<'end_date' | 'recent'>('end_date');
 
+  const [initialProvider, setInitialProvider] = useState<string>('');
+
   const fetchContracts = () => {
     fetch('/api/contracts')
       .then(r => r.json())
@@ -712,6 +727,15 @@ export default function ContractsPage() {
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const action = params.get('action');
+      const provider = params.get('provider');
+      if (action === 'track' && provider) {
+        setInitialProvider(provider);
+        setShowUpload(true);
+      }
+    }
     fetchContracts();
     // Fetch subscriptions for the upload modal
     fetch('/api/subscriptions')
@@ -784,6 +808,7 @@ export default function ContractsPage() {
         <UploadModal
           subscriptions={subscriptions}
           onClose={() => setShowUpload(false)}
+          initialProvider={initialProvider}
           onUploaded={() => { setShowUpload(false); fetchContracts(); }}
         />
       )}

@@ -23,6 +23,16 @@ import BankPickerModal from '@/components/BankPickerModal';
 interface MoneyHubData {
   tier: string;
   score: number;
+  healthScore?: {
+    overall: number;
+    tier: 'vulnerable' | 'coping' | 'healthy';
+    pillars: {
+      spend: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+      save: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+      borrow: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+      plan: { score: number; label: string; metrics: Array<{ name: string; score: number; weight: number; tip: string }> };
+    };
+  };
   overview: {
     monthlyIncome: number;
     monthlyOutgoings: number;
@@ -114,6 +124,8 @@ const INCOME_LABELS: Record<string, { label: string; color: string; icon: string
   freelance: { label: 'Freelance', color: '#3b82f6', icon: '💻' },
   benefits: { label: 'Benefits', color: '#8b5cf6', icon: '🏛️' },
   rental: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
+  rental_airbnb: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
+  rental_direct: { label: 'Rental Income', color: '#f59e0b', icon: '🏠' },
   investment: { label: 'Investments', color: '#06b6d4', icon: '📈' },
   refund: { label: 'Refunds', color: '#10b981', icon: '💸' },
   transfer: { label: 'Transfers', color: '#64748b', icon: '🔄' },
@@ -258,6 +270,10 @@ export default function MoneyHubPage() {
   const [nwSaving, setNwSaving] = useState(false);
   const [expandAssets, setExpandAssets] = useState(false);
   const [expandLiabilities, setExpandLiabilities] = useState(false);
+  const [detectedLiabilities, setDetectedLiabilities] = useState<any[]>([]);
+  const [detectedSummary, setDetectedSummary] = useState<any>(null);
+  const [addingDetected, setAddingDetected] = useState<string | null>(null);
+  const [detectedBalanceInput, setDetectedBalanceInput] = useState('');
 
   // Budget planner
   const [showBudgetForm, setShowBudgetForm] = useState(false);
@@ -330,6 +346,16 @@ export default function MoneyHubPage() {
         setExpectedBillsTotal(d.totalExpected || 0);
       }
     } catch { /* silent */ }
+  };
+
+  const fetchForecast = async () => {
+    setForecastLoading(true);
+    try {
+      const res = await fetch('/api/money-hub/forecast');
+      const d = await res.json();
+      if (!d.error) setForecast(d);
+    } catch { /* silent */ }
+    setForecastLoading(false);
   };
 
   const dismissBill = async (bill: ExpectedBill) => {
@@ -421,6 +447,13 @@ export default function MoneyHubPage() {
   // Custom widgets (Pro AI)
   const [customWidgets, setCustomWidgets] = useState<CustomWidget[]>([]);
 
+  // Forecast data
+  const [forecast, setForecast] = useState<any>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+
+  // Financial Health Score expanded view
+  const [scoreExpanded, setScoreExpanded] = useState(false);
+
   // ─── Data fetching ────────────────────────────────────────────────────────
 
   const refreshData = useCallback(async (month?: string) => {
@@ -436,17 +469,11 @@ export default function MoneyHubPage() {
   const syncMoneyHub = async () => {
     setSyncing(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/bank-sync?trigger=manual`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      // Use the local sync-now API route (Pro-only, with rate limiting)
+      const res = await fetch('/api/bank/sync-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
 
       if (res.status === 429) {
         const responseData = await res.json();
@@ -455,42 +482,46 @@ export default function MoneyHubPage() {
         return;
       }
 
-      if (res.status === 404) {
-        showToast('No active bank connections found. Connect your bank first.', 'error');
+      if (res.status === 403) {
+        const responseData = await res.json();
+        showToast(responseData.error || 'Manual sync requires a Pro plan.', 'error');
+        setSyncing(false);
+        return;
+      }
+
+      if (res.status === 401) {
+        const responseData = await res.json();
+        if (responseData.reconnectRequired) {
+          showToast('Bank connection expired. Please reconnect your bank.', 'error');
+        } else {
+          showToast('Please sign in to sync.', 'error');
+        }
+        setSyncing(false);
+        return;
+      }
+
+      if (!res.ok) {
+        const responseData = await res.json().catch(() => ({}));
+        showToast(responseData.error || 'Sync failed. Please try again.', 'error');
         setSyncing(false);
         return;
       }
 
       const responseData = await res.json();
+      const synced = responseData.synced || 0;
+      const recurring = responseData.recurring_detected || 0;
 
-      if (responseData.summary?.token_expired > 0) {
-        const expired = (responseData.results || []).filter((r: any) => ['token_expired', 'expired', 'expired_legacy'].includes(r.status));
-        setExpiredConnections(expired.map((r: any) => ({ id: r.connection_id || '', bank_name: r.bank_name || 'Bank', status: 'expired' })));
-        showToast('Bank connection expired. Please reconnect your bank.', 'error');
-      } else if (responseData.summary?.synced > 0) {
-        showToast(`Synced ${responseData.summary.total_new || 0} new transactions`, 'success');
+      if (synced > 0) {
+        // Also categorise the new transactions
+        await fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
         await refreshData();
         router.refresh();
-      } else if (responseData.summary?.no_new_data > 0) {
-        showToast('No new transactions to sync', 'info');
-      } else if (responseData.summary?.errors > 0) {
-        showToast('Sync encountered errors. Please try again later.', 'error');
+        showToast(`Synced ${synced} transaction${synced !== 1 ? 's' : ''}${recurring > 0 ? `, ${recurring} new recurring detected` : ''}`, 'success');
       } else {
-        // Fallback — still refresh data after successful edge function call
-        await refreshData();
+        showToast('No new transactions to sync', 'info');
       }
-    } catch (err) {
-      // Edge function not deployed yet — fall back to the local sync routes
-      try {
-        // Step 1: Pull fresh transactions from bank into DB
-        await fetch('/api/bank/sync', { method: 'POST' });
-        // Step 2: Categorise the new transactions
-        await fetch('/api/money-hub/sync', { method: 'POST' });
-        await refreshData();
-        showToast('Sync complete', 'success');
-      } catch {
-        showToast('Sync failed. Please try again.', 'error');
-      }
+    } catch {
+      showToast('Sync failed. Please try again.', 'error');
     }
     setSyncing(false);
   };
@@ -729,6 +760,55 @@ export default function MoneyHubPage() {
     } catch { /* silent */ }
   };
 
+  // ─── Detected Liabilities ─────────────────────────────────────────────────
+
+  const fetchDetectedLiabilities = async () => {
+    try {
+      const res = await fetch('/api/money-hub/detect-liabilities');
+      const d = await res.json();
+      if (!d.error) {
+        setDetectedLiabilities(d.detected || []);
+        setDetectedSummary(d.summary || null);
+      }
+    } catch { /* silent */ }
+  };
+
+  const addDetectedLiability = async (item: any) => {
+    if (!detectedBalanceInput) return;
+    setAddingDetected(item.lender);
+    try {
+      await fetch('/api/money-hub/net-worth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'liability',
+          liability_type: item.liability_type,
+          liability_name: item.lender,
+          outstanding_balance: parseFloat(detectedBalanceInput),
+          monthly_payment: item.monthly_payment,
+        }),
+      });
+      await refreshData();
+      setDetectedLiabilities(prev => prev.map(d =>
+        d.lender === item.lender ? { ...d, already_tracked: true } : d
+      ));
+      setDetectedBalanceInput('');
+      setAddingDetected(null);
+    } catch { /* silent */ }
+    setAddingDetected(null);
+  };
+
+  const dismissDetectedLiability = async (item: any) => {
+    try {
+      await fetch('/api/money-hub/detect-liabilities/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lender_key: item.lender_key, lender_name: item.lender }),
+      });
+      setDetectedLiabilities(prev => prev.filter(d => d.lender_key !== item.lender_key));
+    } catch { /* silent */ }
+  };
+
   // ─── Savings Goals ────────────────────────────────────────────────────────
 
   const saveGoal = async () => {
@@ -964,6 +1044,7 @@ export default function MoneyHubPage() {
 
     // Fetch expected bills (DB function handles deduplication & dismissed filtering)
     fetchExpectedBills();
+    fetchForecast();
 
     // Fetch previous month data for recap
     setLoadingPrevMonth(true);
@@ -1173,16 +1254,20 @@ export default function MoneyHubPage() {
   }
   const totalIncome = Object.values(incomeBreakdown).reduce((s, v) => s + v, 0);
 
-  // Deduplicate spending categories (merge entries with same category, exclude transfers)
+  // Deduplicate spending categories (merge entries with same category, exclude transfers and income)
   const deduplicatedSpending = (() => {
     const map = new Map<string, number>();
     for (const cat of data.spending.categories) {
-      const key = cat.category.toLowerCase().trim();
-      // Transfers between own accounts are not spending
-      if (key === 'transfers' || key === 'transfer') continue;
+      const key = (cat.category || '').toLowerCase().trim();
+      // Exclude all transfer and income categories (soft and hard categories)
+      if (!key || key === 'transfers' || key === 'transfer' || key === 'income') continue;
+      // Also exclude any empty or invalid categories
+      if (key === '' || key === 'null' || key === 'undefined') continue;
       map.set(key, (map.get(key) || 0) + cat.total);
     }
-    return Array.from(map.entries()).map(([category, total]) => ({ category, total }));
+    return Array.from(map.entries())
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total); // Sort by total descending
   })();
 
   // Total derived from the filtered set — excludes transfers so percentages add up to 100%
@@ -1422,14 +1507,52 @@ export default function MoneyHubPage() {
               </span>
             )}
           </button>
-          <div className="text-right">
-            <div className={`text-4xl font-bold ${data.score >= 70 ? 'text-green-400' : data.score >= 40 ? 'text-mint-400' : 'text-red-400'}`}>
-              {data.score}
-            </div>
-            <p className="text-slate-500 text-xs">Financial Health Score</p>
+          <div className="text-right relative">
+            <button onClick={() => setScoreExpanded(!scoreExpanded)} className="text-right hover:opacity-80 transition-opacity">
+              <div className={`text-4xl font-bold ${(data.healthScore?.overall ?? data.score) >= 80 ? 'text-green-400' : (data.healthScore?.overall ?? data.score) >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
+                {data.healthScore?.overall ?? data.score}
+              </div>
+              <p className={`text-xs font-medium ${data.healthScore?.tier === 'healthy' ? 'text-green-400' : data.healthScore?.tier === 'coping' ? 'text-amber-400' : 'text-red-400'}`}>
+                {data.healthScore?.tier ? data.healthScore.tier.charAt(0).toUpperCase() + data.healthScore.tier.slice(1) : 'Financial Health'}
+              </p>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Financial Health Score Breakdown */}
+      {scoreExpanded && data.healthScore && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-semibold text-lg">Financial Health Score</h3>
+            <button onClick={() => setScoreExpanded(false)} className="text-slate-500 hover:text-white"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Object.values(data.healthScore.pillars).map((pillar: any) => (
+              <div key={pillar.label} className="bg-navy-950/50 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-400 text-xs font-medium">{pillar.label}</span>
+                  <span className={`text-lg font-bold ${pillar.score >= 80 ? 'text-green-400' : pillar.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>{pillar.score}</span>
+                </div>
+                <div className="w-full bg-navy-700 rounded-full h-1.5 mb-3">
+                  <div className={`h-1.5 rounded-full ${pillar.score >= 80 ? 'bg-green-400' : pillar.score >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${pillar.score}%` }} />
+                </div>
+                <div className="space-y-2">
+                  {pillar.metrics.map((m: any) => (
+                    <div key={m.name}>
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-500">{m.name}</span>
+                        <span className="text-slate-400">{m.score}/100</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{m.tip}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* FCA Compliance Banner */}
       {showFcaBanner && (
@@ -1437,7 +1560,7 @@ export default function MoneyHubPage() {
           <Shield className="h-5 w-5 text-sky-400 shrink-0 mt-0.5" />
           <div className="flex-1 pr-6">
             <p className="text-sky-300 text-sm">
-              Your financial data is powered by secure Open Banking transaction analysis. Bank balance display coming soon.
+              Your financial data is powered by FCA-regulated Open Banking via Yapily and TrueLayer. Read-only access ensures your accounts stay secure.
             </p>
           </div>
           <button onClick={dismissFcaBanner} className="absolute right-3 top-3 text-slate-500 hover:text-white transition-colors">
@@ -1776,6 +1899,107 @@ export default function MoneyHubPage() {
         );
       })()}
 
+      {/* ═══ Cash Flow Forecast ═══ */}
+      {forecast && isCurrentMonthView && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-mint-400" />
+              This Month&apos;s Forecast
+            </h3>
+            <div className="group relative">
+              <span className="text-slate-500 hover:text-slate-300 cursor-help flex items-center"><Info className="h-4 w-4" /></span>
+              <div className="hidden group-hover:block absolute z-50 left-0 top-full mt-2 w-64 p-3 bg-navy-800 border border-navy-700 rounded-lg text-xs text-slate-300 shadow-xl pointer-events-none">
+                <p className="mb-1 text-white font-semibold">How is this calculated?</p>
+                <p className="mb-1"><strong>Income:</strong> Actual + expected based on previous months.</p>
+                <p><strong>Spending:</strong> Actual + unpaid bills + estimated daily discretionary spending for remaining days.</p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">Projected Income</p>
+              <p className="text-green-400 font-bold text-lg">£{fmt(forecast.projectedIncome)}</p>
+              {forecast.vsLastMonth?.incomeChange !== null && (
+                <p className={`text-[10px] ${forecast.vsLastMonth.incomeChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {forecast.vsLastMonth.incomeChange >= 0 ? '+' : ''}{forecast.vsLastMonth.incomeChange}% vs last month
+                </p>
+              )}
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">Projected Spending</p>
+              <p className="text-red-400 font-bold text-lg">£{fmt(forecast.projectedSpending)}</p>
+              {forecast.vsLastMonth?.spendingChange !== null && (
+                <p className={`text-[10px] ${forecast.vsLastMonth.spendingChange <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {forecast.vsLastMonth.spendingChange >= 0 ? '+' : ''}{forecast.vsLastMonth.spendingChange}% vs last month
+                </p>
+              )}
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">End-of-Month Position</p>
+              <p className={`font-bold text-lg ${forecast.projectedNetPosition >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {forecast.projectedNetPosition >= 0 ? '+' : ''}£{fmt(Math.abs(forecast.projectedNetPosition))}
+              </p>
+            </div>
+            <div className="bg-navy-950/50 rounded-xl p-3">
+              <p className="text-slate-500 text-[10px] uppercase tracking-wide">Bills Remaining</p>
+              <p className="text-amber-400 font-bold text-lg">£{fmt(forecast.totalBillsRemaining)}</p>
+              <p className="text-slate-500 text-[10px]">{forecast.expectedBills?.filter((b: any) => !b.paid).length || 0} unpaid</p>
+            </div>
+          </div>
+
+          {/* Expected Income */}
+          {forecast.incomeForecast?.length > 0 && (
+            <div className="mb-4">
+              <p className="text-slate-400 text-xs font-medium mb-2">Expected Income</p>
+              <div className="space-y-1.5">
+                {forecast.incomeForecast.filter((inc: any) => !inc.received_this_month).map((inc: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      {inc.received_this_month ? <CheckCircle2 className="h-3.5 w-3.5 text-green-400" /> : <Clock className="h-3.5 w-3.5 text-slate-500" />}
+                      <span className="text-white text-sm">{inc.source}</span>
+                      <span className="text-slate-500 text-[10px]">{inc.income_type}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-300 text-sm font-medium">
+                        £{fmt(inc.expected_amount)}
+                      </span>
+                      <span className="text-slate-500 text-[10px] ml-1">~day {inc.expected_day}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Expected Bills */}
+          {forecast.expectedBills?.filter((b: any) => !b.paid).length > 0 && (
+            <div>
+              <p className="text-slate-400 text-xs font-medium mb-2">Expected Bills</p>
+              <div className="space-y-1.5">
+                {forecast.expectedBills.filter((b: any) => !b.paid).slice(0, 8).map((bill: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between bg-navy-950/30 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-amber-400" />
+                      <span className="text-white text-sm">{bill.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-red-400 text-sm font-medium">£{fmt(bill.amount)}</span>
+                      <span className="text-slate-500 text-[10px] ml-1">~day {bill.billing_day}</span>
+                    </div>
+                  </div>
+                ))}
+                {forecast.expectedBills.filter((b: any) => b.paid).length > 0 && (
+                  <p className="text-green-400/60 text-[10px] px-3 pt-1">
+                    {forecast.expectedBills.filter((b: any) => b.paid).length} bills already paid this month ✓
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ═══ SPARSE MONTH: "Month So Far" Section ═══ */}
       {showSparseMonthContent && isCurrentMonthView && hasNoCurrentMonthTxns && (
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 text-center">
@@ -1887,7 +2111,7 @@ export default function MoneyHubPage() {
             )}
           </div>
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#1e293b #0f172a' }}>
-            {expectedBills.map((bill, i) => {
+            {expectedBills.filter((b: any) => !b.paid).map((bill, i) => {
               const info = CATEGORY_LABELS[bill.category] || CATEGORY_LABELS.other;
               return (
                 <div key={`v-${i}`} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/30 group">
@@ -1919,7 +2143,7 @@ export default function MoneyHubPage() {
                     )}
                     <button
                       onClick={() => dismissBill(bill)}
-                      className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
+                      className="opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-0.5"
                       title="Remove — this was a one-off"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -2053,6 +2277,17 @@ export default function MoneyHubPage() {
                             )}
                             <span className="text-slate-400 text-[10px]">{(filteredSpendingTotal > 0 ? (cat.total / filteredSpendingTotal) * 100 : 0).toFixed(1)}%</span>
                             <span className="text-white text-xs font-bold">£{fmt(cat.total)}</span>
+                            {prevMonthData && (() => {
+                              const prevCat = prevMonthData.categories.find(c => c.category === cat.category);
+                              if (!prevCat) return null;
+                              const change = ((cat.total - prevCat.total) / prevCat.total) * 100;
+                              if (Math.abs(change) < 5) return null;
+                              return (
+                                <span className={`text-[10px] ml-1 ${change > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                  {change > 0 ? '↑' : '↓'}{Math.abs(change).toFixed(0)}%
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                         <div className="w-full bg-navy-700 rounded-full h-1.5">
@@ -2343,7 +2578,7 @@ export default function MoneyHubPage() {
             View all <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <div className="text-center">
             <p className="text-2xl font-bold text-white">{data.subscriptions.count}</p>
             <p className="text-slate-500 text-xs">Active</p>
@@ -2415,7 +2650,7 @@ export default function MoneyHubPage() {
           </h2>
 
           {/* Totals */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="text-center">
               <p className="text-2xl font-bold text-green-400">£{fmt(data.netWorth.assets)}</p>
               <p className="text-slate-500 text-xs">Assets</p>
@@ -2544,7 +2779,7 @@ export default function MoneyHubPage() {
           {/* Liabilities section */}
           <div>
             <button
-              onClick={() => setExpandLiabilities(!expandLiabilities)}
+              onClick={() => { setExpandLiabilities(!expandLiabilities); if (!expandLiabilities && detectedLiabilities.length === 0) fetchDetectedLiabilities(); }}
               className="flex items-center justify-between w-full text-left mb-2"
             >
               <span className="text-white font-medium text-sm flex items-center gap-2">
@@ -2628,6 +2863,81 @@ export default function MoneyHubPage() {
                   <button onClick={() => setShowLiabilityForm(true)} className="flex items-center gap-1 text-mint-400 text-xs hover:text-mint-300">
                     <Plus className="h-3 w-3" /> Add Liability
                   </button>
+                )}
+
+                {/* Detected from transactions */}
+                {detectedLiabilities.filter(d => !d.already_tracked).length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-navy-700/30">
+                    <p className="text-slate-400 text-xs font-medium mb-2 flex items-center gap-1.5">
+                      <Zap className="h-3 w-3 text-amber-400" /> Detected from your transactions
+                      {detectedSummary && (
+                        <span className="text-slate-500 ml-1">
+                          ({detectedSummary.untracked} untracked — £{fmt(detectedSummary.monthlyDebtPayments)}/mo total)
+                        </span>
+                      )}
+                    </p>
+                    <div className="space-y-2">
+                      {detectedLiabilities.filter(d => !d.already_tracked).map((d: any) => (
+                        <div key={d.lender_key || d.lender} className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <div>
+                              <span className="text-white text-sm font-medium">{d.lender}</span>
+                              <span className="text-xs px-1.5 py-0.5 bg-navy-800 rounded text-slate-400 capitalize ml-2">{d.liability_type.replace('_', ' ')}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-400 text-xs font-medium">£{fmt(d.monthly_payment)}/mo</span>
+                              <button
+                                onClick={() => dismissDetectedLiability(d)}
+                                className="text-slate-600 hover:text-red-400 transition-colors"
+                                title="Dismiss — won't show again"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-xs text-slate-500 mb-2">
+                            {d.payment_count} payments detected · £{fmt(d.total_paid)} paid total · Since {d.first_payment}
+                          </div>
+
+                          {addingDetected === d.lender ? (
+                            <div className="mt-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-400 text-xs">Outstanding balance: £</span>
+                                <input
+                                  type="number"
+                                  value={detectedBalanceInput}
+                                  onChange={e => setDetectedBalanceInput(e.target.value)}
+                                  placeholder={d.estimated_balance ? String(d.estimated_balance) : 'Enter balance'}
+                                  className="bg-navy-800 border border-navy-700/50 rounded px-2 py-1 text-xs text-white w-28 focus:outline-none focus:border-amber-400"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => addDetectedLiability(d)}
+                                  disabled={!detectedBalanceInput}
+                                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2 py-1 rounded font-medium disabled:opacity-50"
+                                >
+                                  Add
+                                </button>
+                                <button onClick={() => { setAddingDetected(null); setDetectedBalanceInput(''); }} className="text-slate-500 text-xs">
+                                  Cancel
+                                </button>
+                              </div>
+                              {d.balance_explanation && (
+                                <p className="text-slate-500 text-[10px] mt-1.5 italic">{d.balance_explanation}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setAddingDetected(d.lender); setDetectedBalanceInput(d.estimated_balance ? String(d.estimated_balance) : ''); }}
+                              className="text-amber-400 text-xs hover:text-amber-300 flex items-center gap-1"
+                            >
+                              <Plus className="h-3 w-3" /> Add to Net Worth
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -3028,7 +3338,7 @@ export default function MoneyHubPage() {
                       </Link>
                     )}
                     {(suggestedAction === 'track' || suggestedAction === 'monitor') && !['subscription', 'loan'].includes(oppType) && (
-                      <Link href="/dashboard/contracts" className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href={`/dashboard/contracts?action=track&provider=${encodeURIComponent(providerName || '')}`} className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Track This
                       </Link>
                     )}

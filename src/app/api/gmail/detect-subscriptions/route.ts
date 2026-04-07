@@ -140,10 +140,12 @@ Return a JSON array. Each subscription must have:
 - notes: brief note about what was found (e.g. "Price increase notification in Feb", "Contract ends April 2026", "Multiple receipts suggest active use")
 
 Rules:
-- Include EVERY provider that looks like a recurring payment. A normal inbox should have 10-30+ subscriptions.
-- If you see multiple emails from a company, it's likely a subscription.
+- ONLY include genuine recurring payments and subscriptions — services the user pays for regularly.
+- DO NOT include personal emails, legal correspondence, court cases, charity emails, newsletters, social media notifications, or anything that is NOT a paid service.
+- If you see multiple billing/receipt emails from a company, it's likely a subscription.
 - Look for price increase notifications, these are important for the user to know about.
 - Look for contract end dates, renewal notices, and "your contract is ending" emails.
+- Quality over quantity — only include items you are confident are genuine subscriptions. 5 accurate results beats 30 with false positives.
 - Deduplicate: one entry per provider.
 - Return ONLY the JSON array. No markdown fences. No explanation.`,
       messages: [{

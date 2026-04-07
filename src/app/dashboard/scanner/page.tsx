@@ -8,7 +8,7 @@ import UpgradePrompt from '@/components/UpgradePrompt';
 import {
   ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
   Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus, Shield,
-  X, Lock, Eye, EyeOff, Camera, FileText,
+  X, Lock, Eye, EyeOff, Camera, FileText, ExternalLink,
 } from 'lucide-react';
 import ReceiptScanner from '@/components/scanner/ReceiptScanner';
 import ReceiptResults from '@/components/scanner/ReceiptResults';
@@ -136,10 +136,10 @@ export default function ScannerPage() {
       'hotmail.co.uk': { name: 'Outlook' },
       'live.com': { name: 'Outlook' },
       'live.co.uk': { name: 'Outlook' },
-      'yahoo.com': { name: 'Yahoo', note: 'Requires an App Password.' },
-      'yahoo.co.uk': { name: 'Yahoo', note: 'Requires an App Password.' },
-      'icloud.com': { name: 'iCloud', note: 'Requires an App-Specific Password from appleid.apple.com.' },
-      'me.com': { name: 'iCloud', note: 'Requires an App-Specific Password.' },
+      'yahoo.com': { name: 'Yahoo', note: 'Yahoo requires an App Password (not your normal password). To generate one: go to login.yahoo.com → Account Security → Generate App Password → select "Other App" → copy the password and paste it here.' },
+      'yahoo.co.uk': { name: 'Yahoo', note: 'Yahoo requires an App Password (not your normal password). To generate one: go to login.yahoo.com → Account Security → Generate App Password → select "Other App" → copy the password and paste it here.' },
+      'icloud.com': { name: 'iCloud', note: 'iCloud requires an App-Specific Password. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate.' },
+      'me.com': { name: 'iCloud', note: 'iCloud requires an App-Specific Password. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate.' },
       'btinternet.com': { name: 'BT' },
       'sky.com': { name: 'Sky' },
       'virginmedia.com': { name: 'Virgin Media' },
@@ -527,7 +527,7 @@ export default function ScannerPage() {
                     <span className="text-xl">📨</span>
                     <div>
                       <p className="text-white text-sm font-medium">Yahoo Mail</p>
-                      <p className="text-slate-500 text-[10px]">Password required</p>
+                      <p className="text-slate-500 text-[10px]">App password required</p>
                     </div>
                   </button>
                   <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
@@ -583,7 +583,17 @@ export default function ScannerPage() {
 
                   {detectedProvider?.note && (
                     <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
-                      <p className="text-xs text-amber-400">{detectedProvider.note}</p>
+                      <p className="text-xs text-amber-400 leading-relaxed">{detectedProvider.note}</p>
+                      {detectedProvider.name === 'Yahoo' && (
+                        <a href="https://login.yahoo.com/account/security" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-amber-300 hover:text-amber-200 underline mt-1.5">
+                          Open Yahoo Account Security <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                      {detectedProvider.name === 'iCloud' && (
+                        <a href="https://appleid.apple.com/account/manage/security/appspecificpasswords" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-amber-300 hover:text-amber-200 underline mt-1.5">
+                          Open Apple ID Security <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
                     </div>
                   )}
 
@@ -1139,8 +1149,8 @@ export default function ScannerPage() {
                           <span className="text-sm font-semibold text-white">{opp.confidence}%</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {/* Add to subscriptions - for subscriptions, bills, utilities */}
-                          {['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) && (
+                          {/* Add to subscriptions - for subscriptions, bills, utilities, or when suggestedAction is monitor/track */}
+                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction)) && (
                             <button
                               disabled={actionLoading === opp.id}
                               onClick={async () => {

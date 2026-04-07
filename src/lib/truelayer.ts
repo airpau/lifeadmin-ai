@@ -49,6 +49,11 @@ export interface TrueLayerTransaction {
   meta?: Record<string, unknown>;
 }
 
+export interface BalanceInfo {
+  current: number;
+  available: number;
+}
+
 /**
  * Returns a valid access token, refreshing if expired.
  */
@@ -245,6 +250,44 @@ export async function fetchPendingTransactions(
   } catch (err) {
     console.log(`Pending transactions fetch failed (non-fatal):`, err);
     return [];
+  }
+}
+
+/**
+ * Fetches current and available balance for a specific account.
+ * Returns { current, available } or null on failure.
+ */
+export async function fetchBalances(
+  accessToken: string,
+  accountId: string
+): Promise<BalanceInfo | null> {
+  const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/balance`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      console.log(`Balance not available for account ${accountId}: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const results = data.results || [];
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Get the first balance entry (usually the primary balance)
+    const balance = results[0];
+    return {
+      current: parseFloat(String(balance.current)) || 0,
+      available: parseFloat(String(balance.available)) || 0,
+    };
+  } catch (err) {
+    console.log(`Balance fetch failed (non-fatal):`, err);
+    return null;
   }
 }
 

@@ -398,10 +398,12 @@ urgency values:
 - "routine": ongoing monitoring, subscription review
 
 ## RULES
-- Return at least one entry for EVERY unique provider/service identified
-- A normal UK inbox should produce 10-30+ opportunities. Fewer than 10 = too conservative.
+- ONLY include genuine financial opportunities — subscriptions, bills, recurring payments, overcharges, compensation claims
+- DO NOT include personal emails, legal correspondence, court cases, solicitor letters, charity updates, newsletters, marketing emails, social media notifications, or anything that is NOT a financial product/service the user pays for
+- DO NOT include emails from: courts, tribunals, law firms, solicitors, barristers, police, crime services, dispute resolution services, charities, political organisations, schools, churches, community groups
 - Group by provider: multiple emails from same company = ONE opportunity (use the most recent/relevant email data)
-- Include confidence >= 40. When in doubt, include it.
+- Only include items with confidence >= 60. If you are not reasonably confident this is a genuine financial opportunity, exclude it.
+- Quality over quantity — it is far better to return 5 accurate results than 30 results with false positives. Users lose trust when they see personal/irrelevant items.
 - For deal expirations and price increases, ALWAYS include the extracted date even if approximate (e.g. "April 2026" → "2026-04-01")
 - Return ONLY the JSON array, no markdown, no explanation.`,
     messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],

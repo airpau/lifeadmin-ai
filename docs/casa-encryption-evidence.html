@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Paybacker — Data Encryption & Security Evidence (CASA Tier 2)</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; background: #fff; color: #1a1a1a; line-height: 1.6; }
+  h1 { color: #0f172a; border-bottom: 3px solid #f59e0b; padding-bottom: 10px; }
+  h2 { color: #0f172a; margin-top: 30px; border-left: 4px solid #f59e0b; padding-left: 12px; }
+  .meta { color: #666; font-size: 14px; margin-bottom: 30px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  .keyword { color: #f59e0b; }
+  .string { color: #34d399; }
+  .comment { color: #64748b; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th { background: #0f172a; color: #fff; padding: 10px 12px; text-align: left; font-size: 13px; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+  tr:nth-child(even) { background: #f8fafc; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<h1>Paybacker — Data Encryption & Security Evidence</h1>
+<div class="meta">
+  CASA Tier 2 Assessment | GCP Project: 868091967821 (paybacker-490820)<br>
+  Application: https://paybacker.co.uk | Date: 6 April 2026
+</div>
+
+<h2>1. Encryption Algorithm — AES-256-GCM</h2>
+<p>Application-level encryption is implemented using <strong>AES-256-GCM</strong> (Galois/Counter Mode) with unique initialisation vectors per record. Two independent encryption modules are used:</p>
+
+<p><strong>File: src/lib/encrypt.ts</strong> — Used for bank connection tokens:</p>
+<pre><span class="keyword">import</span> { createCipheriv, createDecipheriv, randomBytes } <span class="keyword">from</span> <span class="string">'crypto'</span>;
+
+<span class="keyword">const</span> ALGORITHM = <span class="string">'aes-256-gcm'</span>;
+
+<span class="comment">/**
+ * Encrypts a plaintext string using AES-256-GCM.
+ * Returns a string in the format: iv:authTag:ciphertext (all hex-encoded).
+ */</span>
+<span class="keyword">export function</span> encrypt(text: string): string {
+  <span class="keyword">const</span> key = getKey();            <span class="comment">// 256-bit key from ENCRYPTION_KEY env var</span>
+  <span class="keyword">const</span> iv = randomBytes(16);      <span class="comment">// Unique IV per encryption</span>
+  <span class="keyword">const</span> cipher = createCipheriv(ALGORITHM, key, iv);
+  <span class="keyword">const</span> encrypted = Buffer.concat([cipher.update(text, <span class="string">'utf8'</span>), cipher.final()]);
+  <span class="keyword">const</span> tag = cipher.getAuthTag(); <span class="comment">// Authentication tag for integrity</span>
+  <span class="keyword">return</span> <span class="string">`${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`</span>;
+}</pre>
+
+<p><strong>File: src/lib/imap-scanner.ts</strong> — Used for IMAP email passwords:</p>
+<pre><span class="keyword">const</span> ALGORITHM = <span class="string">'aes-256-gcm'</span>;
+<span class="keyword">const</span> IV_LENGTH = 12;
+<span class="keyword">const</span> TAG_LENGTH = 16;
+
+<span class="keyword">export function</span> encryptPassword(plaintext: string): string {
+  <span class="keyword">const</span> key = getEncryptionKey(); <span class="comment">// 256-bit key from EMAIL_ENCRYPTION_KEY env var</span>
+  <span class="keyword">const</span> iv = crypto.randomBytes(IV_LENGTH);
+  <span class="keyword">const</span> cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  <span class="keyword">const</span> encrypted = Buffer.concat([cipher.update(plaintext, <span class="string">'utf8'</span>), cipher.final()]);
+  <span class="keyword">const</span> tag = cipher.getAuthTag();
+  <span class="comment">// Store as iv:tag:ciphertext (all hex)</span>
+  <span class="keyword">return</span> <span class="string">`${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`</span>;
+}</pre>
+
+<h2>2. Database Schema — Google User Data Tables</h2>
+
+<p><strong>Table: gmail_tokens</strong> — Stores Google OAuth tokens</p>
+<table>
+  <tr><th>Column</th><th>Data Type</th><th>Purpose</th></tr>
+  <tr><td>id</td><td>uuid</td><td>Primary key</td></tr>
+  <tr><td>user_id</td><td>uuid</td><td>References auth.users(id)</td></tr>
+  <tr><td>email</td><td>text</td><td>Gmail address</td></tr>
+  <tr><td>access_token</td><td>text</td><td>OAuth access token (expires ~1hr)</td></tr>
+  <tr><td>refresh_token</td><td>text</td><td>OAuth refresh token</td></tr>
+  <tr><td>token_expiry</td><td>timestamptz</td><td>Token expiration</td></tr>
+  <tr><td>scopes</td><td>text</td><td>gmail.readonly, userinfo.email</td></tr>
+</table>
+
+<p><strong>Table: email_connections</strong> — Unified email provider connections</p>
+<table>
+  <tr><th>Column</th><th>Data Type</th><th>Purpose</th></tr>
+  <tr><td>id</td><td>uuid</td><td>Primary key</td></tr>
+  <tr><td>user_id</td><td>uuid</td><td>References auth.users(id)</td></tr>
+  <tr><td>email_address</td><td>text</td><td>User's email address</td></tr>
+  <tr><td>provider_type</td><td>text</td><td>google, outlook, imap</td></tr>
+  <tr><td>auth_method</td><td>text</td><td>oauth or imap</td></tr>
+  <tr><td>access_token</td><td>text</td><td>OAuth access token</td></tr>
+  <tr><td>refresh_token</td><td>text</td><td>OAuth refresh token</td></tr>
+  <tr><td>imap_password_encrypted</td><td>text</td><td><span class="badge badge-green">AES-256-GCM Encrypted</span></td></tr>
+  <tr><td>app_password_encrypted</td><td>text</td><td><span class="badge badge-green">AES-256-GCM Encrypted</span></td></tr>
+</table>
+
+<p><strong>Table: scanned_receipts</strong> — Extracted financial opportunities (metadata only, no full email content)</p>
+<table>
+  <tr><th>Column</th><th>Data Type</th><th>Purpose</th></tr>
+  <tr><td>id</td><td>uuid</td><td>Primary key</td></tr>
+  <tr><td>user_id</td><td>uuid</td><td>References auth.users(id)</td></tr>
+  <tr><td>provider_name</td><td>text</td><td>Service provider name</td></tr>
+  <tr><td>amount</td><td>numeric</td><td>Detected amount</td></tr>
+  <tr><td>extracted_data</td><td>jsonb</td><td>Structured opportunity metadata</td></tr>
+</table>
+
+<h2>3. Row-Level Security (RLS) Policies</h2>
+<div class="section">
+<p>All tables containing Google user data have <span class="badge badge-green">RLS Enabled</span> with strict user-isolation policies:</p>
+<table>
+  <tr><th>Table</th><th>Policy</th><th>Command</th><th>Rule</th></tr>
+  <tr><td>gmail_tokens</td><td>Users can view own gmail tokens</td><td>SELECT</td><td><code>auth.uid() = user_id</code></td></tr>
+  <tr><td>gmail_tokens</td><td>Users can manage own gmail tokens</td><td>ALL</td><td><code>auth.uid() = user_id</code></td></tr>
+  <tr><td>email_connections</td><td>Users can view own email connections</td><td>SELECT</td><td><code>auth.uid() = user_id</code></td></tr>
+  <tr><td>email_connections</td><td>Users can insert own email connections</td><td>INSERT</td><td><code>auth.uid() = user_id</code></td></tr>
+  <tr><td>email_connections</td><td>Users can update own email connections</td><td>UPDATE</td><td><code>auth.uid() = user_id</code></td></tr>
+  <tr><td>email_connections</td><td>Users can delete own email connections</td><td>DELETE</td><td><code>auth.uid() = user_id</code></td></tr>
+  <tr><td>scanned_receipts</td><td>Users see own receipts</td><td>ALL</td><td><code>auth.uid() = user_id</code></td></tr>
+</table>
+</div>
+
+<h2>4. Database Encryption at Rest & In Transit</h2>
+<div class="section">
+<p><strong>PostgreSQL SSL/TLS Configuration (from pg_settings):</strong></p>
+<table>
+  <tr><th>Setting</th><th>Value</th></tr>
+  <tr><td>ssl</td><td><span class="badge badge-green">on</span></td></tr>
+  <tr><td>ssl_min_protocol_version</td><td>TLSv1.2</td></tr>
+  <tr><td>ssl_ciphers</td><td>HIGH:MEDIUM:+3DES:!aNULL</td></tr>
+  <tr><td>ssl_prefer_server_ciphers</td><td>on</td></tr>
+  <tr><td>ssl_library</td><td>OpenSSL</td></tr>
+  <tr><td>ssl_ecdh_curve</td><td>prime256v1</td></tr>
+  <tr><td>password_encryption</td><td>scram-sha-256</td></tr>
+</table>
+<p><strong>Supabase encryption at rest:</strong> All data stored on disk is encrypted using AES-256 via Supabase's managed PostgreSQL infrastructure.</p>
+<p><strong>Transport encryption:</strong> All client connections enforced over HTTPS (TLS) via Vercel. Database connections require SSL (TLSv1.2 minimum).</p>
+</div>
+
+<h2>5. Security Summary</h2>
+<div class="section">
+<table>
+  <tr><th>Layer</th><th>Protection</th><th>Standard</th></tr>
+  <tr><td>Application-level encryption</td><td>Sensitive credentials (IMAP passwords, bank tokens)</td><td><span class="badge badge-green">AES-256-GCM</span></td></tr>
+  <tr><td>Database encryption at rest</td><td>All data on disk</td><td><span class="badge badge-green">AES-256</span></td></tr>
+  <tr><td>Database connections</td><td>All DB connections require SSL</td><td><span class="badge badge-green">TLSv1.2+</span></td></tr>
+  <tr><td>Web transport</td><td>All HTTP traffic via Vercel</td><td><span class="badge badge-green">HTTPS / TLS</span></td></tr>
+  <tr><td>Database password hashing</td><td>PostgreSQL authentication</td><td><span class="badge badge-green">SCRAM-SHA-256</span></td></tr>
+  <tr><td>Access control</td><td>Row-Level Security on all user tables</td><td><span class="badge badge-green">auth.uid() = user_id</span></td></tr>
+  <tr><td>OAuth scope</td><td>Read-only Gmail access</td><td><span class="badge badge-blue">gmail.readonly</span></td></tr>
+  <tr><td>Token lifecycle</td><td>Access tokens expire ~1 hour, auto-refreshed</td><td><span class="badge badge-amber">Short-lived</span></td></tr>
+</table>
+</div>
+
+<p style="color:#666; font-size:12px; margin-top:40px; border-top:1px solid #e2e8f0; padding-top:10px;">
+  Paybacker LTD | GCP Project 868091967821 | paybacker.co.uk | Generated 6 April 2026
+</p>
+
+</body>
+</html>

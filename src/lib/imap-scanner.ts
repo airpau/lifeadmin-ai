@@ -210,7 +210,7 @@ export async function testImapConnection(
   } catch (err: any) {
     const message = err.message || 'Connection failed';
     if (message.includes('AUTHENTICATIONFAILED') || message.includes('Invalid credentials')) {
-      return { success: false, error: 'Invalid email or password. If you have 2FA enabled, use an App Password.' };
+      return { success: false, error: 'Invalid email or password. Yahoo, Gmail and iCloud require an App Password — not your normal login password. Generate one in your email provider\'s security settings.' };
     }
     if (message.includes('ENOTFOUND') || message.includes('getaddrinfo')) {
       return { success: false, error: 'Could not reach mail server. Check your email domain is correct.' };

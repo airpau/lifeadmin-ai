@@ -57,19 +57,19 @@ const INCOME_PATTERNS: Array<{ keywords: string[]; type: string }> = [
 function categoriseTransaction(desc: string, bankCategory: string): string {
   const d = desc.toLowerCase();
   for (const { keywords, category } of CATEGORY_RULES) {
-    if (keywords.some(kw => d.includes(kw))) return category;
+    if (keywords.some(kw => d.includes(kw))) return category.toLowerCase();
   }
   const MAP: Record<string, string> = {
     PURCHASE: 'shopping', DEBIT: 'shopping', DIRECT_DEBIT: 'bills',
     STANDING_ORDER: 'bills', CREDIT: 'income', FEE: 'fees',
   };
-  return MAP[bankCategory] || 'other';
+  return (MAP[bankCategory] || 'other').toLowerCase();
 }
 
 function detectIncomeType(desc: string): string | null {
   const d = desc.toLowerCase();
   for (const { keywords, type } of INCOME_PATTERNS) {
-    if (keywords.some(kw => d.includes(kw))) return type;
+    if (keywords.some(kw => d.includes(kw))) return type.toLowerCase();
   }
   return null;
 }
@@ -163,17 +163,18 @@ export async function POST() {
     // Priority 1: Keep existing user override, UNLESS it's a generic auto-assigned fallback
     // ('bills', 'shopping', 'other') that might hide a more specific category.
     const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
-    if (txn.user_category && !SOFT_CATEGORIES.has(txn.user_category)) continue;
+    const existingUserCategory = (txn.user_category || '').toLowerCase();
+    if (txn.user_category && !SOFT_CATEGORIES.has(existingUserCategory)) continue;
 
     // Priority 2: Check merchant overrides (learned from user corrections)
     let finalCategory: string | null = null;
     for (const [pattern, cat] of overrideMap) {
-      if (merchant.includes(pattern)) { finalCategory = cat; break; }
+      if (merchant.includes(pattern)) { finalCategory = cat.toLowerCase(); break; }
     }
 
     // Priority 3: Check transaction-specific override
     if (!finalCategory && txnOverrides.has(txn.transaction_id)) {
-      finalCategory = txnOverrides.get(txn.transaction_id)!;
+      finalCategory = txnOverrides.get(txn.transaction_id)!.toLowerCase();
     }
 
     // Priority 4: Keyword rules
@@ -185,7 +186,7 @@ export async function POST() {
         const auto = categoriseTransaction(desc, txn.category || '');
         // Only use keyword result if it's not 'other' or 'shopping' (too generic)
         if (auto !== 'other' && auto !== 'shopping') {
-          finalCategory = auto;
+          finalCategory = auto.toLowerCase();
         }
       }
     }
@@ -194,6 +195,7 @@ export async function POST() {
     let incomeType: string | null = null;
     if (amount > 0) {
       incomeType = detectIncomeType(desc);
+      if (incomeType) incomeType = incomeType.toLowerCase();
       // Credit/loan disbursements are not income — treat like transfers
       if (incomeType === 'credit_loan') {
         if (!finalCategory) finalCategory = 'transfers';
@@ -224,13 +226,29 @@ export async function POST() {
       }
     }
 
+    // For positive-amount transactions with a real income_type, ensure user_category is 'income'
+    // so the income RPCs (which require user_category='income') count them correctly.
+    const realIncomeTypes = new Set(['salary', 'rental', 'rental_airbnb', 'rental_direct', 'freelance', 'benefits', 'investment', 'refund', 'loan_repayment', 'gift', 'other']);
+    if (amount > 0 && incomeType && realIncomeTypes.has(incomeType) && finalCategory !== 'transfers') {
+      finalCategory = 'income';
+    }
+
     if (finalCategory) {
+      const lowerCategory = finalCategory.toLowerCase().trim();
       await admin.from('bank_transactions').update({
-        user_category: finalCategory,
-        income_type: incomeType || txn.income_type,
+        user_category: lowerCategory,
+        income_type: incomeType ? incomeType.toLowerCase().trim() : txn.income_type,
       }).eq('id', txn.id);
       categorised++;
       if (incomeType) incomeDetected++;
+    } else if (amount > 0 && incomeType && realIncomeTypes.has(incomeType)) {
+      // Income detected but no spending category — still save it
+      await admin.from('bank_transactions').update({
+        user_category: 'income',
+        income_type: incomeType.toLowerCase().trim(),
+      }).eq('id', txn.id);
+      categorised++;
+      incomeDetected++;
     } else {
       // Queue for AI classification
       needsAI.push({ id: txn.id, description: desc, amount, category: txn.category || '' });
@@ -287,20 +305,24 @@ Return ONLY the JSON array.`,
             for (const r of results) {
               const txn = batch[r.index - 1];
               if (txn && r.category) {
+                // For credits with a real income_type, set user_category='income'
+                // so income RPCs count them correctly
+                const aiRealIncome = r.income_type && !['transfer', 'credit_loan'].includes((r.income_type || '').toLowerCase());
+                const aiUserCategory = (txn.amount > 0 && aiRealIncome) ? 'income' : r.category.toLowerCase();
                 await admin.from('bank_transactions').update({
-                  user_category: r.category,
-                  income_type: r.income_type || null,
+                  user_category: aiUserCategory,
+                  income_type: r.income_type ? r.income_type.toLowerCase().trim() : null,
                 }).eq('id', txn.id);
                 categorised++;
                 if (r.income_type) incomeDetected++;
 
                 // Auto-learn: save merchant pattern for future use
                 const merchantName = txn.description.replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 30).toLowerCase();
-                if (merchantName.length > 3 && r.category !== 'other') {
+                if (merchantName.length > 3 && r.category.toLowerCase() !== 'other') {
                   await admin.from('money_hub_category_overrides').upsert({
                     user_id: user.id,
                     merchant_pattern: merchantName,
-                    user_category: r.category,
+                    user_category: r.category.toLowerCase(),
                   }, { onConflict: 'user_id,merchant_pattern' }).select();
                 }
               }

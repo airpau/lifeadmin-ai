@@ -256,16 +256,25 @@ export function normaliseMerchantName(raw: string): string {
 
   // Try exact match on cleaned lowercase
   const lower = cleaned.toLowerCase();
+  // First pass: exact or startsWith (high confidence)
   for (const [pattern, displayName] of Object.entries(MERCHANT_MAP)) {
-    if (lower === pattern || lower.startsWith(pattern) || lower.includes(pattern)) {
+    if (lower === pattern || lower.startsWith(pattern + ' ') || lower.startsWith(pattern)) {
+      return displayName;
+    }
+  }
+  // Second pass: word-boundary includes (avoid partial matches like "patreon" matching "eon")
+  for (const [pattern, displayName] of Object.entries(MERCHANT_MAP)) {
+    const regex = new RegExp(`(?:^|[\\s*._-])${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[\\s*._-]|$)`, 'i');
+    if (regex.test(lower)) {
       return displayName;
     }
   }
 
-  // Also try against original raw description
+  // Also try against original raw description with word boundaries
   const rawLower = raw.toLowerCase();
   for (const [pattern, displayName] of Object.entries(MERCHANT_MAP)) {
-    if (rawLower.includes(pattern)) {
+    const regex = new RegExp(`(?:^|[\\s*._-])${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[\\s*._-]|$)`, 'i');
+    if (regex.test(rawLower)) {
       return displayName;
     }
   }
@@ -290,7 +299,7 @@ export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: strin
   { keywords: ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'capital one', 'santander credit', 'santander card', 'vanquis', 'aqua card', 'marbles', 'fluid card', 'thinkmoney'], category: 'credit' },
   { keywords: ['natwest loan', 'santander loan', 'santander', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'tide capital', 'starling loan', 'creation.co', 'creation ', 'klarna', 'clearpay', 'laybuy'], category: 'loans' },
   { keywords: ['council', 'winchester city', 'southampton city', 'l.b.', 'hounslow'], category: 'council_tax' },
-  { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'bulb', 'shell energy', 'utilita'], category: 'energy' },
+  { keywords: ['british gas', 'eon next', 'e.on', 'eon energy', 'octopus', 'ovo', 'edf', 'scottish power', 'bulb', 'shell energy', 'utilita'], category: 'energy' },
   { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
   { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'community fibre', 'vodafone broad', 'talktalk', 'plusnet', 'hyperoptic', 'ee broadband'], category: 'broadband' },
   { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'lebara', 'smarty', 'tesco mobile', 'id mobile', 'voxi'], category: 'mobile' },

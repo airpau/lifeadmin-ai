@@ -140,11 +140,14 @@ export async function GET(request: NextRequest) {
 
   // Spending drill-down — match get_monthly_spending RPC exclusions exactly:
   // amount < 0 AND user_category NOT IN ('transfers', 'income') AND category != 'TRANSFER'
+  // AND income_type NOT IN ('transfer', 'credit_loan')
   filtered = filtered.filter(t => {
     if (t.amount >= 0) return false;
     const uc = (t.user_category || '').toLowerCase();
     if (uc === 'transfers' || uc === 'income') return false;
     if ((t.category || '').toUpperCase() === 'TRANSFER') return false;
+    const it = (t.income_type || '').toLowerCase();
+    if (it === 'transfer' || it === 'credit_loan') return false;
     return true;
   });
 
