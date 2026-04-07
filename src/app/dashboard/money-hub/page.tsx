@@ -17,6 +17,7 @@ import { cleanMerchantName } from '@/lib/merchant-utils';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal from '@/components/BankPickerModal';
+import GoogleSheetsConnect from '@/components/GoogleSheetsConnect';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1598,6 +1599,9 @@ export default function MoneyHubPage() {
                 <p className="text-slate-400 text-xs">Day {data.overview.dayOfMonth} of {data.overview.daysInMonth}</p>
               </div>
             </div>
+
+            {/* Google Sheets Export */}
+            <GoogleSheetsConnect />
 
             {/* Savings-Focused Banner */}
             {(() => {
