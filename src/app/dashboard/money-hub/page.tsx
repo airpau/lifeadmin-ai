@@ -33,7 +33,7 @@ function formatTimeAgo(dateStr: string) {
 
 type ExpectedBill = {
   name: string; expected_amount: number; category: string;
-  paid: boolean; source: string; expected_date?: string;
+  paid: boolean; past_due: boolean; source: string; expected_date?: string;
   billing_day?: number; bill_key?: string;
 };
 
@@ -440,7 +440,7 @@ export default function MoneyHubPage() {
       </div>
 
       {/* Expected Bills (current month only) */}
-      {!selectedMonth && unpaidBills.length > 0 && (
+      {!selectedMonth && expectedBills.length > 0 && (
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-semibold text-lg flex items-center gap-2">
@@ -448,20 +448,39 @@ export default function MoneyHubPage() {
               Expected Bills This Month
               <span className="text-slate-500 text-sm font-normal">£{fmtNum(expectedBillsTotal)} expected</span>
             </h3>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-400 rounded-full" /> Paid</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-400 rounded-full" /> Past due</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400 rounded-full" /> Upcoming</span>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {unpaidBills.slice(0, 9).map((bill) => (
-              <div key={bill.bill_key || bill.name} className="bg-navy-950/50 rounded-xl p-3 border border-navy-800 flex items-center justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm text-white font-medium truncate">{bill.name}</p>
-                  {bill.billing_day && <p className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</p>}
+            {expectedBills.slice(0, 12).map((bill: any) => {
+              const statusColor = bill.paid
+                ? 'border-green-500/30 bg-green-500/5'
+                : bill.past_due
+                  ? 'border-red-500/30 bg-red-500/5'
+                  : 'border-navy-800';
+              const amountColor = bill.paid ? 'text-green-400' : bill.past_due ? 'text-red-400' : 'text-amber-400';
+              const catLabel = bill.category !== 'other' ? bill.category.replace(/_/g, ' ') : '';
+              return (
+                <div key={bill.bill_key || bill.name} className={`rounded-xl p-3 border flex items-center justify-between ${statusColor}`}>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>{bill.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</span>}
+                      {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
+                      {bill.paid && <span className="text-[10px] text-green-400 font-medium">✓ Paid</span>}
+                      {bill.past_due && !bill.paid && <span className="text-[10px] text-red-400 font-medium">⚠ Not seen</span>}
+                    </div>
+                  </div>
+                  <span className={`text-sm font-semibold whitespace-nowrap ml-2 ${amountColor}`}>£{fmtNum(bill.expected_amount)}</span>
                 </div>
-                <span className="text-amber-400 text-sm font-semibold whitespace-nowrap ml-2">£{fmtNum(bill.expected_amount)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {unpaidBills.length > 9 && (
-            <p className="text-center text-xs text-slate-500 mt-2">+ {unpaidBills.length - 9} more expected bills</p>
+          {expectedBills.length > 12 && (
+            <p className="text-center text-xs text-slate-500 mt-2">+ {expectedBills.length - 12} more expected bills</p>
           )}
         </div>
       )}

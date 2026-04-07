@@ -118,30 +118,92 @@ export async function GET() {
       .lt('amount', 0)
       .gte('timestamp', startOfMonth);
 
-    const paidMerchants = (currentMonthTxns || []).map(t =>
-      (t.merchant_name || t.description || '').substring(0, 40).trim().toLowerCase()
-    );
+    const paidMerchants = (currentMonthTxns || []).map(t => ({
+      name: (t.merchant_name || t.description || '').substring(0, 40).trim().toLowerCase(),
+      amount: Math.abs(parseFloat(String(t.amount)) || 0),
+    }));
+
+    // Smart category detection for known provider names
+    const PROVIDER_CATEGORIES: Array<{ pattern: RegExp; category: string }> = [
+      // Mortgages / property
+      { pattern: /\b(paratus|lendinvest|nationwide|halifax|santander.*mortgage|barclays.*mortgage|natwest.*mortgage|hsbc.*mortgage|virgin.*money|coventry|skipton|leeds|yorkshire|accord|kent reliance|godiva)\b/i, category: 'mortgage' },
+      // Loans
+      { pattern: /\b(santander.*loan|amigo|zopa|ratesetter|lending works|funding circle|hitachi.*capital|creation.*finance|motonovo)\b/i, category: 'loans' },
+      // Council tax
+      { pattern: /\b(council|borough|district|city.*of)\b/i, category: 'council_tax' },
+      // Energy
+      { pattern: /\b(british gas|edf|eon|octopus.*energy|bulb|sse|scottish.*power|ovo|shell.*energy|utilita|so.*energy|affect.*energy)\b/i, category: 'energy' },
+      // Water
+      { pattern: /\b(thames.*water|severn.*trent|anglian|united.*utilities|wessex|southw|welsh.*water|dwr.*cymru|yorkshire.*water|northumbrian)\b/i, category: 'water' },
+      // Broadband / TV
+      { pattern: /\b(bt|virgin.*media|sky|talktalk|plusnet|hyperoptic|community.*fibre|zen.*internet|vodafone.*broadband|now.*broadband|starlink)\b/i, category: 'broadband' },
+      // Mobile
+      { pattern: /\b(three|o2|ee|vodafone|giffgaff|tesco.*mobile|id.*mobile|smarty|lebara)\b/i, category: 'mobile' },
+      // Insurance
+      { pattern: /\b(aviva|direct.*line|admiral|lv=?|axa|zurich|legal.*general|royal.*london|prudential|vitality|bupa|simply.*health)\b/i, category: 'insurance' },
+      // Streaming
+      { pattern: /\b(netflix|spotify|disney|apple.*tv|amazon.*prime|now.*tv|dazn|crunchyroll|paramount|youtube.*premium)\b/i, category: 'streaming' },
+      // Fitness
+      { pattern: /\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first|anytime.*fitness|jd.*gym|better.*gym)\b/i, category: 'fitness' },
+      // Software / subscriptions
+      { pattern: /\b(adobe|microsoft|google|dropbox|icloud|1password|notion|slack|zoom|canva|chatgpt|openai|patreon)\b/i, category: 'software' },
+      // DVLA / vehicle
+      { pattern: /\b(dvla|vehicle.*tax|road.*tax)\b/i, category: 'motoring' },
+      // Childcare
+      { pattern: /\b(nursery|childcare|childminder|after.*school)\b/i, category: 'childcare' },
+      // Credit monitoring
+      { pattern: /\b(experian|equifax|clearscore|credit.*karma|checkmyfile)\b/i, category: 'credit_monitoring' },
+      // Charity
+      { pattern: /\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf|amnesty)\b/i, category: 'charity' },
+    ];
+
+    function detectCategory(providerName: string): string {
+      const name = (providerName || '').toLowerCase();
+      for (const { pattern, category } of PROVIDER_CATEGORIES) {
+        if (pattern.test(name)) return category;
+      }
+      return 'other';
+    }
 
     // Transform to frontend format
     const enrichedBills = bills.map((bill: any) => {
+      // Use subscription category if linked, otherwise auto-detect from provider name
       const category = bill.subscription_id
-        ? (subCategories[bill.subscription_id] || 'other')
-        : 'other';
+        ? (subCategories[bill.subscription_id] || detectCategory(bill.provider_name))
+        : detectCategory(bill.provider_name);
 
       const billNameNorm = normaliseBillName(bill.provider_name);
+
+      // Check if this bill has been paid this month by matching transactions
+      const billAmount = parseFloat(bill.expected_amount) || 0;
       const paid = paidMerchants.some(pm => {
-        const pmNorm = normaliseBillName(pm);
+        const pmNorm = normaliseBillName(pm.name);
         if (!pmNorm || !billNameNorm) return false;
-        return pmNorm.includes(billNameNorm.substring(0, 8)) ||
-               billNameNorm.includes(pmNorm.substring(0, 8));
+        // Name match: check if either name contains a significant prefix of the other
+        const minLen = Math.min(pmNorm.length, billNameNorm.length, 10);
+        const nameMatch = pmNorm.includes(billNameNorm.substring(0, minLen)) ||
+                         billNameNorm.includes(pmNorm.substring(0, minLen));
+        if (!nameMatch) return false;
+        // Amount match: within 20% tolerance (bills can vary slightly month-to-month)
+        if (billAmount > 0 && pm.amount > 0) {
+          const ratio = pm.amount / billAmount;
+          return ratio >= 0.8 && ratio <= 1.2;
+        }
+        return true;
       });
+
+      // Check if billing day has passed
+      const today = now.getDate();
+      const billingDay = bill.billing_day || 0;
+      const isPastDue = billingDay > 0 && billingDay < today && !paid;
 
       return {
         name: bill.provider_name,
-        expected_amount: parseFloat(bill.expected_amount) || 0,
+        expected_amount: billAmount,
         category,
         source: bill.is_subscription ? 'subscription' as const : 'recurring' as const,
         paid,
+        past_due: isPastDue,
         expected_date: bill.expected_date,
         billing_day: bill.billing_day,
         occurrence_count: bill.occurrence_count,

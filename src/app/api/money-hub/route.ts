@@ -4,6 +4,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import { calculateHealthScore } from '@/lib/financial-health-score';
 import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMoneyHubTransaction, buildMoneyHubOverrideMaps } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { loadLearnedRules } from '@/lib/learning-engine';
 
 export const runtime = 'nodejs';
 
@@ -100,6 +101,7 @@ export async function GET(request: Request) {
     ]);
 
     const allTxns = txns || [];
+    await loadLearnedRules();
     const overrides = buildMoneyHubOverrideMaps(categoryOverrides || []);
     
     // Core computation (Source of Truth)
