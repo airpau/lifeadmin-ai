@@ -1021,21 +1021,19 @@ export default function MoneyHubPage() {
         const { data: { user } } = await sb.auth.getUser();
         if (user) {
           setUserId(user.id);
-          const [{ data: conns }, { data: profile }] = await Promise.all([
+          const [{ data: conns }] = await Promise.all([
             sb.from('bank_connections')
               .select('id, bank_name, status')
               .eq('user_id', user.id)
-              .in('status', ['expired', 'token_expired', 'expired_legacy']),
-            sb.from('profiles')
-              .select('bank_prompt_dismissed_at')
-              .eq('id', user.id)
-              .single(),
+              .in('status', ['expired', 'token_expired', 'expired_legacy'])
           ]);
           if (conns && conns.length > 0) {
             setExpiredConnections(conns);
           }
-          if (profile?.bank_prompt_dismissed_at) {
-            const daysSince = (Date.now() - new Date(profile.bank_prompt_dismissed_at).getTime()) / 86_400_000;
+
+          const storedDismissed = localStorage.getItem('bank_prompt_dismissed_at');
+          if (storedDismissed) {
+            const daysSince = (Date.now() - new Date(storedDismissed).getTime()) / 86_400_000;
             setBankPromptDismissed(daysSince < 30);
           }
         }

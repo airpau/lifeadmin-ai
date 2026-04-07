@@ -329,16 +329,18 @@ export default function SubscriptionsPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      supabase.from('profiles').select('subscription_tier, bank_prompt_dismissed_at').eq('id', user.id).single()
+      supabase.from('profiles').select('subscription_tier').eq('id', user.id).single()
         .then(({ data }) => {
           if (data?.subscription_tier) setUserTier(data.subscription_tier);
-          if (data?.bank_prompt_dismissed_at) {
-            const dismissedAt = new Date(data.bank_prompt_dismissed_at).getTime();
-            const daysSince = (Date.now() - dismissedAt) / 86_400_000;
-            setBankPromptDismissed(daysSince < 30);
-          }
         });
     });
+
+    const storedDismissed = localStorage.getItem('bank_prompt_dismissed_at');
+    if (storedDismissed) {
+      const dismissedAt = new Date(storedDismissed).getTime();
+      const daysSince = (Date.now() - dismissedAt) / 86_400_000;
+      setBankPromptDismissed(daysSince < 30);
+    }
   }, [fetchSubscriptions, fetchBankConnection, fetchComparisons, fetchContractAlerts]);
 
   useEffect(() => {
@@ -915,11 +917,9 @@ export default function SubscriptionsPage() {
     }
   };
 
-  const handleDismissBankPrompt = async () => {
+  const handleDismissBankPrompt = () => {
     setBankPromptDismissed(true);
-    try {
-      await fetch('/api/user/dismiss-bank-prompt', { method: 'POST' });
-    } catch { /* non-critical */ }
+    localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString());
   };
 
   const [bulkGenerating, setBulkGenerating] = useState(false);

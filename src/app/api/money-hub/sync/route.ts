@@ -18,7 +18,7 @@ const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
   { keywords: ['natwest loan', 'santander loans', 'novuna personal', 'ca auto finance', 'tesco bank', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'zopa', 'starling loan', 'creation.co', 'creation '], category: 'loans' },
   { keywords: ['council', 'winchester city counci', 'hounslow', 'lbh'], category: 'council_tax' },
   { keywords: ['hmrc', 'hm revenue'], category: 'tax' },
-  { keywords: ['british gas', 'eon', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },
+  { keywords: ['british gas', 'e.on', 'eon next', 'octopus', 'ovo', 'edf', 'scottish power', 'sse', 'shell energy'], category: 'energy' },
   { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water'], category: 'water' },
   { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'bt fibre', 'communityfibre', 'plusnet', 'talktalk', 'hyperoptic'], category: 'broadband' },
   { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'smarty', 'lebara'], category: 'mobile' },

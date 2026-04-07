@@ -23,7 +23,7 @@ interface PriceIncreaseCardProps {
   onAction: (id: string) => void;
 }
 
-const ENERGY_KEYWORDS = ['energy', 'gas', 'electric', 'eon', 'edf', 'octopus', 'ovo', 'british gas', 'scottish power', 'bulb', 'shell energy', 'utilita'];
+const ENERGY_KEYWORDS = ['energy', 'gas', 'electric', 'e.on', 'eon next', 'edf', 'octopus', 'ovo', 'british gas', 'scottish power', 'bulb', 'shell energy', 'utilita'];
 const BROADBAND_MOBILE_KEYWORDS = ['broadband', 'virgin media', 'bt', 'sky', 'talktalk', 'plusnet', 'hyperoptic', 'vodafone', 'ee', 'three', 'o2', 'giffgaff', 'mobile'];
 
 function getRegulationHint(merchantNormalized: string): string | null {

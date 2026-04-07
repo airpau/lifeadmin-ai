@@ -54,7 +54,12 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
     return { tier: 'free', status: 'expired', isActive: false, isTrial: false, trialDaysLeft: 0 };
   }
 
-  // Paid tier but no active Stripe and not trialing — downgrade
+  // Manually granted active status (lifetime or admin granted)
+  if (tier !== 'free' && status === 'active' && !hasStripe) {
+    return { tier, status, isActive: true, isTrial: false, trialDaysLeft: null };
+  }
+
+  // Paid tier but no active Stripe, not manually active, and not trialing — downgrade
   if (tier !== 'free' && !hasStripe) {
     return { tier: 'free', status, isActive: false, isTrial: false, trialDaysLeft: null };
   }

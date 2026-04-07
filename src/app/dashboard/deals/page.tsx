@@ -463,7 +463,7 @@ export default function DealsPage() {
           // Filter out dismissed and cancelled subscriptions
           // Keep subs with category, provider_type, OR a recognisable provider name
           const energyBroadbandMobileKeywords = [
-            'british gas', 'octopus', 'ovo', 'edf', 'eon', 'e.on', 'sse', 'bulb',
+            'british gas', 'octopus', 'ovo', 'edf', 'eon next', 'e.on', 'sse', 'bulb',
             'shell energy', 'scottish power', 'utilita',
             'bt', 'sky broadband', 'virgin media', 'plusnet', 'talktalk',
             'hyperoptic', 'community fibre', 'onestream', 'ee broadband',
@@ -493,7 +493,7 @@ export default function DealsPage() {
   // Provider name keywords to infer deal category when provider_type and category are missing
   const PROVIDER_NAME_TO_DEALS: Record<string, string[]> = {
     'british gas': ['Energy'], 'octopus': ['Energy'], 'ovo': ['Energy'], 'edf': ['Energy'],
-    'eon': ['Energy'], 'e.on': ['Energy'], 'sse': ['Energy'], 'bulb': ['Energy'],
+    'e.on': ['Energy'], 'eon next': ['Energy'], 'sse': ['Energy'], 'bulb': ['Energy'],
     'shell energy': ['Energy'], 'scottish power': ['Energy'], 'utilita': ['Energy'],
     'bt': ['Broadband'], 'sky broadband': ['Broadband'], 'virgin media': ['Broadband'],
     'plusnet': ['Broadband'], 'talktalk': ['Broadband'], 'hyperoptic': ['Broadband'],

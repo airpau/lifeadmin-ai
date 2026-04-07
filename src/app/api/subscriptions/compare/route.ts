@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       // Provider name keywords that indicate an energy/broadband/mobile provider
       // (allows matching even when category and provider_type are null)
       const inferrableProviderKeywords = [
-        'british gas', 'octopus', 'ovo', 'edf', 'eon', 'e.on', 'sse', 'bulb',
+        'british gas', 'octopus', 'ovo', 'edf', 'eon next', 'e.on', 'sse', 'bulb',
         'shell energy', 'scottish power', 'utilita',
         'bt', 'sky broadband', 'virgin media', 'plusnet', 'talktalk',
         'hyperoptic', 'community fibre', 'onestream', 'ee broadband',

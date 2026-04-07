@@ -258,7 +258,7 @@ function subCategoryToDealCategory(category?: string | null, providerName?: stri
   // Check provider name keywords
   if (providerName) {
     const n = providerName.toLowerCase();
-    if (['energy', 'gas', 'electric', 'british gas', 'octopus', 'ovo', 'edf', 'eon'].some(k => n.includes(k))) return 'energy';
+    if (['energy', 'gas', 'electric', 'british gas', 'octopus', 'ovo', 'edf', 'e.on', 'eon next'].some(k => n.includes(k))) return 'energy';
     if (['broadband', 'fibre', 'bt ', 'sky broadband', 'virgin media', 'talktalk'].some(k => n.includes(k))) return 'broadband';
     if (['mobile', 'vodafone', 'three', 'o2', 'ee', 'giffgaff', 'lebara'].some(k => n.includes(k))) return 'mobile';
     if (['insurance', 'aviva', 'admiral', 'direct line'].some(k => n.includes(k))) return 'insurance';

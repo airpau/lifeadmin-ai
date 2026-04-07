@@ -142,7 +142,7 @@ function normaliseToDealCategory(sub: {
   // Check provider_name keywords
   const name = sub.provider_name.toLowerCase();
   const nameKeywords: Record<string, string[]> = {
-    energy: ['energy', 'gas', 'electricity', 'british gas', 'octopus', 'ovo', 'edf', 'eon', 'e.on', 'sse', 'bulb', 'shell energy', 'scottish power'],
+    energy: ['energy', 'gas', 'electricity', 'british gas', 'octopus', 'ovo', 'edf', 'e.on', 'eon next', 'sse', 'bulb', 'shell energy', 'scottish power'],
     broadband: ['broadband', 'fibre', 'bt ', 'sky broadband', 'virgin media', 'plusnet', 'talktalk', 'hyperoptic', 'community fibre', 'ee broadband'],
     mobile: ['mobile', 'sim', 'vodafone', 'three', 'o2', 'ee', 'giffgaff', 'smarty', 'id mobile', 'lebara', 'voxi', 'tesco mobile'],
     insurance: ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'aa breakdown', 'rac breakdown', 'green flag'],
