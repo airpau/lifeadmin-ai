@@ -113,7 +113,8 @@ export default function SubscriptionsPage() {
   const router = useRouter();
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [userTier, setUserTier] = useState<string | null>(null);
+  const [userTier, setUserTier] = useState('free');
+  const [tierLoaded, setTierLoaded] = useState(false);
   const [unrecognisedSub, setUnrecognisedSub] = useState<Subscription | null>(null);
   const [fraudStep, setFraudStep] = useState<'initial' | 'fraud_guidance'>('initial');
   const [loading, setLoading] = useState(true);
@@ -332,6 +333,12 @@ export default function SubscriptionsPage() {
       supabase.from('profiles').select('subscription_tier').eq('id', user.id).single()
         .then(({ data }) => {
           if (data?.subscription_tier) setUserTier(data.subscription_tier);
+          setTierLoaded(true);
+          if (data?.bank_prompt_dismissed_at) {
+            const dismissedAt = new Date(data.bank_prompt_dismissed_at).getTime();
+            const daysSince = (Date.now() - dismissedAt) / 86_400_000;
+            setBankPromptDismissed(daysSince < 30);
+          }
         });
     });
 
@@ -1486,8 +1493,8 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* Upgrade trigger: bank scan found subscriptions */}
-      {bankConnections.length > 0 && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
+      {/* Upgrade trigger: bank scan found subscriptions — only once tier is confirmed free */}
+      {tierLoaded && userTier === 'free' && bankConnections.length > 0 && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
         <UpgradeTrigger
           type="bank_scan"
           subscriptionCount={baseSubscriptions.filter(s => s.status === 'active').length}
