@@ -1,5 +1,49 @@
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCategoryOverride, resolveMoneyHubTransaction } from '@/lib/money-hub-classification';
+import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { loadLearnedRules } from '@/lib/learning-engine';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
+  council_tax: 'Council Tax', energy: 'Energy', water: 'Water',
+  broadband: 'Broadband', mobile: 'Mobile', streaming: 'Streaming',
+  fitness: 'Fitness', groceries: 'Groceries', eating_out: 'Eating Out',
+  fuel: 'Fuel', shopping: 'Shopping', insurance: 'Insurance',
+  transport: 'Transport', gambling: 'Gambling', childcare: 'Childcare',
+  software: 'Software', tax: 'Tax (HMRC)', professional: 'Professional Services',
+  bills: 'Bills', transfers: 'Transfers', cash: 'Cash', fees: 'Fees',
+  income: 'Income', other: 'Other', motoring: 'Motoring', property_management: 'Property',
+  credit_monitoring: 'Credit Monitoring', charity: 'Charity', travel: 'Travel',
+};
+
+/** Classify transactions using the same engine as the Money Hub dashboard */
+async function classifyTransactions(supabase: ReturnType<typeof getAdmin>, userId: string, startDate: string, endDate: string) {
+  const [{ data: txns }, { data: overrideRows }] = await Promise.all([
+    supabase.from('bank_transactions')
+      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
+      .eq('user_id', userId)
+      .gte('timestamp', startDate)
+      .lt('timestamp', endDate)
+      .order('timestamp', { ascending: false })
+      .limit(5000),
+    supabase.from('money_hub_category_overrides')
+      .select('merchant_pattern, transaction_id, user_category')
+      .eq('user_id', userId),
+  ]);
+  await loadLearnedRules();
+  const overrides = buildMoneyHubOverrideMaps(overrideRows || []);
+  return (txns || []).map(txn => {
+    const overrideCategory = findMatchingCategoryOverride(txn, overrides.transactionOverrides, overrides.merchantOverrides);
+    const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
+    return {
+      ...txn,
+      resolved,
+      effectiveCategory: resolved.spendingCategory || 'other',
+      displayName: normaliseMerchantName(txn.merchant_name || txn.description || ''),
+    };
+  });
+}
 
 function getAdmin() {
   return createClient(
@@ -230,29 +274,13 @@ async function getSpendingSummary(
 
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
-
-  // Previous month for comparison
   const prevDate = new Date(year, mon - 2, 1).toISOString();
 
-  const [current, previous, connections] = await Promise.all([
-    supabase
-      .from('bank_transactions')
-      .select('category, amount, merchant_name')
-      .eq('user_id', userId)
-      .lt('amount', 0) // debits only
-      .gte('timestamp', startDate)
-      .lt('timestamp', endDate),
-    supabase
-      .from('bank_transactions')
-      .select('category, amount')
-      .eq('user_id', userId)
-      .lt('amount', 0)
-      .gte('timestamp', prevDate)
-      .lt('timestamp', startDate),
-    supabase
-      .from('bank_connections')
-      .select('bank_name, status, last_synced_at')
-      .eq('user_id', userId),
+  // Use classification engine for both months
+  const [classified, prevClassified, connections] = await Promise.all([
+    classifyTransactions(supabase, userId, startDate, endDate),
+    classifyTransactions(supabase, userId, prevDate, startDate),
+    supabase.from('bank_connections').select('bank_name, status, last_synced_at').eq('user_id', userId),
   ]);
 
   const connData = connections.data ?? [];
@@ -260,61 +288,58 @@ async function getSpendingSummary(
   const allExpired = connData.length > 0 && connData.every(c => EXPIRED_STATUSES.includes(c.status));
   const noneConnected = connData.length === 0;
 
-  if (!current.data || current.data.length === 0) {
+  const spending = classified.filter(t => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers');
+  const income = classified.filter(t => t.resolved.kind === 'income');
+
+  if (spending.length === 0 && income.length === 0) {
     if (noneConnected) {
-      return {
-        text: `No bank transactions found for ${targetMonth}. Connect a bank account at paybacker.co.uk/dashboard/money-hub to start tracking spending.`,
-      };
+      return { text: `No bank transactions found for ${targetMonth}. Connect a bank account at paybacker.co.uk/dashboard/money-hub to start tracking spending.` };
     }
-    // User has/had a connection — data exists in other months but not this one
-    const lastSync = connData.reduce((latest: string | null, c) => {
-      if (!c.last_synced_at) return latest;
-      return !latest || c.last_synced_at > latest ? c.last_synced_at : latest;
-    }, null);
-    const lastSyncStr = lastSync ? ` (last synced ${fmtDate(lastSync)})` : '';
     if (allExpired) {
-      return {
-        text: `No stored transactions found for ${targetMonth}. Your bank connection has expired${lastSyncStr} — reconnect at paybacker.co.uk/dashboard/money-hub to sync the latest data.`,
-      };
+      const lastSync = connData.reduce((latest: string | null, c) => {
+        if (!c.last_synced_at) return latest;
+        return !latest || c.last_synced_at > latest ? c.last_synced_at : latest;
+      }, null);
+      return { text: `No stored transactions found for ${targetMonth}. Your bank connection has expired${lastSync ? ` (last synced ${fmtDate(lastSync)})` : ''} — reconnect at paybacker.co.uk/dashboard/money-hub to sync the latest data.` };
     }
-    return {
-      text: `No transactions found for ${targetMonth}. Your bank account is connected and transactions will appear once synced.`,
-    };
+    return { text: `No transactions found for ${targetMonth}. Your bank account is connected and transactions will appear once synced.` };
   }
 
-  // Group by category
+  // Group by CLASSIFIED category (not raw bank category)
   const totals: Record<string, number> = {};
-  for (const t of current.data) {
-    const cat = t.category ?? 'Other';
+  for (const t of spending) {
+    const cat = t.effectiveCategory;
     totals[cat] = (totals[cat] ?? 0) + Math.abs(Number(t.amount));
   }
 
+  const prevSpending = prevClassified.filter(t => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers');
   const prevTotals: Record<string, number> = {};
-  for (const t of previous.data ?? []) {
-    const cat = t.category ?? 'Other';
+  for (const t of prevSpending) {
+    const cat = t.effectiveCategory;
     prevTotals[cat] = (prevTotals[cat] ?? 0) + Math.abs(Number(t.amount));
   }
 
+  const totalIncome = income.reduce((s, t) => s + Number(t.amount), 0);
   const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
   const sorted = Object.entries(totals).sort(([, a], [, b]) => b - a);
 
-  const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', {
-    month: 'long',
-    year: 'numeric',
-  });
+  const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
   let text = `*Spending Summary — ${monthLabel}*\n`;
-  text += `Total: *${fmt(grandTotal)}*\n\n`;
+  text += `Total Spending: *${fmt(grandTotal)}*\n`;
+  if (totalIncome > 0) text += `Income: *${fmt(totalIncome)}*\n`;
+  text += `\n`;
 
   for (const [cat, amount] of sorted) {
+    const label = CATEGORY_LABELS[cat] || cat;
     const prev = prevTotals[cat] ?? 0;
     const diff = amount - prev;
     const arrow = diff > 1 ? ` ▲${fmt(diff)}` : diff < -1 ? ` ▼${fmt(Math.abs(diff))}` : '';
-    text += `• ${cat}: *${fmt(amount)}*${arrow}\n`;
+    text += `• ${label}: *${fmt(amount)}*${arrow}\n`;
   }
 
   if (allExpired) {
-    text += `\n_Note: Bank connection expired — this data is from before the connection lapsed. Reconnect at paybacker.co.uk/dashboard/money-hub to sync newer transactions._`;
+    text += `\n_Note: Bank connection expired — reconnect at paybacker.co.uk/dashboard/money-hub_`;
   }
 
   return { text };
@@ -333,67 +358,65 @@ async function listTransactions(
   const endDate = new Date(year, mon, 1).toISOString();
   const maxResults = params.limit ?? 25;
 
-  let query = supabase
-    .from('bank_transactions')
-    .select('id, merchant_name, amount, category, user_category, timestamp')
-    .eq('user_id', userId)
-    .gte('timestamp', startDate)
-    .lt('timestamp', endDate)
-    .order('timestamp', { ascending: false })
-    .limit(maxResults);
+  // Use classification engine to get proper categories
+  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
 
-  if (params.category) {
-    query = query.ilike('category', params.category);
-  }
-  if (params.merchant) {
-    query = query.ilike('merchant_name', `%${params.merchant}%`);
-  }
-
-  const [txResult, connResult] = await Promise.all([
-    query,
-    supabase.from('bank_connections').select('status, last_synced_at').eq('user_id', userId),
-  ]);
-
-  const { data, error } = txResult;
+  const connResult = await supabase.from('bank_connections').select('status, last_synced_at').eq('user_id', userId);
   const connData = connResult.data ?? [];
   const EXPIRED_STATUSES = ['expired', 'expired_legacy', 'revoked'];
   const allExpired = connData.length > 0 && connData.every(c => EXPIRED_STATUSES.includes(c.status));
   const noneConnected = connData.length === 0;
 
-  if (error || !data || data.length === 0) {
-    const filterDesc = `${params.category ? ` in ${params.category}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}`;
+  // Apply filters using CLASSIFIED category (not raw bank category)
+  let filtered = classified;
+  const targetCategory = params.category ? normalizeSpendingCategoryKey(params.category) : null;
+  if (targetCategory) {
+    filtered = filtered.filter(t => {
+      const cat = normalizeSpendingCategoryKey(t.effectiveCategory);
+      return cat === targetCategory;
+    });
+  }
+  if (params.merchant) {
+    const kw = params.merchant.toLowerCase();
+    filtered = filtered.filter(t =>
+      (t.merchant_name || '').toLowerCase().includes(kw) ||
+      (t.description || '').toLowerCase().includes(kw) ||
+      t.displayName.toLowerCase().includes(kw)
+    );
+  }
+
+  if (filtered.length === 0) {
+    const filterDesc = `${targetCategory ? ` in ${CATEGORY_LABELS[targetCategory] || targetCategory}` : ''}${params.merchant ? ` matching "${params.merchant}"` : ''}`;
     if (noneConnected) {
       return { text: `No transactions found for ${targetMonth}${filterDesc}. Connect a bank account at paybacker.co.uk/dashboard/money-hub` };
     }
     if (allExpired) {
-      const lastSync = connData.reduce((latest: string | null, c) => {
-        if (!c.last_synced_at) return latest;
-        return !latest || c.last_synced_at > latest ? c.last_synced_at : latest;
-      }, null);
-      const lastSyncStr = lastSync ? ` (last synced ${fmtDate(lastSync)})` : '';
-      return { text: `No transactions found for ${targetMonth}${filterDesc}. Bank connection expired${lastSyncStr} — reconnect at paybacker.co.uk/dashboard/money-hub to sync newer data.` };
+      return { text: `No transactions found for ${targetMonth}${filterDesc}. Bank connection expired — reconnect at paybacker.co.uk/dashboard/money-hub to sync newer data.` };
     }
-    return { text: `No transactions found for ${targetMonth}${filterDesc}.` };
+    // Show which categories DO have data to help user
+    const availableCats = [...new Set(classified.filter(t => t.resolved.kind === 'spending').map(t => CATEGORY_LABELS[t.effectiveCategory] || t.effectiveCategory))];
+    return { text: `No transactions found for ${targetMonth}${filterDesc}. Categories with data: ${availableCats.slice(0, 10).join(', ')}` };
   }
 
+  const display = filtered.slice(0, maxResults);
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   let text = `*Transactions — ${monthLabel}*`;
-  if (params.category) text += ` (${params.category})`;
+  if (targetCategory) text += ` (${CATEGORY_LABELS[targetCategory] || targetCategory})`;
   if (params.merchant) text += ` matching "${params.merchant}"`;
   text += `\n\n`;
 
   let total = 0;
-  for (const t of data) {
+  for (const t of display) {
     const amt = Number(t.amount);
     total += amt;
     const date = new Date(t.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
     const isDebit = amt < 0;
-    const effectiveCategory = t.user_category || t.category || 'other';
-    text += `\`${t.id.slice(0, 8)}\` · ${date} · ${t.merchant_name ?? 'Unknown'} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${effectiveCategory}\n`;
+    const catLabel = CATEGORY_LABELS[t.effectiveCategory] || t.effectiveCategory;
+    text += `\`${t.id.slice(0, 8)}\` · ${date} · ${t.displayName} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${catLabel}\n`;
   }
 
-  text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${data.length} transaction${data.length !== 1 ? 's' : ''})\n`;
-  text += `_To recategorise a transaction, use its 8-character ID prefix._`;
+  text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${filtered.length} transaction${filtered.length !== 1 ? 's' : ''})\n`;
+  text += `_To recategorise, say something like "recategorise [merchant] as [category]"_`;
 
   if (allExpired) {
     text += `\n_Note: Bank connection expired — data may not be current. Reconnect at paybacker.co.uk/dashboard/money-hub_`;
@@ -2225,7 +2248,7 @@ async function getMonthlyRecap(
   return { text };
 }
 
-function normaliseMerchantName(name: string): string {
+function normaliseMerchantLocal(name: string): string {
   return name
     .toLowerCase()
     .replace(/paypal\s*\*/gi, '')
@@ -2237,8 +2260,8 @@ function normaliseMerchantName(name: string): string {
 }
 
 function merchantNamesMatch(a: string, b: string): boolean {
-  const na = normaliseMerchantName(a);
-  const nb = normaliseMerchantName(b);
+  const na = normaliseMerchantLocal(a);
+  const nb = normaliseMerchantLocal(b);
   if (!na || !nb) return false;
   const shorter = na.length < nb.length ? na : nb;
   const longer = na.length < nb.length ? nb : na;

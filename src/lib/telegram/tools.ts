@@ -444,7 +444,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'set_budget',
     description:
-      'Create or update a monthly budget limit for a spending category. If a budget already exists for the category it will be updated, otherwise a new one is created.',
+      'Create or update a monthly SPENDING LIMIT budget for a category. This limits how much the user wants to spend per month — it is NOT a savings goal. Use when the user says "set a budget for travel", "limit my groceries spending to £300", "budget £400 for eating out". If the user says "save for" or "savings goal" or "save £X towards Y", use create_savings_goal instead.',
     input_schema: {
       type: 'object' as const,
       properties: {

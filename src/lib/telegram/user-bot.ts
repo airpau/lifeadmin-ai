@@ -664,7 +664,23 @@ export function createUserBot(): Bot<UserBotContext> {
   // -------------------------------------------------------
   // Text message handler — main conversational query interface
   // -------------------------------------------------------
+  // Deduplicate Telegram webhook retries (happens when response > ~30s)
+  const processedUpdateIds = new Set<number>();
+  
   bot.on('message:text', async (ctx) => {
+    // Prevent duplicate processing from Telegram webhook retries
+    const updateId = ctx.update.update_id;
+    if (processedUpdateIds.has(updateId)) {
+      console.log(`[UserBot] Skipping duplicate update_id=${updateId}`);
+      return;
+    }
+    processedUpdateIds.add(updateId);
+    // Clean up old IDs to prevent memory leaks (keep last 200)
+    if (processedUpdateIds.size > 200) {
+      const ids = Array.from(processedUpdateIds);
+      for (let i = 0; i < ids.length - 200; i++) processedUpdateIds.delete(ids[i]);
+    }
+
     const supabase = getAdmin();
     const chatId = ctx.chat.id;
     const userMessage = ctx.message.text;
