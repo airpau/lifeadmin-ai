@@ -74,14 +74,14 @@ const getSpendingSummary: ChatTool = {
     const spending = classified.filter(t => t.resolved.kind === 'spending');
     const income = classified.filter(t => t.resolved.kind === 'income');
 
-    const totalSpend = spending.reduce((sum, t) => sum + Math.abs(parseFloat(String(t.amount))), 0);
+    const totalSpend = spending.reduce((sum, t) => sum + (-parseFloat(String(t.amount))), 0);
     const totalIncome = income.reduce((sum, t) => sum + parseFloat(String(t.amount)), 0);
 
     const categoryTotals: Record<string, number> = {};
     for (const t of spending) {
       const cat = t.effectiveCategory;
       if (cat === 'transfers') continue;
-      categoryTotals[cat] = (categoryTotals[cat] || 0) + Math.abs(parseFloat(String(t.amount)));
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + (-parseFloat(String(t.amount)));
     }
 
     const topCategories = Object.entries(categoryTotals)
@@ -141,7 +141,7 @@ const getSpendingByCategory: ChatTool = {
       );
 
       if (byDesc.length > 0) {
-        const total = byDesc.reduce((s, t) => s + Math.abs(parseFloat(String(t.amount))), 0);
+        const total = byDesc.reduce((s, t) => s + (-parseFloat(String(t.amount))), 0);
         return {
           category: CATEGORY_LABELS[targetCategory] || args.category,
           period: `Last ${months} month${months > 1 ? 's' : ''}`,
@@ -161,14 +161,14 @@ const getSpendingByCategory: ChatTool = {
       return { message: `No transactions found in the "${CATEGORY_LABELS[targetCategory] || args.category}" category for the last ${months} month(s). Available categories with data: ${Object.keys(classified.reduce((acc, t) => { if (t.resolved.kind === 'spending') acc[t.effectiveCategory] = true; return acc; }, {} as Record<string, boolean>)).map(c => CATEGORY_LABELS[c] || c).join(', ')}` };
     }
 
-    const total = filtered.reduce((s, t) => s + Math.abs(parseFloat(String(t.amount))), 0);
+    const total = filtered.reduce((s, t) => s + (-parseFloat(String(t.amount))), 0);
 
     // Merchant breakdown
     const merchantTotals: Record<string, { total: number; count: number }> = {};
     for (const t of filtered) {
       const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
       if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
-      merchantTotals[merchant].total += Math.abs(parseFloat(String(t.amount)));
+      merchantTotals[merchant].total += (-parseFloat(String(t.amount)));
       merchantTotals[merchant].count++;
     }
 
@@ -228,7 +228,7 @@ const searchTransactions: ChatTool = {
 
     const debits = transactions.filter(t => parseFloat(String(t.amount)) < 0);
     const credits = transactions.filter(t => parseFloat(String(t.amount)) > 0);
-    const totalSpent = debits.reduce((s, t) => s + Math.abs(parseFloat(String(t.amount))), 0);
+    const totalSpent = debits.reduce((s, t) => s + (-parseFloat(String(t.amount))), 0);
     const totalReceived = credits.reduce((s, t) => s + parseFloat(String(t.amount)), 0);
 
     return {
@@ -281,7 +281,7 @@ const getBudgets: ChatTool = {
     for (const t of classified) {
       if (t.resolved.kind !== 'spending') continue;
       const cat = normalizeSpendingCategoryKey(t.effectiveCategory);
-      categorySpend[cat] = (categorySpend[cat] || 0) + Math.abs(parseFloat(String(t.amount)));
+      categorySpend[cat] = (categorySpend[cat] || 0) + (-parseFloat(String(t.amount)));
     }
 
     return {
@@ -403,13 +403,13 @@ const getFinancialOverview: ChatTool = {
 
     const spending = classified.filter(t => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers');
     const income = classified.filter(t => t.resolved.kind === 'income');
-    const totalSpend = spending.reduce((s, t) => s + Math.abs(parseFloat(String(t.amount))), 0);
+    const totalSpend = spending.reduce((s, t) => s + (-parseFloat(String(t.amount))), 0);
     const totalIncome = income.reduce((s, t) => s + parseFloat(String(t.amount)), 0);
 
     // Top 5 categories
     const cats: Record<string, number> = {};
     for (const t of spending) {
-      cats[t.effectiveCategory] = (cats[t.effectiveCategory] || 0) + Math.abs(parseFloat(String(t.amount)));
+      cats[t.effectiveCategory] = (cats[t.effectiveCategory] || 0) + (-parseFloat(String(t.amount)));
     }
     const topCats = Object.entries(cats).sort(([, a], [, b]) => b - a).slice(0, 5)
       .map(([c, t]) => `${CATEGORY_LABELS[c] || c}: £${t.toFixed(2)}`);

@@ -317,17 +317,17 @@ async function getSpendingSummary(
 
   // Group by CLASSIFIED category (not raw bank category)
   const totals: Record<string, number> = {};
-  for (const t of spending) {
+  spending.forEach((t) => {
     const cat = t.effectiveCategory;
-    totals[cat] = (totals[cat] ?? 0) + Math.abs(Number(t.amount));
-  }
+    totals[cat] = (totals[cat] ?? 0) + (-Number(t.amount));
+  });
 
   const prevSpending = prevClassified.filter(t => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers');
   const prevTotals: Record<string, number> = {};
-  for (const t of prevSpending) {
+  prevSpending.forEach((t) => {
     const cat = t.effectiveCategory;
-    prevTotals[cat] = (prevTotals[cat] ?? 0) + Math.abs(Number(t.amount));
-  }
+    prevTotals[cat] = (prevTotals[cat] ?? 0) + (-Number(t.amount));
+  });
 
   const totalIncome = income.reduce((s, t) => s + Number(t.amount), 0);
   const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
@@ -710,7 +710,7 @@ async function getBudgetStatus(
   const spent: Record<string, number> = {};
   for (const t of transactions.data ?? []) {
     const cat = t.category ?? 'Other';
-    spent[cat] = (spent[cat] ?? 0) + Math.abs(Number(t.amount));
+    spent[cat] = (spent[cat] ?? 0) + (-Number(t.amount));
   }
 
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -1143,7 +1143,7 @@ async function getFinancialOverview(
   }, 0);
 
   const txs = transactions.data ?? [];
-  const totalSpending = txs.filter(t => Number(t.amount) < 0).reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  const totalSpending = txs.filter(t => Number(t.amount) < 0).reduce((sum, t) => sum + (-Number(t.amount)), 0);
   const totalIncome = txs.filter(t => Number(t.amount) > 0).reduce((sum, t) => sum + Number(t.amount), 0);
 
   const totalSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.amount_saved ?? 0), 0);
@@ -1151,10 +1151,12 @@ async function getFinancialOverview(
 
   // Category breakdown (top 5)
   const catTotals: Record<string, number> = {};
-  for (const t of txs.filter(t => Number(t.amount) < 0)) {
-    const cat = t.category ?? 'other';
-    catTotals[cat] = (catTotals[cat] ?? 0) + Math.abs(Number(t.amount));
-  }
+  txs.filter(t => Number(t.amount) < 0).forEach(t => {
+    const cat = t.category || 'other';
+    if (cat !== 'transfers') {
+      catTotals[cat] = (catTotals[cat] ?? 0) + (-Number(t.amount));
+    }
+  });
   const topCats = Object.entries(catTotals).sort(([, a], [, b]) => b - a).slice(0, 5);
 
   const activeBanks = (banks.data ?? []).filter(b => b.status === 'active');
@@ -1351,14 +1353,14 @@ async function getMonthlyTrends(
   }
 
   const monthlyData: Record<string, { income: number; spending: number }> = {};
-  for (const t of data) {
-    const d = new Date(t.timestamp);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  data.forEach((txn: any) => {
+    const m = txn.timestamp.slice(0, 7);
+    const key = `${m}-01`;
+    const amt = Number(txn.amount);
     if (!monthlyData[key]) monthlyData[key] = { income: 0, spending: 0 };
-    const amt = Number(t.amount);
     if (amt > 0) monthlyData[key].income += amt;
-    else monthlyData[key].spending += Math.abs(amt);
-  }
+    else monthlyData[key].spending += (-amt);
+  });
 
   const sorted = Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b));
 

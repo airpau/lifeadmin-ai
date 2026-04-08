@@ -47,7 +47,9 @@ function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: st
     }
 
     if (resolved.kind === 'spending' && resolved.spendingCategory) {
-      const spendAmount = Math.abs(resolved.amount);
+      // OpenBanking: spending is negative, refunds are positive.
+      // -resolved.amount ensures spending increases total, and refunds decrease total.
+      const spendAmount = -resolved.amount;
       const category = normalizeSpendingCategoryKey(resolved.spendingCategory);
       
       // Strict exclusions to prevent double counting or inflation
