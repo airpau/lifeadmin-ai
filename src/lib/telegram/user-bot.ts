@@ -264,11 +264,17 @@ async function callClaudeWithTools(
 
     for (const block of response.content) {
       if (block.type === 'tool_use') {
-        const result = await executeToolCall(
-          block.name,
-          block.input as Record<string, unknown>,
-          userId,
-        );
+        let result: { text: string; pendingAction?: PendingAction };
+        try {
+          result = await executeToolCall(
+            block.name,
+            block.input as Record<string, unknown>,
+            userId,
+          );
+        } catch (err: any) {
+          console.error(`[UserBot] Tool error (${block.name}):`, err);
+          result = { text: `Error executing tool: ${err.message || 'Unknown error'}. Please check your arguments and try again.` };
+        }
 
         if (result.pendingAction) {
           // TERMINAL: a pending action (e.g. draft letter) must stop everything immediately.
@@ -297,10 +303,14 @@ async function callClaudeWithTools(
     });
   }
 
-  const finalText = response.content
+  let finalText = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
     .map((b) => b.text)
     .join('');
+
+  if (!finalText.trim()) {
+    finalText = "I'm having trouble retrieving that information right now. Could you please specify exactly what you need in a different way?";
+  }
 
   return { text: finalText };
 }

@@ -6,7 +6,8 @@ import { cleanMerchantName } from '@/lib/merchant-utils';
 interface CategoryDrillDownModalProps {
   isOpen: boolean;
   onClose: () => void;
-  category: string | null;
+  category?: string | null;
+  incomeType?: string | null;
   selectedMonth: string;
   onRecategorised: () => void;
 }
@@ -17,7 +18,7 @@ const ALL_CATEGORIES = [
   'transfers', 'income', 'parking', 'fees', 'insurance', 'other'
 ].sort();
 
-export default function CategoryDrillDownModal({ isOpen, onClose, category, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
+export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
   const [data, setData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
@@ -25,18 +26,21 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, sele
   const [recatLoading, setRecatLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen && category) {
+    if (isOpen && (category || incomeType)) {
       loadData();
     } else {
       setData(null);
     }
-  }, [isOpen, category, selectedMonth]);
+  }, [isOpen, category, incomeType, selectedMonth]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const monthParam = selectedMonth ? `&month=${selectedMonth}` : '';
-      const res = await fetch(`/api/money-hub/transactions?category=${encodeURIComponent(category!)}${monthParam}`);
+      const typeParam = incomeType 
+        ? `income_type=${encodeURIComponent(incomeType)}` 
+        : `category=${encodeURIComponent(category!)}`;
+      const res = await fetch(`/api/money-hub/transactions?${typeParam}${monthParam}`);
       const d = await res.json();
       setData(d);
     } catch {
@@ -68,7 +72,9 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, sele
     setRecatLoading(false);
   };
 
-  if (!isOpen || !category) return null;
+  if (!isOpen || !(category || incomeType)) return null;
+
+  const displayTitle = (incomeType || category!).replace(/_/g, ' ');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -76,7 +82,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, sele
       <div className="relative bg-navy-900 border border-navy-700 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-navy-800">
           <div>
-            <h2 className="text-xl font-bold text-white capitalize">{category.replace(/_/g, ' ')}</h2>
+            <h2 className="text-xl font-bold text-white capitalize">{displayTitle}</h2>
             <p className="text-slate-400 text-sm mt-1">{selectedMonth ? new Date(`${selectedMonth}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : 'This month'}</p>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white p-2 rounded-lg hover:bg-navy-800 transition-colors">

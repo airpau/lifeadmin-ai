@@ -124,7 +124,6 @@ export async function POST(request: NextRequest) {
         const { data: matching } = await admin.from('bank_transactions')
           .select('id')
           .eq('user_id', user.id)
-          .lt('amount', 0) // Only spending transactions
           .gte('timestamp', sixMonthsAgo.toISOString())
           .or(`merchant_name.ilike.${ilikePattern},description.ilike.${ilikePattern}`)
           .limit(500);

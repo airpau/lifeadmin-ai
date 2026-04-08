@@ -4,6 +4,7 @@ import { fmtNum } from '@/lib/format';
 import { Lock, FileText, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -46,6 +47,7 @@ function getCatMeta(key: string) {
 
 export default function SpendingPanel({ data, isPro, refreshData, selectedMonth }: { data: any, isPro: boolean, refreshData: () => void, selectedMonth: string }) {
   const [drillCategory, setDrillCategory] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const categories = data.spending.categories || [];
   const topMerchants = data.spending.topMerchants || [];
@@ -65,11 +67,14 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
       
       <div className="space-y-4 flex-1">
         <div>
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">By Category</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">By Category</p>
+            <span className="text-slate-500 text-[10px]">Click row for details</span>
+          </div>
           {categories.length === 0 ? (
             <p className="text-sm text-slate-500">No categorised spend yet.</p>
           ) : (
-            categories.slice(0, 8).map((c: any) => {
+            (showAll ? categories : categories.slice(0, 8)).map((c: any) => {
               const meta = getCatMeta(c.category);
               const pct = totalSpent > 0 ? (c.total / totalSpent) * 100 : 0;
               return (
@@ -94,7 +99,16 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
             })
           )}
           {categories.length > 8 && (
-            <p className="text-xs text-slate-500 text-center mt-1">+ {categories.length - 8} more categories</p>
+            <button 
+              onClick={() => setShowAll(!showAll)}
+              className="w-full text-xs text-mint-400 hover:text-mint-300 mt-2 py-1 flex items-center justify-center gap-1 transition-colors"
+            >
+              {showAll ? (
+                <><ChevronUp className="h-3 w-3" /> Show less</>
+              ) : (
+                <><ChevronDown className="h-3 w-3" /> View {categories.length - 8} more categories</>
+              )}
+            </button>
           )}
         </div>
 

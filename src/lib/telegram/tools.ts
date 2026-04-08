@@ -693,7 +693,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'update_dispute_status',
     description:
-      "Update the status of an existing dispute — mark it resolved, escalate it, or add a note. Use when the user says \"British Gas responded to my complaint\", \"I won my energy dispute\", or \"escalate my BT complaint\".",
+      "Update the status of an existing dispute — mark it resolved, escalate it, or add a note. Use when the user provides an update from a company (e.g. an email they received). Always include the full 'provider_response' if they give one, and if you draft them a response to send back, include it in 'draft_reply' so both are logged to the dispute history audit trail.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -709,6 +709,14 @@ export const telegramTools: Tool[] = [
         notes: {
           type: 'string',
           description: 'Optional notes about the update (e.g. "Company replied refusing refund", "Ombudsman case opened").',
+        },
+        provider_response: {
+          type: 'string',
+          description: 'The exact response from the provider/company if the user provided it (e.g. the text of the email they forwarded). This will be saved to the dispute history.',
+        },
+        draft_reply: {
+          type: 'string',
+          description: 'If you draft a reply for the user to send back to the provider, include the full text of that letter here so it is saved to the dispute history.',
         },
         money_recovered: {
           type: 'number',

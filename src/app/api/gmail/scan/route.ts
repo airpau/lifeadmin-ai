@@ -101,9 +101,14 @@ export async function POST(request: NextRequest) {
         .eq('type', 'opportunity');
 
       const existingTitles = new Set((existing || []).map((t: any) => t.title));
-      const newOpportunities = opportunities.filter((o: any) => !existingTitles.has(o.title));
+
+      // Separate opportunities by type
+      const newSubs = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type === 'subscription' || o.type === 'forgotten_subscription'));
+      const newAlerts = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type !== 'subscription' && o.type !== 'forgotten_subscription'));
+      const newOpportunities = [...newSubs, ...newAlerts];
 
       if (newOpportunities.length > 0) {
+        // Log to tasks (audit trail for scanner)
         await admin.from('tasks').insert(
           newOpportunities.map((o: any) => ({
             user_id: user.id,
@@ -115,6 +120,40 @@ export async function POST(request: NextRequest) {
             priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
           }))
         );
+
+        // Populate Subscriptions
+        if (newSubs.length > 0) {
+          await admin.from('subscriptions').insert(
+            newSubs.map((o: any) => ({
+              user_id: user.id,
+              provider_name: o.provider || 'Unknown',
+              amount: o.amount || o.paymentAmount || 0,
+              billing_cycle: o.paymentFrequency === 'yearly' ? 'yearly' : (o.paymentFrequency === 'quarterly' ? 'quarterly' : 'monthly'),
+              status: 'active',
+              source: 'gmail_scan',
+              category: o.category || 'other',
+              next_payment_date: o.nextPaymentDate || null,
+              contract_end_date: o.contractEndDate || null,
+              notes: o.description,
+              detected_at: new Date().toISOString()
+            }))
+          ).then(({ error: e }) => { if (e) console.error('[gmail-scan] subscriptions insert error:', e.message); });
+        }
+
+        // Populate Deals / Alerts
+        if (newAlerts.length > 0) {
+          await admin.from('money_hub_alerts').insert(
+            newAlerts.map((o: any) => ({
+              user_id: user.id,
+              type: o.type,
+              title: o.title,
+              description: o.description,
+              value_gbp: o.amount || 0,
+              status: 'active',
+              metadata: o
+            }))
+          ).then(({ error: e }) => { if (e) console.error('[gmail-scan] money_hub_alerts insert error:', e.message); });
+        }
       }
 
       // Also save to scanned_receipts for the Scanner UI

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { TrendingDown, ArrowRight, ExternalLink } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
+import { isDealValid } from '@/lib/savings-utils';
 
 interface DealComparison {
   subscriptionName: string;
@@ -20,26 +21,11 @@ interface SavingsOpportunityWidgetProps {
   deals?: DealComparison[];
 }
 
-// Categories that should never show savings suggestions
-const EXCLUDED_SAVINGS_CATEGORIES = new Set([
-  'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
-  'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
-  'fee', 'parking',
-]);
-
 export default function SavingsOpportunityWidget({ totalSaving, count, deals }: SavingsOpportunityWidgetProps) {
   if (totalSaving <= 0 || count <= 0) return null;
 
   // Filter out excluded categories, null categories, and unrealistic savings (>80%)
-  const filteredDeals = (deals || []).filter(d => {
-    if (!d.category) return false;
-    if (EXCLUDED_SAVINGS_CATEGORIES.has(d.category.toLowerCase())) return false;
-    // 80% cap: if annual saving > 80% of current annual spend, skip
-    if (d.currentPrice > 0 && d.annualSaving > d.currentPrice * 12 * 0.8) return false;
-    // Filter out Chris Hillier or similar
-    if (d.subscriptionName.toLowerCase().includes('chris hillier')) return false;
-    return true;
-  });
+  const filteredDeals = (deals || []).filter(isDealValid);
 
   const filteredTotal = filteredDeals.reduce((sum, d) => sum + d.annualSaving, 0);
   const filteredCount = filteredDeals.length;

@@ -48,8 +48,9 @@ export interface ResolvedMoneyHubTransaction {
   incomeType: string | null;
 }
 
-export function normalizeSpendingCategoryKey(value: string | null | undefined): string {
-  const key = (value || '').toLowerCase().trim();
+export function normalizeSpendingCategoryKey(value: any): string {
+  if (typeof value !== 'string') value = String(value || '');
+  const key = value.toLowerCase().trim();
   if (!key) return '';
   return SPENDING_CATEGORY_ALIASES[key] || key;
 }
@@ -155,12 +156,12 @@ export function resolveMoneyHubTransaction(
   }
 
   if (amount > 0) {
-    if (isTransferLikeTransaction(txn, effectiveIncomeType)) {
+    if (resolvedOverride === 'transfers' || isTransferLikeTransaction(txn, effectiveIncomeType)) {
       return { amount, kind: 'transfer', spendingCategory: 'transfers', incomeType: 'transfer' };
     }
 
     const hasRealIncomeType = !!effectiveIncomeType && !isExcludedIncomeType(effectiveIncomeType);
-    const isStoredIncome = storedCategory === 'income';
+    const isStoredIncome = storedCategory === 'income' || resolvedOverride === 'income';
     const bankSuggestsIncome = CREDIT_BANK_CATEGORIES.has(bankCategory);
 
     if (isStoredIncome || hasRealIncomeType || bankSuggestsIncome) {
@@ -209,8 +210,67 @@ export function resolveMoneyHubTransaction(
     return { amount, kind: 'spending', spendingCategory: storedCategory, incomeType: null };
   }
 
-  const fallbackCategory = normalizeSpendingCategoryKey(txn.category);
+  const fallbackCategory = normalizeSpendingCategoryKey(txn.category) || detectFallbackSpendingCategory(description);
   return { amount, kind: 'spending', spendingCategory: fallbackCategory || 'other', incomeType: null };
+}
+
+export function applyInternalTransferHeuristic(txns: any[]) {
+  const matchedAsTransfers = new Set<string>();
+  
+  // Terms that strongly imply this is an external payment/mortgage, not an internal hop
+  const excludedTerms = /skipton|nationwide|mortgage|halifax|santander.*mortgage|barclays.*mortgage|coventry|leeds|yorkshire|accord|auto|car/i;
+  // Terms that strongly imply a transfer
+  const transferTerms = /tfr|transfer|to a\/c|from a\/c|fp |fps |via mobile/i;
+
+  for (let i = 0; i < txns.length; i++) {
+    const txnA = txns[i];
+    if (matchedAsTransfers.has(txnA.id)) continue;
+    
+    const amtA = parseFloat(String(txnA.amount)) || 0;
+    if (amtA === 0) continue;
+    
+    const descA = [txnA.merchant_name, txnA.description].join(' ').toLowerCase();
+    if (excludedTerms.test(descA)) continue;
+
+    const tsA = txnA.timestamp ? new Date(txnA.timestamp).getTime() : 0;
+    if (!tsA) continue;
+    const accA = txnA.account_id;
+
+    for (let j = i + 1; j < txns.length; j++) {
+      const txnB = txns[j];
+      if (matchedAsTransfers.has(txnB.id)) continue;
+      
+      const amtB = parseFloat(String(txnB.amount)) || 0;
+      
+      // Exact opposite
+      if (Math.abs(amtA + amtB) < 0.01) {
+        const descB = [txnB.merchant_name, txnB.description].join(' ').toLowerCase();
+        if (excludedTerms.test(descB)) continue;
+
+        const tsB = txnB.timestamp ? new Date(txnB.timestamp).getTime() : 0;
+        if (!tsB) continue;
+        
+        // within 3 days (259200000 ms)
+        if (Math.abs(tsA - tsB) <= 3 * 24 * 60 * 60 * 1000) {          
+          // To prevent accidental pairing of Salary + Car Purchase,
+          // we enforce that either one description explicitly says transfer,
+          // or the amount is fairly precise (not a flat round number < £500).
+          // We remove the strict accA !== accB check because bank plugins sometimes log inbound/outbound on identical keys.
+          const hasTransferKeyword = transferTerms.test(descA) || transferTerms.test(descB);
+            
+          // Allow if >= £500 (more likely to be related moving of funds) 
+          // AND we have transfer keywords
+          if (hasTransferKeyword || Math.abs(amtA) >= 500) {
+              matchedAsTransfers.add(txnA.id);
+              matchedAsTransfers.add(txnB.id);
+              break; // found the pair for txnA
+          }
+        }
+      }
+    }
+  }
+
+  return matchedAsTransfers;
 }
 
 export function isTransferLikeTransaction(
@@ -376,4 +436,27 @@ function normalizeOverridePattern(value: string | null | undefined) {
 export function isCountableIncomeType(value: string | null | undefined) {
   const key = normalizeIncomeTypeKey(value);
   return REAL_INCOME_TYPES.has(key);
+}
+
+function detectFallbackSpendingCategory(description: string): string | null {
+  const d = ` ${description.toLowerCase()} `;
+  
+  if (/\b(skipton|nationwide|halifax|santander.*mortgage|barclays.*mortgage|natwest.*mortgage|hsbc.*mortgage|virgin.*money|coventry|leeds|yorkshire|accord|godiva)\b/.test(d)) return 'mortgage';
+  if (/\b(santander.*loan|amigo|zopa|ratesetter|lending works|funding circle|hitachi.*capital|creation.*finance|motonovo|loan)\b/.test(d)) return 'loans';
+  if (/\b(council|borough|district|city.*of)\b/.test(d) && d.includes('tax')) return 'council_tax';
+  if (/\b(british gas|edf|eon|octopus.*energy|bulb|sse|scottish.*power|ovo|shell.*energy|utilita|so.*energy)\b/.test(d)) return 'energy';
+  if (/\b(thames.*water|severn.*trent|anglian|united.*utilities|wessex|southw|welsh.*water|dwr.*cymru|yorkshire.*water)\b/.test(d)) return 'water';
+  if (/\b(bt|virgin.*media|sky|talktalk|plusnet|hyperoptic|community.*fibre)\b/.test(d)) return 'broadband';
+  if (/\b(three|o2|ee|vodafone|giffgaff|tesco.*mobile|id.*mobile|smarty|lebara)\b/.test(d)) return 'mobile';
+  if (/\b(aviva|direct.*line|admiral|lv=?|axa|zurich|legal.*general|bupa)\b/.test(d) && !d.includes('refund')) return 'insurance';
+  if (/\b(netflix|spotify|disney|apple.*tv|amazon.*prime|now.*tv|youtube.*premium|crunchyroll)\b/.test(d)) return 'streaming';
+  if (/\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first)\b/.test(d)) return 'fitness';
+  if (/\b(tesco|sainsburys|asda|morrisons|aldi|lidl|waitrose|co-op|iceland|ocado|farmfoods|marks and spencer)\b/.test(d)) return 'groceries';
+  if (/\b(amazon|ebay|argos|john lewis|next|asoss|boohoo|primark|tk maxx|boots|superdrug|currys)\b/.test(d)) return 'shopping';
+  if (/\b(mcdonalds|kfc|burger king|nandos|dominos|greggs|costa|starbucks|pret|deliveroo|uber.*eats|just.*eat|wetherspoon)\b/.test(d)) return 'eating_out';
+  if (/\b(tfl|uber|trainline|lner|gwr|tpe|southern|northern|tfl|stagecoach|arriva|first.*bus|national.*express)\b/.test(d)) return 'transport';
+  if (/\b(dvla|vehicle.*tax)\b/.test(d)) return 'motoring';
+  if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf)\b/.test(d)) return 'charity';
+
+  return null;
 }

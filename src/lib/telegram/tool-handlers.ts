@@ -195,6 +195,8 @@ export async function executeToolCall(
         new_status: toolInput.new_status as string,
         notes: toolInput.notes as string | undefined,
         money_recovered: toolInput.money_recovered as number | undefined,
+        provider_response: toolInput.provider_response as string | undefined,
+        draft_reply: toolInput.draft_reply as string | undefined,
       });
     case 'add_contract':
       return addContract(supabase, userId, {
@@ -269,8 +271,16 @@ async function getSpendingSummary(
   month?: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  const targetMonth = month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const [year, mon] = targetMonth.split('-').map(Number);
+  let year = now.getFullYear();
+  let mon = now.getMonth() + 1;
+  if (typeof month === 'string' && month.includes('-')) {
+    const parts = month.split('-').map(Number);
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      year = parts[0];
+      mon = parts[1];
+    }
+  }
+  const targetMonth = `${year}-${String(mon).padStart(2, '0')}`;
 
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
@@ -351,8 +361,16 @@ async function listTransactions(
   params: { month?: string; category?: string; merchant?: string; limit?: number },
 ): Promise<ToolResult> {
   const now = new Date();
-  const targetMonth = params.month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const [year, mon] = targetMonth.split('-').map(Number);
+  let year = now.getFullYear();
+  let mon = now.getMonth() + 1;
+  if (typeof params.month === 'string' && params.month.includes('-')) {
+    const parts = params.month.split('-').map(Number);
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      year = parts[0];
+      mon = parts[1];
+    }
+  }
+  const targetMonth = `${year}-${String(mon).padStart(2, '0')}`;
 
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
@@ -370,7 +388,11 @@ async function listTransactions(
   // Apply filters using CLASSIFIED category (not raw bank category)
   let filtered = classified;
   const targetCategory = params.category ? normalizeSpendingCategoryKey(params.category) : null;
-  if (targetCategory) {
+  if (targetCategory === 'income') {
+    filtered = filtered.filter(t => t.resolved.kind === 'income');
+  } else if (targetCategory === 'spending') {
+    filtered = filtered.filter(t => t.resolved.kind === 'spending');
+  } else if (targetCategory) {
     filtered = filtered.filter(t => {
       const cat = normalizeSpendingCategoryKey(t.effectiveCategory);
       return cat === targetCategory;
@@ -411,7 +433,14 @@ async function listTransactions(
     total += amt;
     const date = new Date(t.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
     const isDebit = amt < 0;
-    const catLabel = CATEGORY_LABELS[t.effectiveCategory] || t.effectiveCategory;
+    let catLabel = '';
+    if (t.resolved.kind === 'income') {
+      const incType = t.resolved.incomeType || 'other';
+      catLabel = CATEGORY_LABELS[incType] || incType.charAt(0).toUpperCase() + incType.slice(1);
+    } else {
+      catLabel = CATEGORY_LABELS[t.effectiveCategory] || t.effectiveCategory;
+    }
+
     text += `\`${t.id.slice(0, 8)}\` · ${date} · ${t.displayName} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${catLabel}\n`;
   }
 
@@ -917,12 +946,13 @@ async function recategoriseTransactions(
   merchantName: string,
   newCategory: string,
 ): Promise<ToolResult> {
+  // Update user_category, which is our internal system rule
   const { data, error } = await supabase
     .from('bank_transactions')
-    .update({ category: newCategory })
+    .update({ user_category: newCategory })
     .eq('user_id', userId)
     .ilike('merchant_name', `%${merchantName}%`)
-    .select('id');
+    .select('id, amount, description, merchant_name');
 
   if (error) {
     return { text: `Failed to recategorise: ${error.message}` };
@@ -933,16 +963,21 @@ async function recategoriseTransactions(
     return { text: `No transactions found matching "${merchantName}". Check the spelling or try a shorter name.` };
   }
 
-  // Also add/update merchant_rules so future transactions auto-categorise
-  await supabase.from('merchant_rules').upsert(
-    {
-      pattern: merchantName.toLowerCase(),
+  // Push to learning engine so it autonomously remembers for future syncs!
+  try {
+    const { learnFromCorrection } = await import('@/lib/learning-engine');
+    // We only need to learn once per merchant batch
+    const sample = data[0]; 
+    await learnFromCorrection({
+      rawName: sample.description || sample.merchant_name || merchantName,
+      displayName: merchantName,
       category: newCategory,
-      display_name: merchantName,
-      source: 'telegram',
-    },
-    { onConflict: 'pattern' },
-  ).then(() => {});
+      amount: sample.amount,
+      userId: userId,
+    });
+  } catch (err: any) {
+    console.error('[UserBot] Error pushing to learning engine:', err.message);
+  }
 
   return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${newCategory}". Future transactions from this merchant will also be categorised as "${newCategory}".` };
 }
@@ -1346,30 +1381,36 @@ async function getIncomeBreakdown(
   month?: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  const targetMonth = month ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const [year, mon] = targetMonth.split('-').map(Number);
+  let year = now.getFullYear();
+  let mon = now.getMonth() + 1;
+  if (typeof month === 'string' && month.includes('-')) {
+    const parts = month.split('-').map(Number);
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      year = parts[0];
+      mon = parts[1];
+    }
+  }
+  const targetMonth = `${year}-${String(mon).padStart(2, '0')}`;
 
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
 
-  const { data, error } = await supabase
-    .from('bank_transactions')
-    .select('merchant_name, amount, category, timestamp')
-    .eq('user_id', userId)
-    .gt('amount', 0)
-    .gte('timestamp', startDate)
-    .lt('timestamp', endDate)
-    .order('amount', { ascending: false });
+  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
+  const incomeTxns = classified.filter(t => t.resolved.kind === 'income');
 
-  if (error || !data || data.length === 0) {
+  if (incomeTxns.length === 0) {
     return { text: `No income found for ${targetMonth}.` };
   }
 
-  const total = data.reduce((sum, t) => sum + Number(t.amount), 0);
+  const total = incomeTxns.reduce((sum, t) => sum + Number(t.amount), 0);
 
   const sources: Record<string, number> = {};
-  for (const t of data) {
-    const source = t.merchant_name ?? t.category ?? 'Other';
+  for (const t of incomeTxns) {
+    let source = t.displayName !== 'Unknown' ? t.displayName : null;
+    if (!source) {
+      const incType = t.resolved.incomeType || 'other';
+      source = CATEGORY_LABELS[incType] || incType.charAt(0).toUpperCase() + incType.slice(1);
+    }
     sources[source] = (sources[source] ?? 0) + Number(t.amount);
   }
   const sorted = Object.entries(sources).sort(([, a], [, b]) => b - a);
@@ -1655,7 +1696,7 @@ async function createTask(
 async function updateDisputeStatus(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
-  params: { provider: string; new_status: string; notes?: string; money_recovered?: number },
+  params: { provider: string; new_status: string; notes?: string; money_recovered?: number; provider_response?: string; draft_reply?: string },
 ): Promise<ToolResult> {
   const { data: dispute, error: fetchError } = await supabase
     .from('disputes')
@@ -1685,6 +1726,26 @@ async function updateDisputeStatus(
 
   if (error) {
     return { text: `Failed to update dispute: ${error.message}` };
+  }
+
+  if (params.provider_response) {
+    await supabase.from('correspondence').insert({
+      dispute_id: dispute.id,
+      user_id: userId,
+      entry_type: 'company_response',
+      title: `Response from ${dispute.provider_name}`,
+      content: params.provider_response,
+    });
+  }
+
+  if (params.draft_reply) {
+    await supabase.from('correspondence').insert({
+      dispute_id: dispute.id,
+      user_id: userId,
+      entry_type: 'ai_letter',
+      title: `Draft Reply to ${dispute.provider_name}`,
+      content: params.draft_reply,
+    });
   }
 
   const statusEmoji: Record<string, string> = {
@@ -1933,7 +1994,7 @@ async function recategoriseTransaction(
   const { error: updateError } = await supabase
     .from('bank_transactions')
     .update({ user_category: newCategory })
-    .eq('id', transactionId)
+    .eq('id', txn.id)
     .eq('user_id', userId);
 
   if (updateError) {
@@ -1945,8 +2006,22 @@ async function recategoriseTransaction(
     user_id: userId,
     merchant_pattern: 'txn_specific',
     user_category: newCategory,
-    transaction_id: transactionId,
+    transaction_id: txn.id,
   });
+
+  // Automatically feed this into the Learning Engine!
+  try {
+    const { learnFromCorrection } = await import('@/lib/learning-engine');
+    await learnFromCorrection({
+      rawName: txn.description || txn.merchant_name || 'Unknown',
+      displayName: txn.merchant_name || undefined,
+      category: newCategory,
+      amount: txn.amount,
+      userId: userId,
+    });
+  } catch (err: any) {
+    console.error('[UserBot] Error pushing to learning engine:', err.message);
+  }
 
   const merchant = txn.merchant_name ?? 'Unknown';
   const amt = fmt(Math.abs(Number(txn.amount)));
@@ -2189,13 +2264,23 @@ async function getMonthlyRecap(
   month?: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  // Default to previous month
-  const targetDate = month
-    ? (() => { const [y, m] = month.split('-').map(Number); return new Date(y, m - 1, 1); })()
-    : new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  let targetYear = now.getFullYear();
+  let targetMonth = now.getMonth(); // Default to previous month (1-indexed month is now.getMonth())
+  
+  if (targetMonth === 0) { // If it was Jan, previous month is Dec of previous year
+    targetMonth = 12;
+    targetYear -= 1;
+  }
 
-  const targetYear = targetDate.getFullYear();
-  const targetMonth = targetDate.getMonth() + 1;
+  if (typeof month === 'string' && month.includes('-')) {
+    const parts = month.split('-').map(Number);
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      targetYear = parts[0];
+      targetMonth = parts[1];
+    }
+  }
+
+  const targetDate = new Date(targetYear, targetMonth - 1, 1);
   const prevDate = new Date(targetYear, targetMonth - 2, 1);
 
   const [spendRes, prevSpendRes, incomeRes, breakdownRes] = await Promise.all([

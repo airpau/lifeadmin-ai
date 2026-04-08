@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { calculateHealthScore } from '@/lib/financial-health-score';
-import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMoneyHubTransaction, buildMoneyHubOverrideMaps } from '@/lib/money-hub-classification';
+import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMoneyHubTransaction, buildMoneyHubOverrideMaps, applyInternalTransferHeuristic } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
 
@@ -20,7 +20,7 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
   return timestamp.startsWith(monthKey);
 }
 
-function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: string) {
+function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: string, internalTransfers: Set<string>) {
   const categoryTotals: Record<string, number> = {};
   const incomeRows: Record<string, number> = {};
   const spendingTransactions: any[] = [];
@@ -33,6 +33,12 @@ function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: st
 
     const overrideCategory = findMatchingCategoryOverride(txn, overrides.transactionOverrides, overrides.merchantOverrides);
     const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
+
+    // Apply internal transfer heuristic override
+    if (internalTransfers.has(txn.id)) {
+      resolved.kind = 'transfer';
+      resolved.spendingCategory = 'transfers';
+    }
 
     if (resolved.kind === 'income') {
       monthlyIncome += resolved.amount;
@@ -103,9 +109,10 @@ export async function GET(request: Request) {
     const allTxns = txns || [];
     await loadLearnedRules();
     const overrides = buildMoneyHubOverrideMaps(categoryOverrides || []);
+    const internalTransfers = applyInternalTransferHeuristic(allTxns);
     
     // Core computation (Source of Truth)
-    const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth);
+    const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth, internalTransfers);
 
     // Compute top merchants from current summary
     const merchantTotals: Record<string, number> = {};
@@ -124,7 +131,7 @@ export async function GET(request: Request) {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const mSum = summariseTransactionsForMonth(allTxns, overrides, mKey);
+      const mSum = summariseTransactionsForMonth(allTxns, overrides, mKey, internalTransfers);
       monthlyTrends.push({ month: mKey, income: mSum.monthlyIncome, outgoings: mSum.monthlyOutgoings });
       sumIncome += mSum.monthlyIncome;
       sumOutgoings += mSum.monthlyOutgoings;

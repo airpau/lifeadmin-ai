@@ -94,9 +94,11 @@ export default function MoneyHubPage() {
     }
   }, [selectedMonth]);
 
-  const fetchExpectedBills = async () => {
+  const fetchExpectedBills = async (month?: string) => {
     try {
-      const res = await fetch('/api/money-hub/expected-bills');
+      const targetMonth = month ?? selectedMonth;
+      const url = targetMonth ? `/api/money-hub/expected-bills?month=${targetMonth}` : '/api/money-hub/expected-bills';
+      const res = await fetch(url);
       const d = await res.json();
       if (!d.error && d.bills) {
         setExpectedBills(d.bills);
@@ -162,6 +164,8 @@ export default function MoneyHubPage() {
       if (!res.ok) { showToast('Sync failed.', 'error'); setSyncing(false); return; }
       const d = await res.json();
       await fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
+      await fetch('/api/gmail/scan', { method: 'POST' }).catch(() => {});
+      localStorage.setItem('pb_last_gmail_scan', Date.now().toString());
       await refreshData();
       await fetchExpectedBills();
       const synced = d.synced || 0;
@@ -207,12 +211,30 @@ export default function MoneyHubPage() {
 
   // ─── Email scan ────────────────────────────────────────────────────────
 
-  const scanInbox = async () => {
-    setScanning(true);
-    try { await fetch('/api/gmail/scan', { method: 'POST' }); await refreshData(); showToast('Inbox scan complete.', 'success'); }
-    catch { showToast('Scan failed.', 'error'); }
-    setScanning(false);
+  const scanInbox = async (silent = false) => {
+    if (!silent) setScanning(true);
+    try { 
+      await fetch('/api/gmail/scan', { method: 'POST' }); 
+      await refreshData(); 
+      if (!silent) showToast('Inbox scan complete.', 'success'); 
+    }
+    catch { 
+      if (!silent) showToast('Scan failed.', 'error'); 
+    }
+    if (!silent) setScanning(false);
   };
+
+  // ─── Auto-scan ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (data && data.tier === 'pro') {
+      const lastScan = localStorage.getItem('pb_last_gmail_scan');
+      const now = Date.now();
+      if (!lastScan || now - parseInt(lastScan) > 24 * 60 * 60 * 1000) {
+        localStorage.setItem('pb_last_gmail_scan', now.toString());
+        scanInbox(true);
+      }
+    }
+  }, [data?.tier]);
 
   // ─── Loading / Error / Empty states ───────────────────────────────────
 
@@ -353,7 +375,7 @@ export default function MoneyHubPage() {
               });
               const cur = selectedMonth ? months.indexOf(selectedMonth) : -1;
               const next = cur < months.length - 1 ? months[cur + 1] : months[months.length - 1];
-              setSelectedMonth(next); refreshData(next);
+              setSelectedMonth(next); refreshData(next); fetchExpectedBills(next);
             }}
             className="text-slate-400 hover:text-white p-1.5 rounded transition-colors"
             title="Previous month"
@@ -362,7 +384,7 @@ export default function MoneyHubPage() {
           </button>
           <select
             value={selectedMonth || data.selectedMonth}
-            onChange={(e) => { setSelectedMonth(e.target.value); refreshData(e.target.value); }}
+            onChange={(e) => { setSelectedMonth(e.target.value); refreshData(e.target.value); fetchExpectedBills(e.target.value); }}
             className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
           >
             <option value="">This month</option>
@@ -380,7 +402,7 @@ export default function MoneyHubPage() {
                 return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
               })];
               const cur = months.indexOf(selectedMonth);
-              if (cur > 0) { setSelectedMonth(months[cur - 1]); refreshData(months[cur - 1]); }
+              if (cur > 0) { setSelectedMonth(months[cur - 1]); refreshData(months[cur - 1]); fetchExpectedBills(months[cur - 1]); }
             }}
             disabled={!selectedMonth}
             className="text-slate-400 hover:text-white p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
@@ -431,7 +453,7 @@ export default function MoneyHubPage() {
       )}
 
       {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
-      <OverviewPanel data={data} />
+      <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
 
       {/* MAIN GRID: Spending + Budgets & Goals */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -439,13 +461,13 @@ export default function MoneyHubPage() {
         <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
       </div>
 
-      {/* Expected Bills (current month only) */}
-      {!selectedMonth && expectedBills.length > 0 && (
+      {/* Expected Bills (for the selected month) */}
+      {expectedBills.length > 0 && (
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-white font-semibold text-lg flex items-center gap-2">
               <Clock className="h-5 w-5 text-amber-400" />
-              Expected Bills This Month
+              Expected Bills
               <span className="text-slate-500 text-sm font-normal">£{fmtNum(expectedBillsTotal)} expected</span>
             </h3>
             <div className="flex items-center gap-3 text-xs text-slate-500">
@@ -531,12 +553,14 @@ export default function MoneyHubPage() {
               className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all disabled:opacity-50"
             >
               <Mail className="h-5 w-5 text-purple-400 mb-2" />
-              <p className="text-white font-medium text-sm">{scanning ? 'Scanning...' : 'Scan Inbox'}</p>
+              <p className="text-white font-medium text-sm">{scanning ? 'Scanning...' : (alerts.length > 0 ? 'Check for New Alerts' : 'Scan Inbox')}</p>
               <p className="text-slate-500 text-xs mt-0.5">Detect price increases and overcharges from emails</p>
             </button>
             <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all">
               <Building2 className="h-5 w-5 text-amber-400 mb-2" />
-              <p className="text-white font-medium text-sm">Subscription Audit</p>
+              <p className="text-white font-medium text-sm">
+                {(data.subscriptions && data.subscriptions.length > 0) ? `Review ${data.subscriptions.length} Subscriptions` : 'Subscription Audit'}
+              </p>
               <p className="text-slate-500 text-xs mt-0.5">Review and cancel unused subscriptions</p>
             </Link>
             <Link href="/dashboard/deals" className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all">

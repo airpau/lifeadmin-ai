@@ -5,6 +5,7 @@ import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
 import { matchesIncomeTypeFilter, normalizeIncomeTypeKey } from '@/lib/income-normalise';
 import {
+  applyInternalTransferHeuristic,
   buildMoneyHubOverrideMaps,
   findMatchingCategoryOverride,
   getMoneyHubMonthBounds,
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
   const { start, end } = getMoneyHubMonthBounds(selectedMonth);
 
   const query = admin.from('bank_transactions')
-    .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
+    .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id')
     .eq('user_id', user.id)
     .gte('timestamp', start.toISOString())
     .lte('timestamp', end.toISOString())
@@ -49,6 +50,8 @@ export async function GET(request: NextRequest) {
 
   await loadLearnedRules();
   const overrides = buildMoneyHubOverrideMaps(overrideRows || []);
+  const internalTransfers = applyInternalTransferHeuristic(txns || []);
+  
   const resolvedTransactions = (txns || []).map((txn) => {
     const overrideCategory = findMatchingCategoryOverride(
       txn,
@@ -56,6 +59,11 @@ export async function GET(request: NextRequest) {
       overrides.merchantOverrides,
     );
     const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
+
+    if (internalTransfers.has(txn.id)) {
+      resolved.kind = 'transfer';
+      resolved.spendingCategory = 'transfers';
+    }
 
     return {
       ...txn,
@@ -87,10 +95,10 @@ export async function GET(request: NextRequest) {
       transactions: filtered.slice(0, 100).map(t => ({
         id: t.id,
         description: t.description,
-        merchant: t.merchant_name,
+        merchant_name: t.merchant_name,
         amount: t.amount,
         category: normalizeIncomeTypeKey(t.resolved.incomeType),
-        date: t.timestamp?.substring(0, 10),
+        timestamp: t.timestamp,
       })),
       merchants: sources,
       totalTransactions: filtered.length,
@@ -122,10 +130,10 @@ export async function GET(request: NextRequest) {
     transactions: filtered.slice(0, 100).map(t => ({
       id: t.id,
       description: t.description,
-      merchant: t.merchant_name,
+      merchant_name: t.merchant_name,
       amount: t.amount,
       category: normalizeSpendingCategoryKey(t.resolved.spendingCategory),
-      date: t.timestamp?.substring(0, 10),
+      timestamp: t.timestamp,
     })),
     merchants,
     totalTransactions: filtered.length,

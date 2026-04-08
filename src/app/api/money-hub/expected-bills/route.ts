@@ -20,16 +20,26 @@ function normaliseBillName(name: string): string {
     .trim();
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const admin = getAdmin();
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
+    const url = new URL(request.url);
+    const monthParam = url.searchParams.get('month');
+    
+    let year = new Date().getFullYear();
+    let month = new Date().getMonth() + 1;
+    let baseDate = new Date();
+
+    if (monthParam) {
+      const [yyyy, mm] = monthParam.split('-');
+      year = parseInt(yyyy, 10);
+      month = parseInt(mm, 10);
+      baseDate = new Date(year, month - 1, 15);
+    }
 
     // Use the DB function for deduplicated expected bills
     const { data: rawBills, error: rpcError } = await admin.rpc('get_expected_bills', {
@@ -111,12 +121,15 @@ export async function GET() {
 
     // Check which bills have been paid this month
     const startOfMonth = new Date(year, month - 1, 1).toISOString();
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
+    
     const { data: currentMonthTxns } = await admin
       .from('bank_transactions')
       .select('merchant_name, description, amount')
       .eq('user_id', user.id)
       .lt('amount', 0)
-      .gte('timestamp', startOfMonth);
+      .gte('timestamp', startOfMonth)
+      .lte('timestamp', endOfMonth);
 
     const paidMerchants = (currentMonthTxns || []).map(t => ({
       name: (t.merchant_name || t.description || '').substring(0, 40).trim().toLowerCase(),
@@ -176,26 +189,61 @@ export async function GET() {
 
       // Check if this bill has been paid this month by matching transactions
       const billAmount = parseFloat(bill.expected_amount) || 0;
+      const expectedDate = bill.billing_day || 15;
+      
       const paid = paidMerchants.some(pm => {
         const pmNorm = normaliseBillName(pm.name);
-        if (!pmNorm || !billNameNorm) return false;
-        // Name match: check if either name contains a significant prefix of the other
-        const minLen = Math.min(pmNorm.length, billNameNorm.length, 10);
-        const nameMatch = pmNorm.includes(billNameNorm.substring(0, minLen)) ||
-                         billNameNorm.includes(pmNorm.substring(0, minLen));
-        if (!nameMatch) return false;
-        // Amount match: within 20% tolerance (bills can vary slightly month-to-month)
+        if (!pmNorm && !billNameNorm) return false;
+        
+        let nameMatch = false;
+        if (pmNorm && billNameNorm) {
+            const minLen = Math.min(pmNorm.length, billNameNorm.length, 10);
+            nameMatch = pmNorm.includes(billNameNorm.substring(0, minLen)) ||
+                        billNameNorm.includes(pmNorm.substring(0, minLen));
+        }
+
+        // Amount match: within 5% tolerance (bills can vary slightly month-to-month, or exactly match loans)
+        let amountMatch = false;
         if (billAmount > 0 && pm.amount > 0) {
           const ratio = pm.amount / billAmount;
-          return ratio >= 0.8 && ratio <= 1.2;
+          amountMatch = ratio >= 0.95 && ratio <= 1.05;
         }
-        return true;
+
+        // If the name strictly matches, and amount is broadly okay (~20%) -> Paid
+        if (nameMatch) {
+            if (billAmount > 0 && pm.amount > 0) {
+                const ratio = pm.amount / billAmount;
+                if (ratio >= 0.8 && ratio <= 1.2) return true;
+            } else {
+                return true;
+            }
+        }
+        
+        // If the name completely obfuscated (doesn't match), BUT the amount is a near-exact match (<5% variance) 
+        // AND it occurred roughly around the expected billing day (timestamp handling would be ideal here 
+        // but we assume if a 5% strict absolute value hit in the same calendar month bounds it is the bill).
+        if (!nameMatch && amountMatch && billAmount > 0) {
+            return true;
+        }
+
+        return false;
       });
 
-      // Check if billing day has passed
-      const today = now.getDate();
+      // Check if billing day has passed (in relation to baseDate vs today)
+      let isPastDue = false;
       const billingDay = bill.billing_day || 0;
-      const isPastDue = billingDay > 0 && billingDay < today && !paid;
+      
+      if (billingDay > 0 && !paid) {
+        const now = new Date();
+        const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const targetYearMonth = `${year}-${String(month).padStart(2, '0')}`;
+        
+        if (targetYearMonth < currentYearMonth) {
+          isPastDue = true; // In the past, it definitely passed.
+        } else if (targetYearMonth === currentYearMonth) {
+          isPastDue = billingDay < now.getDate();
+        }
+      }
 
       return {
         name: bill.provider_name,
