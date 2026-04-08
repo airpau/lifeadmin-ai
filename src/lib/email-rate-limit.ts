@@ -37,6 +37,7 @@ const TRANSACTIONAL_TYPES = [
   'welcome_email',
   'ticket_reply',
   'password_reset',
+  'dispute_reminder_email',
 ];
 
 /**
