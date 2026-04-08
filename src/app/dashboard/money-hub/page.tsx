@@ -548,7 +548,7 @@ export default function MoneyHubPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
-              onClick={scanInbox}
+              onClick={() => scanInbox(false)}
               disabled={scanning}
               className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all disabled:opacity-50"
             >

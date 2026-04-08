@@ -1972,7 +1972,7 @@ async function recategoriseTransaction(
   // Support truncated IDs (8-char prefix shown in list_transactions output)
   let txnQuery = supabase
     .from('bank_transactions')
-    .select('id, merchant_name, amount, category, user_category')
+    .select('id, merchant_name, description, amount, category, user_category')
     .eq('user_id', userId);
 
   if (transactionId.length < 36) {
