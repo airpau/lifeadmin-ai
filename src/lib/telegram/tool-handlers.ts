@@ -441,7 +441,7 @@ async function listTransactions(
       catLabel = CATEGORY_LABELS[t.effectiveCategory] || t.effectiveCategory;
     }
 
-    text += `\`${t.id.slice(0, 8)}\` · ${date} · ${t.displayName} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${catLabel}\n`;
+    text += `\`${t.id}\` · ${date} · ${t.displayName} · ${isDebit ? '-' : '+'}${fmt(Math.abs(amt))} · ${catLabel}\n`;
   }
 
   text += `\n*Total: ${total < 0 ? '-' : ''}${fmt(Math.abs(total))}* (${filtered.length} transaction${filtered.length !== 1 ? 's' : ''})\n`;
@@ -1985,8 +1985,11 @@ async function recategoriseTransaction(
 
   const { data: matches, error: fetchError } = await txnQuery.limit(2);
 
-  if (fetchError || !matches || matches.length === 0) {
-    return { text: `Transaction not found. Use list_transactions to find the transaction ID first.` };
+  if (fetchError) {
+    return { text: `Database error querying transaction: ${fetchError.message}` };
+  }
+  if (!matches || matches.length === 0) {
+    return { text: `Transaction not found. Check the ID is correct.` };
   }
   if (matches.length > 1) {
     return { text: `"${transactionId}" matches more than one transaction. Provide more characters of the ID to narrow it down.` };
