@@ -158,6 +158,12 @@ export async function POST(request: NextRequest) {
 
     // Single transaction override
     if (transactionId) {
+      // Need metadata for learning engine
+      const { data: txnData } = await admin.from('bank_transactions')
+        .select('amount, description, merchant_name')
+        .eq('id', transactionId)
+        .single();
+        
       await admin.from('bank_transactions')
         .update({ user_category: newCategory })
         .eq('id', transactionId)
@@ -170,6 +176,16 @@ export async function POST(request: NextRequest) {
           user_category: newCategory,
         });
       } catch { /* silent */ }
+      
+      if (txnData) {
+        await learnFromCorrection({
+          rawName: txnData.description || txnData.merchant_name || 'Unknown',
+          displayName: txnData.merchant_name || undefined,
+          category: newCategory,
+          amount: txnData.amount,
+          userId: user.id,
+        }).catch((e) => console.error('Learn error:', e.message));
+      }
 
       return NextResponse.json({ success: true, updated: 1, transactionId, category: newCategory });
     }
