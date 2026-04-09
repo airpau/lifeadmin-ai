@@ -10,7 +10,9 @@ let handleUpdate: ((req: Request) => Promise<Response>) | null = null;
 function getHandler() {
   if (!handleUpdate) {
     const bot = createUserBot();
-    handleUpdate = webhookCallback(bot, 'std/http');
+    handleUpdate = webhookCallback(bot, 'std/http', {
+      timeoutMilliseconds: 120000,
+    });
   }
   return handleUpdate;
 }
