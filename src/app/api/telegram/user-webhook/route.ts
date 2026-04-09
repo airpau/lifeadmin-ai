@@ -40,10 +40,14 @@ function getBotInstance() {
 }
 
 export async function POST(request: Request) {
-  // Validate webhook secret — only enforced when the env var is configured.
+  // Validate webhook secret — fail closed if env var is missing or token mismatches.
   const expectedSecret = process.env.TELEGRAM_USER_WEBHOOK_SECRET;
+  if (!expectedSecret) {
+    console.error('[UserBotWebhook] TELEGRAM_USER_WEBHOOK_SECRET is not configured — rejecting request');
+    return new Response('Internal Server Error', { status: 500 });
+  }
   const secret = request.headers.get('x-telegram-bot-api-secret-token');
-  if (expectedSecret && secret !== expectedSecret) {
+  if (secret !== expectedSecret) {
     console.error('[UserBotWebhook] Secret mismatch — update TELEGRAM_USER_WEBHOOK_SECRET or re-register webhook');
     return new Response('Unauthorized', { status: 403 });
   }
