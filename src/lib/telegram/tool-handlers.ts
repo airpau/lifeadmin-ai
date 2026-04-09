@@ -900,13 +900,13 @@ async function searchLegalRights(
     .limit(5);
 
   if (category) {
-    dbQuery = dbQuery.or(`category.ilike.%${category}%,subcategory.ilike.%${category}%`);
+    dbQuery = dbQuery.or(`category.ilike.*${category}*,subcategory.ilike.*${category}*`);
   }
 
   // Text search in summary
   if (query) {
     dbQuery = dbQuery.or(
-      `summary.ilike.%${query}%,law_name.ilike.%${query}%,applies_to.cs.{${query}}`,
+      `summary.ilike.*${query}*,law_name.ilike.*${query}*,applies_to.cs.{${query}}`,
     );
   }
 
@@ -951,7 +951,7 @@ async function recategoriseTransactions(
     .from('bank_transactions')
     .update({ user_category: newCategory })
     .eq('user_id', userId)
-    .or(`merchant_name.ilike.%${merchantName}%,description.ilike.%${merchantName}%`)
+    .or(`merchant_name.ilike.*${merchantName}*,description.ilike.*${merchantName}*`)
     .select('id, amount, description, merchant_name');
 
   if (error) {
