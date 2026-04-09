@@ -224,7 +224,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-navy-950">
+    <div className="min-h-screen bg-navy-950 overflow-x-hidden">
       {/* Mobile header */}
       <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-navy-900 border-b border-navy-700/50 sticky top-0 z-40">
         <Link href="/dashboard" className="flex items-center gap-2">
@@ -245,7 +245,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/70" onClick={() => setSidebarOpen(false)} />
-          <aside className="relative w-[260px] bg-navy-900 border-r border-navy-700/50 p-6 flex flex-col">
+          <aside className="relative w-[260px] h-full overflow-y-auto bg-navy-900 border-r border-navy-700/50 p-6 flex flex-col">
             <button
               onClick={() => setSidebarOpen(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-2"
