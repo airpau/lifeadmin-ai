@@ -847,7 +847,7 @@ Rules:
   // -------------------------------------------------------
   // Callback: Generate cancellation email for expiring contract / renewal
   // -------------------------------------------------------
-  bot.callbackQuery(/^cancel_contract_(.+)$/, async (ctx) => {
+  bot.callbackQuery(/^cxlmail_(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery({ text: 'Generating cancellation email...' });
     const issueId = ctx.match[1];
     const chatId = ctx.chat?.id;
@@ -945,7 +945,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
         { parse_mode: 'Markdown' },
       );
     } catch (err) {
-      console.error('[UserBot] cancel_contract callback error:', err);
+      console.error('[UserBot] cxlmail callback error:', err);
       await ctx.api.sendMessage(chatId!, `Sorry, I couldn't generate the email. Try asking me: "Write a cancellation email for [provider]"`);
     }
   });
@@ -1202,7 +1202,7 @@ export async function sendProactiveAlert(params: {
   } else if (issue.issue_type === 'contract_expiring' || issue.issue_type === 'renewal_imminent') {
     replyMarkup = {
       inline_keyboard: [
-        [{ text: '📧 Cancellation email', callback_data: `cancel_contract_${issue.id}` }],
+        [{ text: '📧 Cancellation email', callback_data: `cxlmail_${issue.id}` }],
         [
           { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
           { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
