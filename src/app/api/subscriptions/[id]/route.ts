@@ -145,6 +145,12 @@ export async function PATCH(
       }
     }
 
+    // If status changed to cancelled, return updated totals
+    if (body.status === 'cancelled') {
+      const { data: totals } = await supabase.rpc('get_subscription_total', { p_user_id: user.id });
+      return NextResponse.json({ ...data, subscription_totals: totals });
+    }
+
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error updating subscription:', error);
@@ -174,16 +180,15 @@ export async function DELETE(
 
     const { id } = await params;
 
-    // Soft delete — mark as dismissed so it won't be re-created by sync
-    const { error } = await supabase
-      .from('subscriptions')
-      .update({ dismissed_at: new Date().toISOString(), status: 'dismissed' })
-      .eq('id', id)
-      .eq('user_id', user.id);
+    // Use RPC for dismiss — returns updated subscription totals
+    const { data: totals, error } = await supabase.rpc('dismiss_subscription', {
+      p_user_id: user.id,
+      p_subscription_id: id,
+    });
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...totals });
   } catch (error: any) {
     console.error('Error deleting subscription:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
