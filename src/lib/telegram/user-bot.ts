@@ -639,6 +639,318 @@ export function createUserBot(): Bot<UserBotContext> {
   });
 
   // -------------------------------------------------------
+  // Callback: Draft dispute letter from alert button
+  // -------------------------------------------------------
+  bot.callbackQuery(/^draft_dispute_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Generating your complaint letter...' });
+    const issueId = ctx.match[1];
+    const chatId = ctx.chat?.id;
+    const supabase = getAdmin();
+
+    try {
+      await ctx.editMessageText('📝 Generating your complaint letter... This takes about 15 seconds.');
+
+      const [issueResult, sessionResult] = await Promise.all([
+        supabase.from('detected_issues').select('*').eq('id', issueId).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+      ]);
+
+      const issue = issueResult.data;
+      const session = sessionResult.data;
+
+      if (!issue || !session || session.user_id !== issue.user_id) {
+        await ctx.api.sendMessage(chatId!, 'Could not find this alert — it may have already been actioned. Try asking me directly: "Write a complaint to [provider]"');
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, first_name, last_name, address, postcode')
+        .eq('id', issue.user_id)
+        .single();
+
+      const fullName =
+        profile?.full_name ??
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
+        'Customer';
+
+      let providerName = 'Provider';
+      let issueDescription = issue.detail;
+      let desiredOutcome = 'Please resolve this issue promptly.';
+      let disputedAmount: number | null = null;
+      let letterType = 'complaint';
+
+      if (issue.issue_type === 'price_increase' && issue.source_id) {
+        const { data: alert } = await supabase
+          .from('price_increase_alerts')
+          .select('merchant_name, old_amount, new_amount, new_date')
+          .eq('id', issue.source_id)
+          .single();
+
+        if (alert) {
+          providerName = alert.merchant_name ?? 'Provider';
+          const increase = Number(alert.new_amount) - Number(alert.old_amount);
+          const annualIncrease = increase * 12;
+          const newDateStr = alert.new_date
+            ? ` effective ${new Date(alert.new_date).toLocaleDateString('en-GB')}`
+            : '';
+          issueDescription =
+            `My monthly direct debit to ${providerName} was increased from £${Number(alert.old_amount).toFixed(2)} to £${Number(alert.new_amount).toFixed(2)}${newDateStr} — an increase of £${increase.toFixed(2)}/month (£${annualIncrease.toFixed(2)}/year). I did not receive adequate notice or the opportunity to exit my contract without penalty.`;
+          desiredOutcome =
+            `Revert my payment to £${Number(alert.old_amount).toFixed(2)}/month, or permit me to cancel immediately without any early termination fee.`;
+          disputedAmount = increase;
+
+          // Infer letter type from merchant name
+          const name = providerName.toLowerCase();
+          if (/british gas|octopus|e\.on|eon\b|sse|edf|scottish power|bulb|ovo|green energy|shell energy|utilita|so energy|outfox|avro/.test(name)) {
+            letterType = 'energy_dispute';
+          } else if (/\bbt\b|virgin media|sky\b|talktalk|vodafone|plusnet|\bee\b|now broadband|zen internet|hyperoptic|community fibre/.test(name)) {
+            letterType = 'broadband_complaint';
+          }
+        }
+      }
+
+      // Generate complaint letter
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const addrLine = [profile?.address, profile?.postcode].filter(Boolean).join(', ') || '[Address]';
+      const LETTER_CONTEXT: Record<string, string> = {
+        complaint: 'General consumer complaint. Cite Consumer Rights Act 2015. Include the 14-day FCA deadline and name the relevant ombudsman.',
+        energy_dispute: 'Energy price dispute. Cite Ofgem Standards of Conduct — suppliers must give 30 days written notice before any price change. Where notice is inadequate the consumer may exit penalty-free. Name the Energy Ombudsman as escalation.',
+        broadband_complaint: 'Broadband/telecoms price dispute. Cite Ofcom General Conditions GC C1.3 — providers must give 30 days notice of mid-contract price rises not linked to a published RPI/CPI index; if notice is inadequate the consumer has the right to exit penalty-free. Name CISAS or Ombudsman Services: Communications as escalation.',
+      };
+
+      const letterPrompt = `Write a formal complaint letter from a UK consumer to ${providerName}.
+
+Customer name: ${fullName}
+Customer address: ${addrLine}
+Today's date: ${today}
+Issue: ${issueDescription}
+Desired outcome: ${desiredOutcome}
+Context: ${LETTER_CONTEXT[letterType] ?? LETTER_CONTEXT.complaint}
+
+Rules:
+- Formal, professional tone — reads as intelligent human writing, not AI
+- Weave legal references naturally into sentences (no bullet-point legal sections)
+- No section headings or CAPS LOCK headers
+- Set a 14-day response deadline
+- Name the specific ombudsman/regulator for escalation
+- Under 450 words
+- Start with "Dear ${providerName} Customer Services,"`;
+
+      const letterResponse = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
+        messages: [{ role: 'user', content: letterPrompt }],
+      });
+
+      const letterText = letterResponse.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+
+      // Create dispute row
+      const { data: dispute } = await supabase
+        .from('disputes')
+        .insert({
+          user_id: issue.user_id,
+          provider_name: providerName,
+          issue_type: letterType,
+          issue_summary: issueDescription,
+          desired_outcome: desiredOutcome,
+          disputed_amount: disputedAmount,
+          status: 'awaiting_response',
+        })
+        .select('id')
+        .single();
+
+      if (!dispute?.id) throw new Error('Failed to create dispute row');
+
+      // Save letter as correspondence
+      await supabase.from('correspondence').insert({
+        dispute_id: dispute.id,
+        user_id: issue.user_id,
+        entry_type: 'ai_letter',
+        title: `Complaint letter to ${providerName}`,
+        content: letterText,
+        entry_date: new Date().toISOString(),
+      });
+
+      // Mark issue actioned + schedule 14-day follow-up
+      const followUpDate = new Date();
+      followUpDate.setDate(followUpDate.getDate() + 14);
+      await Promise.all([
+        supabase.from('detected_issues').update({ status: 'actioned', actioned_at: new Date().toISOString() }).eq('id', issueId),
+        issue.issue_type === 'price_increase' && issue.source_id
+          ? supabase.from('price_increase_alerts').update({ status: 'actioned' }).eq('id', issue.source_id)
+          : Promise.resolve(),
+        supabase.from('detected_issues').insert({
+          user_id: issue.user_id,
+          issue_type: 'dispute_no_response',
+          title: `${providerName} complaint — follow-up due`,
+          detail: `You sent a complaint letter to ${providerName} on ${new Date().toLocaleDateString('en-GB')}. No reply after 14 days? You can escalate to the relevant regulator.`,
+          source_type: 'dispute',
+          source_id: dispute.id,
+          telegram_chat_id: chatId ?? null,
+          status: 'actioned',
+          follow_up_due_at: followUpDate.toISOString(),
+          actioned_at: new Date().toISOString(),
+        }),
+      ]);
+
+      // Send confirmation + preview
+      const preview = letterText.length > 700 ? letterText.slice(0, 700) + '...' : letterText;
+      const portalUrl = `https://paybacker.co.uk/dashboard/disputes`;
+
+      await ctx.api.sendMessage(
+        chatId!,
+        `✅ *Letter saved to your Disputes*\n\n${preview}\n\n[View full letter in Paybacker →](${portalUrl})`,
+        { parse_mode: 'Markdown' },
+      );
+    } catch (err) {
+      console.error('[UserBot] draft_dispute callback error:', err);
+      await ctx.api.sendMessage(
+        chatId!,
+        `Sorry, I couldn't generate the letter right now. Try asking me: "Write a complaint to [provider name]"`,
+      );
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: "Not me" — flag price increase as incorrect
+  // -------------------------------------------------------
+  bot.callbackQuery(/^not_me_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Got it — flagged' });
+    const issueId = ctx.match[1];
+    const supabase = getAdmin();
+    try {
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('source_id, issue_type')
+        .eq('id', issueId)
+        .single();
+
+      await supabase.from('detected_issues').update({ status: 'dismissed' }).eq('id', issueId);
+
+      if (issue?.issue_type === 'price_increase' && issue.source_id) {
+        await supabase
+          .from('price_increase_alerts')
+          .update({ status: 'dismissed' })
+          .eq('id', issue.source_id);
+      }
+
+      await ctx.editMessageText("Got it — I've removed this alert. If this charge does increase in future I'll let you know.");
+    } catch (err) {
+      console.error('[UserBot] not_me callback error:', err);
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: Generate cancellation email for expiring contract / renewal
+  // -------------------------------------------------------
+  bot.callbackQuery(/^cancel_contract_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Generating cancellation email...' });
+    const issueId = ctx.match[1];
+    const chatId = ctx.chat?.id;
+    const supabase = getAdmin();
+
+    try {
+      await ctx.editMessageText('📧 Generating your cancellation email...');
+
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('*')
+        .eq('id', issueId)
+        .single();
+
+      if (!issue) {
+        await ctx.api.sendMessage(chatId!, 'Alert not found — it may have already been actioned.');
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, first_name, last_name, email')
+        .eq('id', issue.user_id)
+        .single();
+
+      const fullName =
+        profile?.full_name ??
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
+        'Customer';
+
+      let providerName = 'Provider';
+      let category = 'other';
+      let amount: number | null = null;
+
+      if (issue.source_id) {
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('provider_name, amount, category')
+          .eq('id', issue.source_id)
+          .single();
+        if (sub) {
+          providerName = sub.provider_name;
+          category = sub.category ?? 'other';
+          amount = Number(sub.amount);
+        }
+      } else {
+        // Infer from title (e.g. "BT contract ends in 7 days")
+        const match = issue.title?.match(/^(.+?)(?:\s+contract|\s+renews)/i);
+        if (match) providerName = match[1];
+      }
+
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const prompt = `Write a formal cancellation letter from a UK consumer.
+
+Customer name: ${fullName}
+Today's date: ${today}
+Provider: ${providerName}
+Category: ${category}
+${amount ? `Monthly cost: £${amount.toFixed(2)}` : ''}
+Account email: ${profile?.email ?? '[email]'}
+
+Cite the appropriate UK law for ${category} cancellations.
+Request written confirmation of cancellation and final billing date.
+Ask for any refund due on prepaid amounts.
+Under 200 words. Start with "Dear ${providerName} Customer Services," and close with "Yours faithfully,\n${fullName}"
+Return JSON: { "subject": "...", "body": "..." }`;
+
+      const response = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const rawText = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+
+      let subject = `Cancellation Request — ${providerName}`;
+      let body = rawText;
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          subject = parsed.subject ?? subject;
+          body = parsed.body ?? rawText;
+        } catch { /* leave as raw text */ }
+      }
+
+      await supabase.from('detected_issues').update({ status: 'actioned', actioned_at: new Date().toISOString() }).eq('id', issueId);
+
+      await ctx.api.sendMessage(
+        chatId!,
+        `📧 *${subject}*\n\n${body}\n\n_Copy this email and send it directly to ${providerName}. Keep a copy for your records._`,
+        { parse_mode: 'Markdown' },
+      );
+    } catch (err) {
+      console.error('[UserBot] cancel_contract callback error:', err);
+      await ctx.api.sendMessage(chatId!, `Sorry, I couldn't generate the email. Try asking me: "Write a cancellation email for [provider]"`);
+    }
+  });
+
+  // -------------------------------------------------------
   // Callback: Dismiss issue
   // -------------------------------------------------------
   bot.callbackQuery(/^dismiss_(.+)$/, async (ctx) => {
@@ -857,34 +1169,54 @@ export async function sendProactiveAlert(params: {
   const TELEGRAM_API = `https://api.telegram.org/bot${token}`;
 
   let text = `*${issue.title}*\n\n${issue.detail}`;
-  if (issue.recommendation) {
-    text += `\n\n_${issue.recommendation}_`;
-  }
   if (issue.amount_impact && issue.amount_impact > 0) {
     text += `\n\n💰 *Annual impact: £${Number(issue.amount_impact).toFixed(2)}*`;
   }
 
-  // Build inline keyboard
-  let replyMarkup: object | undefined;
+  // Build inline keyboard — action buttons vary by issue type
+  let replyMarkup: object;
 
   if (showFollowUpButtons) {
-    // Follow-up: did it get resolved?
+    // Follow-up: did the complaint get resolved?
     replyMarkup = {
       inline_keyboard: [
         [
           { text: 'Yes, resolved ✅', callback_data: `confirm_saving_${issue.id}` },
-          { text: 'No response yet', callback_data: `snooze_${issue.id}` },
+          { text: 'Not yet — snooze', callback_data: `snooze_${issue.id}` },
+        ],
+        [
+          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
+        ],
+      ],
+    };
+  } else if (issue.issue_type === 'price_increase') {
+    replyMarkup = {
+      inline_keyboard: [
+        [{ text: '📝 Dispute this increase', callback_data: `draft_dispute_${issue.id}` }],
+        [
+          { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
+          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
+          { text: 'Not me', callback_data: `not_me_${issue.id}` },
+        ],
+      ],
+    };
+  } else if (issue.issue_type === 'contract_expiring' || issue.issue_type === 'renewal_imminent') {
+    replyMarkup = {
+      inline_keyboard: [
+        [{ text: '📧 Cancellation email', callback_data: `cancel_contract_${issue.id}` }],
+        [
+          { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
           { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
         ],
       ],
     };
   } else {
-    // Initial alert: action or dismiss
+    // budget_overrun, unused_subscription, etc.
     replyMarkup = {
       inline_keyboard: [
         [
-          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
           { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
+          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
         ],
       ],
     };

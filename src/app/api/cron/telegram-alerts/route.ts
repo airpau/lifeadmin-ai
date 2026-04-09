@@ -113,9 +113,10 @@ export async function GET(request: NextRequest) {
       const increase = Number(alert.new_amount) - Number(alert.old_amount);
       const title = `${alert.merchant_name ?? 'A provider'} raised your direct debit`;
       const detail =
-        `Your ${alert.merchant_name ?? 'provider'} payment went up by ${fmt(increase)}/month. ` +
+        `Your ${alert.merchant_name ?? 'provider'} payment went up by ${fmt(increase)}/month ` +
+        `(${fmt(Number(alert.old_amount))} → ${fmt(Number(alert.new_amount))}). ` +
         `That's *${fmt(Number(alert.annual_impact))} more per year.*`;
-      const recommendation = `I can draft a complaint letter citing your rights under the Consumer Rights Act 2015. Ask me: "Write a complaint to ${alert.merchant_name}"`;
+      const recommendation = null; // Action button handles this — no "Ask me:" fallback needed
 
       const { data: issue } = await supabase
         .from('detected_issues')
@@ -372,7 +373,7 @@ export async function GET(request: NextRequest) {
       const cycle = sub.billing_cycle ?? 'monthly';
       const title = `${sub.provider_name} renews in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
       const detail = `${fmt(Number(sub.amount))}/${cycle} will be charged on ${fmtDate(sub.next_billing_date)}.`;
-      const recommendation = `If you want to cancel, ask me for a cancellation email template.`;
+      const recommendation = null; // Cancellation email button handles this
 
       const { data: issue } = await supabase
         .from('detected_issues')
