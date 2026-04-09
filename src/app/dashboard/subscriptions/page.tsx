@@ -330,7 +330,7 @@ export default function SubscriptionsPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      supabase.from('profiles').select('subscription_tier').eq('id', user.id).single()
+      supabase.from('profiles').select('subscription_tier, bank_prompt_dismissed_at').eq('id', user.id).single()
         .then(({ data }) => {
           if (data?.subscription_tier) setUserTier(data.subscription_tier);
           setTierLoaded(true);
