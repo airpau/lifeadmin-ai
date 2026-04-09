@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 
 async function safeSelect(
-  admin: ReturnType<typeof createAdminClient>,
+  admin: any,
   table: string,
   column: string,
   value: string,
