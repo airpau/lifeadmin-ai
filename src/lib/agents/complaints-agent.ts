@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { AI_LETTER_DISCLAIMER } from '@/lib/legal-disclaimer';
 
 // Lazy singleton — defer construction to first call so Next.js build-time
 // page-data collection doesn't throw when ANTHROPIC_API_KEY is absent in
