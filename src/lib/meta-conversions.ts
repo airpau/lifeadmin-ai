@@ -7,8 +7,22 @@
  * the same event_id so Meta counts it once.
  */
 
+import { cookies } from 'next/headers';
+
 const PIXEL_ID = '722806327584909';
 const API_VERSION = 'v25.0';
+
+function hasMarketingConsent(): boolean {
+  try {
+    const cookieStore = cookies();
+    const consentCookie = (cookieStore as any).get?.('pb_consent');
+    if (!consentCookie?.value) return false;
+    const prefs = JSON.parse(decodeURIComponent(consentCookie.value));
+    return prefs.marketing === true;
+  } catch {
+    return false;
+  }
+}
 
 interface MetaEvent {
   event_name: string;
@@ -55,6 +69,8 @@ export async function sendMetaEvent(params: {
   url?: string;
   customData?: Record<string, any>;
 }): Promise<{ ok: boolean; error?: string }> {
+  if (!hasMarketingConsent()) return { ok: false, error: 'No marketing consent' };
+
   const accessToken = process.env.META_ACCESS_TOKEN;
   if (!accessToken) return { ok: false, error: 'META_ACCESS_TOKEN not set' };
 

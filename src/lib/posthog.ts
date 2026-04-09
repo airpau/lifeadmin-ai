@@ -1,8 +1,11 @@
 // Server-side PostHog tracking via /api/analytics
 // This bypasses all ad blockers since events go through our own API
 
+import { hasConsent } from '@/lib/consent';
+
 export function capture(event: string, properties?: Record<string, unknown>) {
   if (typeof window === 'undefined') return;
+  if (!hasConsent('analytics')) return;
 
   const distinctId = localStorage.getItem('pb_distinct_id') || 'anonymous';
 

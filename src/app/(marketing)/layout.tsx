@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import CookieSettingsButton from '@/components/CookieSettingsButton';
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -37,7 +38,9 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
               <Link href="/about" className="hover:text-white transition-all">About</Link>
               <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy</Link>
+              <Link href="/cookie-policy" className="hover:text-white transition-all">Cookies</Link>
               <Link href="/legal/terms" className="hover:text-white transition-all">Terms</Link>
+              <CookieSettingsButton />
             </div>
           </div>
         </footer>
