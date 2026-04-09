@@ -642,35 +642,40 @@ export function createUserBot(): Bot<UserBotContext> {
   // Callback: Dismiss issue
   // -------------------------------------------------------
   bot.callbackQuery(/^dismiss_(.+)$/, async (ctx) => {
+    // Answer immediately — stops the button spinner regardless of what follows
+    await ctx.answerCallbackQuery({ text: 'Dismissed ✓' });
     const issueId = ctx.match[1];
     const supabase = getAdmin();
-
-    await supabase
-      .from('detected_issues')
-      .update({ status: 'dismissed' })
-      .eq('id', issueId);
-
-    await ctx.editMessageText('Got it — I\'ll stop tracking this issue.');
-    await ctx.answerCallbackQuery();
+    try {
+      await supabase
+        .from('detected_issues')
+        .update({ status: 'dismissed' })
+        .eq('id', issueId);
+      await ctx.editMessageText("Dismissed ✓ — I won't send this alert again.");
+    } catch (err) {
+      console.error('[UserBot] dismiss callback error:', err);
+    }
   });
 
   // -------------------------------------------------------
   // Callback: Snooze issue (7 days)
   // -------------------------------------------------------
   bot.callbackQuery(/^snooze_(.+)$/, async (ctx) => {
+    const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const snoozeLabel = snoozeUntil.toLocaleDateString('en-GB');
+    // Answer immediately — stops the button spinner regardless of what follows
+    await ctx.answerCallbackQuery({ text: `Snoozed until ${snoozeLabel}` });
     const issueId = ctx.match[1];
     const supabase = getAdmin();
-    const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    await supabase
-      .from('detected_issues')
-      .update({ status: 'snoozed', snooze_until: snoozeUntil.toISOString() })
-      .eq('id', issueId);
-
-    await ctx.editMessageText(
-      `Snoozed for 7 days. I'll remind you on ${snoozeUntil.toLocaleDateString('en-GB')}.`,
-    );
-    await ctx.answerCallbackQuery();
+    try {
+      await supabase
+        .from('detected_issues')
+        .update({ status: 'snoozed', snooze_until: snoozeUntil.toISOString() })
+        .eq('id', issueId);
+      await ctx.editMessageText(`Snoozed 7 days ✓ — I'll remind you again on ${snoozeLabel}.`);
+    } catch (err) {
+      console.error('[UserBot] snooze callback error:', err);
+    }
   });
 
   // -------------------------------------------------------
