@@ -103,7 +103,7 @@ export default function PriceIncreaseCard({ alert, onDismiss, onAction }: PriceI
           onClick={() => onAction(alert.id)}
           className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
         >
-          <FileText className="h-3 w-3" /> Write Complaint
+          <FileText className="h-3 w-3" /> Start Dispute
         </Link>
         <Link
           href={`/dashboard/deals?category=${dealCategory}`}

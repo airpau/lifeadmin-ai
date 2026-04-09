@@ -1629,16 +1629,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
       .catch(() => {});
   }, []);
 
-  // Auto-submit when coming from a price alert with all required fields pre-filled
-  useEffect(() => {
-    if (autoLaunch && formData.provider_name && formData.issue_summary && formData.desired_outcome && !saving) {
-      // Small delay so the user sees the form before it submits
-      const timer = setTimeout(() => {
-        formRef.current?.requestSubmit();
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-submit functionality removed: users must explicitly review and submit the form
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

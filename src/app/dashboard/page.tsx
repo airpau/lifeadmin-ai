@@ -188,7 +188,7 @@ export default function DashboardPage() {
           supabase.from('disputes').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
           supabase.from('bank_connections').select('id, bank_name, account_display_names')
-            .eq('user_id', user.id).eq('status', 'active'),
+            .eq('user_id', user.id).neq('status', 'disconnected'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
             .eq('user_id', user.id).eq('status', 'pending_review')
             .order('created_at', { ascending: false }).limit(20),
@@ -510,7 +510,7 @@ export default function DashboardPage() {
       <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
         <div className="flex items-center gap-2 mb-2">
           <PiggyBank className="h-5 w-5 text-emerald-400" />
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Your Potential Savings</h2>
+          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Total Opportunities Found</h2>
         </div>
         <p className="text-4xl md:text-5xl font-bold text-emerald-400 font-[family-name:var(--font-heading)] mb-1">
           {formatGBP(potentialSavings)}<span className="text-2xl font-normal text-emerald-400/70">/yr</span>
@@ -547,8 +547,8 @@ export default function DashboardPage() {
               <Tag className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-white font-semibold">{comparisonCount} deals</p>
-              <p className="text-slate-400 text-xs">Available</p>
+              <p className="text-white font-semibold">{formatGBP(comparisonSaving)}/yr</p>
+              <p className="text-slate-400 text-xs">from {comparisonCount} deals</p>
             </div>
           </Link>
 
