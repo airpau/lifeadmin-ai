@@ -1973,7 +1973,7 @@ async function recategoriseTransaction(
 ): Promise<ToolResult> {
   // Support truncated IDs (8-char prefix shown in list_transactions output)
   if (transactionId.length < 36) {
-    return { text: `Error: You provided a truncated ID ("${transactionId}"). The database requires a full 36-character UUID. Please call list_transactions to retrieve the full UUID and try again.` };
+    return { text: `Error: You provided a truncated ID ("${transactionId}"). The database requires a full 36-character UUID. Please use the 'recategorise_transactions' tool to search by merchant_name instead.` };
   }
   
   let txnQuery = supabase
