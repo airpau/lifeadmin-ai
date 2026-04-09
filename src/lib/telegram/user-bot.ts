@@ -816,35 +816,6 @@ Rules:
   });
 
   // -------------------------------------------------------
-  // Callback: "Not me" — flag price increase as incorrect
-  // -------------------------------------------------------
-  bot.callbackQuery(/^not_me_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery({ text: 'Got it — flagged' });
-    const issueId = ctx.match[1];
-    const supabase = getAdmin();
-    try {
-      const { data: issue } = await supabase
-        .from('detected_issues')
-        .select('source_id, issue_type')
-        .eq('id', issueId)
-        .single();
-
-      await supabase.from('detected_issues').update({ status: 'dismissed' }).eq('id', issueId);
-
-      if (issue?.issue_type === 'price_increase' && issue.source_id) {
-        await supabase
-          .from('price_increase_alerts')
-          .update({ status: 'dismissed' })
-          .eq('id', issue.source_id);
-      }
-
-      await ctx.editMessageText("Got it — I've removed this alert. If this charge does increase in future I'll let you know.");
-    } catch (err) {
-      console.error('[UserBot] not_me callback error:', err);
-    }
-  });
-
-  // -------------------------------------------------------
   // Callback: Generate cancellation email for expiring contract / renewal
   // -------------------------------------------------------
   bot.callbackQuery(/^cxlmail_(.+)$/, async (ctx) => {
