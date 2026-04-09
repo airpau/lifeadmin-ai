@@ -233,10 +233,12 @@ async function callClaudeWithTools(
   const history = await getConversationHistory(supabase, chatId);
 
   // Build messages: history + current message
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: 'user', content: userMessage },
-  ];
+  const messages: Anthropic.MessageParam[] = [...history];
+  if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+    messages[messages.length - 1].content += '\n\n' + userMessage;
+  } else {
+    messages.push({ role: 'user', content: userMessage });
+  }
 
   // Enable prompt caching on system prompt and tools
   const cachedTools = telegramTools.map((tool, idx) => {
