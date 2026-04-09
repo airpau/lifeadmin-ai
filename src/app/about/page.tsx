@@ -4,22 +4,22 @@ import Link from "next/link";
 import PublicNavbar from '@/components/PublicNavbar';
 
 export const metadata: Metadata = {
-  title: "About Paybacker - AI-Powered Consumer Finance Platform",
+  title: "About Paybacker - Fighting for UK Consumers",
   description:
-    "Paybacker helps UK consumers save money on bills, subscriptions, and contracts using AI and Open Banking. Founded in 2026.",
+    "Paybacker was built so normal people don't need a lawyer to fight back against unfair bills. Founded by Paul Airey. Know your rights. Fight for your rights.",
   openGraph: {
-    title: "About Paybacker - AI-Powered Consumer Finance Platform",
+    title: "About Paybacker - Fighting for UK Consumers",
     description:
-      "Paybacker helps UK consumers save money on bills, subscriptions, and contracts using AI and Open Banking. Founded in 2026.",
+      "Paybacker was built so normal people don't need a lawyer to fight back against unfair bills. Founded by Paul Airey. Know your rights. Fight for your rights.",
     url: "https://paybacker.co.uk/about",
     siteName: "Paybacker",
     type: "website",
   },
   twitter: {
     card: "summary",
-    title: "About Paybacker - AI-Powered Consumer Finance Platform",
+    title: "About Paybacker - Fighting for UK Consumers",
     description:
-      "Paybacker helps UK consumers save money on bills, subscriptions, and contracts using AI and Open Banking. Founded in 2026.",
+      "Paybacker was built so normal people don't need a lawyer to fight back against unfair bills. Founded by Paul Airey. Know your rights. Fight for your rights.",
     images: ["/logo.png"],
   },
   alternates: {
@@ -39,10 +39,11 @@ export default function AboutPage() {
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
             About Paybacker
           </h1>
-          <p className="text-lg text-slate-300 leading-relaxed">
-            Paybacker is an AI-powered savings platform built for UK consumers.
-            We scan your bills, spot where you're overpaying, and show you
-            exactly how to save — all in one dashboard.
+          <p className="text-lg text-slate-300 leading-relaxed mb-4">
+            Most UK households are being overcharged by hundreds of pounds a year on bills they could dispute. Paybacker was built to change that.
+          </p>
+          <p className="text-lg text-slate-400 leading-relaxed">
+            We give every UK consumer access to the legal tools and AI intelligence to find every hidden charge, dispute it professionally, and stop paying more than they should. No legal fees. No lawyers. No giving in.
           </p>
         </div>
 
@@ -124,24 +125,31 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Why We Built It */}
+        {/* Our Story */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            Why We Built It
+            Our Story
           </h2>
-          <p className="text-slate-300 leading-relaxed mb-4">
-            We built Paybacker because we were tired of overpaying. The average
-            UK household wastes hundreds of pounds a year on bills they could
-            reduce — simply because switching providers is tedious, confusing and
-            easy to put off.
-          </p>
-          <p className="text-slate-300 leading-relaxed">
-            Comparison sites help, but they still require you to gather your
-            details, input them manually and trawl through results. Paybacker
-            removes that friction entirely. Connect once, and our AI does the
-            hard work for you — continuously monitoring your bills and alerting
-            you when there's a better deal.
-          </p>
+          <div className="space-y-4 text-slate-300 leading-relaxed">
+            <p>
+              I spent a decade working as an IT specialist inside some of the UK&apos;s biggest law firms and banks. I saw exactly how institutions protect their interests: layers of process, deliberate complexity, terms and conditions written by lawyers specifically so you can&apos;t use them against the company.
+            </p>
+            <p>
+              Then I got home one evening and opened a £400 energy bill I hadn&apos;t been expecting. It wasn&apos;t justified, and I knew it. When I called to dispute it, I was passed between departments for 45 minutes before giving up. A few weeks later I found a cancellation clause in my gym contract buried in paragraph 14. Three streaming subscriptions were quietly draining my account on a card I barely used.
+            </p>
+            <p>
+              The worst part wasn&apos;t the money. It was knowing the tools to fight back already existed. The Consumer Rights Act 2015. Ofgem&apos;s billing codes. UK261 for flight delays. UK law is genuinely on consumers&apos; sides — it&apos;s just written in a language that takes time and specialist knowledge most people don&apos;t have to spare.
+            </p>
+            <p>
+              And that is exactly what big corporations count on. Most people give up, not because the company is right, but because challenging them feels impossibly complicated. Hiring a solicitor to dispute a £400 bill costs more than the bill itself. So people pay up and feel powerless.
+            </p>
+            <p>
+              I built Paybacker to end that. Connect your bank and email, and our AI finds every hidden charge, forgotten subscription, and overpriced contract in minutes. Then it generates the formal complaint letter — citing the exact legislation that applies to your case — in 30 seconds. No legal fees. No hold music. No giving up.
+            </p>
+            <p className="text-white font-semibold text-base pt-2">
+              Know your rights. Fight for your rights. Paybacker makes it simple.
+            </p>
+          </div>
         </section>
 
         {/* Meet the Founder */}
@@ -175,16 +183,13 @@ export default function AboutPage() {
             </div>
             <div className="space-y-3 text-slate-300 leading-relaxed text-sm">
               <p>
-                Paul is a UK consumer rights advocate who built Paybacker after being overcharged one too many times. A £400 energy bill that was never justified. A gym contract with a cancellation clause buried in paragraph 14. Three streaming subscriptions running on a card he barely used.
+                Computer science graduate. Ten years as an IT specialist inside some of the UK&apos;s largest law firms and banks. Paul spent a decade watching how institutions protect themselves from the people they serve — and how rarely ordinary people come out on top.
               </p>
               <p>
-                He knew the tools to fight back existed in UK law. The Consumer Rights Act 2015, Ofgem&apos;s billing codes, UK261 for flight delays. But most people don&apos;t have the time or legal knowledge to use them effectively. He built Paybacker to change that.
+                After one too many unjustified bills, impossible cancellations, and charges buried deep in the small print, he built the tool he wished he&apos;d had.
               </p>
-              <p>
-                Paybacker scans your bills, finds where you&apos;re being overcharged, and generates the formal letters needed to get your money back — citing the exact legislation that applies to your case, in seconds.
-              </p>
-              <p className="text-slate-400">
-                &ldquo;I got tired of watching people pay more than they should because the system is deliberately confusing. Paybacker is the tool I wish I&apos;d had.&rdquo;
+              <p className="text-slate-400 italic border-l-2 border-mint-400/40 pl-4">
+                &ldquo;The system is designed to make you give up. Paybacker is designed to make sure you don&apos;t have to.&rdquo;
               </p>
             </div>
           </div>

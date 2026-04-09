@@ -224,6 +224,33 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Mission Band */}
+        <section className="py-20 border-b border-navy-700/50">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="max-w-3xl mx-auto text-center">
+              <p className="text-mint-400 text-sm font-semibold uppercase tracking-widest mb-5">Why We Exist</p>
+              <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-5xl font-extrabold text-white tracking-tight mb-6 leading-tight">
+                Stop overpaying.{' '}
+                <span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">
+                  Start fighting back.
+                </span>
+              </h2>
+              <p className="text-slate-300 text-lg leading-relaxed mb-4">
+                Every energy company, broadband provider, and subscription service in the UK runs the same playbook: bury the price rises, complicate the cancellation process, and bank on you being too busy to notice.
+              </p>
+              <p className="text-slate-300 text-lg leading-relaxed mb-8">
+                The system is designed to wear you down. Paybacker was built to make sure it doesn&apos;t.
+              </p>
+              <p className="text-slate-400 text-base leading-relaxed mb-10">
+                UK law is actually on your side. The Consumer Rights Act 2015, Ofgem&apos;s billing codes, UK261 for flight delays — the tools to fight back exist. Most people just don&apos;t have the time or knowledge to use them. We change that.
+              </p>
+              <p className="text-white font-semibold text-lg tracking-wide">
+                Know your rights. Fight for your rights. Paybacker makes it simple.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Feature Section 1: AI Complaint Letters */}
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4 md:px-6">
