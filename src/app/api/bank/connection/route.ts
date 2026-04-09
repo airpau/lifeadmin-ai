@@ -60,8 +60,5 @@ export async function GET() {
     tier: plan.tier,
     maxConnections: tierConfig.maxConnections === Infinity ? null : tierConfig.maxConnections,
     manualSyncAllowed: tierConfig.manualSyncAllowed,
-    manualSyncDailyLimit: tierConfig.manualSyncDailyLimit,
-    manualSyncCooldownHours: tierConfig.manualSyncCooldownHours,
-    manualSyncsToday,
   });
 }
