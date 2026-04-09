@@ -1196,7 +1196,6 @@ export async function sendProactiveAlert(params: {
         [
           { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
           { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
-          { text: 'Not me', callback_data: `not_me_${issue.id}` },
         ],
       ],
     };
