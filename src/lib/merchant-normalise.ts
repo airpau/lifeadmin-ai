@@ -305,7 +305,7 @@ export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: strin
   { keywords: ['vodafone', 'ee ', 'three', 'o2 ', 'giffgaff', 'lebara', 'smarty', 'tesco mobile', 'id mobile', 'voxi'], category: 'mobile' },
   { keywords: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple', 'now tv', 'youtube', 'dazn', 'plex', 'patreon', 'paramount', 'audible'], category: 'streaming' },
   { keywords: ['gym', 'puregym', 'david lloyd', 'whoop', 'peloton', 'strava', 'fitness first', 'nuffield', 'anytime fitness'], category: 'fitness' },
-  { keywords: ['tesco store', 'tesco express', 'tesco extra', 'tesco metro', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'co-op', 'coop ', 'ocado', 'iceland', 'm&s food', 'marks spencer food', 'm & s simply food', 'marks & spencer food'], category: 'groceries' },
+  { keywords: ['tesco store', 'tesco express', 'tesco extra', 'tesco metro', 'sainsbury', 'asda', 'aldi', 'lidl', 'morrisons', 'waitrose', 'co-op', 'coop ', 'ocado', 'iceland', 'm&s food', 'marks spencer food', 'm & s simply food', 'marks & spencer food', 'marks and spencer food', 'm&s foodhall', 'the co-operative food', 'co-operative food', 'whole foods'], category: 'groceries' },
   { keywords: ['deliveroo', 'just eat', 'uber eats', 'mcdonald', 'starbucks', 'costa', 'pret', 'greggs', 'nando', 'wagamama', 'pizza', 'kfc', 'burger king', 'domino'], category: 'eating_out' },
   { keywords: ['petrol', 'shell ', 'bp ', 'esso', 'fuel', 'texaco'], category: 'fuel' },
   { keywords: ['amazon', 'ebay', 'asos', 'argos', 'currys', 'john lewis', 'next ', 'primark', 'tk maxx'], category: 'shopping' },

@@ -848,14 +848,15 @@ Desired outcome: ${params.desired_outcome}
 Letter type: ${params.issue_type.replace(/_/g, ' ')}
 
 Requirements:
-- Formal, professional tone
+- Formal, professional tone — reads as intelligent human writing, not AI
 - Cite specific UK consumer law (Consumer Rights Act 2015, relevant sector regulations like Ofgem/Ofcom rules)
 - Reference specific legislation sections where applicable
 - State the desired outcome clearly and the timeframe for response (14 days)
 - Mention escalation path (relevant ombudsman/regulator) if not resolved
 - Include placeholders for date and account number where needed
 - Keep under 400 words
-- Do NOT include a subject line — the letter body only, starting with "Dear [Provider Name] Customer Services,"`;
+- Do NOT include a subject line — the letter body only, starting with "Dear [Provider Name] Customer Services,"
+- Plain text only — NO markdown formatting, asterisks, underscores, or bold/italic markers anywhere in the letter`;
 
   const letterResponse = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',

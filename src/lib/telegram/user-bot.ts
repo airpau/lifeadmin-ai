@@ -647,6 +647,14 @@ export function createUserBot(): Bot<UserBotContext> {
     const chatId = ctx.chat?.id;
     const supabase = getAdmin();
 
+    // Show typing indicator while letter generates
+    if (chatId) {
+      ctx.api.sendChatAction(chatId, 'typing').catch(() => {});
+    }
+    const dispatchTypingTimer = chatId
+      ? setInterval(() => ctx.api.sendChatAction(chatId, 'typing').catch(() => {}), 4000)
+      : null;
+
     try {
       await ctx.editMessageText('📝 Generating your complaint letter... This takes about 15 seconds.');
 
@@ -798,6 +806,7 @@ Rules:
       ]);
 
       // Send confirmation + preview
+      if (dispatchTypingTimer) clearInterval(dispatchTypingTimer);
       const preview = letterText.length > 700 ? letterText.slice(0, 700) + '...' : letterText;
       const portalUrl = `https://paybacker.co.uk/dashboard/disputes`;
 
@@ -807,11 +816,16 @@ Rules:
         { parse_mode: 'Markdown' },
       );
     } catch (err) {
+      if (dispatchTypingTimer) clearInterval(dispatchTypingTimer);
       console.error('[UserBot] draft_dispute callback error:', err);
-      await ctx.api.sendMessage(
-        chatId!,
-        `Sorry, I couldn't generate the letter right now. Try asking me: "Write a complaint to [provider name]"`,
-      );
+      try {
+        await ctx.api.sendMessage(
+          chatId!,
+          `Sorry, I hit a problem generating that letter. Try asking me: "Write a complaint to [provider name]"`,
+        );
+      } catch (sendErr) {
+        console.error('[UserBot] draft_dispute: failed to send error message:', sendErr);
+      }
     }
   });
 
@@ -1061,10 +1075,16 @@ Return JSON: { "subject": "...", "body": "..." }`;
         message_text: userMessage,
       });
 
-
+    // Show "typing..." indicator immediately and refresh every 4s while processing
+    ctx.api.sendChatAction(chatId, 'typing').catch(() => {});
+    const typingTimer = setInterval(() => {
+      ctx.api.sendChatAction(chatId, 'typing').catch(() => {});
+    }, 4000);
 
     try {
       const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
+
+      clearInterval(typingTimer);
 
       // Log outbound
       supabase
@@ -1079,7 +1099,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .then(() => {});
 
       if (pendingAction) {
-        // Store pending action in DB
+        // Store pending action with 24-hour expiry (was 1-hour DB default — too short)
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         const { data: pending } = await supabase
           .from('telegram_pending_actions')
           .insert({
@@ -1087,30 +1108,46 @@ Return JSON: { "subject": "...", "body": "..." }`;
             telegram_chat_id: chatId,
             action_type: 'dispute_letter',
             payload: pendingAction,
+            expires_at: expiresAt,
           })
           .select('id')
           .single();
 
-        const keyboard = new InlineKeyboard()
-          .text('Approve and save ✓', `approve_${pending?.id}`)
-          .text('Cancel ✗', `cancel_${pending?.id}`);
+        if (!pending?.id) {
+          // DB insert failed — send the letter without approve/cancel buttons
+          console.error('[UserBot] telegram_pending_actions insert returned no id — sending letter without keyboard');
+          await sendChunked(ctx, text);
+          await ctx.reply(
+            'Letter generated above. You can save and manage it at paybacker.co.uk/dashboard/disputes',
+          );
+        } else {
+          const keyboard = new InlineKeyboard()
+            .text('Approve and save ✓', `approve_${pending.id}`)
+            .text('Cancel ✗', `cancel_${pending.id}`);
 
-        const chunks = splitMessage(text);
-        for (let i = 0; i < chunks.length; i++) {
-          if (i === chunks.length - 1) {
-            await ctx.reply(chunks[i], { reply_markup: keyboard });
-          } else {
-            await ctx.reply(chunks[i]);
+          const chunks = splitMessage(text);
+          for (let i = 0; i < chunks.length; i++) {
+            if (i === chunks.length - 1) {
+              await ctx.reply(chunks[i], { reply_markup: keyboard });
+            } else {
+              await ctx.reply(chunks[i]);
+            }
           }
         }
       } else {
         await sendChunked(ctx, text);
       }
-    } catch (error) {
-      console.error('[UserBot] Error processing message:', error);
-      await ctx.reply(
-        'Sorry, I ran into an issue. Please try again in a moment.',
-      );
+    } catch (error: unknown) {
+      clearInterval(typingTimer);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error('[UserBot] Error processing message:', errMsg, error);
+      try {
+        await ctx.reply(
+          'Sorry, I hit a problem with that — please try again. If this keeps happening, type /help to contact support.',
+        );
+      } catch (replyErr) {
+        console.error('[UserBot] Failed to send error reply:', replyErr);
+      }
     }
   });
 
