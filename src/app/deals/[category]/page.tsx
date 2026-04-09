@@ -371,7 +371,7 @@ export default async function CategoryDealsPage({ params }: { params: Promise<{ 
               <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
               <Link href="/about" className="hover:text-white transition-all">About</Link>
               <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy</Link>
-              <Link href="/legal/terms" className="hover:text-white transition-all">Terms</Link>
+              <Link href="/terms-of-service" className="hover:text-white transition-all">Terms</Link>
             </div>
           </div>
         </footer>

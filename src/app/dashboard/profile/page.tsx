@@ -827,8 +827,8 @@ export default function ProfilePage() {
 
       {/* Legal links */}
       <div className="flex gap-4 text-xs text-slate-500 mb-6">
-        <a href="/legal/privacy" className="hover:text-white transition-all">Privacy Policy</a>
-        <a href="/legal/terms" className="hover:text-white transition-all">Terms of Service</a>
+        <a href="/privacy-policy" className="hover:text-white transition-all">Privacy Policy</a>
+        <a href="/terms-of-service" className="hover:text-white transition-all">Terms of Service</a>
       </div>
 
       {/* Subscription Management */}
