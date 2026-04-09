@@ -1972,16 +1972,15 @@ async function recategoriseTransaction(
   newCategory: string,
 ): Promise<ToolResult> {
   // Support truncated IDs (8-char prefix shown in list_transactions output)
+  if (transactionId.length < 36) {
+    return { text: `Error: You provided a truncated ID ("${transactionId}"). The database requires a full 36-character UUID. Please call list_transactions to retrieve the full UUID and try again.` };
+  }
+  
   let txnQuery = supabase
     .from('bank_transactions')
     .select('id, merchant_name, description, amount, category, user_category')
-    .eq('user_id', userId);
-
-  if (transactionId.length < 36) {
-    txnQuery = txnQuery.ilike('id', transactionId + '%');
-  } else {
-    txnQuery = txnQuery.eq('id', transactionId);
-  }
+    .eq('user_id', userId)
+    .eq('id', transactionId);
 
   const { data: matches, error: fetchError } = await txnQuery.limit(2);
 
