@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/bank-sync",
-      "schedule": "0 3 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/renewal-reminders",
