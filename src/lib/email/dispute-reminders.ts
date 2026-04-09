@@ -41,14 +41,14 @@ export async function sendDisputeReminderEmail(
   isEscalation: boolean
 ): Promise<boolean> {
   const name = firstName || 'there';
-  const amountStr = dispute.amount ? \` (£\${dispute.amount.toFixed(2)})\` : '';
+  const amountStr = dispute.amount ? ` (£\${dispute.amount.toFixed(2)})` : '';
 
   let subject: string;
   let htmlContent: string;
 
   if (isEscalation) {
-    subject = \`Your \${dispute.providerName} dispute is \${dispute.daysOld} days old — time to escalate\`;
-    htmlContent = \`
+    subject = `Your \${dispute.providerName} dispute is \${dispute.daysOld} days old — time to escalate`;
+    htmlContent = `
       <div style="\${wrap}">
         <div style="\${header}">\${Logo()}</div>
         <div style="\${body}">
@@ -77,10 +77,10 @@ export async function sendDisputeReminderEmail(
         </div>
         \${Footer()}
       </div>
-    \`;
+    `;
   } else {
-    subject = \`Follow up on your \${dispute.providerName} dispute\`;
-    htmlContent = \`
+    subject = `Follow up on your \${dispute.providerName} dispute`;
+    htmlContent = `
       <div style="\${wrap}">
         <div style="\${header}">\${Logo()}</div>
         <div style="\${body}">
@@ -102,7 +102,7 @@ export async function sendDisputeReminderEmail(
         </div>
         \${Footer()}
       </div>
-    \`;
+    `;
   }
 
   try {
@@ -114,12 +114,12 @@ export async function sendDisputeReminderEmail(
       html: htmlContent,
     });
     if (error) {
-      console.error(\`Dispute reminder email failed for \${email}:\`, error);
+      console.error(`Dispute reminder email failed for \${email}:`, error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error(\`Dispute reminder email error for \${email}:\`, err);
+    console.error(`Dispute reminder email error for \${email}:`, err);
     return false;
   }
 }

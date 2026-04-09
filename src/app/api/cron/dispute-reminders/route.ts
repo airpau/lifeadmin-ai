@@ -49,10 +49,10 @@ export async function GET(request: NextRequest) {
   // Fetch all active disputes that are at least 14 days old, join with profiles
   const { data: disputes, error: disputesErr } = await supabase
     .from('disputes')
-    .select(\`
+    .select(`
       id, user_id, provider_name, status, created_at, last_reminder_sent, reminder_count, disputed_amount,
       profiles:user_id ( id, email, first_name, full_name )
-    \`)
+    `)
     .in('status', ACTIVE_STATUSES)
     .lte('created_at', cutoff14)
     .order('created_at', { ascending: true });
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     const daysOld = Math.floor(disputeAgeMs / (24 * 60 * 60 * 1000));
 
     const amountStr = dispute.disputed_amount
-      ? \` (£\${Number(dispute.disputed_amount).toFixed(2)})\`
+      ? ` (£${Number(dispute.disputed_amount).toFixed(2)})`
       : '';
 
     let title: string;
@@ -92,17 +92,17 @@ export async function GET(request: NextRequest) {
     let recommendation: string;
 
     if (isEscalation) {
-      title = \`Your \${dispute.provider_name} dispute is \${daysOld} days old — time to escalate\`;
+      title = `Your ${dispute.provider_name} dispute is ${daysOld} days old — time to escalate`;
       detail =
-        \`Your dispute with *\${dispute.provider_name}*\${amountStr} has been open for \${daysOld} days. \` +
-        \`Under UK consumer law, if a company has not resolved your complaint within 8 weeks you have the right to escalate to the relevant ombudsman or regulator free of charge.\`;
-      recommendation = \`Ask me: "Escalate my \${dispute.provider_name} dispute" and I'll help you draft an ombudsman referral.\`;
+        `Your dispute with *${dispute.provider_name}*${amountStr} has been open for ${daysOld} days. ` +
+        `Under UK consumer law, if a company has not resolved your complaint within 8 weeks you have the right to escalate to the relevant ombudsman or regulator free of charge.`;
+      recommendation = `Ask me: "Escalate my ${dispute.provider_name} dispute" and I'll help you draft an ombudsman referral.`;
     } else {
-      title = \`Follow up on your \${dispute.provider_name} dispute\`;
+      title = `Follow up on your ${dispute.provider_name} dispute`;
       detail =
-        \`Your dispute with *\${dispute.provider_name}*\${amountStr} was filed \${daysOld} days ago. \` +
-        \`Have you received a response? Most companies must acknowledge complaints within 5 working days.\`;
-      recommendation = \`You can update the status in your dashboard, or ask me: "Help me follow up with \${dispute.provider_name}" for next steps.\`;
+        `Your dispute with *${dispute.provider_name}*${amountStr} was filed ${daysOld} days ago. ` +
+        `Have you received a response? Most companies must acknowledge complaints within 5 working days.`;
+      recommendation = `You can update the status in your dashboard, or ask me: "Help me follow up with ${dispute.provider_name}" for next steps.`;
     }
 
     let telegramSent = false;
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
           await supabase.from('tasks').insert({
             user_id: dispute.user_id,
             type: 'dispute_reminder_email',
-            title: \`Dispute email: \${isEscalation ? 'escalation' : 'follow_up'} for \${dispute.provider_name}\`,
+            title: `Dispute email: ${isEscalation ? 'escalation' : 'follow_up'} for ${dispute.provider_name}`,
             status: 'completed'
           });
         }
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
 
   const successfullySent = results.filter((r) => r.emailSent || r.telegramSent).length;
   console.log(
-    \`[dispute-reminders] Checked \${disputes.length} stale disputes — sent \${successfullySent} reminders (Email/Telegram)\`,
+    `[dispute-reminders] Checked ${disputes.length} stale disputes — sent ${successfullySent} reminders (Email/Telegram)`,
   );
 
   return NextResponse.json({
