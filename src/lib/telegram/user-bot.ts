@@ -773,8 +773,7 @@ export function createUserBot(): Bot<UserBotContext> {
         message_text: userMessage,
       });
 
-    // Show typing...
-    await ctx.replyWithChatAction('typing');
+
 
     try {
       const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
