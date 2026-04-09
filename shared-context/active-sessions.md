@@ -1,47 +1,62 @@
-# Active Sessions — Updated 2026-04-06 17:00 UTC
+# Active Sessions — Updated 2026-04-09 12:05 UTC
+
+## ⚠️ CRITICAL: 48-HOUR AGENT BLACKOUT (Apr 7 12:05 UTC → Apr 9 12:05 UTC)
+
+All Cowork scheduled tasks appear to have been offline for ~48 hours. The feature_discovery_cron (Vercel/Supabase) ran normally at 02:00 UTC Apr 9, confirming the platform is UP — but all Cowork agent tasks missed their scheduled runs. Likely cause: Paul's machine was off or the Cowork app was closed.
 
 ## Autonomous Agents (Cowork Scheduled Tasks)
 
 | Agent | Status | Last Activity | Notes |
 |-------|--------|--------------|-------|
-| Riley Support Agent | ✅ Running | 16:53 UTC | Every 15m, queue clear |
-| Heartbeat Monitor | ✅ Running | 16:40 UTC | Every 30m, all clear |
-| CEO Briefing | ✅ Ran | 06:42 UTC | Daily report drafted |
-| Dev Sprint Runner | ✅ Ran | 09:12 UTC | Disclaimer task committed (fdfd954), push needed |
-| Business Monitor | ✅ Running | 17:00 UTC (this run) | 3x daily |
-| Feature Discovery | ✅ Ran | 02:00 UTC | 20 routes, 1 new |
-| Chatbot Gap Analysis | ✅ Ran | 06:00 UTC | No gaps found |
+| Riley Support Agent | 🔴 MISSING 48h | Apr 7, 10:53 UTC | Should have ~200 entries. Zero since then. |
+| Heartbeat Monitor | 🔴 MISSING 72h+ | Apr 6, ~11:39 UTC | Still silent — now 72h gap total |
+| CEO Briefing | 🔴 MISSING 53h | Apr 7, 06:33 UTC | Missed Apr 8 and Apr 9 runs |
+| Dev Sprint Runner | 🔴 MISSING 54h | Apr 7, 06:14 UTC | Missed Apr 8 and Apr 9 daily runs |
+| Business Monitor | 🔴 MISSING 48h | Apr 7, 12:05 UTC | This is first run since Apr 7 1pm |
+| Feature Discovery (Vercel cron) | ✅ Running | Apr 9, 02:00 UTC | Platform-side cron unaffected |
 
 ## Platform Status
-- Vercel (paybacker.co.uk): **UP**
-- Railway (agents): **UP** (legacy — should be disabled)
-- Open support tickets: **0**
+- Vercel (paybacker.co.uk): **UP** (feature discovery cron ran successfully Apr 9)
+- Railway (agents): **Unknown** (no heartbeat for 72h)
+- Open support tickets: **Unknown** (support agent offline 48h)
 
-## Open PRs (5)
-- #39 — fix: per-agent business_log queries (~17h old)
-- #38 — feat: Telegram admin command centre (~19h old)
-- #23 — Consolidate legal pages (**53h — STALE**)
-- #22 — GDPR data export API (**53h — STALE**)
-- #21 — Wire subscription RPCs (**53h — STALE**)
+## Open PRs (all very stale — no activity in 48h)
+- #39 — fix: per-agent business_log queries (~59h — CRITICAL STALE, was 35h at last run)
+- #40 — feat: Google Sheets export (~58h — STALE)
+- #41 — fix: upsell, categorisation, mobile sidebar (~57h — STALE)
+- #42 — fix: income/spending double-counting (~56h — STALE)
+- #43 — fix: Money Hub mobile layout (~54h — STALE)
 
-## 2026-04-06 17:00 - paperclip-business-monitor (6pm run)
-**Summary:** All agents healthy. Full day of clean operation. Riley support agent logged 30+ "queue clear" entries across the day. Heartbeat monitor confirmed platform UP every 30 minutes. Sprint runner completed disclaimer task at 09:12 but branch still not pushed to GitHub. 3 PRs now >53h stale (#21, #22, #23). No Paul activity since 12:30 Cowork session. No critical issues. Railway agents still running (legacy waste). Quiet day — no email needed.
+## 2026-04-09 12:05 - paperclip-business-monitor (1pm run)
+**Status: ⚠️ MAJOR — 48h agent blackout detected**
 
-**Pending Paul actions (carried forward):**
-1. Push sprint branch + create PR: `git push -u origin feature/sprint-20260406-letter-disclaimer`
-2. Merge or close stale PRs #21, #22, #23
-3. Disable Railway agent-server
-4. Add GITHUB_TOKEN to Vercel env
-5. Set EMAIL_ENCRYPTION_KEY in Vercel for Yahoo Mail
+All Cowork scheduled tasks have been silent for 48 hours (last entries: business monitor Apr 7 12:05 UTC, sprint runner Apr 7 06:14 UTC, CEO briefing Apr 7 06:33 UTC, Riley support Apr 7 10:53 UTC). Only platform-side Vercel/Supabase crons ran (feature discovery at 02:00 UTC Apr 9).
 
-## 2026-04-06 12:55 - paperclip-business-monitor (1pm run)
-**Status:** All clear. No critical issues. Sprint runner resolved from 8am flag — ran at 09:12 and committed legal disclaimer. Paul had productive 12:30 Cowork session (Google Play Console, disclaimer fix, CASA scan confirmed).
+Likely cause: Paul's machine was off or Cowork app closed from afternoon Apr 7 through Apr 9.
 
-## 2026-04-06 07:05 - paperclip-business-monitor (8am run)
-**Status:** All agents healthy except sprint runner (no entries in 8+ hours — later resolved at 09:12). 3 PRs stale >24h. CEO briefing ran at 06:42. Platform UP.
+**All 5 PRs are now 54-59 hours old — all exceed the 24h stale threshold.**
 
-## 2026-04-06 ~12:30 - Cowork (Paul session)
-**Summary:** Fixed Yahoo Mail IMAP column mismatches, verified all 17 Paperclip agents, checked Azure Entra (publisher verification incomplete), updated task queue, created 4 memory files. EMAIL_ENCRYPTION_KEY identified as blocker for Yahoo Mail.
+**Continuing flags (all from pre-blackout, none resolved):**
+1. 🔴 Heartbeat monitor 72h+ silent (pre-dates blackout)
+2. 🔴 All 5 PRs stale: #39 (59h), #40 (58h), #41 (57h), #42 (56h), #43 (54h)
+3. April bank sync still broken
+4. EMAIL_ENCRYPTION_KEY still not set
+5. Azure publisher verification incomplete
+6. Railway legacy agents still running
+7. GITHUB_TOKEN still missing from Vercel
 
-## 2026-04-07 01:52:01 - Claude Desktop (Cowork Scheduled Task)
-**Summary:** Ran full interactive QA test of paybacker.co.uk platform. Tested all 10 dashboard sections: Overview, Money Hub, Subscriptions, Disputes, Contract Vault, Deals, Rewards, Pocket Agent, Profile, and cross-cutting concerns. Overall PASS with 3 medium and 5 low issues. Key findings: upsell banner showing for Pro users, April spending miscategorised as Other, raw bank descriptions need cleaning, mobile responsiveness needs verification. Full results logged to business_log.
+Gmail draft created to hello@paybacker.co.uk flagging the blackout.
+
+## 2026-04-09 12:06:38 - Cowork Scheduled Task
+**Summary:** Business Monitor 1pm Apr 9 — CRITICAL: 48h agent blackout detected. All Cowork scheduled tasks silent since Apr 7 12:05 UTC. Platform UP (Vercel cron ran). 5 PRs all stale (54-59h). No merges, no task progress. Heartbeat monitor now 72h+ silent. Gmail draft created. Shared context and handoff notes updated.
+
+## 2026-04-09 18:00 - paperclip-business-monitor (6pm evening run)
+**Status: ✅ RECOVERY — PR merged, sprint active**
+
+Since the 1pm run:
+- ✅ PR #44 merged (16:55 UTC) — Telegram bot webhook repair (bot unresponsive + dismiss/snooze buttons fixed)
+- 🆕 PR #45 created (16:10 UTC) — mission statement, tagline and founder story
+- Heartbeat monitor confirmed running 3x today (12:11, 14:11, 16:11 UTC) — fully recovered
+- 13 open PRs total (backlog: #38–#43 all pre-blackout, now + #45)
+
+Evening Telegram sent to Paul. Platform healthy. Agents running normally.
