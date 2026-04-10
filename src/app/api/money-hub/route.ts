@@ -86,6 +86,9 @@ export async function GET(request: Request) {
     const selectedMonth = url.searchParams.get('month') || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString();
 
+    // Parse selected month for RPC calls
+    const [selYear, selMonth] = selectedMonth.split('-').map(Number);
+
     const [
       { data: txns },
       { data: bankConns },
@@ -95,7 +98,12 @@ export async function GET(request: Request) {
       { data: goals },
       { data: categoryOverrides },
       { data: subscriptions },
-      { data: alerts }
+      { data: alerts },
+      // RPC calls for authoritative income/spending totals (excludes transfers correctly)
+      { data: rpcSpendingTotal },
+      { data: rpcIncomeTotal },
+      { data: rpcSpendingCategories },
+      { data: rpcIncomeCategories },
     ] = await Promise.all([
       admin.from('bank_transactions').select('*').eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(20000),
       admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id),
@@ -105,7 +113,12 @@ export async function GET(request: Request) {
       admin.from('money_hub_savings_goals').select('*').eq('user_id', user.id),
       admin.from('money_hub_category_overrides').select('*').eq('user_id', user.id),
       admin.from('subscriptions').select('*').eq('user_id', user.id).is('dismissed_at', null),
-      admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').limit(20)
+      admin.from('money_hub_alerts').select('*').eq('user_id', user.id).eq('status', 'active').limit(20),
+      // Authoritative spending/income from DB RPCs (handles transfer exclusion, dedup, overrides)
+      admin.rpc('get_monthly_spending_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
+      admin.rpc('get_monthly_income_total', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
+      admin.rpc('get_monthly_spending', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
+      admin.rpc('get_monthly_income', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
     ]);
 
     const allTxns = txns || [];
@@ -113,10 +126,40 @@ export async function GET(request: Request) {
     const overrides = buildMoneyHubOverrideMaps(categoryOverrides || []);
     const internalTransfers = applyInternalTransferHeuristic(allTxns);
     
-    // Core computation (Source of Truth)
+    // JS-based computation (used for trends, merchant analysis, and as fallback)
     const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth, internalTransfers);
 
-    // Compute top merchants from current summary
+    // Authoritative income/spending from DB RPCs (correctly excludes transfers and income)
+    // Falls back to JS computation if RPCs return null/error
+    const authSpending = typeof rpcSpendingTotal === 'number' ? rpcSpendingTotal : currentSummary.monthlyOutgoings;
+    const authIncome = typeof rpcIncomeTotal === 'number' ? rpcIncomeTotal : currentSummary.monthlyIncome;
+
+    // Build authoritative category breakdown from RPC (deduped, correctly categorised)
+    const authCategoryBreakdown = (rpcSpendingCategories && Array.isArray(rpcSpendingCategories) && rpcSpendingCategories.length > 0)
+      ? rpcSpendingCategories
+          .map((row: any) => ({ category: normalizeSpendingCategoryKey(row.category), total: parseFloat(String(row.category_total || 0)) }))
+          .filter((c: any) => c.total > 0 && c.category && c.category !== 'transfers' && c.category !== 'income')
+          .sort((a: any, b: any) => b.total - a.total)
+      : currentSummary.categoryBreakdown;
+
+    // Build authoritative income breakdown from RPC
+    const authIncomeBreakdown: Record<string, number> = {};
+    if (rpcIncomeCategories && Array.isArray(rpcIncomeCategories) && rpcIncomeCategories.length > 0) {
+      for (const row of rpcIncomeCategories) {
+        const key = (row.category || 'other').toLowerCase().trim();
+        authIncomeBreakdown[key] = (authIncomeBreakdown[key] || 0) + parseFloat(String(row.category_total || 0));
+      }
+    } else {
+      Object.assign(authIncomeBreakdown, currentSummary.incomeRows);
+    }
+
+    // Build authoritative category totals map (for budget matching)
+    const authCategoryTotals: Record<string, number> = {};
+    for (const cat of authCategoryBreakdown) {
+      authCategoryTotals[cat.category] = cat.total;
+    }
+
+    // Compute top merchants from JS-based current summary (RPCs don't provide per-merchant data)
     const merchantTotals: Record<string, number> = {};
     for (const t of currentSummary.spendingTransactions) {
       const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
@@ -150,13 +193,13 @@ export async function GET(request: Request) {
     // Subscriptions strictly for tracking/metrics (NOT added to outgoing totals to prevent inflation)
     const activeSubs = (subscriptions || []).filter(s => s.status === 'active');
     
-    // Financial Health Score using strictly derived transaction data
+    // Financial Health Score using authoritative RPC data where available
     const healthScore = calculateHealthScore({
-      monthlyIncome: currentSummary.monthlyIncome > 0 ? currentSummary.monthlyIncome : avgMonthlyIncome,
-      monthlyOutgoings: currentSummary.monthlyOutgoings > 0 ? currentSummary.monthlyOutgoings : avgMonthlyOutgoings,
+      monthlyIncome: authIncome > 0 ? authIncome : avgMonthlyIncome,
+      monthlyOutgoings: authSpending > 0 ? authSpending : avgMonthlyOutgoings,
       budgets: (budgets || []).map((b: any) => ({
         monthly_limit: b.monthly_limit,
-        spent: currentSummary.categoryTotals[normalizeSpendingCategoryKey(b.category)] || 0,
+        spent: authCategoryTotals[normalizeSpendingCategoryKey(b.category)] || 0,
       })),
       monthlyTrends,
       liquidSavings,
@@ -188,16 +231,16 @@ export async function GET(request: Request) {
       healthScore,
       selectedMonth,
       overview: {
-        monthlyIncome: parseFloat(currentSummary.monthlyIncome.toFixed(2)),
-        monthlyOutgoings: parseFloat(currentSummary.monthlyOutgoings.toFixed(2)),
-        savingsRate: currentSummary.monthlyIncome > 0 ? ((currentSummary.monthlyIncome - currentSummary.monthlyOutgoings) / currentSummary.monthlyIncome) * 100 : 0,
-        incomeBreakdown: currentSummary.incomeRows,
+        monthlyIncome: parseFloat(authIncome.toFixed(2)),
+        monthlyOutgoings: parseFloat(authSpending.toFixed(2)),
+        savingsRate: authIncome > 0 ? ((authIncome - authSpending) / authIncome) * 100 : 0,
+        incomeBreakdown: authIncomeBreakdown,
       },
       spending: {
-        categories: isPaid ? currentSummary.categoryBreakdown : currentSummary.categoryBreakdown.slice(0, 5),
+        categories: isPaid ? authCategoryBreakdown : authCategoryBreakdown.slice(0, 5),
         topMerchants: isPro ? topMerchants : [],
         monthlyTrends: isPaid ? monthlyTrends : [],
-        totalSpent: parseFloat(currentSummary.monthlyOutgoings.toFixed(2)),
+        totalSpent: parseFloat(authSpending.toFixed(2)),
       },
       accounts,
       subscriptions: activeSubs, // Tracked, but NOT added to spend
@@ -210,7 +253,7 @@ export async function GET(request: Request) {
       },
       budgets: isPaid ? (budgets || []).map((b: any) => {
         const cat = normalizeSpendingCategoryKey(b.category);
-        const spent = currentSummary.categoryTotals[cat] || 0;
+        const spent = authCategoryTotals[cat] || 0;
         const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0;
         return { ...b, spent: parseFloat(spent.toFixed(2)), percentage: parseFloat(pct.toFixed(1)), remaining: parseFloat((b.monthly_limit - spent).toFixed(2)), status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track' };
       }) : [],
