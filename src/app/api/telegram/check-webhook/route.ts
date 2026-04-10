@@ -50,11 +50,16 @@ export async function GET(request: NextRequest) {
       last_error_message: data.result?.last_error_message,
     };
 
-    // Fix webhook if requested
+    // Fix webhook if requested — must delete then re-set so Telegram picks up the new secret_token
     if (fix) {
       const webhookSecret = process.env.TELEGRAM_USER_WEBHOOK_SECRET;
       const correctUrl = 'https://paybacker.co.uk/api/telegram/user-webhook';
-      
+
+      // Step 1: delete the existing webhook (Telegram ignores secret_token updates on setWebhook
+      // when the URL is already set to the same value — delete forces a fresh registration)
+      await fetch(`https://api.telegram.org/bot${userToken}/deleteWebhook`);
+
+      // Step 2: re-register with the secret
       const setRes = await fetch(`https://api.telegram.org/bot${userToken}/setWebhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,7 +72,7 @@ export async function GET(request: NextRequest) {
       });
       const setData = await setRes.json();
       results.user_bot_fix = {
-        action: 'set_webhook',
+        action: 'delete_then_set_webhook',
         target_url: correctUrl,
         result: setData,
       };

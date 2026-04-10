@@ -1114,7 +1114,11 @@ Return JSON: { "subject": "...", "body": "..." }`;
       console.error('[UserBot] Failed to log inbound message:', logError);
     }
 
-
+    // Show typing indicator immediately, then repeat every 4s while Claude processes
+    await ctx.replyWithChatAction('typing').catch(() => {});
+    const typingInterval = setInterval(() => {
+      ctx.replyWithChatAction('typing').catch(() => {});
+    }, 4000);
 
     try {
       const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
@@ -1166,6 +1170,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
       } catch (replyErr) {
         console.error('[UserBot] Failed to send error reply:', replyErr);
       }
+    } finally {
+      clearInterval(typingInterval);
     }
   });
 
