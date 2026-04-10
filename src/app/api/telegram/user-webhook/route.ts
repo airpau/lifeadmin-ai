@@ -1,17 +1,19 @@
 /**
  * Telegram User Bot — Webhook Endpoint
  *
- * We intentionally bypass grammy's webhookCallback here. The default grammy
- * webhookCallback has a hardcoded 10-second onTimeout:"throw", which means any
- * Claude API call that takes > 10 s returns 500 to Telegram and Telegram
- * stops retrying. Instead we:
- *  1. Parse the update
- *  2. Return 200 to Telegram immediately (so Telegram never sees a failure)
- *  3. Fire-and-forget bot.handleUpdate() with error catching
+ * IMPORTANT: We MUST await bot.handleUpdate() before returning the Response.
+ * Vercel terminates serverless functions once the Response is sent — any
+ * unawaited Promises (fire-and-forget) get killed silently. This was the root
+ * cause of the bot appearing dead: the update was accepted (200) but the
+ * message handler never ran because the function was terminated.
  *
- * Vercel keeps the function alive until the handler completes (up to maxDuration).
- * ctx.reply() / ctx.api.sendMessage() go out as direct Telegram API calls (not
- * inline webhook reply) because we don't pass a webhookReplyEnvelope.
+ * We bypass grammy's webhookCallback because its hardcoded 10s timeout would
+ * return 500 for any Claude call > 10s, causing Telegram to drop the webhook.
+ * Instead we await handleUpdate (up to maxDuration 300s) and always return 200.
+ * Telegram may retry if we take > 60s, but the dedup in user-bot.ts handles that.
+ *
+ * ctx.reply() / ctx.api.sendMessage() are direct Telegram API calls — they work
+ * regardless of how long we take to return the HTTP response.
  */
 
 import { createUserBot } from '@/lib/telegram/user-bot';
@@ -22,24 +24,19 @@ export const maxDuration = 300;
 
 // Bot singleton — created once per Vercel function instance (warm invocations reuse it)
 let bot: ReturnType<typeof createUserBot> | null = null;
-let initPromise: Promise<void> | null = null;
+let botReady = false;
 
 function getBotInstance() {
   if (!bot) {
     bot = createUserBot();
-    // Kick off init in background so subsequent requests find it ready
-    initPromise = bot.init()
-      .then(() => { initPromise = null; })
-      .catch((err) => {
-        console.error('[UserBotWebhook] bot.init() failed — will retry on next request:', err);
-        bot = null;
-        initPromise = null;
-      });
+    botReady = false;
   }
   return bot;
 }
 
 export async function POST(request: Request) {
+  const startMs = Date.now();
+
   // Validate webhook secret — fail closed if env var is missing or token mismatches.
   const expectedSecret = process.env.TELEGRAM_USER_WEBHOOK_SECRET;
   if (!expectedSecret) {
@@ -60,26 +57,36 @@ export async function POST(request: Request) {
     return new Response('Bad Request', { status: 400 });
   }
 
+  const updateId = (update as { update_id?: number }).update_id;
+  console.log(`[UserBotWebhook] Received update_id=${updateId} (${Date.now() - startMs}ms)`);
+
   // Get (or create) the bot instance
   const botInstance = getBotInstance();
 
-  // Wait for init if it's still in progress on first cold-start request
-  if (initPromise) {
-    await initPromise.catch(() => {});
-    // If init failed, bot is null — log and still return 200 so Telegram doesn't retry
-    if (!bot) {
-      console.error('[UserBotWebhook] Dropping update', (update as { update_id?: number }).update_id, '— bot failed to initialise');
+  // Init on cold start — only once per function instance
+  if (!botReady) {
+    try {
+      await botInstance.init();
+      botReady = true;
+      console.log(`[UserBotWebhook] Bot initialised (${Date.now() - startMs}ms)`);
+    } catch (err) {
+      console.error('[UserBotWebhook] bot.init() failed:', err);
+      bot = null;
+      botReady = false;
+      // Return 200 so Telegram doesn't drop the webhook
       return new Response('OK', { status: 200 });
     }
   }
 
-  // Fire-and-forget: respond 200 to Telegram immediately, process in background.
-  // Vercel keeps this function alive until handleUpdate() resolves (maxDuration: 300s).
-  // Any BotError or handler exception is caught and logged — never a 500 to Telegram.
-  botInstance.handleUpdate(update).catch((err) => {
-    const updateId = (update as { update_id?: number }).update_id;
-    console.error('[UserBotWebhook] Error handling update', updateId, ':', err);
-  });
+  // AWAIT the update handler — this is critical. Without awaiting, Vercel kills
+  // the function after sending the Response and the handler never completes.
+  try {
+    await botInstance.handleUpdate(update);
+    console.log(`[UserBotWebhook] Finished update_id=${updateId} in ${Date.now() - startMs}ms`);
+  } catch (err) {
+    console.error(`[UserBotWebhook] Error handling update_id=${updateId}:`, err);
+  }
 
+  // Always return 200 — even on error — so Telegram doesn't retry or drop the webhook
   return new Response('OK', { status: 200 });
 }

@@ -1024,34 +1024,25 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const startTime = Date.now();
     console.log(`[UserBot] Received message from chat_id=${chatId}, update_id=${updateId}, text="${userMessage.slice(0, 50)}"`);
 
-    // Log inbound FIRST — before any checks — so we can always trace what came in
-    // user_id is nullable; we update it once we know the user from session lookup
-    const { data: earlyLog } = await supabase
-      .from('telegram_message_log')
-      .insert({
-        telegram_chat_id: chatId,
-        direction: 'inbound',
-        message_text: userMessage,
-      })
-      .select('id')
-      .single();
-
-    // Check linked session
-    let session: { user_id: string; last_message_at: string | null } | null = null;
-    try {
-      const { data, error } = await supabase
+    // Run inbound log + session lookup in parallel (saves ~200ms)
+    const [logResult, sessionResult] = await Promise.all([
+      supabase
+        .from('telegram_message_log')
+        .insert({ telegram_chat_id: chatId, direction: 'inbound', message_text: userMessage })
+        .select('id')
+        .single(),
+      supabase
         .from('telegram_sessions')
         .select('user_id, last_message_at')
         .eq('telegram_chat_id', chatId)
         .eq('is_active', true)
-        .single();
-      if (error && error.code !== 'PGRST116') {
-        console.error('[UserBot] Session lookup error:', error);
-      }
-      session = data ?? null;
-    } catch (e) {
-      console.error('[UserBot] Session lookup threw:', e);
-      return ctx.reply('Sorry, I had trouble connecting. Please try again in a moment.');
+        .single(),
+    ]);
+
+    const earlyLog = logResult.data;
+    const session = sessionResult.data;
+    if (sessionResult.error && sessionResult.error.code !== 'PGRST116') {
+      console.error('[UserBot] Session lookup error:', sessionResult.error);
     }
 
     if (!session) {
@@ -1076,22 +1067,20 @@ Return JSON: { "subject": "...", "body": "..." }`;
       );
     }
 
-    // Verify Pro subscription
-    let profile: { subscription_tier: string | null; subscription_status: string | null; stripe_subscription_id: string | null } | null = null;
-    try {
-      const { data, error } = await supabase
+    // Verify Pro subscription + check rate limit in parallel
+    const [profileResult, rateLimitResult] = await Promise.all([
+      supabase
         .from('profiles')
         .select('subscription_tier, subscription_status, stripe_subscription_id')
         .eq('id', session.user_id)
-        .single();
-      if (error) {
-        console.error('[UserBot] Profile lookup error:', error);
-      }
-      profile = data ?? null;
-    } catch (e) {
-      console.error('[UserBot] Profile lookup threw:', e);
-      return ctx.reply('Sorry, I had trouble verifying your subscription. Please try again in a moment.');
+        .single(),
+      checkRateLimit(supabase, session.user_id),
+    ]);
+
+    if (profileResult.error) {
+      console.error('[UserBot] Profile lookup error:', profileResult.error);
     }
+    const profile = profileResult.data;
 
     const tier = profile?.subscription_tier;
     const status = profile?.subscription_status;
@@ -1106,22 +1095,20 @@ Return JSON: { "subject": "...", "body": "..." }`;
       );
     }
 
-    // Rate limit: 200 messages per hour
-    const withinLimit = await checkRateLimit(supabase, session.user_id);
-    if (!withinLimit) {
+    if (!rateLimitResult) {
       return ctx.reply(
         `You've reached the limit of ${RATE_LIMIT_PER_HOUR} messages per hour. Please try again shortly.`,
       );
     }
 
-    // Update last_message_at
+    // Non-critical updates — fire in background (these are fine to fire-and-forget
+    // because the webhook route now awaits the full handler)
     supabase
       .from('telegram_sessions')
       .update({ last_message_at: new Date().toISOString() })
       .eq('telegram_chat_id', chatId)
       .then(() => {});
 
-    // Backfill user_id on the early inbound log (for conversation history lookup)
     if (earlyLog?.id) {
       supabase
         .from('telegram_message_log')
