@@ -238,6 +238,11 @@ const TOOLS = [
   },
   // Infrastructure
   {
+    name: "git_push",
+    description: "Runs git pull --rebase then git push origin master on Paul's machine. Use this after committing changes in the sandbox to push them to GitHub (which auto-deploys to Vercel).",
+    inputSchema: { type: "object" as const, properties: {} },
+  },
+  {
     name: "get_git_status",
     description: "Returns current git branch, recent commits, and working tree status",
     inputSchema: { type: "object" as const, properties: {} },
@@ -503,6 +508,23 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
     }
 
     // --- Infrastructure ---
+    case "git_push": {
+      try {
+        // Pull first to avoid rejection if remote is ahead
+        const pullOut = execSync("git pull --rebase origin master 2>&1 || true", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        }).trim();
+        const pushOut = execSync("git push origin master 2>&1", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        }).trim();
+        return `## git pull --rebase\n${pullOut}\n\n## git push\n${pushOut}`;
+      } catch (e) {
+        return `Error during git push: ${(e as Error).message}`;
+      }
+    }
+
     case "get_git_status": {
       try {
         const branch = execSync("git branch --show-current", { cwd: PROJECT_DIR, encoding: "utf-8" }).trim();
