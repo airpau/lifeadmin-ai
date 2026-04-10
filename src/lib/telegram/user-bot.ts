@@ -1090,7 +1090,11 @@ Return JSON: { "subject": "...", "body": "..." }`;
         message_text: userMessage,
       });
 
-
+    // Show typing indicator immediately, then repeat every 4s while Claude processes
+    await ctx.replyWithChatAction('typing').catch(() => {});
+    const typingInterval = setInterval(() => {
+      ctx.replyWithChatAction('typing').catch(() => {});
+    }, 4000);
 
     try {
       const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
@@ -1140,6 +1144,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
       await ctx.reply(
         'Sorry, I ran into an issue. Please try again in a moment.',
       );
+    } finally {
+      clearInterval(typingInterval);
     }
   });
 
