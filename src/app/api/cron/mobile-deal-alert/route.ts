@@ -228,14 +228,17 @@ export async function POST(request: NextRequest) {
     return mobileKeywords.some(kw => name.includes(kw));
   });
 
-  // Deduplicate by user_id — one email per user (pick their highest mobile spend)
+  // Deduplicate by EMAIL — one email per person (pick their highest mobile spend)
+  // This prevents two emails if the same person has multiple user accounts
   const userMap = new Map<string, MobileUser>();
   for (const row of [...(mobileUsers || []), ...nameMatched]) {
     const p = row.profiles as any;
-    const existing = userMap.get(row.user_id);
+    const email = (p.email || '').toLowerCase().trim();
+    if (!email) continue;
+    const existing = userMap.get(email);
     const amount = Number(row.amount);
     if (!existing || amount > existing.amount) {
-      userMap.set(row.user_id, {
+      userMap.set(email, {
         user_id: row.user_id,
         email: p.email,
         full_name: p.full_name,

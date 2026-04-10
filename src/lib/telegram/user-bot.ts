@@ -256,11 +256,19 @@ async function callClaudeWithTools(
     messages,
   });
 
-  // Tool use loop — hard cap of 8 iterations as a safety net
-  const MAX_ITERATIONS = 8;
+  // Tool use loop — hard cap of 5 iterations as a safety net
+  // (8 was too many — each iteration can take 10-60s, exceeding Vercel's 300s limit)
+  const MAX_ITERATIONS = 5;
   let iterations = 0;
+  const HARD_TIMEOUT_MS = 230_000; // 230s — leaves 70s buffer before Vercel's 300s kill
+  const loopStart = Date.now();
 
   while (response.stop_reason === 'tool_use' && iterations < MAX_ITERATIONS) {
+    // Hard timeout check — abort before Vercel kills the function
+    if (Date.now() - loopStart > HARD_TIMEOUT_MS) {
+      console.warn(`[UserBot] Tool loop hitting ${HARD_TIMEOUT_MS}ms timeout after ${iterations} iterations — returning partial response`);
+      break;
+    }
     iterations++;
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
@@ -1013,7 +1021,20 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const supabase = getAdmin();
     const chatId = ctx.chat.id;
     const userMessage = ctx.message.text;
-    console.log(`[UserBot] Received message from chat_id=${chatId}, update_id=${updateId}`);
+    const startTime = Date.now();
+    console.log(`[UserBot] Received message from chat_id=${chatId}, update_id=${updateId}, text="${userMessage.slice(0, 50)}"`);
+
+    // Log inbound FIRST — before any checks — so we can always trace what came in
+    // user_id is nullable; we update it once we know the user from session lookup
+    const { data: earlyLog } = await supabase
+      .from('telegram_message_log')
+      .insert({
+        telegram_chat_id: chatId,
+        direction: 'inbound',
+        message_text: userMessage,
+      })
+      .select('id')
+      .single();
 
     // Check linked session
     let session: { user_id: string; last_message_at: string | null } | null = null;
@@ -1100,18 +1121,13 @@ Return JSON: { "subject": "...", "body": "..." }`;
       .eq('telegram_chat_id', chatId)
       .then(() => {});
 
-    // Log inbound (await so it's in DB before getConversationHistory runs)
-    const startTime = Date.now();
-    const { error: logError } = await supabase
-      .from('telegram_message_log')
-      .insert({
-        user_id: session.user_id,
-        telegram_chat_id: chatId,
-        direction: 'inbound',
-        message_text: userMessage,
-      });
-    if (logError) {
-      console.error('[UserBot] Failed to log inbound message:', logError);
+    // Backfill user_id on the early inbound log (for conversation history lookup)
+    if (earlyLog?.id) {
+      supabase
+        .from('telegram_message_log')
+        .update({ user_id: session.user_id })
+        .eq('id', earlyLog.id)
+        .then(() => {});
     }
 
     // Show typing indicator immediately, then repeat every 4s while Claude processes
@@ -1121,7 +1137,13 @@ Return JSON: { "subject": "...", "body": "..." }`;
     }, 4000);
 
     try {
-      const { text, pendingAction } = await callClaudeWithTools(session.user_id, userMessage, chatId);
+      // Wrap Claude call in a 250s timeout — Vercel kills at 300s, so we need margin
+      const CLAUDE_TIMEOUT_MS = 250_000;
+      const claudePromise = callClaudeWithTools(session.user_id, userMessage, chatId);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT: Claude processing exceeded 250s')), CLAUDE_TIMEOUT_MS)
+      );
+      const { text, pendingAction } = await Promise.race([claudePromise, timeoutPromise]);
 
       // Log outbound
       supabase
@@ -1163,10 +1185,14 @@ Return JSON: { "subject": "...", "body": "..." }`;
       } else {
         await sendChunked(ctx, text);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[UserBot] Error processing message:', error);
+      const isTimeout = error?.message?.includes('TIMEOUT');
+      const userMsg = isTimeout
+        ? 'That request took too long to process — it may have involved a lot of data. Could you try asking for something more specific?'
+        : 'Sorry, I ran into an issue. Please try again in a moment.';
       try {
-        await ctx.reply('Sorry, I ran into an issue. Please try again in a moment.');
+        await ctx.reply(userMsg);
       } catch (replyErr) {
         console.error('[UserBot] Failed to send error reply:', replyErr);
       }
