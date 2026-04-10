@@ -18,6 +18,7 @@ interface Deal {
   category: string;
   promoCode?: string;
   awinUrl?: string; // Override generated Awin URL
+  featured?: boolean; // Show "New Deal" badge and pin to top
 }
 
 const DEALS: Record<string, Deal[]> = {
@@ -49,6 +50,7 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'aa-breakdown', provider: 'The AA', headline: 'UK breakdown cover - roadside assistance', saving: 'Cover from £4/mo', awinMid: '3932', providerUrl: 'https://www.theaa.com/breakdown-cover', category: 'Insurance' },
   ],
   Mobile: [
+    { id: 'giffgaff', provider: 'giffgaff', headline: 'Flexible SIM plans - no contract required', saving: 'Save up to £200/yr', awinMid: '3599', providerUrl: 'https://www.giffgaff.com', awinUrl: 'https://www.awin1.com/cread.php?awinmid=3599&awinaffid=2825812&ued=https%3A%2F%2Fwww.giffgaff.com', category: 'Mobile', featured: true },
     { id: 'id-mobile', provider: 'iD Mobile', headline: 'SIM-only from £6/mo', saving: 'Save up to £240/yr', awinMid: '6366', providerUrl: 'https://www.idmobile.co.uk', category: 'Mobile' },
     { id: 'smarty', provider: 'SMARTY', headline: 'Fair data - unused data rolled over', saving: 'Save up to £200/yr', awinMid: '10933', providerUrl: 'https://smarty.co.uk', category: 'Mobile' },
     { id: 'lebara5', provider: 'Lebara', headline: 'Use code LEBARA5 for £5 off', saving: 'Save £5 off your first month', awinMid: '30681', providerUrl: 'https://www.lebara.co.uk/en/best-sim-only-deals.html', awinUrl: 'https://www.awin1.com/cread.php?awinmid=30681&awinaffid=2825812&ued=https%3A%2F%2Fwww.lebara.co.uk%2Fen%2Fbest-sim-only-deals.html', promoCode: 'LEBARA5', category: 'Mobile' },
@@ -57,7 +59,6 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'ee-mobile', provider: 'EE', headline: "UK's largest 5G network", saving: 'Save up to £200/yr', awinMid: '31423', providerUrl: 'https://shop.ee.co.uk/sim-only', category: 'Mobile' },
     { id: 'tesco-mobile', provider: 'Tesco Mobile', headline: 'Clubcard prices on SIM plans', saving: 'Save up to £180/yr', awinMid: '101917', providerUrl: 'https://www.tescomobile.com', category: 'Mobile' },
     { id: 'voxi', provider: 'VOXI', headline: 'Endless social media data included', saving: 'Save up to £160/yr', awinMid: '10951', providerUrl: 'https://www.voxi.co.uk', category: 'Mobile' },
-    { id: 'giffgaff', provider: 'giffgaff', headline: 'Flexible SIM plans - no contract required', saving: 'Save up to £200/yr', awinMid: '3599', providerUrl: 'https://www.giffgaff.com', category: 'Mobile' },
     { id: 'talkmobile', provider: 'Talkmobile', headline: 'Low-cost SIM plans on the Vodafone network', saving: 'Save up to £180/yr', awinMid: '2351', providerUrl: 'https://www.talkmobile.co.uk', category: 'Mobile' },
     { id: 'asda-mobile', provider: 'Asda Mobile', headline: 'Budget-friendly SIM bundles', saving: 'Save up to £160/yr', awinMid: '6250', providerUrl: 'https://mobile.asda.com/bundles', category: 'Mobile' },
     { id: 'honest-mobile', provider: 'Honest Mobile', headline: 'Ethical mobile - plants trees with every plan', saving: 'Save up to £140/yr', awinMid: '20890', providerUrl: 'https://www.honestmobile.co.uk', category: 'Mobile' },
@@ -245,10 +246,15 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
 
   return (
     <div className={`group relative bg-navy-900 backdrop-blur-sm border rounded-2xl p-5 transition-all flex flex-col overflow-hidden ${
-      highlight ? 'border-mint-400/40 ring-1 ring-mint-400/20' : 'border-navy-700/50'
+      highlight || deal.featured ? 'border-amber-400/40 ring-1 ring-amber-400/20' : 'border-navy-700/50'
     } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-navy-600'}`}>
+      {deal.featured && (
+        <span className="absolute top-3 left-3 text-[10px] font-bold text-navy-950 bg-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">
+          New Deal
+        </span>
+      )}
       {onDismiss && (
-        <button 
+        <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
           className="absolute top-3 right-3 p-1.5 bg-navy-800 hover:bg-navy-700 text-slate-400 hover:text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
           title="Not interested"
@@ -257,7 +263,7 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
         </button>
       )}
       {/* Body — grows to fill, pushes footer to bottom */}
-      <div className="flex-1 min-w-0 mb-3 pr-6">
+      <div className={`flex-1 min-w-0 mb-3 pr-6 ${deal.featured ? 'pt-5' : ''}`}>
         <h3 className="text-base font-semibold text-white mb-1 truncate">{deal.provider}</h3>
         <p className="text-slate-400 text-sm line-clamp-2">{deal.headline}</p>
         {deal.promoCode && (
