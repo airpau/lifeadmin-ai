@@ -31,134 +31,139 @@ interface GiffgaffPlan {
   contract_length: string;
 }
 
-function buildEmailHtml(user: MobileUser, plans: GiffgaffPlan[], unsubUrl: string): string {
+// Brand design system — matches onboarding-sequence.ts
+const S = {
+  wrap: `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;`,
+  header: `background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`,
+  body: `padding:32px;`,
+  h1: `color:#ffffff;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`,
+  p: `color:#94a3b8;font-size:15px;line-height:1.75;margin:0 0 16px;`,
+  pWhite: `color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;`,
+  box: `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #f59e0b;`,
+  cta: `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`,
+  ctaSecondary: `display:inline-block;background:#1e3a5f;color:#e2e8f0;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;margin:8px 0 8px 12px;border:1px solid #1e3a5f;`,
+  footer: `padding:20px 32px 28px;border-top:1px solid #1e3a5f;`,
+  footerText: `color:#475569;font-size:12px;line-height:1.6;margin:0;text-align:center;`,
+  badge: `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;letter-spacing:0.05em;text-transform:uppercase;`,
+  statCard: `display:inline-block;background:#162544;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;text-align:center;margin:4px;min-width:120px;`,
+  tipBox: `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #FB923C;`,
+};
+
+const Logo = () => `
+  <a href="https://paybacker.co.uk" style="text-decoration:none;">
+    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+  </a>
+`;
+
+const Footer = () => `
+  <div style="${S.footer}">
+    <p style="${S.footerText}">
+      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
+      AI-powered money recovery for UK consumers<br/><br/>
+      <a href="https://paybacker.co.uk/privacy-policy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="https://paybacker.co.uk/terms-of-service" style="color:#475569;text-decoration:none;">Terms</a> &nbsp;·&nbsp;
+      <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
+    </p>
+  </div>
+`;
+
+function buildEmailHtml(user: MobileUser, plans: GiffgaffPlan[], _unsubUrl: string): string {
   const firstName = user.full_name?.split(' ')[0] || 'there';
   const monthlySpend = Number(user.amount);
   const annualSpend = (monthlySpend * 12).toFixed(0);
 
-  // Find the best saving plan (cheapest that still has real data)
   const bestPlan = plans.find(p => p.price_monthly < monthlySpend) || plans[0];
   const monthlySaving = bestPlan ? (monthlySpend - bestPlan.price_monthly).toFixed(2) : null;
-  const annualSaving = monthlySaving ? (Number(monthlySaving) * 12).toFixed(0) : null;
+  const annualSaving = monthlySaving && Number(monthlySaving) > 0 ? (Number(monthlySaving) * 12).toFixed(0) : null;
 
   const planRows = plans
     .slice(0, 6)
     .map(p => {
-      const saving = monthlySpend > p.price_monthly
-        ? `<span style="color:#10b981;font-weight:700;">Save £${(monthlySpend - p.price_monthly).toFixed(2)}/mo</span>`
-        : `<span style="color:#64748b;">£${(p.price_monthly - monthlySpend).toFixed(2)}/mo more</span>`;
+      const diff = monthlySpend - p.price_monthly;
+      const saving = diff > 0
+        ? `<strong style="color:#34d399;">Save £${diff.toFixed(2)}/mo</strong>`
+        : `<span style="color:#64748b;">£${Math.abs(diff).toFixed(2)}/mo more</span>`;
       return `
         <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #1e293b;color:#e2e8f0;font-size:13px;">${p.data_allowance}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #1e293b;color:#e2e8f0;font-size:13px;">${p.contract_length}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #1e293b;color:#f59e0b;font-weight:700;font-size:13px;">£${p.price_monthly}/mo</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #1e293b;font-size:13px;">${saving}</td>
+          <td style="padding:12px 16px;border-bottom:1px solid #1e3a5f;color:#e2e8f0;font-size:14px;">${p.data_allowance}</td>
+          <td style="padding:12px 16px;border-bottom:1px solid #1e3a5f;color:#e2e8f0;font-size:14px;">${p.contract_length}</td>
+          <td style="padding:12px 16px;border-bottom:1px solid #1e3a5f;color:#f59e0b;font-weight:700;font-size:14px;">£${p.price_monthly}/mo</td>
+          <td style="padding:12px 16px;border-bottom:1px solid #1e3a5f;font-size:14px;">${saving}</td>
         </tr>`;
     }).join('');
 
-  const savingsBanner = annualSaving && Number(annualSaving) > 0 ? `
-    <tr>
-      <td style="padding:24px 0 0;">
-        <div style="background:linear-gradient(135deg,#064e3b 0%,#022c22 100%);border:1px solid #059669;border-radius:12px;padding:20px 24px;text-align:center;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6ee7b7;font-weight:600;">BASED ON YOUR ${user.provider_name.toUpperCase()} SPEND</p>
-          <p style="margin:0;font-size:24px;font-weight:800;color:#ffffff;">You could save <span style="color:#34d399;">£${annualSaving}/yr</span></p>
-          <p style="margin:8px 0 0;font-size:13px;color:#6ee7b7;">Switching to giffgaff ${bestPlan.data_allowance} at £${bestPlan.price_monthly}/mo vs your current £${monthlySpend}/mo</p>
-        </div>
-      </td>
-    </tr>` : '';
+  const savingsSection = annualSaving ? `
+    <div style="text-align:center;margin:24px 0 8px;">
+      <span style="${S.statCard}">
+        <span style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;">Your current spend</span>
+        <span style="display:block;font-size:22px;font-weight:800;color:#f59e0b;">£${monthlySpend}/mo</span>
+        <span style="display:block;font-size:12px;color:#64748b;">${user.provider_name}</span>
+      </span>
+      <span style="${S.statCard}">
+        <span style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;">giffgaff from</span>
+        <span style="display:block;font-size:22px;font-weight:800;color:#34d399;">£${bestPlan.price_monthly}/mo</span>
+        <span style="display:block;font-size:12px;color:#64748b;">${bestPlan.data_allowance}</span>
+      </span>
+      <span style="${S.statCard}">
+        <span style="display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;">You could save</span>
+        <span style="display:block;font-size:22px;font-weight:800;color:#34d399;">£${annualSaving}/yr</span>
+        <span style="display:block;font-size:12px;color:#64748b;">per year</span>
+      </span>
+    </div>` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>New mobile deal — could you save £${annualSaving || '100+'}/yr?</title>
-</head>
-<body style="margin:0;padding:0;background-color:#0a0f1e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e2e8f0;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0f1e;padding:40px 20px;">
-    <tr>
-      <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background-color:#0a0e1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<div style="background:#0a0e1a;padding:32px 16px;">
+<div style="${S.wrap}">
+  <div style="${S.header}">${Logo()}</div>
+  <div style="${S.body}">
 
-          <!-- Logo -->
+    <span style="${S.badge}">New Deal</span>
+    <h1 style="${S.h1};margin-top:12px;">We found you a better mobile deal, ${firstName}</h1>
+
+    <p style="${S.pWhite}">You're currently paying <strong style="color:#f59e0b;">£${monthlySpend}/mo</strong> (£${annualSpend}/yr) to <strong>${user.provider_name}</strong>. We've just partnered with <strong>giffgaff</strong> and think you could pay less.</p>
+
+    ${savingsSection}
+
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${AWIN_URL}" style="${S.cta}">View giffgaff plans</a>
+      <a href="${DEALS_PAGE}" style="${S.ctaSecondary}">Browse all deals</a>
+    </div>
+
+    <div style="${S.box}">
+      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Compare plans</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        <thead>
           <tr>
-            <td style="padding-bottom:28px;text-align:center;">
-              <span style="font-size:26px;font-weight:800;color:#f59e0b;letter-spacing:-0.5px;">Paybacker</span>
-            </td>
+            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;border-bottom:1px solid #1e3a5f;">Data</th>
+            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;border-bottom:1px solid #1e3a5f;">Contract</th>
+            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;border-bottom:1px solid #1e3a5f;">Price</th>
+            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;border-bottom:1px solid #1e3a5f;">vs You</th>
           </tr>
+        </thead>
+        <tbody>${planRows}</tbody>
+      </table>
+      <p style="margin:10px 0 0;font-size:12px;color:#64748b;">All plans include unlimited UK calls &amp; texts. Prices verified ${new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })}.</p>
+    </div>
 
-          <!-- Hero -->
-          <tr>
-            <td style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);border:1px solid #1e3a5f;border-radius:16px;padding:40px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:13px;color:#f59e0b;font-weight:600;text-transform:uppercase;letter-spacing:1px;">New Mobile Deal</p>
-              <h1 style="margin:0 0 16px;font-size:30px;font-weight:800;color:#ffffff;line-height:1.2;">Hi ${firstName}, we found you a better mobile deal</h1>
-              <p style="margin:0 0 28px;font-size:16px;color:#94a3b8;line-height:1.6;">
-                We've just partnered with <strong style="color:#fff;">giffgaff</strong> — flexible SIM-only plans with no contracts required.
-                You're currently paying <strong style="color:#f59e0b;">£${monthlySpend}/mo (£${annualSpend}/yr)</strong> to ${user.provider_name}.
-              </p>
-              <a href="${AWIN_URL}" style="display:inline-block;background-color:#f59e0b;color:#0a0f1e;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;">View giffgaff Plans →</a>
-            </td>
-          </tr>
+    <div style="${S.tipBox}">
+      <p style="color:#FB923C;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Why giffgaff?</p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">
+        <strong style="color:#e2e8f0;">No contracts</strong> — cancel anytime on rolling monthly plans.<br/>
+        <strong style="color:#e2e8f0;">O2 network</strong> — excellent UK coverage with 99% population reach.<br/>
+        <strong style="color:#e2e8f0;">EU roaming</strong> — use your data abroad at no extra cost.<br/>
+        <strong style="color:#e2e8f0;">Award-winning</strong> — rated #1 for customer satisfaction by Ofcom.
+      </p>
+    </div>
 
-          ${savingsBanner}
-
-          <!-- Plans table -->
-          <tr>
-            <td style="padding:32px 0 0;">
-              <p style="margin:0 0 16px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;">giffgaff Plans — Best Value</p>
-              <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border:1px solid #1e293b;border-radius:12px;overflow:hidden;">
-                <thead>
-                  <tr style="background:#1e293b;">
-                    <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Data</th>
-                    <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Contract</th>
-                    <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">Price</th>
-                    <th style="padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:0.5px;">vs You</th>
-                  </tr>
-                </thead>
-                <tbody>${planRows}</tbody>
-              </table>
-              <p style="margin:8px 0 0;font-size:11px;color:#475569;">All plans include unlimited UK calls and texts. Prices verified ${new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })}.</p>
-            </td>
-          </tr>
-
-          <!-- CTA -->
-          <tr>
-            <td style="padding:32px 0 0;text-align:center;">
-              <a href="${AWIN_URL}" style="display:inline-block;background-color:#f59e0b;color:#0a0f1e;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px;margin-bottom:12px;">Switch to giffgaff →</a>
-              <br />
-              <a href="${DEALS_PAGE}" style="display:inline-block;margin-top:8px;font-size:13px;color:#64748b;text-decoration:underline;">Browse all deals in Paybacker</a>
-            </td>
-          </tr>
-
-          <!-- Why giffgaff -->
-          <tr>
-            <td style="padding:32px 0 0;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="background:#1e293b;border-radius:12px;padding:20px 24px;">
-                    <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#f59e0b;">Why giffgaff?</p>
-                    <p style="margin:0 0 6px;font-size:13px;color:#94a3b8;">✓ No contracts — cancel anytime on rolling plans</p>
-                    <p style="margin:0 0 6px;font-size:13px;color:#94a3b8;">✓ Runs on the O2 network — excellent UK coverage</p>
-                    <p style="margin:0 0 6px;font-size:13px;color:#94a3b8;">✓ Unlimited UK calls &amp; texts on all plans</p>
-                    <p style="margin:0;font-size:13px;color:#94a3b8;">✓ EU roaming included</p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding:32px 0 0;text-align:center;color:#475569;font-size:11px;line-height:1.8;">
-              Paybacker LTD · <a href="https://paybacker.co.uk" style="color:#475569;">paybacker.co.uk</a><br />
-              <a href="${unsubUrl}" style="color:#475569;">Unsubscribe</a> · We'll only send deal alerts relevant to your contracts.
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
+    <p style="${S.p}">This deal was matched to you because you have an active mobile contract. We only send alerts when we find something genuinely cheaper.</p>
+    <p style="${S.p}">Paul, Founder</p>
+  </div>
+  ${Footer()}
+</div>
+</div>
 </body>
 </html>`;
 }
