@@ -2042,26 +2042,75 @@ async function getUpcomingPayments(
 ): Promise<ToolResult> {
   const windowDays = days ?? 7;
   const now = new Date();
+  const todayDay = now.getDate();
   const todayStr = now.toISOString().split('T')[0];
   const endDate = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
   const endStr = endDate.toISOString().split('T')[0];
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
 
-  const { data, error } = await supabase
-    .from('subscriptions')
-    .select('provider_name, amount, billing_cycle, next_billing_date, category')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .not('next_billing_date', 'is', null)
-    .gte('next_billing_date', todayStr)
-    .lte('next_billing_date', endStr)
-    .order('next_billing_date', { ascending: true });
+  // Fetch from THREE sources in parallel:
+  // 1. Subscriptions with next_billing_date set
+  // 2. Expected bills from bank transaction patterns (direct debits etc)
+  // 3. Recent transactions this month to check what's already paid
+  const startOfMonth = new Date(year, month - 1, 1).toISOString();
+  const endOfMonth = new Date(year, month, 1).toISOString();
 
-  if (error || !data || data.length === 0) {
-    return { text: `No payments due in the next ${windowDays} days.` };
+  const [subsRes, billsRes, recentTxnRes] = await Promise.all([
+    supabase
+      .from('subscriptions')
+      .select('provider_name, amount, billing_cycle, next_billing_date, category')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .not('next_billing_date', 'is', null)
+      .gte('next_billing_date', todayStr)
+      .lte('next_billing_date', endStr)
+      .order('next_billing_date', { ascending: true }),
+    supabase.rpc('get_expected_bills', { p_user_id: userId, p_year: year, p_month: month }),
+    supabase
+      .from('bank_transactions')
+      .select('merchant_name, description, amount, timestamp')
+      .eq('user_id', userId)
+      .lt('amount', 0)
+      .gte('timestamp', startOfMonth)
+      .lt('timestamp', endOfMonth),
+  ]);
+
+  const subs = subsRes.data ?? [];
+  const rawBills = (billsRes.data ?? []).filter(
+    (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
+  );
+  const recentDebits = (recentTxnRes.data ?? []).map(t => ({
+    name: (t.merchant_name || t.description || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim(),
+    amount: Math.abs(Number(t.amount)),
+  }));
+
+  // Check if a bill has already been paid this month
+  const isPaidThisMonth = (providerName: string, expectedAmount: number): boolean => {
+    const norm = providerName.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const prefix = norm.substring(0, Math.min(norm.length, 8));
+    return recentDebits.some(d => {
+      const nameMatch = d.name.includes(prefix) || (prefix.length >= 4 && d.name.startsWith(prefix.substring(0, 4)));
+      const amountClose = Math.abs(d.amount - expectedAmount) <= expectedAmount * 0.25;
+      return nameMatch && amountClose;
+    });
+  };
+
+  // Build unified upcoming payment list from expected bills (by billing day in the window)
+  interface UpcomingPayment {
+    name: string;
+    amount: number;
+    dueDate: Date;
+    type: string;
+    source: 'subscription' | 'bank_pattern' | 'both';
+    alreadyPaid: boolean;
   }
 
-  const LOAN_CATEGORIES = new Set(['mortgage', 'loan']);
-  const BILL_CATEGORIES = new Set(['utility', 'council_tax', 'water', 'broadband', 'mobile', 'bills']);
+  const payments: UpcomingPayment[] = [];
+  const addedNames = new Set<string>();
+
+  const LOAN_CATEGORIES = new Set(['mortgage', 'loan', 'loans', 'credit']);
+  const BILL_CATEGORIES = new Set(['utility', 'council_tax', 'water', 'broadband', 'mobile', 'bills', 'energy', 'insurance']);
   const FINANCE_KEYWORDS = ['mortgage', 'loan', 'finance', 'credit card', 'lendinvest', 'skipton', 'novuna', 'zopa', 'barclaycard', 'mbna', 'amex', 'american express', 'securepay'];
 
   const getType = (name: string, category: string | null): string => {
@@ -2072,27 +2121,99 @@ async function getUpcomingPayments(
     return 'subscription';
   };
 
+  // 1. Add subscriptions with explicit next_billing_date
+  for (const s of subs) {
+    const key = (s.provider_name || '').toLowerCase().substring(0, 8);
+    addedNames.add(key);
+    const dueDate = new Date(`${s.next_billing_date}T00:00:00`);
+    payments.push({
+      name: s.provider_name,
+      amount: Math.abs(Number(s.amount)),
+      dueDate,
+      type: getType(s.provider_name, s.category),
+      source: 'subscription',
+      alreadyPaid: isPaidThisMonth(s.provider_name, Math.abs(Number(s.amount))),
+    });
+  }
+
+  // 2. Add expected bills from bank patterns that fall within the window AND aren't already added from subscriptions
+  const endDay = endDate.getMonth() === now.getMonth() ? endDate.getDate() : 31;
+  for (const bill of rawBills) {
+    const billingDay = bill.billing_day || 0;
+    // Only include if billing day is in our window (today → today + windowDays)
+    if (billingDay < todayDay || billingDay > endDay) continue;
+
+    const key = (bill.provider_name || '').toLowerCase().substring(0, 8);
+    // Check if already added from subscriptions (avoid duplicates)
+    if (addedNames.has(key)) {
+      // Upgrade source to 'both'
+      const existing = payments.find(p => (p.name || '').toLowerCase().substring(0, 8) === key);
+      if (existing) existing.source = 'both';
+      continue;
+    }
+    addedNames.add(key);
+
+    const expectedAmount = parseFloat(bill.expected_amount) || 0;
+    const dueDate = new Date(year, month - 1, Math.min(billingDay, 28));
+
+    payments.push({
+      name: bill.provider_name,
+      amount: expectedAmount,
+      dueDate,
+      type: bill.is_subscription ? 'subscription' : 'bill',
+      source: 'bank_pattern',
+      alreadyPaid: isPaidThisMonth(bill.provider_name, expectedAmount),
+    });
+  }
+
+  if (payments.length === 0) {
+    return { text: `No payments due in the next ${windowDays} days.` };
+  }
+
+  // Sort by due date
+  payments.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
   const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  const fmtPaymentDate = (dateStr: string): string => {
-    const d = new Date(`${dateStr}T00:00:00`);
+  const fmtPaymentDate = (d: Date): string => {
+    const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
     return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
   };
 
-  const total = data.reduce((sum, s) => sum + Math.abs(Number(s.amount)), 0);
+  const unpaidPayments = payments.filter(p => !p.alreadyPaid);
+  const paidPayments = payments.filter(p => p.alreadyPaid);
+  const totalDue = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = paidPayments.reduce((sum, p) => sum + p.amount, 0);
   const label = windowDays === 7 ? 'this week' : `in the next ${windowDays} days`;
 
-  let text = `\u{1F4B0} *Upcoming payments ${label}:*\n`;
-  for (const s of data) {
-    const dateLabel = fmtPaymentDate(s.next_billing_date);
-    const type = getType(s.provider_name, s.category);
-    const typeLabel = type !== 'subscription' ? ` _(${type})_` : '';
-    text += `\n\u{1F4C5} ${dateLabel} \u2014 *${s.provider_name}*: ${fmt(Number(s.amount))}${typeLabel}`;
+  let text = `💰 *Upcoming payments ${label}:*\n`;
+
+  if (unpaidPayments.length > 0) {
+    for (const p of unpaidPayments) {
+      const dateLabel = fmtPaymentDate(p.dueDate);
+      const typeLabel = p.type !== 'subscription' ? ` _(${p.type})_` : '';
+      const sourceTag = p.source === 'bank_pattern' ? ' 🏦' : '';
+      text += `\n📅 ${dateLabel} — *${p.name}*: ${fmt(p.amount)}${typeLabel}${sourceTag}`;
+    }
+    text += `\n\n*Total due: ${fmt(totalDue)}*`;
+  } else {
+    text += `\nAll ${payments.length} payments in this period have already been paid! ✅`;
   }
 
-  text += `\n\n*Total due: ${fmt(total)}*`;
-  text += '\n\n_Reply "details [payment name]" for more info._';
+  if (paidPayments.length > 0) {
+    text += `\n\n✅ *Already paid (${paidPayments.length}):*`;
+    for (const p of paidPayments) {
+      text += `\n  ✓ ${p.name}: ${fmt(p.amount)}`;
+    }
+    text += `\n  _Total paid: ${fmt(totalPaid)}_`;
+  }
+
+  if (payments.some(p => p.source === 'bank_pattern')) {
+    text += '\n\n_🏦 = detected from your bank transaction history_';
+  }
 
   return { text };
 }
@@ -2635,18 +2756,38 @@ async function getExpectedBills(
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
+  const todayDay = now.getDate();
 
-  const { data: rawBills, error } = await supabase.rpc('get_expected_bills', {
-    p_user_id: userId,
-    p_year: year,
-    p_month: month,
-  });
+  // Fetch expected bills AND actual transactions this month in parallel
+  const startOfMonth = new Date(year, month - 1, 1).toISOString();
+  const endOfMonth = new Date(year, month, 1).toISOString();
 
-  if (error) {
-    return { text: `Unable to load expected bills: ${error.message}` };
+  const [billsRes, txnRes, subsRes] = await Promise.all([
+    supabase.rpc('get_expected_bills', {
+      p_user_id: userId,
+      p_year: year,
+      p_month: month,
+    }),
+    supabase
+      .from('bank_transactions')
+      .select('id, merchant_name, description, amount, timestamp')
+      .eq('user_id', userId)
+      .lt('amount', 0)  // debits only
+      .gte('timestamp', startOfMonth)
+      .lt('timestamp', endOfMonth)
+      .order('timestamp', { ascending: false }),
+    supabase
+      .from('subscriptions')
+      .select('provider_name, amount, next_billing_date, status')
+      .eq('user_id', userId)
+      .eq('status', 'active'),
+  ]);
+
+  if (billsRes.error) {
+    return { text: `Unable to load expected bills: ${billsRes.error.message}` };
   }
 
-  const bills = (rawBills ?? []).filter(
+  const bills = (billsRes.data ?? []).filter(
     (b: any) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
   );
 
@@ -2656,40 +2797,156 @@ async function getExpectedBills(
     };
   }
 
-  // Check which have been paid this month
-  const startOfMonth = new Date(year, month - 1, 1).toISOString();
-  const { data: paidTxns } = await supabase
-    .from('bank_transactions')
-    .select('merchant_name, description')
-    .eq('user_id', userId)
-    .lt('amount', 0)
-    .gte('timestamp', startOfMonth);
+  // Build a list of actual debits this month with normalised names for matching
+  const actualDebits = (txnRes.data ?? []).map(t => {
+    const raw = (t.merchant_name || t.description || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    // Remove trailing reference numbers/dates that pollute matching
+    const cleaned = raw.replace(/\s+\d{6,}.*$/, '').replace(/\s+(dd|ref|mandate)\b.*$/i, '').trim();
+    return {
+      name: cleaned,
+      nameTokens: cleaned.split(/\s+/).filter(Boolean),
+      amount: Math.abs(Number(t.amount)),
+      date: new Date(t.timestamp),
+    };
+  });
 
-  const paidNames = (paidTxns ?? []).map(t =>
-    ((t.merchant_name || t.description || '').toLowerCase().substring(0, 20)),
-  );
+  // Intelligent matching: a bill is "paid" if we find a transaction this month where:
+  //  1. The normalised names share significant overlap (token-based), AND
+  //  2. The amount is within 20% of expected (bills fluctuate slightly)
+  const matchBillToTransaction = (billName: string, expectedAmount: number) => {
+    const normBill = billName.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const billTokens = normBill.split(/\s+/).filter(Boolean);
+    // Get the most significant token (longest, most unique word — skip common words)
+    const COMMON_WORDS = new Set(['ltd', 'limited', 'uk', 'plc', 'the', 'direct', 'debit', 'payment', 'to', 'from', 'card']);
+    const significantBillTokens = billTokens.filter(t => t.length >= 3 && !COMMON_WORDS.has(t));
+
+    let bestMatch: { amount: number; date: Date } | null = null;
+    let bestScore = 0;
+
+    for (const debit of actualDebits) {
+      // Score 1: Token overlap (how many significant bill tokens appear in the transaction name)
+      let tokenMatches = 0;
+      for (const bt of significantBillTokens) {
+        if (debit.name.includes(bt) || debit.nameTokens.some((dt: string) => dt.includes(bt) || bt.includes(dt))) {
+          tokenMatches++;
+        }
+      }
+      const tokenScore = significantBillTokens.length > 0 ? tokenMatches / significantBillTokens.length : 0;
+
+      // Score 2: Amount proximity (within 20% tolerance for variable bills like energy)
+      const amountDiff = Math.abs(debit.amount - expectedAmount);
+      const amountTolerance = expectedAmount * 0.20;
+      const amountScore = amountDiff <= amountTolerance ? 1 : amountDiff <= expectedAmount * 0.5 ? 0.5 : 0;
+
+      // Combined: need at least 50% token overlap AND reasonable amount match
+      const combined = tokenScore * 0.6 + amountScore * 0.4;
+      if (tokenScore >= 0.5 && combined > bestScore) {
+        bestScore = combined;
+        bestMatch = { amount: debit.amount, date: debit.date };
+      }
+    }
+
+    // Also check direct exact-ish name match (first 6+ chars) for short provider names
+    if (!bestMatch && normBill.length >= 4) {
+      const prefix = normBill.substring(0, Math.min(normBill.length, 8));
+      for (const debit of actualDebits) {
+        if (debit.name.startsWith(prefix) || debit.name.includes(prefix)) {
+          const amountDiff = Math.abs(debit.amount - expectedAmount);
+          if (amountDiff <= expectedAmount * 0.25) {
+            bestMatch = { amount: debit.amount, date: debit.date };
+            break;
+          }
+        }
+      }
+    }
+
+    return bestMatch;
+  };
 
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  let paid = 0;
-  let unpaid = 0;
+  let paidCount = 0;
+  let unpaidCount = 0;
   let totalExpected = 0;
+  let totalPaid = 0;
+  let overdueCount = 0;
 
-  let text = `*Expected Bills — ${monthLabel}*\n\n`;
-
+  const lines: string[] = [];
   const sorted = [...bills].sort((a: any, b: any) => a.billing_day - b.billing_day);
+
   for (const bill of sorted) {
-    const amount = parseFloat(bill.expected_amount) || 0;
-    totalExpected += amount;
-    const nameNorm = (bill.provider_name || '').toLowerCase().substring(0, 15);
-    const isPaid = paidNames.some(p => p.includes(nameNorm.substring(0, 8)) || nameNorm.includes(p.substring(0, 8)));
-    const status = isPaid ? '✅' : '⏳';
-    if (isPaid) paid++; else unpaid++;
-    const day = bill.billing_day ? ` (day ${bill.billing_day})` : '';
-    text += `${status} ${bill.provider_name}${day} — *${fmt(amount)}*\n`;
+    const expectedAmount = parseFloat(bill.expected_amount) || 0;
+    totalExpected += expectedAmount;
+    const match = matchBillToTransaction(bill.provider_name, expectedAmount);
+    const billingDay = bill.billing_day || 0;
+    const isDue = billingDay <= todayDay;
+
+    let status: string;
+    let detail = '';
+
+    if (match) {
+      // Bill was paid — check if amount differs from expected
+      paidCount++;
+      totalPaid += match.amount;
+      const diff = match.amount - expectedAmount;
+      if (Math.abs(diff) > 1) {
+        // Amount differs — flag it
+        const direction = diff > 0 ? '⬆️' : '⬇️';
+        detail = ` — paid ${fmt(match.amount)} (${direction} ${fmt(Math.abs(diff))} vs expected)`;
+      } else {
+        detail = ` — paid ${fmt(match.amount)}`;
+      }
+      status = '✅';
+    } else if (isDue) {
+      // Bill was due but no matching transaction found — flag as potentially missed
+      unpaidCount++;
+      overdueCount++;
+      status = '❌';
+      detail = ` — *due day ${billingDay}, no payment found*`;
+    } else {
+      // Bill not yet due
+      unpaidCount++;
+      status = '⏳';
+      const daysUntil = billingDay - todayDay;
+      detail = daysUntil === 1 ? ' — due tomorrow' : ` — due in ${daysUntil} days`;
+    }
+
+    const day = billingDay ? ` (day ${billingDay})` : '';
+    lines.push(`${status} ${bill.provider_name}${day} — *${fmt(expectedAmount)}*${detail}`);
   }
 
-  text += `\n*Total expected:* ${fmt(totalExpected)}\n`;
-  text += `*Paid:* ${paid} | *Outstanding:* ${unpaid}`;
+  let text = `*Expected Bills — ${monthLabel}*\n\n`;
+  text += lines.join('\n');
+  text += `\n\n*Total expected:* ${fmt(totalExpected)}`;
+  text += `\n*Paid so far:* ${fmt(totalPaid)} (${paidCount} bills)`;
+  text += `\n*Outstanding:* ${unpaidCount} bills`;
+
+  if (overdueCount > 0) {
+    text += `\n\n⚠️ *${overdueCount} bill${overdueCount > 1 ? 's' : ''} past due date with no matching payment found.* Check your bank account or these may be overdue.`;
+  }
+
+  // Cross-reference with subscriptions that have next_billing_date this month but weren't in expected bills
+  const subsDueThisMonth = (subsRes.data ?? []).filter(s => {
+    if (!s.next_billing_date) return false;
+    const nbd = new Date(s.next_billing_date);
+    return nbd.getFullYear() === year && nbd.getMonth() + 1 === month;
+  });
+  const billNames = new Set(bills.map((b: any) => (b.provider_name || '').toLowerCase().substring(0, 6)));
+  const missingSubs = subsDueThisMonth.filter(s => {
+    const prefix = (s.provider_name || '').toLowerCase().substring(0, 6);
+    return !billNames.has(prefix);
+  });
+  if (missingSubs.length > 0) {
+    text += '\n\n📋 *Also tracked in your subscriptions:*\n';
+    for (const s of missingSubs) {
+      const nbd = new Date(s.next_billing_date);
+      const dayNum = nbd.getDate();
+      const isDue = dayNum <= todayDay;
+      const subMatch = matchBillToTransaction(s.provider_name, Number(s.amount));
+      const icon = subMatch ? '✅' : isDue ? '❌' : '⏳';
+      const note = subMatch ? ` — paid ${fmt(subMatch.amount)}` : isDue ? ' — *no payment found*' : '';
+      text += `${icon} ${s.provider_name} (day ${dayNum}) — *${fmt(Number(s.amount))}*${note}\n`;
+    }
+  }
 
   return { text };
 }
