@@ -1013,14 +1013,25 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const supabase = getAdmin();
     const chatId = ctx.chat.id;
     const userMessage = ctx.message.text;
+    console.log(`[UserBot] Received message from chat_id=${chatId}, update_id=${updateId}`);
 
     // Check linked session
-    const { data: session } = await supabase
-      .from('telegram_sessions')
-      .select('user_id, last_message_at')
-      .eq('telegram_chat_id', chatId)
-      .eq('is_active', true)
-      .single();
+    let session: { user_id: string; last_message_at: string | null } | null = null;
+    try {
+      const { data, error } = await supabase
+        .from('telegram_sessions')
+        .select('user_id, last_message_at')
+        .eq('telegram_chat_id', chatId)
+        .eq('is_active', true)
+        .single();
+      if (error && error.code !== 'PGRST116') {
+        console.error('[UserBot] Session lookup error:', error);
+      }
+      session = data ?? null;
+    } catch (e) {
+      console.error('[UserBot] Session lookup threw:', e);
+      return ctx.reply('Sorry, I had trouble connecting. Please try again in a moment.');
+    }
 
     if (!session) {
       return ctx.reply(
@@ -1045,11 +1056,21 @@ Return JSON: { "subject": "...", "body": "..." }`;
     }
 
     // Verify Pro subscription
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('subscription_tier, subscription_status, stripe_subscription_id')
-      .eq('id', session.user_id)
-      .single();
+    let profile: { subscription_tier: string | null; subscription_status: string | null; stripe_subscription_id: string | null } | null = null;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('subscription_tier, subscription_status, stripe_subscription_id')
+        .eq('id', session.user_id)
+        .single();
+      if (error) {
+        console.error('[UserBot] Profile lookup error:', error);
+      }
+      profile = data ?? null;
+    } catch (e) {
+      console.error('[UserBot] Profile lookup threw:', e);
+      return ctx.reply('Sorry, I had trouble verifying your subscription. Please try again in a moment.');
+    }
 
     const tier = profile?.subscription_tier;
     const status = profile?.subscription_status;
@@ -1081,7 +1102,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
 
     // Log inbound (await so it's in DB before getConversationHistory runs)
     const startTime = Date.now();
-    await supabase
+    const { error: logError } = await supabase
       .from('telegram_message_log')
       .insert({
         user_id: session.user_id,
@@ -1089,6 +1110,9 @@ Return JSON: { "subject": "...", "body": "..." }`;
         direction: 'inbound',
         message_text: userMessage,
       });
+    if (logError) {
+      console.error('[UserBot] Failed to log inbound message:', logError);
+    }
 
 
 
@@ -1137,9 +1161,25 @@ Return JSON: { "subject": "...", "body": "..." }`;
       }
     } catch (error) {
       console.error('[UserBot] Error processing message:', error);
-      await ctx.reply(
-        'Sorry, I ran into an issue. Please try again in a moment.',
-      );
+      try {
+        await ctx.reply('Sorry, I ran into an issue. Please try again in a moment.');
+      } catch (replyErr) {
+        console.error('[UserBot] Failed to send error reply:', replyErr);
+      }
+    }
+  });
+
+  // -------------------------------------------------------
+  // Global error handler — catches any uncaught middleware error
+  // Without this, grammy silently returns 200 with no reply to Paul
+  // -------------------------------------------------------
+  bot.catch(async (err) => {
+    const ctx = err.ctx;
+    console.error(`[UserBot] Uncaught middleware error (update_id=${ctx.update.update_id}):`, err.error);
+    try {
+      await ctx.reply('Sorry, something went wrong on my end. Please try again in a moment.');
+    } catch (replyErr) {
+      console.error('[UserBot] Failed to send error reply in bot.catch:', replyErr);
     }
   });
 
