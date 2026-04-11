@@ -84,27 +84,27 @@ function cleanRateLimitMap() {
 // Auth
 // ---------------------------------------------------------------------------
 
-function validateAuth(req: NextRequest): string | true {
+function validateAuth(req: NextRequest): boolean {
   const token = process.env.MCP_BEARER_TOKEN?.trim();
   if (!token) {
     // FAIL CLOSED: if no token is configured, reject everything
     console.error("[MCP] SECURITY: MCP_BEARER_TOKEN not configured â rejecting all requests");
-    return "NO_TOKEN_CONFIGURED";
+    return false;
   }
   const auth = req.headers.get("authorization")?.trim();
-  if (!auth) return "NO_AUTH_HEADER";
+  if (!auth) return false;
 
   // Constant-time comparison to prevent timing attacks
   const expected = `Bearer ${token}`;
   if (auth.length !== expected.length) {
     console.error(`[MCP] AUTH: Length mismatch \u2014 got ${auth.length}, expected ${expected.length}`);
-    return `LENGTH_MISMATCH:got_${auth.length}_exp_${expected.length}_tok_${token.substring(0,4)}`;
+    return false;
   }
   let result = 0;
   for (let i = 0; i < auth.length; i++) {
     result |= auth.charCodeAt(i) ^ expected.charCodeAt(i);
   }
-  return result === 0 ? true : `TOKEN_MISMATCH:first4_${token.substring(0,4)}`;
+  return result === 0;
 }
 
 function getClientIp(req: NextRequest): string {
@@ -510,10 +510,9 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
   const ip = getClientIp(req);
 
   // 1. Auth check (fail closed)
-  const authResult = validateAuth(req);
-  if (authResult !== true) {
+  if (!validateAuth(req)) {
     await logAudit("AUTH_FAIL", ip, false, req.headers.get("user-agent") || "unknown");
-    return NextResponse.json({ error: "Unauthorized", debug: authResult }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // 2. Rate limit
