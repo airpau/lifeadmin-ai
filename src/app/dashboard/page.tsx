@@ -18,7 +18,7 @@ import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
 import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
-import BankPickerModal from '@/components/BankPickerModal';
+import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { calculateTotalSavings, parseComparisonDeals } from '@/lib/savings-utils';
 
 export default function DashboardPage() {
@@ -677,7 +677,7 @@ export default function DashboardPage() {
                 </button>
               ) : (
                 <button
-                  onClick={() => setShowBankPicker(true)}
+                  onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
                   className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
                 >
                   Connect Bank
@@ -839,7 +839,7 @@ export default function DashboardPage() {
           {/* Add connection buttons */}
           <div className="flex gap-3 pt-2">
             <button
-              onClick={() => setShowBankPicker(true)}
+              onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
               className="flex items-center gap-1.5 text-sm text-mint-400 bg-mint-400/10 px-3 py-1.5 rounded-lg border border-mint-400/30 hover:bg-mint-400/20 transition-all"
             >
               <Building2 className="h-3.5 w-3.5" />
