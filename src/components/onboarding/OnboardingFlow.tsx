@@ -6,7 +6,7 @@ import {
   FileText, Building2, X, ArrowRight, Sparkles, CheckCircle2,
 } from 'lucide-react';
 import { capture } from '@/lib/posthog';
-import BankPickerModal from '@/components/BankPickerModal';
+import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 
 interface OnboardingFlowProps {
   hasLetter: boolean;
@@ -157,7 +157,7 @@ export default function OnboardingFlow({
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => { capture('onboarding_cta_click', { step: 'bank' }); setShowBankPicker(true); }}
+          onClick={() => { capture('onboarding_cta_click', { step: 'bank' }); if (!connectBankDirect()) setShowBankPicker(true); }}
           className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all text-sm"
         >
           <Building2 className="h-4 w-4" />
