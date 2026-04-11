@@ -19,10 +19,12 @@ interface BankPickerModalProps {
 /**
  * For TrueLayer mode, call this directly from onClick handlers
  * instead of opening the modal. The useEffect approach is unreliable.
+ * Passes the current page path as returnTo so the callback redirects back here.
  */
 export function connectBankDirect() {
   if (OPEN_BANKING_PROVIDER === 'truelayer') {
-    window.location.href = '/api/auth/truelayer';
+    const returnTo = encodeURIComponent(window.location.pathname);
+    window.location.href = `/api/auth/truelayer?returnTo=${returnTo}`;
     return true;
   }
   return false;
