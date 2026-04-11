@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Wallet, Building2, Shield, RefreshCw, X, MessageCircle,
   ArrowLeft, ArrowRight, HelpCircle, AlertTriangle, Clock, Send, Mail, Zap, Loader2,
@@ -66,6 +67,8 @@ export default function MoneyHubPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const searchParams = useSearchParams();
+
   // Email scanning
   const [scanning, setScanning] = useState(false);
 
@@ -109,6 +112,18 @@ export default function MoneyHubPage() {
 
   // ─── Initial load ──────────────────────────────────────────────────────
 
+  // Handle ?connected=true redirect after bank reconnection
+  useEffect(() => {
+    if (searchParams.get('connected') === 'true') {
+      setExpiredConnections([]); // Clear expired state immediately
+      setBankPromptDismissed(false);
+      showToast('Bank connected! Syncing your transactions...', 'success');
+      // Trigger a full refresh to pick up new connection and transactions
+      refreshData();
+      fetchExpectedBills();
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     refreshData();
     fetchExpectedBills();
@@ -130,8 +145,9 @@ export default function MoneyHubPage() {
         const { data: conns } = await supabase.from('bank_connections')
           .select('id, bank_name, status')
           .eq('user_id', user.id)
-          .in('status', ['expired', 'token_expired', 'expired_legacy']);
+          .in('status', ['expired', 'token_expired', 'expired_legacy', 'revoked', 'expiring_soon']);
         if (conns?.length) setExpiredConnections(conns);
+        else setExpiredConnections([]); // Clear if all now active
 
         const stored = localStorage.getItem('bank_prompt_dismissed_at');
         if (stored) {
