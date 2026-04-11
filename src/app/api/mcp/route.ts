@@ -84,21 +84,22 @@ function cleanRateLimitMap() {
 // Auth
 // ---------------------------------------------------------------------------
 
-function validateAuth(req: NextRequest): boolean {
+function validateAuth(req: NextRequest): string | true {
   const token = process.env.MCP_BEARER_TOKEN?.trim();
   if (!token) {
     // FAIL CLOSED: if no token is configured, reject everything
+    // FAIL CLOSED
     console.error("[MCP] SECURITY: MCP_BEARER_TOKEN not configured â rejecting all requests");
     return false;
   }
   const auth = req.headers.get("authorization")?.trim();
-  if (!auth) return false;
+  if (!auth) return "NO_AUTH_HEADER";
 
   // Constant-time comparison to prevent timing attacks
   const expected = `Bearer ${token}`;
   if (auth.length !== expected.length) {
     console.error(`[MCP] AUTH: Length mismatch \u2014 got ${auth.length}, expected ${expected.length}`);
-    return false;
+    return `LENGTH_MISMATCH:got_${auth.length}_exp_${expected.length}_tok_${token.substring(0,4)}`;
   }
   let result = 0;
   for (let i = 0; i < auth.length; i++) {
@@ -510,9 +511,10 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
   const ip = getClientIp(req);
 
   // 1. Auth check (fail closed)
-  if (!validateAuth(req)) {
+  const authResult = validateAuth(req);
+  if (authResult !== true) {
     await logAudit("AUTH_FAIL", ip, false, req.headers.get("user-agent") || "unknown");
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized", debug: authResult }, { status: 401 });
   }
 
   // 2. Rate limit
