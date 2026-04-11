@@ -17,7 +17,7 @@ import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 import { createClient } from '@/lib/supabase/client';
-import BankPickerModal from '@/components/BankPickerModal';
+import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 
 interface ContractAlert {
   id: string;
@@ -286,7 +286,7 @@ export default function SubscriptionsPage() {
     // Auto-open bank picker if redirected from profile
     const connectBank = searchParams.get('connectBank');
     if (connectBank === 'true') {
-      setShowBankPicker(true);
+      if (!connectBankDirect()) setShowBankPicker(true);
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('connectBank');
       window.history.replaceState({}, '', cleanUrl.toString());
@@ -1402,7 +1402,7 @@ export default function SubscriptionsPage() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setShowBankPicker(true)}
+                    onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
                     className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                   >
                     <RefreshCw className="h-4 w-4" />
@@ -1480,7 +1480,7 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
                   <button
-                    onClick={() => setShowBankPicker(true)}
+                    onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
                   >
                     <Building2 className="h-4 w-4" />
