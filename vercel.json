@@ -163,6 +163,38 @@
     {
       "path": "/api/cron/telegram-scheduler",
       "schedule": "0 5,8,9,10,13,18 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=support-triager",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=reviewer",
+      "schedule": "0 */3 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=bug-triager",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=alert-tester",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=digest-compiler",
+      "schedule": "0 7,12,17,20 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=email-marketer",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=ux-auditor",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/managed-agents?agent=feature-tester",
+      "schedule": "0 10 * * *"
     }
   ]
 }
