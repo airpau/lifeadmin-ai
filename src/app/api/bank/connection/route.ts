@@ -22,11 +22,12 @@ export async function GET() {
       .eq('status', 'active')
       .order('connected_at', { ascending: false }),
 
+    // Match all expired-like statuses so the UI can show reconnect prompts
     supabase
       .from('bank_connections')
       .select('id, provider_id, status, last_synced_at, connected_at, account_ids, bank_name, account_display_names')
       .eq('user_id', user.id)
-      .eq('status', 'expired')
+      .in('status', ['expired', 'token_expired', 'expired_legacy', 'expiring_soon', 'revoked'])
       .order('connected_at', { ascending: false }),
   ]);
 
