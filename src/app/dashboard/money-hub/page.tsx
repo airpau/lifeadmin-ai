@@ -10,7 +10,7 @@ import {
 import Link from 'next/link';
 import { fmtNum } from '@/lib/format';
 import { createClient } from '@/lib/supabase/client';
-import BankPickerModal from '@/components/BankPickerModal';
+import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 
 import OverviewPanel from './OverviewPanel';
 import SpendingPanel from './SpendingPanel';
@@ -265,7 +265,7 @@ export default function MoneyHubPage() {
           <p className="text-slate-400 max-w-md mx-auto mb-6">
             We analyse your Open Banking transactions to build a complete financial picture — spending, income, subscriptions, budgets, and savings goals.
           </p>
-          <button onClick={() => setShowBankPicker(true)} className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all">
+          <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all">
             <Building2 className="h-5 w-5" /> Connect Bank Account
           </button>
           <p className="text-slate-500 text-xs mt-3">FCA regulated via Yapily · Read-only access · Takes 2 minutes</p>
@@ -446,7 +446,7 @@ export default function MoneyHubPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowBankPicker(true)} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1.5 rounded-lg text-xs">Reconnect</button>
+            <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1.5 rounded-lg text-xs">Reconnect</button>
             <button onClick={() => { setBankPromptDismissed(true); localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString()); }} className="text-slate-500 hover:text-white"><X className="h-4 w-4" /></button>
           </div>
         </div>
@@ -593,7 +593,7 @@ export default function MoneyHubPage() {
               <Building2 className="h-4 w-4 text-slate-400" />
               Connected Accounts ({data.accounts.length})
             </h3>
-            <button onClick={() => setShowBankPicker(true)} className="text-mint-400 hover:text-mint-300 text-xs font-medium">+ Add bank</button>
+            <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-mint-400 hover:text-mint-300 text-xs font-medium">+ Add bank</button>
           </div>
           <div className="flex flex-wrap gap-2">
             {data.accounts.map((acc: any) => (
