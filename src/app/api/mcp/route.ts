@@ -24,7 +24,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -522,107 +522,25 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }
 
-  // 3. Body size check
-  const body = await req.text();
-  if (body.length > MAX_BODY_SIZE) {
-    await logAudit("BODY_TOO_LARGE", ip, false, `${body.length} bytes`);
+  // 3. Body size check (clone to preserve body for the transport)
+  const cloned = req.clone();
+  const bodyText = await cloned.text();
+  if (bodyText.length > MAX_BODY_SIZE) {
+    await logAudit("BODY_TOO_LARGE", ip, false, `${bodyText.length} bytes`);
     return NextResponse.json({ error: "Request body too large" }, { status: 413 });
   }
 
-  // 4. Create stateless MCP server + transport
+  // 4. Create stateless MCP server + Web Standard transport
   const mcpServer = createPaybackerMcpServer();
-  const transport = new StreamableHTTPServerTransport({
+  const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // Stateless — no session tracking needed
   });
 
   await mcpServer.connect(transport);
 
-  // 5. Convert NextRequest headers
-  const headers: Record<string, string> = {};
-  req.headers.forEach((value, key) => {
-    headers[key] = value;
-  });
-
-  // 6. Handle via transport
-  const response = await new Promise<Response>((resolve) => {
-    const mockRes = {
-      statusCode: 200,
-      headers: {} as Record<string, string>,
-      body: "" as string,
-      setHeader(name: string, value: string) {
-        this.headers[name] = value;
-      },
-      writeHead(status: number, hdrs?: Record<string, string>) {
-        this.statusCode = status;
-        if (hdrs) Object.assign(this.headers, hdrs);
-      },
-      write(chunk: unknown) {
-        if (chunk instanceof Buffer || chunk instanceof Uint8Array) {
-          this.body += Buffer.from(chunk).toString("utf-8");
-        } else if (typeof chunk === "string") {
-          this.body += chunk;
-        }
-        return true;
-      },
-      end(chunk?: unknown) {
-        if (chunk instanceof Buffer || chunk instanceof Uint8Array) {
-          this.body += Buffer.from(chunk).toString("utf-8");
-        } else if (typeof chunk === "string") {
-          this.body += chunk;
-        }
-        // Strip CORS — this endpoint should not be called from browsers
-        const resHeaders: Record<string, string> = {
-          ...this.headers,
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-          "Cache-Control": "no-store",
-        };
-        resolve(
-          new Response(this.body || null, {
-            status: this.statusCode,
-            headers: resHeaders,
-          })
-        );
-      },
-      on() {
-        return this;
-      },
-      emit() {
-        return false;
-      },
-      flushHeaders() {
-        // noop
-      },
-    };
-
-    const mockReq = {
-      method: req.method,
-      url: "/api/mcp",
-      headers,
-      on(event: string, cb: (data?: unknown) => void) {
-        if (event === "data") cb(Buffer.from(body, "utf-8"));
-        if (event === "end") cb();
-        return this;
-      },
-      emit() {
-        return false;
-      },
-    };
-
-    // Parse body as JSON for the SDK (it expects a parsed object, not raw string)
-    let parsedBody: unknown;
-    try {
-      parsedBody = body ? JSON.parse(body) : undefined;
-    } catch {
-      parsedBody = undefined;
-    }
-
-    transport.handleRequest(
-      mockReq as unknown as import("node:http").IncomingMessage,
-      mockRes as unknown as import("node:http").ServerResponse,
-      parsedBody
-    );
-  });
+  // 5. Handle request directly — NextRequest IS a Web Standard Request
+  //    Pass the original req (body not consumed) to the transport
+  const response = await transport.handleRequest(req);
 
   return response;
 }
