@@ -55,7 +55,7 @@ export default function DashboardPage() {
   const [emailOpportunities, setEmailOpportunities] = useState<any[]>([]);
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [bankSyncing, setBankSyncing] = useState(false);
-  const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null }>>([]);
+  const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
   const supabase = createClient();
@@ -177,6 +177,38 @@ export default function DashboardPage() {
       let hasBankConnection = false;
       let hasStoredAlerts = false;
 
+      // Start deals loading in parallel immediately (non-blocking)
+      const dealsPromise = (async () => {
+        try {
+          const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
+          if (compRes.ok) {
+            const compData = await compRes.json();
+            const { saving: filteredSaving, count: filteredCount, deals: dealsList } = parseComparisonDeals(compData);
+            const compared = compData.subscriptionsCompared || 0;
+            const shouldRefresh = compared === 0 || filteredCount === 0 || (compared > 0 && filteredCount < compared * 0.5) || (compared > 20 && filteredSaving < 500);
+            if (shouldRefresh) {
+              const r = await fetch('/api/subscriptions/compare', { method: 'POST' });
+              if (r.ok) {
+                const freshData = await r.json();
+                const { saving: freshSaving, count: freshCount, deals: freshDeals } = parseComparisonDeals(freshData);
+                setComparisonSaving(freshSaving);
+                setComparisonCount(freshCount);
+                if (freshDeals.length > 0) setComparisonDeals(freshDeals);
+              } else {
+                setComparisonSaving(filteredSaving);
+                setComparisonCount(filteredCount);
+                setComparisonDeals(dealsList);
+              }
+            } else {
+              setComparisonSaving(filteredSaving);
+              setComparisonCount(filteredCount);
+              setComparisonDeals(dealsList);
+            }
+          }
+        } catch {} // Non-critical
+        finally { setDealsLoading(false); }
+      })();
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setLoading(false); return; }
@@ -187,7 +219,7 @@ export default function DashboardPage() {
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
             .eq('user_id', user.id).neq('status', 'resolved').neq('status', 'dismissed'),
-          supabase.from('bank_connections').select('id, bank_name, account_display_names')
+          supabase.from('bank_connections').select('id, bank_name, account_display_names, status')
             .eq('user_id', user.id).neq('status', 'disconnected'),
           supabase.from('tasks').select('id, title, description, type, provider_name, disputed_amount, status, created_at, priority')
             .eq('user_id', user.id).eq('status', 'pending_review')
@@ -366,39 +398,6 @@ export default function DashboardPage() {
         console.error('Error fetching dashboard data:', error);
       } finally {
         setLoading(false);
-      }
-
-        try {
-        const compRes = await fetch('/api/subscriptions/compare?all=1', { method: 'GET' });
-        if (compRes.ok) {
-          const compData = await compRes.json();
-          const { saving: filteredSaving, count: filteredCount, deals: dealsList } = parseComparisonDeals(compData);
-          
-          const compared = compData.subscriptionsCompared || 0;
-          const shouldRefresh = compared === 0 || filteredCount === 0 || (compared > 0 && filteredCount < compared * 0.5) || (compared > 20 && filteredSaving < 500);
-          
-          if (shouldRefresh) {
-            const r = await fetch('/api/subscriptions/compare', { method: 'POST' });
-            if (r.ok) {
-              const freshData = await r.json();
-              const { saving: freshSaving, count: freshCount, deals: freshDeals } = parseComparisonDeals(freshData);
-              setComparisonSaving(freshSaving);
-              setComparisonCount(freshCount);
-              if (freshDeals.length > 0) setComparisonDeals(freshDeals);
-            } else {
-              setComparisonSaving(filteredSaving);
-              setComparisonCount(filteredCount);
-              setComparisonDeals(dealsList);
-            }
-          } else {
-            setComparisonSaving(filteredSaving);
-            setComparisonCount(filteredCount);
-            setComparisonDeals(dealsList);
-          }
-        }
-      } catch {} // Non-critical
-      finally {
-        setDealsLoading(false);
       }
 
       // On-demand price increase detection: if the user has bank data but no
@@ -631,8 +630,8 @@ export default function DashboardPage() {
         </Link>
         <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <Building2 className="h-6 w-6 text-green-400 mb-3" />
-          <p className="text-3xl font-bold text-white">{bankConnected ? 'Connected' : 'Not set up'}</p>
-          <p className="text-slate-400 text-sm">Bank account</p>
+          <p className="text-3xl font-bold text-white">{bankConnected ? (bankAccounts.some(b => b.status === 'active') ? 'Connected' : 'Expired') : 'Not set up'}</p>
+          <p className="text-slate-400 text-sm">Bank account{bankConnected && !bankAccounts.some(b => b.status === 'active') ? ' · needs reconnect' : ''}</p>
         </Link>
       </div>
 
@@ -645,22 +644,32 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Bank Account */}
-            <div className={`rounded-xl border p-4 ${bankConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+            {(() => {
+              const hasActive = bankAccounts.some(b => b.status === 'active');
+              const hasExpired = bankConnected && !hasActive;
+              const borderClass = hasActive ? 'border-green-500/30 bg-green-500/5' : hasExpired ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-500/30 bg-amber-500/5';
+              return (
+            <div className={`rounded-xl border p-4 ${borderClass}`}>
               <div className="flex items-center gap-2 mb-2">
                 <Building2 className="h-5 w-5 text-slate-300" />
                 <span className="text-white font-medium text-sm">Bank Account</span>
               </div>
               <div className="flex items-center gap-1.5 mb-3">
-                {bankConnected ? (
+                {hasActive ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-green-400" />
                     <span className="text-green-400 text-sm">Connected</span>
+                  </>
+                ) : hasExpired ? (
+                  <>
+                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    <span className="text-amber-400 text-sm">Needs reconnect</span>
                   </>
                 ) : (
                   <span className="text-amber-400 text-sm">Not connected</span>
                 )}
               </div>
-              {bankConnected ? (
+              {hasActive ? (
                 <button
                   onClick={async () => {
                     setBankSyncing(true);
@@ -678,12 +687,14 @@ export default function DashboardPage() {
               ) : (
                 <button
                   onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-                  className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
+                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
                 >
-                  Connect Bank
+                  {hasExpired ? 'Reconnect Bank' : 'Connect Bank'}
                 </button>
               )}
             </div>
+              );
+            })()}
 
             {/* Email Inbox */}
             <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
@@ -767,7 +778,11 @@ export default function DashboardPage() {
         {!connectionsCollapsed && <div className="space-y-3 mt-4">
           {/* Bank accounts */}
           {bankAccounts.length > 0 ? (
-            bankAccounts.map(b => (
+            bankAccounts.map(b => {
+              const isActive = b.status === 'active';
+              const statusLabel = isActive ? 'Active' : 'Expired';
+              const statusClass = isActive ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+              return (
               (b.account_display_names && b.account_display_names.length > 0)
                 ? b.account_display_names.map((name, i) => (
                   <div key={`${b.id}-${i}`} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
@@ -780,7 +795,10 @@ export default function DashboardPage() {
                         <p className="text-slate-500 text-xs">Bank account</p>
                       </div>
                     </div>
-                    <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Active</span>
+                    <div className="flex items-center gap-2">
+                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Reconnect</button>}
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
+                    </div>
                   </div>
                 ))
                 : (
@@ -794,10 +812,14 @@ export default function DashboardPage() {
                         <p className="text-slate-500 text-xs">Bank account</p>
                       </div>
                     </div>
-                    <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Active</span>
+                    <div className="flex items-center gap-2">
+                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Reconnect</button>}
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
+                    </div>
                   </div>
                 )
-            ))
+              );
+            })
           ) : (
             <div className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30 border-dashed">
               <div className="flex items-center gap-3">

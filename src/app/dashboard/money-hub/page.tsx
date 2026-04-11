@@ -435,20 +435,29 @@ export default function MoneyHubPage() {
         </div>
       )}
 
-      {/* Expired bank connection warning */}
+      {/* Expired bank connection warning — per-bank reconnect */}
       {expiredConnections.length > 0 && !bankPromptDismissed && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-400" />
-            <div>
-              <p className="text-amber-300 font-semibold text-sm">Bank connection expired</p>
-              <p className="text-slate-400 text-xs">{expiredConnections.map(c => c.bank_name).join(', ')} — reconnect to keep your data up to date</p>
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-400" />
+              <p className="text-amber-300 font-semibold text-sm">Bank connection{expiredConnections.length > 1 ? 's' : ''} expired</p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1.5 rounded-lg text-xs">Reconnect</button>
             <button onClick={() => { setBankPromptDismissed(true); localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString()); }} className="text-slate-500 hover:text-white"><X className="h-4 w-4" /></button>
           </div>
+          <div className="space-y-2">
+            {expiredConnections.map((conn) => (
+              <div key={conn.id} className="flex items-center justify-between bg-navy-950/40 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-amber-400" />
+                  <span className="text-white text-sm font-medium">{conn.bank_name || 'Bank'}</span>
+                  <span className="text-slate-500 text-xs">· expired</span>
+                </div>
+                <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
+              </div>
+            ))}
+          </div>
+          <p className="text-slate-500 text-xs mt-2">Reconnect to keep your data up to date</p>
         </div>
       )}
 
@@ -546,67 +555,82 @@ export default function MoneyHubPage() {
             </h3>
             <Link href="/dashboard/deals" className="text-mint-400 hover:text-mint-300 text-sm font-medium">Browse deals →</Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              onClick={() => scanInbox(false)}
-              disabled={scanning}
-              className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all disabled:opacity-50"
-            >
-              <Mail className="h-5 w-5 text-purple-400 mb-2" />
-              <p className="text-white font-medium text-sm">{scanning ? 'Scanning...' : (alerts.length > 0 ? 'Check for New Alerts' : 'Scan Inbox')}</p>
-              <p className="text-slate-500 text-xs mt-0.5">Detect price increases and overcharges from emails</p>
-            </button>
-            <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all">
-              <Building2 className="h-5 w-5 text-amber-400 mb-2" />
-              <p className="text-white font-medium text-sm">
-                {(data.subscriptions && data.subscriptions.length > 0) ? `Review ${data.subscriptions.length} Subscriptions` : 'Subscription Audit'}
+
+          {/* Email scan results / alerts */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5 text-purple-400" /> Inbox Scan
               </p>
-              <p className="text-slate-500 text-xs mt-0.5">Review and cancel unused subscriptions</p>
-            </Link>
-            <Link href="/dashboard/deals" className="bg-navy-950/50 border border-navy-800 rounded-xl p-4 text-left hover:border-mint-400/30 transition-all">
-              <Zap className="h-5 w-5 text-green-400 mb-2" />
-              <p className="text-white font-medium text-sm">Find Better Deals</p>
-              <p className="text-slate-500 text-xs mt-0.5">Energy, broadband, mobile and insurance</p>
-            </Link>
-          </div>
-          {alerts.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-navy-800">
-              <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Active Alerts ({alerts.length})</p>
+              <button
+                onClick={() => scanInbox(false)}
+                disabled={scanning}
+                className="text-xs text-mint-400 hover:text-mint-300 font-medium disabled:opacity-50"
+              >
+                {scanning ? 'Scanning...' : (alerts.length > 0 ? 'Re-scan' : 'Scan Now')}
+              </button>
+            </div>
+            {alerts.length > 0 ? (
               <div className="space-y-2">
-                {alerts.slice(0, 3).map((a: any) => (
-                  <div key={a.id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-300">{a.title}</span>
-                    {a.value_gbp > 0 && <span className="text-mint-400 font-medium">Save £{fmtNum(a.value_gbp)}</span>}
+                {alerts.slice(0, 5).map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg p-3 border border-navy-800">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white font-medium truncate">{a.title}</p>
+                      {a.details && <p className="text-xs text-slate-500 truncate">{a.details}</p>}
+                    </div>
+                    {a.value_gbp > 0 && <span className="text-mint-400 text-sm font-semibold whitespace-nowrap ml-2">Save £{fmtNum(a.value_gbp)}</span>}
                   </div>
                 ))}
               </div>
+            ) : (
+              <p className="text-slate-500 text-xs">No alerts found. Scan your inbox to detect overcharges and price increases.</p>
+            )}
+          </div>
+
+          {/* Subscriptions that could be reviewed */}
+          {data.subscriptions && data.subscriptions.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-amber-400" /> Active Subscriptions
+                </p>
+                <Link href="/dashboard/subscriptions" className="text-xs text-mint-400 hover:text-mint-300 font-medium">View all →</Link>
+              </div>
+              <div className="space-y-2">
+                {data.subscriptions
+                  .filter((s: any) => s.status === 'active')
+                  .slice(0, 5)
+                  .map((s: any) => (
+                    <div key={s.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg p-3 border border-navy-800">
+                      <span className="text-sm text-white truncate">{s.provider_name}</span>
+                      <span className="text-amber-400 text-sm font-medium whitespace-nowrap ml-2">£{fmtNum(parseFloat(s.amount) || 0)}/{s.billing_cycle === 'yearly' ? 'yr' : 'mo'}</span>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
+
+          {/* Quick actions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
+              <Building2 className="h-5 w-5 text-amber-400 shrink-0" />
+              <div>
+                <p className="text-white font-medium text-sm">{(data.subscriptions && data.subscriptions.filter((s: any) => s.status === 'active').length > 0) ? `Manage ${data.subscriptions.filter((s: any) => s.status === 'active').length} subscriptions` : 'Subscription Audit'}</p>
+                <p className="text-slate-500 text-xs">Review, cancel, or switch</p>
+              </div>
+            </Link>
+            <Link href="/dashboard/deals" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
+              <Zap className="h-5 w-5 text-green-400 shrink-0" />
+              <div>
+                <p className="text-white font-medium text-sm">Find Better Deals</p>
+                <p className="text-slate-500 text-xs">Energy, broadband, mobile, insurance</p>
+              </div>
+            </Link>
+          </div>
         </div>
       )}
 
-      {/* Bank Accounts Info */}
-      {data.accounts.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-white font-semibold text-base flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-slate-400" />
-              Connected Accounts ({data.accounts.length})
-            </h3>
-            <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-mint-400 hover:text-mint-300 text-xs font-medium">+ Add bank</button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {data.accounts.map((acc: any) => (
-              <div key={acc.id} className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 ${
-                acc.status === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              }`}>
-                {acc.bank_name}
-                {acc.status !== 'active' && <AlertTriangle className="h-3 w-3" />}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Bank accounts info removed — shown in expired banner and header sync area */}
 
       {/* PRO UPGRADE NUDGE */}
       {!isPro && (
