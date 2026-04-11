@@ -69,6 +69,28 @@ async function sendChunked(
 }
 
 // ============================================================
+// safeEdit — edit a Telegram message; fall back to a new message if edit fails
+// (messages can't be edited after 48h, or if they were already edited to the same text)
+// ============================================================
+async function safeEdit(
+  api: Bot<UserBotContext>['api'],
+  chatId: number,
+  msgId: number | undefined,
+  text: string,
+  parseMode: 'Markdown' | 'HTML' | undefined = 'Markdown',
+): Promise<void> {
+  if (msgId) {
+    try {
+      await api.editMessageText(chatId, msgId, text, { parse_mode: parseMode });
+      return;
+    } catch {
+      // Edit failed (too old, already same text, etc.) — fall through to sendMessage
+    }
+  }
+  await api.sendMessage(chatId, text, { parse_mode: parseMode });
+}
+
+// ============================================================
 // Constants
 // ============================================================
 const RATE_LIMIT_PER_HOUR = 200;
@@ -489,9 +511,16 @@ export function createUserBot(): Bot<UserBotContext> {
   bot.callbackQuery(/^approve_(.+)$/, async (ctx) => {
     const actionId = ctx.match[1];
     const supabase = getAdmin();
-    const chatId = ctx.chat?.id;
+    // Extract chatId and msgId from the raw update — more reliable than ctx.chatId shorthand
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
 
     await ctx.answerCallbackQuery({ text: 'Saving your letter...' });
+
+    if (!chatId) {
+      console.error('[UserBot] approve_: chatId unavailable');
+      return;
+    }
 
     const { data: pending } = await supabase
       .from('telegram_pending_actions')
@@ -501,10 +530,12 @@ export function createUserBot(): Bot<UserBotContext> {
       .single();
 
     if (!pending) {
-      return ctx.editMessageText('This action has expired. Please ask me to draft the letter again.');
+      await safeEdit(bot.api, chatId, msgId, 'This action has expired. Please ask me to draft the letter again.');
+      return;
     }
     if (new Date(pending.expires_at) < new Date()) {
-      return ctx.editMessageText('This action expired. Please ask me to draft the letter again.');
+      await safeEdit(bot.api, chatId, msgId, 'This action expired. Please ask me to draft the letter again.');
+      return;
     }
 
     const payload = pending.payload as {
@@ -562,12 +593,14 @@ export function createUserBot(): Bot<UserBotContext> {
     // Delete pending action
     await supabase.from('telegram_pending_actions').delete().eq('id', actionId);
 
-    await ctx.editMessageText(
+    await safeEdit(
+      bot.api,
+      chatId,
+      msgId,
       `✅ *Letter saved!*\n\n` +
         `Your complaint to ${payload.provider} has been saved to your Disputes dashboard.\n\n` +
         `I'll remind you in 14 days if you haven't had a response — you can then escalate to the relevant regulator or ombudsman.\n\n` +
         `View it at: paybacker.co.uk/dashboard/disputes`,
-      { parse_mode: 'Markdown' },
     );
   });
 
@@ -575,23 +608,31 @@ export function createUserBot(): Bot<UserBotContext> {
   // Callback: Cancel draft letter
   // -------------------------------------------------------
   bot.callbackQuery(/^cancel_(.+)$/, async (ctx) => {
+    // Answer FIRST — always, before any async operations that might throw
+    await ctx.answerCallbackQuery();
     const actionId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
 
     await supabase.from('telegram_pending_actions').delete().eq('id', actionId);
-    await ctx.editMessageText('Letter cancelled. Send me a message if you want to try again.');
-    await ctx.answerCallbackQuery();
+    if (chatId) {
+      await safeEdit(bot.api, chatId, msgId, 'Letter cancelled. Send me a message if you want to try again.');
+    }
   });
 
   // -------------------------------------------------------
   // Callback: Confirm saving (verified_savings)
   // -------------------------------------------------------
   bot.callbackQuery(/^confirm_saving_(.+)$/, async (ctx) => {
+    // Answer FIRST
+    await ctx.answerCallbackQuery({ text: 'Recording saving...' });
     const issueId = ctx.match[1];
     const supabase = getAdmin();
-    const chatId = ctx.chat?.id;
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
 
-    await ctx.answerCallbackQuery({ text: 'Recording saving...' });
+    if (!chatId) return;
 
     const { data: session } = await supabase
       .from('telegram_sessions')
@@ -601,7 +642,8 @@ export function createUserBot(): Bot<UserBotContext> {
       .single();
 
     if (!session) {
-      return ctx.editMessageText('Session expired. Please re-link your account.');
+      await safeEdit(bot.api, chatId, msgId, 'Session expired. Please re-link your account.');
+      return;
     }
 
     const { data: issue } = await supabase
@@ -612,10 +654,11 @@ export function createUserBot(): Bot<UserBotContext> {
       .single();
 
     if (!issue) {
-      return ctx.editMessageText('Issue not found.');
+      await safeEdit(bot.api, chatId, msgId, 'Issue not found — it may have already been resolved.');
+      return;
     }
 
-    // Record verified saving
+    // Record verified saving (same table as website Money Hub)
     await supabase.from('verified_savings').insert({
       user_id: session.user_id,
       saving_type: issue.issue_type === 'price_increase' ? 'price_reverted' : 'dispute_won',
@@ -632,9 +675,11 @@ export function createUserBot(): Bot<UserBotContext> {
       .update({ status: 'resolved', resolved_at: new Date().toISOString() })
       .eq('id', issueId);
 
-    await ctx.editMessageText(
+    await safeEdit(
+      bot.api,
+      chatId,
+      msgId,
       `✅ *Saving recorded!*\n\nGreat news — this has been added to your Verified Savings in your Money Hub dashboard.\n\npaybacker.co.uk/dashboard/money-hub`,
-      { parse_mode: 'Markdown' },
     );
   });
 
@@ -644,11 +689,17 @@ export function createUserBot(): Bot<UserBotContext> {
   bot.callbackQuery(/^draft_dispute_(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery({ text: 'Generating your complaint letter...' });
     const issueId = ctx.match[1];
-    const chatId = ctx.chat?.id;
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
 
+    if (!chatId) {
+      console.error('[UserBot] draft_dispute_: chatId unavailable');
+      return;
+    }
+
     try {
-      await ctx.editMessageText('📝 Generating your complaint letter... This takes about 15 seconds.');
+      await safeEdit(bot.api, chatId, msgId, '📝 Generating your complaint letter... This takes about 15 seconds.');
 
       const [issueResult, sessionResult] = await Promise.all([
         supabase.from('detected_issues').select('*').eq('id', issueId).single(),
@@ -821,6 +872,8 @@ Rules:
   bot.callbackQuery(/^not_me_(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery({ text: 'Got it — flagged' });
     const issueId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
     try {
       const { data: issue } = await supabase
@@ -838,7 +891,9 @@ Rules:
           .eq('id', issue.source_id);
       }
 
-      await ctx.editMessageText("Got it — I've removed this alert. If this charge does increase in future I'll let you know.");
+      if (chatId) {
+        await safeEdit(bot.api, chatId, msgId, "Got it — I've removed this alert. If this charge does increase in future I'll let you know.");
+      }
     } catch (err) {
       console.error('[UserBot] not_me callback error:', err);
     }
@@ -846,15 +901,24 @@ Rules:
 
   // -------------------------------------------------------
   // Callback: Generate cancellation email for expiring contract / renewal
+  // Saves to tasks table — same as the website cancellation email API — one unified system.
   // -------------------------------------------------------
   bot.callbackQuery(/^cxlmail_(.+)$/, async (ctx) => {
+    // Answer FIRST — always, before any async operation that might throw
     await ctx.answerCallbackQuery({ text: 'Generating cancellation email...' });
     const issueId = ctx.match[1];
-    const chatId = ctx.chat?.id;
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
 
+    if (!chatId) {
+      console.error('[UserBot] cxlmail_: chatId unavailable');
+      return;
+    }
+
     try {
-      await ctx.editMessageText('📧 Generating your cancellation email...');
+      // Show loading state — use safeEdit which falls back to sendMessage if edit fails
+      await safeEdit(bot.api, chatId, msgId, '📧 Generating your cancellation email...');
 
       const { data: issue } = await supabase
         .from('detected_issues')
@@ -863,7 +927,7 @@ Rules:
         .single();
 
       if (!issue) {
-        await ctx.api.sendMessage(chatId!, 'Alert not found — it may have already been actioned.');
+        await bot.api.sendMessage(chatId, 'Alert not found — it may have already been actioned.');
         return;
       }
 
@@ -881,20 +945,22 @@ Rules:
       let providerName = 'Provider';
       let category = 'other';
       let amount: number | null = null;
+      let subscriptionId: string | null = null;
 
       if (issue.source_id) {
         const { data: sub } = await supabase
           .from('subscriptions')
-          .select('provider_name, amount, category')
+          .select('id, provider_name, amount, category')
           .eq('id', issue.source_id)
           .single();
         if (sub) {
+          subscriptionId = sub.id;
           providerName = sub.provider_name;
           category = sub.category ?? 'other';
           amount = Number(sub.amount);
         }
       } else {
-        // Infer from title (e.g. "BT contract ends in 7 days")
+        // Infer provider name from alert title (e.g. "BT contract ends in 7 days")
         const match = issue.title?.match(/^(.+?)(?:\s+contract|\s+renews)/i);
         if (match) providerName = match[1];
       }
@@ -937,35 +1003,103 @@ Return JSON: { "subject": "...", "body": "..." }`;
         } catch { /* leave as raw text */ }
       }
 
-      await supabase.from('detected_issues').update({ status: 'actioned', actioned_at: new Date().toISOString() }).eq('id', issueId);
+      // Save to tasks table — SAME as the website /api/subscriptions/cancellation-email endpoint.
+      // This makes the cancellation email appear in the user's task history on the Paybacker dashboard.
+      const { data: task } = await supabase
+        .from('tasks')
+        .insert({
+          user_id: issue.user_id,
+          type: 'cancellation_email',
+          title: `Cancellation: ${providerName}`,
+          description: `Cancellation email generated via Telegram for ${providerName} (${category})`,
+          provider_name: providerName,
+          disputed_amount: amount,
+          status: 'completed',
+        })
+        .select('id')
+        .single();
 
-      await ctx.api.sendMessage(
-        chatId!,
-        `📧 *${subject}*\n\n${body}\n\n_Copy this email and send it directly to ${providerName}. Keep a copy for your records._`,
+      // Log to agent_runs for cost tracking
+      if (task) {
+        await supabase.from('agent_runs').insert({
+          task_id: task.id,
+          user_id: issue.user_id,
+          agent_type: 'cancellation_writer',
+          model_name: 'claude-haiku-4-5-20251001',
+          status: 'completed',
+          input_data: { providerName, amount, category, source: 'telegram' },
+          output_data: { subject, body },
+          input_tokens: response.usage?.input_tokens ?? null,
+          output_tokens: response.usage?.output_tokens ?? null,
+          completed_at: new Date().toISOString(),
+        });
+      }
+
+      // Mark detected_issue as actioned (prevents duplicate alerts on next cron run)
+      await supabase
+        .from('detected_issues')
+        .update({ status: 'actioned', actioned_at: new Date().toISOString() })
+        .eq('id', issueId);
+
+      // Send the generated email to the user in Telegram
+      await bot.api.sendMessage(
+        chatId,
+        `📧 *${subject}*\n\n${body}\n\n_Copy this and send directly to ${providerName}. I've saved it to your task history at paybacker.co.uk/dashboard/tasks_`,
         { parse_mode: 'Markdown' },
       );
     } catch (err) {
       console.error('[UserBot] cxlmail callback error:', err);
-      await ctx.api.sendMessage(chatId!, `Sorry, I couldn't generate the email. Try asking me: "Write a cancellation email for [provider]"`);
+      try {
+        await bot.api.sendMessage(chatId, `Sorry, I couldn't generate the email right now. Try asking me: "Write a cancellation email for [provider]"`);
+      } catch { /* silent */ }
     }
   });
 
   // -------------------------------------------------------
   // Callback: Dismiss issue
+  // Updates detected_issues + subscriptions.dismissed_at — unified with the website.
   // -------------------------------------------------------
   bot.callbackQuery(/^dismiss_(.+)$/, async (ctx) => {
-    // Answer immediately — stops the button spinner regardless of what follows
+    // Answer FIRST — always, before any async operation that might throw
     await ctx.answerCallbackQuery({ text: 'Dismissed ✓' });
     const issueId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
+
+    if (!chatId) return;
+
     try {
+      // Fetch the issue so we can also update the linked subscription
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('source_id, source_type')
+        .eq('id', issueId)
+        .single();
+
+      // Mark alert as dismissed — prevents it re-appearing on next cron run
       await supabase
         .from('detected_issues')
         .update({ status: 'dismissed' })
         .eq('id', issueId);
-      await ctx.editMessageText("Dismissed ✓ — I won't send this alert again.");
+
+      // If this alert is linked to a subscription, set dismissed_at on the subscription too.
+      // The renewal-reminders email cron filters .is('dismissed_at', null) — so this
+      // stops the email reminder as well, keeping both frontends in sync.
+      if (issue?.source_type === 'subscription' && issue.source_id) {
+        await supabase
+          .from('subscriptions')
+          .update({ dismissed_at: new Date().toISOString() })
+          .eq('id', issue.source_id);
+      }
+
+      await safeEdit(bot.api, chatId, msgId, "Dismissed ✓ — I won't send this alert again.");
     } catch (err) {
       console.error('[UserBot] dismiss callback error:', err);
+      // Fallback: at minimum confirm the action to the user
+      try {
+        await bot.api.sendMessage(chatId, "Dismissed ✓");
+      } catch { /* silent */ }
     }
   });
 
@@ -975,18 +1109,41 @@ Return JSON: { "subject": "...", "body": "..." }`;
   bot.callbackQuery(/^snooze_(.+)$/, async (ctx) => {
     const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const snoozeLabel = snoozeUntil.toLocaleDateString('en-GB');
-    // Answer immediately — stops the button spinner regardless of what follows
+    // Answer FIRST — always, before any async operation that might throw
     await ctx.answerCallbackQuery({ text: `Snoozed until ${snoozeLabel}` });
     const issueId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
+
+    if (!chatId) return;
+
     try {
       await supabase
         .from('detected_issues')
         .update({ status: 'snoozed', snooze_until: snoozeUntil.toISOString() })
         .eq('id', issueId);
-      await ctx.editMessageText(`Snoozed 7 days ✓ — I'll remind you again on ${snoozeLabel}.`);
+
+      await safeEdit(bot.api, chatId, msgId, `Snoozed 7 days ✓ — I'll remind you again on ${snoozeLabel}.`);
     } catch (err) {
       console.error('[UserBot] snooze callback error:', err);
+      try {
+        await bot.api.sendMessage(chatId, `Snoozed until ${snoozeLabel} ✓`);
+      } catch { /* silent */ }
+    }
+  });
+
+  // -------------------------------------------------------
+  // Global callback_query fallback
+  // Any callback_query that didn't match an earlier handler ends up here.
+  // Answering it is critical — without this, Telegram shows a loading spinner forever.
+  // -------------------------------------------------------
+  bot.on('callback_query', async (ctx) => {
+    console.warn(`[UserBot] Unhandled callback_query data="${ctx.callbackQuery?.data}" — answering to stop spinner`);
+    try {
+      await ctx.answerCallbackQuery();
+    } catch (err) {
+      console.error('[UserBot] Failed to answer unhandled callback_query:', err);
     }
   });
 
@@ -1177,15 +1334,32 @@ Return JSON: { "subject": "...", "body": "..." }`;
 
   // -------------------------------------------------------
   // Global error handler — catches any uncaught middleware error
-  // Without this, grammy silently returns 200 with no reply to Paul
+  // Uses raw chatId from the update (not ctx.chatId shorthand) so it works
+  // in ALL update types including callback_query where ctx.chat may differ.
   // -------------------------------------------------------
   bot.catch(async (err) => {
     const ctx = err.ctx;
     console.error(`[UserBot] Uncaught middleware error (update_id=${ctx.update.update_id}):`, err.error);
-    try {
-      await ctx.reply('Sorry, something went wrong on my end. Please try again in a moment.');
-    } catch (replyErr) {
-      console.error('[UserBot] Failed to send error reply in bot.catch:', replyErr);
+
+    // Also: if this was a callback_query, make sure the spinner is stopped
+    if (ctx.update.callback_query) {
+      try {
+        await ctx.api.answerCallbackQuery(ctx.update.callback_query.id);
+      } catch { /* already answered, or query expired */ }
+    }
+
+    // Extract chatId from raw update — more reliable than ctx.chatId in error context
+    const chatId =
+      ctx.update.callback_query?.message?.chat?.id ??
+      ctx.update.message?.chat?.id ??
+      ctx.update.edited_message?.chat?.id;
+
+    if (chatId) {
+      try {
+        await ctx.api.sendMessage(chatId, 'Sorry, something went wrong on my end. Please try again in a moment.');
+      } catch (replyErr) {
+        console.error('[UserBot] Failed to send error reply in bot.catch:', replyErr);
+      }
     }
   });
 
