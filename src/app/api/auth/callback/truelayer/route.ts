@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   if (errorParam) {
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=bank_auth_failed', request.url)
+      new URL('/dashboard/subscriptions?error=bank_auth_failed', request.url) /* pre-state, can't know returnTo */
     );
   }
 
@@ -35,10 +35,21 @@ export async function GET(request: NextRequest) {
   }
 
   // Verify state matches user ID (CSRF check)
-  const stateUserId = Buffer.from(state, 'base64').toString('utf8');
+  // State can be JSON { userId, returnTo } or legacy plain userId
+  let stateUserId: string;
+  let returnTo = '/dashboard/subscriptions';
+  try {
+    const decoded = Buffer.from(state, 'base64').toString('utf8');
+    const parsed = JSON.parse(decoded);
+    stateUserId = parsed.userId;
+    returnTo = parsed.returnTo || '/dashboard/subscriptions';
+  } catch {
+    // Legacy format: state is just the userId
+    stateUserId = Buffer.from(state, 'base64').toString('utf8');
+  }
   if (stateUserId !== user.id) {
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=state_mismatch', request.url)
+      new URL(`${returnTo}?error=state_mismatch`, request.url)
     );
   }
 
@@ -58,7 +69,7 @@ export async function GET(request: NextRequest) {
   if (!tokenRes.ok) {
     console.error('TrueLayer token exchange failed:', await tokenRes.text());
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=token_exchange_failed', request.url)
+      new URL(`${returnTo}?error=token_exchange_failed`, request.url)
     );
   }
 
@@ -108,7 +119,7 @@ export async function GET(request: NextRequest) {
   if (upsertError || !connection) {
     console.error('Failed to save bank connection:', upsertError);
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=save_failed', request.url)
+      new URL(`${returnTo}?error=save_failed`, request.url)
     );
   }
 
@@ -132,7 +143,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.redirect(
-    new URL('/dashboard/subscriptions?connected=true', request.url)
+    new URL(`${returnTo}?connected=true`, request.url)
   );
 }
 
