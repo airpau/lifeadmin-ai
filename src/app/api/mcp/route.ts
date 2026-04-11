@@ -88,9 +88,8 @@ function validateAuth(req: NextRequest): string | true {
   const token = process.env.MCP_BEARER_TOKEN?.trim();
   if (!token) {
     // FAIL CLOSED: if no token is configured, reject everything
-    // FAIL CLOSED
     console.error("[MCP] SECURITY: MCP_BEARER_TOKEN not configured â rejecting all requests");
-    return false;
+    return "NO_TOKEN_CONFIGURED";
   }
   const auth = req.headers.get("authorization")?.trim();
   if (!auth) return "NO_AUTH_HEADER";
@@ -105,7 +104,7 @@ function validateAuth(req: NextRequest): string | true {
   for (let i = 0; i < auth.length; i++) {
     result |= auth.charCodeAt(i) ^ expected.charCodeAt(i);
   }
-  return result === 0;
+  return result === 0 ? true : `TOKEN_MISMATCH:first4_${token.substring(0,4)}`;
 }
 
 function getClientIp(req: NextRequest): string {
