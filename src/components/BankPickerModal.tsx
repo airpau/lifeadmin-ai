@@ -16,6 +16,18 @@ interface BankPickerModalProps {
   onClose: () => void;
 }
 
+/**
+ * For TrueLayer mode, call this directly from onClick handlers
+ * instead of opening the modal. The useEffect approach is unreliable.
+ */
+export function connectBankDirect() {
+  if (OPEN_BANKING_PROVIDER === 'truelayer') {
+    window.location.href = '/api/auth/truelayer';
+    return true;
+  }
+  return false;
+}
+
 export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProps) {
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
