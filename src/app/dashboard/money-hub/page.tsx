@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Wallet, Building2, Shield, RefreshCw, X, MessageCircle,
-  ArrowLeft, ArrowRight, HelpCircle, AlertTriangle, Clock, Send, Mail, Zap, Loader2,
+  ArrowLeft, ArrowRight, HelpCircle, AlertTriangle, Clock, Send, Mail, Zap, Loader2, Trash2, ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
 import { fmtNum } from '@/lib/format';
@@ -57,8 +57,10 @@ export default function MoneyHubPage() {
 
   // Bank state
   const [expiredConnections, setExpiredConnections] = useState<any[]>([]);
+  const [activeConnections, setActiveConnections] = useState<any[]>([]);
   const [bankPromptDismissed, setBankPromptDismissed] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
   // AI Chat (Pro)
   const [chatOpen, setChatOpen] = useState(false);
@@ -71,6 +73,9 @@ export default function MoneyHubPage() {
 
   // Email scanning
   const [scanning, setScanning] = useState(false);
+
+  // Deals
+  const [deals, setDeals] = useState<any>(null);
 
   const supabase = createClient();
 
@@ -128,6 +133,17 @@ export default function MoneyHubPage() {
     refreshData();
     fetchExpectedBills();
 
+    // Fetch deals
+    (async () => {
+      try {
+        const res = await fetch('/api/subscriptions/compare?all=1');
+        if (res.ok) {
+          const d = await res.json();
+          setDeals(d);
+        }
+      } catch { /* silent */ }
+    })();
+
     // Check FCA banner
     try { if (!localStorage.getItem('pb_fca_banner_dismissed')) setShowFcaBanner(true); } catch { /* silent */ }
 
@@ -148,6 +164,13 @@ export default function MoneyHubPage() {
           .in('status', ['expired', 'token_expired', 'expired_legacy', 'revoked', 'expiring_soon']);
         if (conns?.length) setExpiredConnections(conns);
         else setExpiredConnections([]); // Clear if all now active
+
+        // Fetch active connections too
+        const { data: activeConns } = await supabase.from('bank_connections')
+          .select('id, bank_name, status')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+        setActiveConnections(activeConns || []);
 
         const stored = localStorage.getItem('bank_prompt_dismissed_at');
         if (stored) {
@@ -190,6 +213,32 @@ export default function MoneyHubPage() {
       showToast('Sync failed.', 'error');
     }
     setSyncing(false);
+  };
+
+  // ─── Disconnect Bank ──────────────────────────────────────────────────
+
+  const disconnectBank = async (connectionId: string, bankName: string) => {
+    if (!confirm(`Disconnect ${bankName || 'this bank'}? This will stop syncing transactions.`)) return;
+    try {
+      setDisconnectingId(connectionId);
+      const res = await fetch('/api/bank/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
+      if (res.ok) {
+        // Remove from local state optimistically
+        setActiveConnections(activeConnections.filter(c => c.id !== connectionId));
+        setExpiredConnections(expiredConnections.filter(c => c.id !== connectionId));
+        showToast(`${bankName || 'Bank'} disconnected`, 'success');
+      } else {
+        showToast('Failed to disconnect bank', 'error');
+      }
+    } catch {
+      showToast('Failed to disconnect bank', 'error');
+    } finally {
+      setDisconnectingId(null);
+    }
   };
 
   // ─── AI Chat ──────────────────────────────────────────────────────────
@@ -245,7 +294,9 @@ export default function MoneyHubPage() {
     if (data && data.tier === 'pro') {
       const lastScan = localStorage.getItem('pb_last_gmail_scan');
       const now = Date.now();
-      if (!lastScan || now - parseInt(lastScan) > 24 * 60 * 60 * 1000) {
+      const alerts = data.alerts || [];
+      // Trigger if: no previous scan, scan older than 24h, or alerts are empty
+      if (!lastScan || now - parseInt(lastScan) > 24 * 60 * 60 * 1000 || alerts.length === 0) {
         localStorage.setItem('pb_last_gmail_scan', now.toString());
         scanInbox(true);
       }
@@ -469,11 +520,43 @@ export default function MoneyHubPage() {
                   <span className="text-white text-sm font-medium">{conn.bank_name || 'Bank'}</span>
                   <span className="text-slate-500 text-xs">· expired</span>
                 </div>
-                <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
+                  <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
           <p className="text-slate-500 text-xs mt-2">Reconnect to keep your data up to date</p>
+        </div>
+      )}
+
+      {/* Active bank connections — with disconnect option */}
+      {activeConnections.length > 0 && (
+        <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-green-400" />
+              <p className="text-green-300 font-semibold text-sm">Active bank connection{activeConnections.length > 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {activeConnections.map((conn) => (
+              <div key={conn.id} className="flex items-center justify-between bg-navy-950/40 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-green-400" />
+                  <span className="text-white text-sm font-medium">{conn.bank_name || 'Bank'}</span>
+                  <span className="text-slate-500 text-xs">· active</span>
+                </div>
+                <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title="Disconnect this bank">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-slate-500 text-xs mt-2">Click the trash icon to disconnect a bank account</p>
         </div>
       )}
 
@@ -608,14 +691,13 @@ export default function MoneyHubPage() {
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-amber-400" /> Active Subscriptions
+                  <Building2 className="h-3.5 w-3.5 text-amber-400" /> Active Subscriptions ({data.subscriptions.filter((s: any) => s.status === 'active').length})
                 </p>
                 <Link href="/dashboard/subscriptions" className="text-xs text-mint-400 hover:text-mint-300 font-medium">View all →</Link>
               </div>
-              <div className="space-y-2">
+              <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
                 {data.subscriptions
                   .filter((s: any) => s.status === 'active')
-                  .slice(0, 5)
                   .map((s: any) => (
                     <div key={s.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg p-3 border border-navy-800">
                       <span className="text-sm text-white truncate">{s.provider_name}</span>
@@ -626,23 +708,54 @@ export default function MoneyHubPage() {
             </div>
           )}
 
-          {/* Quick actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
-              <Building2 className="h-5 w-5 text-amber-400 shrink-0" />
-              <div>
-                <p className="text-white font-medium text-sm">{(data.subscriptions && data.subscriptions.filter((s: any) => s.status === 'active').length > 0) ? `Manage ${data.subscriptions.filter((s: any) => s.status === 'active').length} subscriptions` : 'Subscription Audit'}</p>
-                <p className="text-slate-500 text-xs">Review, cancel, or switch</p>
+          {/* Better Deals Section */}
+          {deals && deals.subscriptions && deals.subscriptions.length > 0 ? (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-green-400" /> Better Deals Found
+                </p>
+                <span className="text-xs text-mint-400 font-medium">Save £{fmtNum(deals.totalAnnualSaving || 0)}/year</span>
               </div>
-            </Link>
-            <Link href="/dashboard/deals" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
-              <Zap className="h-5 w-5 text-green-400 shrink-0" />
-              <div>
-                <p className="text-white font-medium text-sm">Find Better Deals</p>
-                <p className="text-slate-500 text-xs">Energy, broadband, mobile, insurance</p>
+              <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
+                {deals.subscriptions.flatMap((sub: any) =>
+                  (sub.comparisons || [])
+                    .sort((a: any, b: any) => (b.annualSaving || 0) - (a.annualSaving || 0))
+                    .map((deal: any, idx: number) => (
+                      <div key={`${sub.subscriptionName}-${idx}`} className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm text-white font-medium truncate">{sub.subscriptionName}</p>
+                            <p className="text-xs text-slate-400">£{fmtNum(deal.currentPrice)}/mo → £{fmtNum(deal.dealPrice)}/mo via {deal.dealProvider}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-green-400 text-sm font-semibold">Save £{fmtNum(deal.annualSaving)}/yr</p>
+                            {deal.dealUrl ? (
+                              <a href={deal.dealUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-mint-400 hover:text-mint-300 font-medium flex items-center gap-1 justify-end mt-1">
+                                Switch <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                )}
               </div>
-            </Link>
-          </div>
+            </div>
+          ) : (
+            <div className="mb-4">
+              <p className="text-xs text-slate-500 text-center py-3">No better deals found right now.</p>
+            </div>
+          )}
+
+          {/* Manage Subscriptions quick link */}
+          <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
+            <Building2 className="h-5 w-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="text-white font-medium text-sm">{(data.subscriptions && data.subscriptions.filter((s: any) => s.status === 'active').length > 0) ? `Manage ${data.subscriptions.filter((s: any) => s.status === 'active').length} subscriptions` : 'Subscription Audit'}</p>
+              <p className="text-slate-500 text-xs">Review, cancel, or switch</p>
+            </div>
+          </Link>
         </div>
       )}
 
