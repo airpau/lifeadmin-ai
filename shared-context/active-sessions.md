@@ -1,5 +1,12 @@
 # Active Sessions — Last Updated 11 Apr 2026 13:20 UTC
 
+## Latest: Cowork Session — 11 Apr 2026
+- Fixed Telegram bot (was dead — fire-and-forget root cause)
+- Rewrote financial tools (get_expected_bills, get_upcoming_payments) with intelligent bank data cross-referencing
+- Updated bot system prompt with financial intelligence rules
+- Checked Yapily emails — KYC under Compliance review since 3 Apr, follow-up email drafted
+- Full details: `shared-context/session-handoff-11apr2026.md`
+
 ## Current Session
 - **Interface:** Cowork Desktop (Claude Opus 4.6)
 - **Started:** 11 Apr 2026
