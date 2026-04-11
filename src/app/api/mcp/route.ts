@@ -1,5 +1,5 @@
 /**
- * Paybacker MCP Server â Next.js API Route (Stateless, Hardened)
+ * Paybacker MCP Server — Next.js API Route (Stateless, Hardened)
  *
  * Cloud-accessible MCP endpoint for Claude Managed Agents ONLY.
  * Deployed at https://paybacker.co.uk/api/mcp
@@ -50,7 +50,7 @@ const RATE_LIMIT_MAX = 60; // 60 requests per window
 const MAX_CONTENT_LENGTH = 50_000; // 50KB max for any context write
 
 // ---------------------------------------------------------------------------
-// Rate limiter (in-memory, resets on cold start â safe for serverless)
+// Rate limiter (in-memory, resets on cold start — safe for serverless)
 // ---------------------------------------------------------------------------
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -88,7 +88,7 @@ function validateAuth(req: NextRequest): boolean {
   const token = process.env.MCP_BEARER_TOKEN?.trim();
   if (!token) {
     // FAIL CLOSED: if no token is configured, reject everything
-    console.error("[MCP] SECURITY: MCP_BEARER_TOKEN not configured â rejecting all requests");
+    console.error("[MCP] SECURITY: MCP_BEARER_TOKEN not configured — rejecting all requests");
     return false;
   }
   const auth = req.headers.get("authorization")?.trim();
@@ -97,7 +97,7 @@ function validateAuth(req: NextRequest): boolean {
   // Constant-time comparison to prevent timing attacks
   const expected = `Bearer ${token}`;
   if (auth.length !== expected.length) {
-    console.error(`[MCP] AUTH: Length mismatch \u2014 got ${auth.length}, expected ${expected.length}`);
+    console.error(`[MCP] AUTH: Length mismatch — got ${auth.length}, expected ${expected.length}`);
     return false;
   }
   let result = 0;
@@ -206,7 +206,7 @@ async function logAudit(toolName: string, ip: string, success: boolean, detail?:
       }),
     });
   } catch {
-    // Audit logging is best-effort â never block the response
+    // Audit logging is best-effort — never block the response
     console.error("[MCP] Failed to write audit log");
   }
 }
@@ -277,7 +277,7 @@ function timestamp(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Create MCP server â SAFE TOOLS ONLY
+// Create MCP server — SAFE TOOLS ONLY
 // ---------------------------------------------------------------------------
 
 function createPaybackerMcpServer(): McpServer {
@@ -532,7 +532,7 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
   // 4. Create stateless MCP server + transport
   const mcpServer = createPaybackerMcpServer();
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined, // Stateless â no session tracking needed
+    sessionIdGenerator: undefined, // Stateless — no session tracking needed
   });
 
   await mcpServer.connect(transport);
@@ -556,13 +556,21 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
         this.statusCode = status;
         if (hdrs) Object.assign(this.headers, hdrs);
       },
-      write(chunk: string) {
-        this.body += chunk;
+      write(chunk: unknown) {
+        if (chunk instanceof Buffer || chunk instanceof Uint8Array) {
+          this.body += Buffer.from(chunk).toString("utf-8");
+        } else if (typeof chunk === "string") {
+          this.body += chunk;
+        }
         return true;
       },
-      end(chunk?: string) {
-        if (chunk) this.body += chunk;
-        // Strip CORS â this endpoint should not be called from browsers
+      end(chunk?: unknown) {
+        if (chunk instanceof Buffer || chunk instanceof Uint8Array) {
+          this.body += Buffer.from(chunk).toString("utf-8");
+        } else if (typeof chunk === "string") {
+          this.body += chunk;
+        }
+        // Strip CORS — this endpoint should not be called from browsers
         const resHeaders: Record<string, string> = {
           ...this.headers,
           "X-Content-Type-Options": "nosniff",
@@ -592,7 +600,7 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
       url: "/api/mcp",
       headers,
       on(event: string, cb: (data?: unknown) => void) {
-        if (event === "data") cb(body);
+        if (event === "data") cb(Buffer.from(body, "utf-8"));
         if (event === "end") cb();
         return this;
       },
@@ -601,10 +609,18 @@ async function handleMcpRequest(req: NextRequest): Promise<NextResponse | Respon
       },
     };
 
+    // Parse body as JSON for the SDK (it expects a parsed object, not raw string)
+    let parsedBody: unknown;
+    try {
+      parsedBody = body ? JSON.parse(body) : undefined;
+    } catch {
+      parsedBody = undefined;
+    }
+
     transport.handleRequest(
       mockReq as unknown as import("node:http").IncomingMessage,
       mockRes as unknown as import("node:http").ServerResponse,
-      body
+      parsedBody
     );
   });
 
