@@ -1,0 +1,3 @@
+const { createClient } = require('@supabase/supabase-js');
+// test syntax to see if node crashes...
+console.log("No syntax error in building string");

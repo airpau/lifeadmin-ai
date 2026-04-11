@@ -72,6 +72,7 @@ export interface ScannedEmail {
 }
 
 const MAX_EMAILS = 500;
+const BODY_PREVIEW_LENGTH = 2000; // Match Gmail/Outlook full-body analysis
 
 /**
  * Connect to an IMAP server and fetch financial emails from the last `daysBack` days.
@@ -145,7 +146,7 @@ export async function scanEmailsViaImap(
                 const parsed: ParsedMail = await simpleParser(msg.source);
                 const htmlText = typeof parsed.html === 'string' ? parsed.html.replace(/<[^>]+>/g, ' ') : '';
                 const text = parsed.text || htmlText || '';
-                bodyPreview = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+                bodyPreview = text.replace(/\s+/g, ' ').trim().slice(0, BODY_PREVIEW_LENGTH);
               } catch {
                 bodyPreview = '';
               }

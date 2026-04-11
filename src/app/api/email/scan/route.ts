@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+
+export const maxDuration = 120;
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import {
   scanEmailsViaImap,
   decryptPassword,
 } from '@/lib/imap-scanner';
-import { logClaudeCall } from '@/lib/claude-rate-limit';
+import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
+import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
+import { getUserPlan } from '@/lib/get-user-plan';
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -28,6 +32,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'connectionId is required' }, { status: 400 });
     }
 
+    // Plan and rate limit checks (identical to Gmail/Outlook)
+    const plan = await getUserPlan(user.id);
+    const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+    const isAdmin = user.email === 'aireypaul@googlemail.com';
+
+    if (!isAdmin) {
+      if (plan.tier === 'free') {
+        return NextResponse.json(
+          { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
+          { status: 403 }
+        );
+      }
+
+      if (!usageCheck.allowed) {
+        return NextResponse.json(
+          { error: 'Monthly scan limit reached. Upgrade to Pro for unlimited scans.', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
+          { status: 403 }
+        );
+      }
+      const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: 'Rate limit exceeded. Please try again later.' },
+          { status: 429 }
+        );
+      }
+    }
+
     // Fetch connection (use admin to bypass RLS for encrypted_password)
     const admin = getAdminClient();
     const { data: conn, error: connErr } = await admin
@@ -46,10 +78,8 @@ export async function POST(req: NextRequest) {
     }
 
     // For OAuth connections (Google/Outlook), use their dedicated scan endpoints
-    // These connections store plain-text OAuth tokens, not encrypted IMAP passwords
     if (conn.auth_method === 'oauth') {
       if (conn.provider_type === 'google') {
-        // Proxy to Gmail scan which handles token refresh and Gmail API
         console.log('[email/scan] Redirecting Google OAuth connection to /api/gmail/scan');
         const gmailRes = await fetch(new URL('/api/gmail/scan', req.url), {
           method: 'POST',
@@ -97,7 +127,6 @@ export async function POST(req: NextRequest) {
     console.log(`[email/scan] Found ${emails.length} financial emails`);
 
     if (emails.length === 0) {
-      // Update last_scanned_at even if no results
       await admin
         .from('email_connections')
         .update({ last_scanned_at: new Date().toISOString() })
@@ -106,7 +135,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ opportunities: [], emailsFound: 0, emailsScanned: 0 });
     }
 
-    // Group emails by sender (same pattern as Gmail scanner)
+    // Group emails by sender (same pattern as Gmail/Outlook scanner)
     const senderMap = new Map<string, {
       from: string;
       subjects: string[];
@@ -123,7 +152,7 @@ export async function POST(req: NextRequest) {
       const group = senderMap.get(key)!;
       group.subjects.push(e.subject);
       group.dates.push(e.date);
-      group.bodies.push((e.bodyPreview || '').substring(0, 200));
+      group.bodies.push((e.bodyPreview || '').substring(0, 2000));
     }
 
     // Build compact summary grouped by sender
@@ -142,7 +171,7 @@ export async function POST(req: NextRequest) {
       ? senderSummary.substring(0, 400000)
       : senderSummary;
 
-    // Send to Claude for analysis (same prompt as Gmail scanner)
+    // Send to Claude for analysis (identical prompt to Gmail/Outlook)
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const SCAN_MODEL = 'claude-sonnet-4-6';
@@ -159,7 +188,7 @@ export async function POST(req: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: SCAN_MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: `You are a UK consumer finance analyst. Your job is to find EVERY financial opportunity in these emails. Be aggressive: if an email is from a known provider, that IS an opportunity.
 
 CRITICAL: The sender email address and subject line are your primary signals. Even if the body is truncated, you can identify:
@@ -177,7 +206,7 @@ CRITICAL: The sender email address and subject line are your primary signals. Ev
 
 Return a JSON array. Each entry must have:
 - id: unique string (e.g. "opp_1")
-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay" | "debt_dispute" | "tax_rebate"
+- type: "overcharge" | "renewal" | "forgotten_subscription" | "subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay" | "debt_dispute" | "tax_rebate"
 - category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "gambling" | "other"
 - title: short actionable title (max 80 chars)
 - description: 2-3 sentences explaining what was found and what the user should do. Include specific UK consumer rights where relevant.
@@ -188,6 +217,7 @@ Return a JSON array. Each entry must have:
 - status: "new"
 - suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_refund" | "claim_compensation" | "monitor"
 - contractEndDate: ISO date if found, null otherwise
+- nextPaymentDate: ISO date if found, null otherwise
 - paymentAmount: exact amount if found, null otherwise
 - paymentFrequency: "monthly" | "quarterly" | "yearly" | "one-time" | null
 - accountNumber: reference number if found, null otherwise
@@ -221,6 +251,7 @@ IMPORTANT:
       status: string;
       suggestedAction?: string;
       contractEndDate?: string | null;
+      nextPaymentDate?: string | null;
       paymentAmount?: number | null;
       paymentFrequency?: string | null;
       accountNumber?: string | null;
@@ -245,52 +276,115 @@ IMPORTANT:
       }
     }
 
-    // Filter out opportunities that already exist in the database (even if dismissed)
+    // Record usage for non-admin users
+    if (!isAdmin) {
+      await recordClaudeCall(user.id, usageCheck.tier);
+      await incrementUsage(user.id, 'scan_run');
+    }
+
+    // Save opportunities to database for persistence (identical to Gmail/Outlook)
     if (opportunities.length > 0) {
+      // Get existing opportunity titles to avoid duplicates (across all statuses, so we don't recreate dismissed items)
       const { data: existing } = await admin
         .from('tasks')
         .select('title')
         .eq('user_id', user.id)
         .eq('type', 'opportunity');
-        
+
       const existingTitles = new Set((existing || []).map((t: any) => t.title));
-      opportunities = opportunities.filter((o) => !existingTitles.has(o.title));
 
-      if (opportunities.length > 0) {
-        const rows = opportunities.map((opp) => ({
-          user_id: user.id,
-          type: 'opportunity',
-          title: opp.title,
-          description: JSON.stringify(opp),
-          provider_name: opp.provider,
-          priority: opp.confidence >= 80 ? 'high' : opp.confidence >= 60 ? 'medium' : 'low',
-          status: 'pending_review',
-          source: 'imap_scan',
-        }));
+      // Separate opportunities by type
+      const newSubs = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type === 'subscription' || o.type === 'forgotten_subscription'));
+      const newAlerts = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type !== 'subscription' && o.type !== 'forgotten_subscription'));
+      const newOpportunities = [...newSubs, ...newAlerts];
 
-        const { error: insertErr } = await admin.from('tasks').upsert(rows, {
-          onConflict: 'user_id,title',
-          ignoreDuplicates: true,
-        });
-        if (insertErr) {
-          console.error('[email/scan] Task insert error:', insertErr);
+      if (newOpportunities.length > 0) {
+        // Log to tasks (audit trail for scanner)
+        await admin.from('tasks').insert(
+          newOpportunities.map((o: any) => ({
+            user_id: user.id,
+            type: 'opportunity',
+            title: o.title,
+            description: JSON.stringify(o),
+            provider_name: o.provider,
+            status: o.confidence < 70 ? 'suggested' : 'pending_review',
+            priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
+          }))
+        );
+
+        // Populate Subscriptions
+        if (newSubs.length > 0) {
+          await admin.from('subscriptions').insert(
+            newSubs.map((o: any) => ({
+              user_id: user.id,
+              provider_name: o.provider || 'Unknown',
+              amount: o.amount || o.paymentAmount || 0,
+              billing_cycle: o.paymentFrequency === 'yearly' ? 'yearly' : (o.paymentFrequency === 'quarterly' ? 'quarterly' : 'monthly'),
+              status: 'active',
+              source: 'imap_scan',
+              category: o.category || 'other',
+              next_payment_date: o.nextPaymentDate || null,
+              contract_end_date: o.contractEndDate || null,
+              notes: o.description,
+              detected_at: new Date().toISOString()
+            }))
+          ).then(({ error: e }) => { if (e) console.error('[email/scan] subscriptions insert error:', e.message); });
+        }
+
+        // Populate Deals / Alerts
+        if (newAlerts.length > 0) {
+          await admin.from('money_hub_alerts').insert(
+            newAlerts.map((o: any) => ({
+              user_id: user.id,
+              type: o.type,
+              title: o.title,
+              description: o.description,
+              value_gbp: o.amount || 0,
+              status: 'active',
+              metadata: o
+            }))
+          ).then(({ error: e }) => { if (e) console.error('[email/scan] money_hub_alerts insert error:', e.message); });
         }
       }
+
+      // Also save to scanned_receipts for the Scanner UI
+      const receiptDate = new Date().toISOString().split('T')[0];
+      await admin.from('scanned_receipts').insert(
+        newOpportunities.map((o: any) => ({
+          user_id: user.id,
+          provider_name: o.provider || 'Unknown',
+          receipt_type: o.category || o.type || 'other',
+          amount: o.amount || 0,
+          receipt_date: receiptDate,
+          image_url: o.provider || 'scan',
+          extracted_data: o,
+        }))
+      ).then(({ error: e }) => { if (e) console.error('[email/scan] scanned_receipts insert:', e.message); });
+
+      // Update opportunities to only include new ones in response
+      opportunities = newOpportunities;
     }
 
-    // Update last_scanned_at
-    await admin
-      .from('email_connections')
-      .update({ last_scanned_at: new Date().toISOString() })
-      .eq('id', connectionId);
+    // Update last scanned metadata
+    await admin.from('email_connections').update({
+      last_scanned_at: new Date().toISOString(),
+      emails_scanned: (conn.emails_scanned || 0) + senderMap.size,
+    }).eq('id', connectionId);
 
     return NextResponse.json({
-      opportunities: opportunities.map((o) => ({ ...o, status: 'new' })),
+      opportunities,
       emailsFound: emails.length,
       emailsScanned: senderMap.size,
+      opportunityCount: opportunities.length,
+      scannedAt: new Date().toISOString(),
     });
   } catch (err: any) {
     console.error('[email/scan] Error:', err.message);
-    return NextResponse.json({ error: err.message || 'Scan failed' }, { status: 500 });
+    return NextResponse.json({
+      error: err.message || 'Scan failed',
+      opportunities: [],
+      emailsFound: 0,
+      emailsScanned: 0,
+    }, { status: 500 });
   }
 }
