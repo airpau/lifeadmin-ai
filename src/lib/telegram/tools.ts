@@ -926,4 +926,79 @@ export const telegramTools: Tool[] = [
       required: [],
     },
   },
+
+  // ============================================================
+  // MONEY HUB WRITE TOOLS — subscription updates, FAC management
+  // ============================================================
+  {
+    name: 'update_subscription',
+    description:
+      "Update an existing subscription's billing cycle, amount, or next billing date. Use when the user says things like 'change Netflix to yearly', 'update my Spotify to £11.99', or 'set the next billing date for Sky to the 1st'. Finds the subscription by provider name (partial match).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The subscription provider to update (partial match, case-insensitive, e.g. "Netflix", "Sky", "Gym").',
+        },
+        billing_cycle: {
+          type: 'string',
+          enum: ['monthly', 'quarterly', 'yearly'],
+          description: 'New billing cycle. Omit if not changing.',
+        },
+        amount: {
+          type: 'number',
+          description: 'New payment amount in GBP (e.g. 11.99). Omit if not changing.',
+        },
+        next_billing_date: {
+          type: 'string',
+          description: 'New next billing date in YYYY-MM-DD format (e.g. "2026-05-01"). Omit if not changing.',
+        },
+      },
+      required: ['provider_name'],
+    },
+  },
+  {
+    name: 'dismiss_action_item',
+    description:
+      "Dismiss one or more items from the Financial Action Centre (scanner findings, opportunity alerts, money hub alerts) by provider name. Use when the user says things like 'dismiss Creation Financial from action centre', 'remove Patreon from my scanner', or 'I don't need to action that'. Searches tasks, email_scan_findings, and money_hub_alerts tables.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The provider or item name to dismiss (partial match across title and provider fields).',
+        },
+        item_type: {
+          type: 'string',
+          enum: ['task', 'finding', 'alert', 'any'],
+          description: "Which type of action item to dismiss. Defaults to 'any' (searches all sources).",
+        },
+      },
+      required: ['provider_name'],
+    },
+  },
+  {
+    name: 'mark_bill_paid',
+    description:
+      "Manually mark an expected bill as paid for the current month. Use when the user says things like 'mark Paratus as paid', 'I paid the council tax', or 'that bill has been paid'. Useful when a payment was made from a bank account not connected to Paybacker (cash, other bank). The bill will show as ✅ in expected bills for this month.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        provider_name: {
+          type: 'string',
+          description: 'The bill provider name (e.g. "Paratus", "Council Tax", "Gym").',
+        },
+        amount: {
+          type: 'number',
+          description: 'Amount paid in GBP (optional — recorded for reference).',
+        },
+        paid_date: {
+          type: 'string',
+          description: 'Date paid in YYYY-MM-DD format (e.g. "2026-04-10"). Defaults to today.',
+        },
+      },
+      required: ['provider_name'],
+    },
+  },
 ];

@@ -226,6 +226,24 @@ export async function executeToolCall(
       return getDisputeStatus(supabase, userId);
     case 'get_savings_total':
       return getSavingsTotal(supabase, userId);
+    case 'update_subscription':
+      return updateSubscription(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        billing_cycle: toolInput.billing_cycle as string | undefined,
+        amount: toolInput.amount as number | undefined,
+        next_billing_date: toolInput.next_billing_date as string | undefined,
+      });
+    case 'dismiss_action_item':
+      return dismissActionItem(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        item_type: (toolInput.item_type as string | undefined) ?? 'any',
+      });
+    case 'mark_bill_paid':
+      return markBillPaid(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        amount: toolInput.amount as number | undefined,
+        paid_date: toolInput.paid_date as string | undefined,
+      });
     case 'get_loyalty_status':
       return getLoyaltyStatus(supabase, userId);
     case 'get_referral_link':
@@ -2857,7 +2875,7 @@ async function getExpectedBills(
   const startOfMonth = new Date(year, month - 1, 1).toISOString();
   const endOfMonth = new Date(year, month, 1).toISOString();
 
-  const [billsRes, txnRes, subsRes] = await Promise.all([
+  const [billsRes, txnRes, subsRes, manualRes] = await Promise.all([
     supabase.rpc('get_expected_bills', {
       p_user_id: userId,
       p_year: year,
@@ -2876,6 +2894,12 @@ async function getExpectedBills(
       .select('provider_name, amount, next_billing_date, status')
       .eq('user_id', userId)
       .eq('status', 'active'),
+    supabase
+      .from('manual_bill_payments')
+      .select('provider_name, amount, paid_date')
+      .eq('user_id', userId)
+      .eq('year', year)
+      .eq('month', month),
   ]);
 
   if (billsRes.error) {
@@ -2904,6 +2928,13 @@ async function getExpectedBills(
       date: new Date(t.timestamp),
     };
   });
+
+  // Manual payment overrides (user said "mark X as paid" via Telegram)
+  const manualPayments = new Map<string, { amount: number | null; date: string }>();
+  for (const mp of (manualRes.data ?? [])) {
+    const key = (mp.provider_name ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    manualPayments.set(key, { amount: mp.amount ? Number(mp.amount) : null, date: mp.paid_date });
+  }
 
   // Intelligent matching: a bill is "paid" if we find a transaction this month where:
   //  1. The normalised names share significant overlap (token-based), AND
@@ -2971,7 +3002,21 @@ async function getExpectedBills(
   for (const bill of sorted) {
     const expectedAmount = parseFloat(bill.expected_amount) || 0;
     totalExpected += expectedAmount;
-    const match = matchBillToTransaction(bill.provider_name, expectedAmount);
+
+    // Check manual payment override first (user said "mark X as paid" via Telegram)
+    const normBillKey = (bill.provider_name ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const manualMatch = (() => {
+      for (const [key, mp] of manualPayments) {
+        if (normBillKey.includes(key) || key.includes(normBillKey.substring(0, Math.min(normBillKey.length, 8)))) {
+          return mp;
+        }
+      }
+      return null;
+    })();
+
+    const match = manualMatch
+      ? { amount: manualMatch.amount ?? expectedAmount, date: new Date(manualMatch.date) }
+      : matchBillToTransaction(bill.provider_name, expectedAmount);
     const billingDay = bill.billing_day || 0;
     const isDue = billingDay <= todayDay;
 
@@ -2983,12 +3028,12 @@ async function getExpectedBills(
       paidCount++;
       totalPaid += match.amount;
       const diff = match.amount - expectedAmount;
-      if (Math.abs(diff) > 1) {
-        // Amount differs — flag it
+      if (Math.abs(diff) > 1 && !manualMatch) {
+        // Amount differs (only flag for bank-matched payments, not manual overrides)
         const direction = diff > 0 ? '⬆️' : '⬇️';
         detail = ` — paid ${fmt(match.amount)} (${direction} ${fmt(Math.abs(diff))} vs expected)`;
       } else {
-        detail = ` — paid ${fmt(match.amount)}`;
+        detail = manualMatch ? ` — marked as paid manually` : ` — paid ${fmt(match.amount)}`;
       }
       status = '✅';
     } else if (isDue) {
@@ -3489,6 +3534,184 @@ Return as JSON: { "subject": "...", "body": "..." }`;
   text += `_Copy and send this to ${params.provider_name}'s customer services. Keep a record of when you send it._`;
 
   return { text };
+}
+
+// ============================================================
+// MONEY HUB WRITE HANDLERS — subscription updates, FAC management
+// ============================================================
+
+async function updateSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider_name: string;
+    billing_cycle?: string;
+    amount?: number;
+    next_billing_date?: string;
+  },
+): Promise<ToolResult> {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, billing_cycle, amount, next_billing_date')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('provider_name', `%${params.provider_name}%`)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (fetchErr) return { text: `Failed to look up subscription: ${fetchErr.message}` };
+  if (!existing) {
+    return { text: `No active subscription found matching "${params.provider_name}". Use get_subscriptions to see what's tracked.` };
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (params.billing_cycle) updates.billing_cycle = params.billing_cycle;
+  if (params.amount !== undefined) updates.amount = params.amount;
+  if (params.next_billing_date) updates.next_billing_date = params.next_billing_date;
+
+  if (Object.keys(updates).length === 1) {
+    return { text: 'Nothing to update — please specify a billing cycle, amount, or next billing date.' };
+  }
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update(updates)
+    .eq('id', existing.id)
+    .eq('user_id', userId);
+
+  if (error) return { text: `Failed to update subscription: ${error.message}` };
+
+  const changes: string[] = [];
+  if (params.billing_cycle) {
+    changes.push(`billing cycle: *${existing.billing_cycle ?? 'monthly'}* → *${params.billing_cycle}*`);
+  }
+  if (params.amount !== undefined) {
+    changes.push(`amount: *${fmt(existing.amount)}* → *${fmt(params.amount)}*`);
+  }
+  if (params.next_billing_date) {
+    changes.push(`next billing date: *${fmtDate(params.next_billing_date)}*`);
+  }
+
+  return { text: `Updated *${existing.provider_name}*:\n${changes.map(c => `• ${c}`).join('\n')}` };
+}
+
+async function dismissActionItem(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider_name: string; item_type: string },
+): Promise<ToolResult> {
+  const kw = params.provider_name.toLowerCase();
+  const dismissed: string[] = [];
+  const tryAll = params.item_type === 'any';
+
+  // 1. Tasks (opportunity type)
+  if (tryAll || params.item_type === 'task') {
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('id, title, provider_name')
+      .eq('user_id', userId)
+      .eq('type', 'opportunity')
+      .in('status', ['pending_review', 'suggested', 'pending']);
+
+    const matches = (tasks ?? []).filter(t =>
+      (t.provider_name ?? '').toLowerCase().includes(kw) ||
+      (t.title ?? '').toLowerCase().includes(kw),
+    );
+    if (matches.length > 0) {
+      await supabase
+        .from('tasks')
+        .update({ status: 'dismissed' })
+        .in('id', matches.map(t => t.id));
+      dismissed.push(`${matches.length} action item${matches.length > 1 ? 's' : ''}`);
+    }
+  }
+
+  // 2. Email scan findings
+  if (tryAll || params.item_type === 'finding') {
+    const { data: findings } = await supabase
+      .from('email_scan_findings')
+      .select('id, provider, title')
+      .eq('user_id', userId)
+      .in('status', ['new', 'pending_review']);
+
+    const matches = (findings ?? []).filter(f =>
+      (f.provider ?? '').toLowerCase().includes(kw) ||
+      (f.title ?? '').toLowerCase().includes(kw),
+    );
+    if (matches.length > 0) {
+      await supabase
+        .from('email_scan_findings')
+        .update({ status: 'dismissed' })
+        .in('id', matches.map(f => f.id));
+      dismissed.push(`${matches.length} email finding${matches.length > 1 ? 's' : ''}`);
+    }
+  }
+
+  // 3. Money Hub alerts
+  if (tryAll || params.item_type === 'alert') {
+    const { data: alerts } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .ilike('title', `%${params.provider_name}%`);
+
+    if (alerts && alerts.length > 0) {
+      await supabase
+        .from('money_hub_alerts')
+        .update({ status: 'dismissed' })
+        .in('id', alerts.map(a => a.id));
+      dismissed.push(`${alerts.length} alert${alerts.length > 1 ? 's' : ''}`);
+    }
+  }
+
+  if (dismissed.length === 0) {
+    return {
+      text: `No action centre items found matching "${params.provider_name}". Use get_scanner_results to see what's in your action centre.`,
+    };
+  }
+
+  return {
+    text: `Dismissed ${dismissed.join(' and ')} for *${params.provider_name}* from your action centre. ✅`,
+  };
+}
+
+async function markBillPaid(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider_name: string; amount?: number; paid_date?: string },
+): Promise<ToolResult> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const paidDate = params.paid_date ?? now.toISOString().split('T')[0];
+
+  const { error } = await supabase
+    .from('manual_bill_payments')
+    .upsert(
+      {
+        user_id: userId,
+        provider_name: params.provider_name,
+        year,
+        month,
+        amount: params.amount ?? null,
+        paid_date: paidDate,
+      },
+      { onConflict: 'user_id,provider_name,year,month' },
+    );
+
+  if (error) return { text: `Failed to mark bill as paid: ${error.message}` };
+
+  const amtStr = params.amount ? ` (${fmt(params.amount)})` : '';
+  const monthLabel = new Date(year, month - 1).toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return {
+    text: `Marked *${params.provider_name}*${amtStr} as paid for ${monthLabel}. ✅\nIt will now show as paid in your expected bills.`,
+  };
 }
 
 async function createSupportTicket(
