@@ -1,4 +1,3 @@
-// @ts-nocheck - Scanner disabled while Google OAuth verification is pending
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import {
-  ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
+  ScanSearch, AlertCircle, AlertTriangle, TrendingUp, Calendar, CreditCard,
   Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus, Shield,
   X, Lock, Eye, EyeOff, Camera, FileText, ExternalLink,
 } from 'lucide-react';
@@ -354,36 +353,50 @@ export default function ScannerPage() {
         {/* Connected email accounts */}
         {!emailLoading && emailConns.length > 0 && (
           <div className="space-y-3 mb-3">
-            {emailConns.map((conn) => (
-              <div key={conn.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-navy-950/50 rounded-xl px-4 py-3 border border-navy-700/50 gap-3">
+            {emailConns.map((conn) => {
+              const needsReauth = conn.status === 'needs_reauth' || conn.status === 'expired';
+              const providerLabel = conn.provider === 'outlook' ? 'Outlook' : conn.provider === 'gmail' || conn.provider === 'google' ? 'Gmail' : conn.provider;
+              return (
+              <div key={conn.id} className={`flex flex-col sm:flex-row sm:items-center justify-between rounded-xl px-4 py-3 border gap-3 ${needsReauth ? 'bg-amber-500/5 border-amber-500/30' : 'bg-navy-950/50 border-navy-700/50'}`}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  {needsReauth
+                    ? <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                    : <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  }
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium capitalize">{conn.provider === 'outlook' ? 'Outlook' : conn.provider === 'gmail' ? 'Gmail' : conn.provider}</span>
-                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Connected</span>
+                      <span className="text-white text-sm font-medium capitalize">{providerLabel}</span>
+                      {needsReauth
+                        ? <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded">Reconnect needed</span>
+                        : <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Connected</span>
+                      }
                     </div>
                     <p className="text-slate-400 text-xs truncate">{conn.email}</p>
-                    {conn.last_scanned_at && (
+                    {needsReauth && (
+                      <p className="text-amber-400/80 text-xs mt-0.5">Gmail re-authorisation required — please disconnect and reconnect to continue scanning.</p>
+                    )}
+                    {!needsReauth && conn.last_scanned_at && (
                       <p className="text-slate-500 text-xs">Last scanned: {new Date(conn.last_scanned_at).toLocaleString('en-GB')}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {emailScanResults[conn.id] !== undefined && (
+                  {!needsReauth && emailScanResults[conn.id] !== undefined && (
                     <span className="text-xs text-mint-400">{emailScanResults[conn.id]} opportunities found</span>
                   )}
-                  <button
-                    onClick={() => handleScanEmail(conn.id)}
-                    disabled={scanningEmailId === conn.id}
-                    className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm"
-                  >
-                    {scanningEmailId === conn.id ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
-                    ) : (
-                      <><RefreshCw className="h-3.5 w-3.5" /> Scan Now</>
-                    )}
-                  </button>
+                  {!needsReauth && (
+                    <button
+                      onClick={() => handleScanEmail(conn.id)}
+                      disabled={scanningEmailId === conn.id}
+                      className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm"
+                    >
+                      {scanningEmailId === conn.id ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
+                      ) : (
+                        <><RefreshCw className="h-3.5 w-3.5" /> Scan Now</>
+                      )}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDisconnectEmail(conn.id)}
                     className="text-slate-500 hover:text-red-400 text-xs transition-all"
@@ -392,7 +405,8 @@ export default function ScannerPage() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -1010,7 +1024,7 @@ export default function ScannerPage() {
             <div>
               <h3 className="text-white font-semibold mb-1">Scan complete</h3>
               <p className="text-slate-400 text-sm">
-                Scanned {scanDebug.emailsScanned} emails from the last 12 months.
+                Scanned {scanDebug!.emailsScanned} emails from the last 12 months.
                 Found {opportunities.length} {opportunities.length === 1 ? 'opportunity' : 'opportunities'} across {new Set(opportunities.map(o => o.provider)).size} providers
                 with potential savings of £{totalSavings.toFixed(2)}.
                 {highConfidence > 0 && ` ${highConfidence} ${highConfidence === 1 ? 'item' : 'items'} need attention.`}
@@ -1079,10 +1093,10 @@ export default function ScannerPage() {
           <h3 className="text-xl font-semibold text-white mb-2">No opportunities found</h3>
           {scanDebug && (
             <p className="text-slate-500 text-sm mb-2">
-              Scanned {scanDebug.emailsScanned} of {scanDebug.emailsFound} matching emails
+              Scanned {scanDebug!.emailsScanned} of {scanDebug!.emailsFound} matching emails
             </p>
           )}
-          {scanDebug && scanDebug.emailsFound === 0 && (
+          {scanDebug && scanDebug!.emailsFound === 0 && (
             <p className="text-mint-400 text-sm mb-4">
               No billing emails matched — try disconnecting and reconnecting your inbox to refresh permissions.
             </p>
@@ -1094,8 +1108,8 @@ export default function ScannerPage() {
       {/* Scanned at */}
       {scannedAt && opportunities.length > 0 && (
         <p className="text-slate-500 text-sm mb-4">
-          Last scanned {new Date(scannedAt).toLocaleTimeString('en-GB')} · {connectedAccounts.length} inbox{connectedAccounts.length > 1 ? 'es' : ''}
-          {scanDebug && ` · ${scanDebug.emailsScanned} emails analysed`}
+          Last scanned {new Date(scannedAt!).toLocaleTimeString('en-GB')} · {connectedAccounts.length} inbox{connectedAccounts.length > 1 ? 'es' : ''}
+          {scanDebug && ` · ${scanDebug!.emailsScanned} emails analysed`}
         </p>
       )}
 
@@ -1150,7 +1164,7 @@ export default function ScannerPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {/* Add to subscriptions - for subscriptions, bills, utilities, or when suggestedAction is monitor/track */}
-                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction)) && (
+                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction ?? '')) && (
                             <button
                               disabled={actionLoading === opp.id}
                               onClick={async () => {

@@ -80,7 +80,16 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     }),
   });
 
-  if (!res.ok) throw new Error('Failed to refresh token');
+  if (!res.ok) {
+    let body: Record<string, string> = {};
+    try { body = await res.json(); } catch { /* ignore */ }
+    // access_denied / invalid_grant = token revoked or app was unverified
+    const code = body.error ?? '';
+    if (code === 'invalid_grant' || code === 'access_denied') {
+      throw new Error('Gmail access revoked — please reconnect Gmail in the Scanner settings. This can happen if our app verification recently changed.');
+    }
+    throw new Error(`Failed to refresh Gmail token (${res.status}): ${body.error_description ?? body.error ?? 'unknown error'}`);
+  }
   return res.json();
 }
 
@@ -114,7 +123,12 @@ async function fetchEmailList(accessToken: string, query: string, maxResults = 1
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    if (!res.ok) throw new Error('Failed to fetch email list');
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`Gmail access denied (${res.status}) — token may be expired or revoked. Please reconnect Gmail.`);
+      }
+      throw new Error(`Failed to fetch email list (${res.status})`);
+    }
     const data = await res.json();
 
     if (data.messages) allMessages.push(...data.messages);

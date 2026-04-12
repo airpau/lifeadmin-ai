@@ -359,12 +359,25 @@ ${SELF_LEARNING_PROTOCOL}`,
 ## Content Guidelines
 - Brand colours: deep navy (#0f172a), mint green (#34d399), soft orange (#FB923C)
 - Always use paybacker.co.uk (NEVER paybacker.com)
-- CTA: "Try it free at paybacker.co.uk" (we are live, NOT waitlist mode)
+- CTA: "Try it free at paybacker.co.uk" or "Get started free at paybacker.co.uk" — we are LIVE, never use waitlist language
 - NO TEXT in generated images (AI hallucinates garbled text)
 - Image style: dark navy background, mint green and soft orange abstract shapes, clean modern fintech aesthetic
-- Focus on UK consumer pain points: bills, subscriptions, hidden costs
 - Tone: calm, trustworthy, empowering, not preachy
 - Never use em dashes
+- Never use #LaunchingSoon — Paybacker is live
+
+## THE #1 USP — LEAD WITH THE TELEGRAM BOT
+
+The Paybacker Telegram bot is the single most compelling thing about this product. Every post should either be about the bot directly, or mention it as part of the product. Generic "AI personal finance" messaging is weak. Specific Telegram bot demos are the ads.
+
+Hero messaging to build posts around:
+- "Paybacker's AI bot lives in your Telegram. It spotted £162 in overcharges in 30 seconds."
+- Evening money wrap-up pushed to your phone at 9pm — no app to open, no login
+- Ask it anything: "check my transactions for price increases" — structured results + dispute letters drafted instantly
+- What a solicitor charges £150 to £300 for, done for free in your Telegram at 3am
+- Real pound amounts and ROI: £162 found > 2.5 years of Pro subscription cost
+
+When writing posts, lead with the bot interaction story. Show the conversation. Show the result. The hook is: user asks bot something simple, bot finds real money in seconds.
 
 ## How to Work
 1. Check recent posts to avoid repetition
