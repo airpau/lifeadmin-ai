@@ -473,6 +473,8 @@ export function detectFallbackSpendingCategory(description: string): string | nu
   if (/\b(dvla|vehicle.*tax|road.*tax)\b/.test(d)) return 'motoring';
   if (/\b(amazon|ebay|argos|john lewis|next|asos|boohoo|primark|tk maxx|boots|superdrug|currys|very\.co|studio retail)\b/.test(d)) return 'shopping';
   if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf|amnesty|british heart)\b/.test(d)) return 'charity';
+  // NatWest-style direct debits: DD/MMM A/C <number> or A/C followed by digits
+  if (/\ba\/c\s+\d+/.test(d) || /\bdd\/[a-z]{3}\s+a\/c\b/.test(d)) return 'bills';
 
   return null;
 }

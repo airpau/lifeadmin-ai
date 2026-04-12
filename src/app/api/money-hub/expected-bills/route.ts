@@ -244,7 +244,7 @@ export async function GET(request: Request) {
           inWindow = pm.day >= billingDay - 1 && pm.day <= billingDay + 5;
         }
 
-        if (nameMatch && amountMatch) return true;
+        if (nameMatch && amountMatch && inWindow) return true;
         // Amount-only match (obfuscated merchant) must be strict + in date window
         if (!nameMatch && amountMatch && billAmount > 5 && inWindow) return true;
 

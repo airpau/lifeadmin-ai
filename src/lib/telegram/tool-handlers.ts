@@ -2941,11 +2941,12 @@ async function getExpectedBills(
       }
     }
 
-    // Also check direct exact-ish name match (first 6+ chars) for short provider names
+    // Also check direct exact-ish name match for short provider names.
+    // Direction: the bill name must contain the start of the transaction name
+    // (prevents "British " prefix from cross-matching British Gas vs British Telecom).
     if (!bestMatch && normBill.length >= 4) {
-      const prefix = normBill.substring(0, Math.min(normBill.length, 8));
       for (const debit of actualDebits) {
-        if (debit.name.startsWith(prefix) || debit.name.includes(prefix)) {
+        if (normBill.includes(debit.name.substring(0, Math.min(debit.name.length, normBill.length)))) {
           const amountDiff = Math.abs(debit.amount - expectedAmount);
           if (amountDiff <= expectedAmount * 0.25) {
             bestMatch = { amount: debit.amount, date: debit.date };

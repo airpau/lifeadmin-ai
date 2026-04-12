@@ -44,6 +44,7 @@ DECLARE
   v_travel    integer := 0;
   v_eating    integer := 0;
   v_software  integer := 0;
+  v_bills     integer := 0;
 BEGIN
 
   -- Phase 1: user-defined merchant-pattern overrides
@@ -224,6 +225,24 @@ BEGIN
         ~* '(adobe systems|microsoft 365|google one|dropbox|icloud storage|1password|notion|slack|zoom video|canva|chatgpt|openai|patreon)';
   GET DIAGNOSTICS v_software = ROW_COUNT;
 
+  -- Phase 5.5 cont: NatWest-style direct debits (DD/MMM A/C <number> or A/C + digits) → bills
+  -- These are mortgage/loan DDs that use NatWest's reference format and would otherwise
+  -- fall through to 'other' in Phase 6.
+  UPDATE bank_transactions
+  SET user_category = 'bills'
+  WHERE user_id     = p_user_id
+    AND amount      < 0
+    AND user_category IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM money_hub_category_overrides o
+      WHERE o.user_id = p_user_id AND o.transaction_id = bank_transactions.id::text
+    )
+    AND (
+      LOWER(COALESCE(description,'')) ~ '\ba/c\s+\d+'
+      OR LOWER(COALESCE(description,'')) ~ '\bdd/[a-z]{3}\s+a/c\b'
+    );
+  GET DIAGNOSTICS v_bills = ROW_COUNT;
+
   -- Phase 6: mark remaining uncategorised debits as 'other'
   UPDATE bank_transactions
   SET user_category = 'other'
@@ -239,6 +258,7 @@ BEGIN
     'travel',    v_travel,
     'eating_out',v_eating,
     'software',  v_software,
+    'bills',     v_bills,
     'other',     v_spending,
     'status',    'complete'
   );
@@ -257,6 +277,7 @@ DECLARE
   total_travel    integer := 0;
   total_eating    integer := 0;
   total_software  integer := 0;
+  total_bills     integer := 0;
   n               integer := 0;
 BEGIN
 
@@ -320,6 +341,23 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   total_software := n;
 
-  RAISE NOTICE 'Re-categorised: groceries=%, travel=%, eating_out=%, software=%',
-    total_groceries, total_travel, total_eating, total_software;
+  -- NatWest A/C direct debits: re-categorise existing 'other' rows
+  UPDATE bank_transactions
+  SET user_category = 'bills'
+  WHERE amount < 0
+    AND user_category = 'other'
+    AND NOT EXISTS (
+      SELECT 1 FROM money_hub_category_overrides o
+      WHERE o.user_id = bank_transactions.user_id
+        AND o.transaction_id = bank_transactions.id::text
+    )
+    AND (
+      LOWER(COALESCE(description,'')) ~ '\ba/c\s+\d+'
+      OR LOWER(COALESCE(description,'')) ~ '\bdd/[a-z]{3}\s+a/c\b'
+    );
+  GET DIAGNOSTICS n = ROW_COUNT;
+  total_bills := n;
+
+  RAISE NOTICE 'Re-categorised: groceries=%, travel=%, eating_out=%, software=%, bills(a/c dd)=%',
+    total_groceries, total_travel, total_eating, total_software, total_bills;
 END $$;
