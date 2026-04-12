@@ -894,13 +894,12 @@ async function getPriceAlerts(
   const totalImpact = data.reduce((sum, a) => sum + Number(a.annual_impact), 0);
 
   let text = `*Price Increase Alerts (${data.length})*\n`;
-  text += `Total annual impact: *${fmt(totalImpact)}*\n\n`;
+  text += `Total extra cost: *+${fmt(totalImpact)}/year*\n\n`;
 
   for (const a of data) {
-    text += `🔺 *${a.merchant_name ?? 'Unknown'}*\n`;
-    text += `   ${fmt(a.old_amount)}/mo → ${fmt(a.new_amount)}/mo`;
-    text += ` (+${Number(a.increase_pct).toFixed(0)}%) · ${fmt(a.annual_impact)}/year extra\n`;
-    text += `   Detected: ${fmtDate(a.new_date)}\n`;
+    const pct = Number(a.increase_pct);
+    const emoji = pct >= 10 ? '🔴' : '🟡';
+    text += `${emoji} *${a.merchant_name ?? 'Unknown'}*: ${fmt(a.old_amount)} → ${fmt(a.new_amount)}/mo (+${pct.toFixed(0)}%) = +${fmt(a.annual_impact)}/yr\n`;
   }
 
   return { text };
@@ -3181,26 +3180,89 @@ async function getScannerResults(
 ): Promise<ToolResult> {
   const targetStatus = status && status !== 'all' ? status : 'pending_review';
 
+  // Query both task types for opportunity scanner results
+  // 'suggested' is used for low-confidence items; both are shown here
+  const statusFilter =
+    targetStatus === 'pending_review'
+      ? ['pending_review', 'suggested']
+      : [targetStatus];
+
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, title, description, priority, status, created_at, provider_name, source')
+    .select('id, title, description, priority, status, created_at, provider_name')
     .eq('user_id', userId)
     .eq('type', 'opportunity')
-    .eq('status', targetStatus)
+    .in('status', statusFilter)
     .order('created_at', { ascending: false })
     .limit(25);
 
   if (error) {
-    return { text: `Unable to load scanner results: ${error.message}` };
+    // Fallback: try money_hub_alerts which the scanner also populates
+    const { data: alerts, error: alertErr } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title, description, type, value_gbp, created_at, metadata')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(25);
+
+    if (alertErr || !alerts || alerts.length === 0) {
+      return {
+        text: `No email scanner findings yet. Run a scan from paybacker.co.uk/dashboard/scanner to detect overcharges, price increases, and refund opportunities.`,
+      };
+    }
+
+    const priorityEmoji: Record<string, string> = {
+      flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+      overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
+    };
+
+    let fallbackText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+    for (const item of alerts) {
+      const emoji = priorityEmoji[item.type] ?? '🟡';
+      fallbackText += `${emoji} *${item.title}*\n`;
+      if (item.description) fallbackText += `   ${item.description}\n`;
+      if (item.value_gbp && Number(item.value_gbp) > 0) {
+        fallbackText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+      }
+      fallbackText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+    }
+    fallbackText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+    return { text: fallbackText };
   }
 
   if (!data || data.length === 0) {
-    if (targetStatus === 'pending_review') {
-      return {
-        text: `No new scanner findings. Connect your Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, forgotten subscriptions, and refund opportunities.`,
+    // Also check money_hub_alerts before giving up
+    const { data: alerts } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title, description, type, value_gbp, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (alerts && alerts.length > 0) {
+      const priorityEmoji: Record<string, string> = {
+        flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+        overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
       };
+      let altText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+      for (const item of alerts) {
+        const emoji = priorityEmoji[item.type] ?? '🟡';
+        altText += `${emoji} *${item.title}*\n`;
+        if (item.description) altText += `   ${item.description}\n`;
+        if (item.value_gbp && Number(item.value_gbp) > 0) {
+          altText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+        }
+        altText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+      }
+      altText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+      return { text: altText };
     }
-    return { text: `No scanner results found with status "${targetStatus}".` };
+
+    return {
+      text: `No email scanner findings yet. Connect Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, price increases, and refund opportunities.`,
+    };
   }
 
   const priorityEmoji: Record<string, string> = { high: '🔴', medium: '🟠', low: '🟡' };
