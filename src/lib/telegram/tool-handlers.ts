@@ -3231,65 +3231,146 @@ async function getScannerResults(
     return { text: fallbackText };
   }
 
+  // Also query email_scan_findings for the expanded scanner results
+  const { data: extFindings } = await supabase
+    .from('email_scan_findings')
+    .select('id, finding_type, provider, title, description, amount, due_date, previous_amount, urgency, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  // Dispute correspondence (supplier responses)
+  const { data: dispCorr } = await supabase
+    .from('dispute_correspondence')
+    .select('id, provider, subject, correspondence_type, summary, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  // Pending cancellations
+  const { data: cancelPending } = await supabase
+    .from('cancellation_tracking')
+    .select('id, provider, effective_date, status, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const hasExtended = (extFindings && extFindings.length > 0) || (dispCorr && dispCorr.length > 0);
+
   if (!data || data.length === 0) {
-    // Also check money_hub_alerts before giving up
-    const { data: alerts } = await supabase
-      .from('money_hub_alerts')
-      .select('id, title, description, type, value_gbp, created_at')
-      .eq('user_id', userId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(10);
+    if (!hasExtended) {
+      // Also check money_hub_alerts before giving up
+      const { data: alerts } = await supabase
+        .from('money_hub_alerts')
+        .select('id, title, description, type, value_gbp, created_at')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-    if (alerts && alerts.length > 0) {
-      const priorityEmoji: Record<string, string> = {
-        flight_delay: '✈️', price_increase: '🔴', refund: '💰',
-        overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
-      };
-      let altText = `*Email Scanner Findings (${alerts.length})*\n\n`;
-      for (const item of alerts) {
-        const emoji = priorityEmoji[item.type] ?? '🟡';
-        altText += `${emoji} *${item.title}*\n`;
-        if (item.description) altText += `   ${item.description}\n`;
-        if (item.value_gbp && Number(item.value_gbp) > 0) {
-          altText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+      if (alerts && alerts.length > 0) {
+        const priorityEmoji: Record<string, string> = {
+          flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+          overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
+        };
+        let altText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+        for (const item of alerts) {
+          const emoji = priorityEmoji[item.type] ?? '🟡';
+          altText += `${emoji} *${item.title}*\n`;
+          if (item.description) altText += `   ${item.description}\n`;
+          if (item.value_gbp && Number(item.value_gbp) > 0) {
+            altText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+          }
+          altText += `   Found: ${fmtDate(item.created_at)}\n\n`;
         }
-        altText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+        altText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+        return { text: altText };
       }
-      altText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
-      return { text: altText };
-    }
 
-    return {
-      text: `No email scanner findings yet. Connect Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, price increases, and refund opportunities.`,
-    };
+      return {
+        text: `No email scanner findings yet. Connect Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, price increases, and refund opportunities.`,
+      };
+    }
   }
 
   const priorityEmoji: Record<string, string> = { high: '🔴', medium: '🟠', low: '🟡' };
+  const typeEmoji: Record<string, string> = {
+    bill: '📄', contract: '📋', dispute_response: '📩', cancellation_confirmation: '✅',
+    bank_gap: '💸', price_increase: '🔴', flight_delay: '✈️', refund_opportunity: '💰',
+    overcharge: '🔴', forgotten_subscription: '💸', renewal: '📅', deal_expiry: '⏰',
+  };
 
-  let text = `*Email Scanner Findings (${data.length})*\n\n`;
+  let text = '';
+  const totalCount = (data?.length || 0) + (extFindings?.length || 0) + (dispCorr?.length || 0);
+  text = `*Email Scanner Findings (${totalCount})*\n\n`;
 
-  for (const item of data) {
+  // Standard opportunity findings (tasks table)
+  for (const item of data || []) {
     const p = priorityEmoji[item.priority ?? 'medium'] ?? '🟡';
     const provider = item.provider_name ? ` — ${item.provider_name}` : '';
     text += `${p} *${item.title}*${provider}\n`;
-
-    // The description is stored as JSON from the scan
     try {
       const parsed = JSON.parse(item.description ?? '{}');
-      if (parsed.description) {
-        text += `   ${parsed.description}\n`;
-      }
-      if (parsed.amount && parsed.amount > 0) {
-        text += `   Potential saving: *${fmt(parsed.amount)}/year*\n`;
-      }
+      if (parsed.description) text += `   ${parsed.description}\n`;
+      if (parsed.amount && parsed.amount > 0) text += `   Potential saving: *${fmt(parsed.amount)}/year*\n`;
     } catch {
-      if (item.description && item.description.length < 200) {
-        text += `   ${item.description}\n`;
-      }
+      if (item.description && item.description.length < 200) text += `   ${item.description}\n`;
+    }
+    text += `   Found: ${fmtDate(item.created_at)}\n\n`;
+  }
+
+  // Extended findings (bills, contracts, price increases, bank gaps)
+  if (extFindings && extFindings.length > 0) {
+    // Group by type for cleaner output
+    const byType: Record<string, typeof extFindings> = {};
+    for (const f of extFindings) {
+      if (!byType[f.finding_type]) byType[f.finding_type] = [];
+      byType[f.finding_type].push(f);
     }
 
-    text += `   Found: ${fmtDate(item.created_at)}\n\n`;
+    const typeLabels: Record<string, string> = {
+      bill: 'Bills received', price_increase: 'Price increases', contract: 'Contracts detected',
+      bank_gap: 'Not in your bank', cancellation_confirmation: 'Cancellations confirmed',
+    };
+
+    for (const [type, items] of Object.entries(byType)) {
+      const emoji = typeEmoji[type] ?? '🟡';
+      const label = typeLabels[type] ?? type.replace(/_/g, ' ');
+      text += `*${label} (${items.length})*\n`;
+      for (const f of items.slice(0, 3)) {
+        const urgency = f.urgency === 'immediate' ? '🔴 ' : f.urgency === 'soon' ? '🟡 ' : '';
+        let line = `${urgency}${emoji} *${f.provider}*`;
+        if (f.amount) line += `: ${fmt(f.amount)}`;
+        if (f.due_date) line += ` — due ${fmtDate(f.due_date)}`;
+        text += `${line}\n`;
+        if (f.description) text += `   ${f.description.substring(0, 120)}\n`;
+      }
+      text += '\n';
+    }
+  }
+
+  // Dispute correspondence
+  if (dispCorr && dispCorr.length > 0) {
+    text += `*Supplier responses to disputes (${dispCorr.length})*\n`;
+    for (const d of dispCorr) {
+      const typeIcon = d.correspondence_type === 'rejection' ? '❌' : d.correspondence_type === 'resolution' ? '✅' : d.correspondence_type === 'escalation' ? '⚠️' : '📩';
+      text += `${typeIcon} *${d.provider}*: ${d.subject || 'No subject'}\n`;
+      if (d.summary) text += `   ${d.summary.substring(0, 120)}\n`;
+    }
+    text += '\nAsk me to help draft a follow-up response to any of these.\n\n';
+  }
+
+  // Pending cancellation verifications
+  if (cancelPending && cancelPending.length > 0) {
+    text += `*Pending cancellation verification (${cancelPending.length})*\n`;
+    for (const c of cancelPending) {
+      const eff = c.effective_date ? ` — effective ${fmtDate(c.effective_date)}` : '';
+      text += `⏳ *${c.provider}*${eff}\n`;
+    }
+    text += '\nI\'m watching your bank statements to confirm these charges stopped.\n\n';
   }
 
   text += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
