@@ -36,6 +36,7 @@ interface BankConnection {
   bank_name: string | null;
   status: string;
   last_synced_at: string | null;
+  connected_at: string | null;
 }
 
 function getAdmin() {
@@ -133,6 +134,7 @@ export async function GET(request: NextRequest) {
     return tierA - tierB;
   });
 
+  // Default lookback ceiling — individual connections may use a later floor (see below).
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
@@ -258,10 +260,21 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
+        // Determine the earliest date we may query for this connection.
+        // NatWest and other UK banks often restrict transaction history to on or after
+        // the consent / reconnection date. Requesting older dates returns HTTP 400.
+        // We use connected_at as the floor and cap at 90 days for safety.
+        const connectedAtDate = connection.connected_at
+          ? new Date(connection.connected_at)
+          : ninetyDaysAgo;
+        connectedAtDate.setHours(0, 0, 0, 0);
+        const fromDate = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
+
         // Sync transactions for each account
+        const accountErrors: string[] = [];
         for (const accountId of accountIds) {
           try {
-            const transactions = await fetchTrueLayerTransactions(accessToken, accountId, ninetyDaysAgo);
+            const transactions = await fetchTrueLayerTransactions(accessToken, accountId, fromDate);
             connectionApiCalls++;
             transactionSyncSucceeded = true;
 
@@ -288,7 +301,9 @@ export async function GET(request: NextRequest) {
             if (!upsertError) totalSynced += rows.length;
             else console.error(`Bank sync: upsert error for ${accountId}:`, upsertError);
           } catch (err: any) {
-            console.error(`Bank sync: error on account ${accountId}:`, err.message);
+            const msg: string = err.message ?? String(err);
+            accountErrors.push(`${accountId}: ${msg}`);
+            console.error(`Bank sync: error on account ${accountId}:`, msg);
           }
         }
 
@@ -473,7 +488,8 @@ export async function GET(request: NextRequest) {
       }
 
       if (!transactionSyncSucceeded) {
-        throw new Error('All account sync attempts failed');
+        const detail = accountErrors.length > 0 ? accountErrors.join('; ') : 'unknown error';
+        throw new Error(`All account sync attempts failed: ${detail}`);
       }
 
       // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring

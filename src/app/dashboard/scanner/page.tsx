@@ -281,7 +281,7 @@ export default function ScannerPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await fetch('/api/bank/sync', { method: 'POST' });
+      await fetch('/api/bank/sync-now', { method: 'POST' });
       const res = await fetch('/api/bank/connection');
       const d = await res.json();
       setBankConnections(d.connections || []);

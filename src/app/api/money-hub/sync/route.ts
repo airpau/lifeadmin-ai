@@ -113,7 +113,7 @@ export async function POST() {
 
   // Step 1: Trigger a fresh bank sync first
   try {
-    const syncRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'}/api/bank/sync`, {
+    const syncRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'}/api/bank/sync-now`, {
       method: 'POST',
       headers: { cookie: '' }, // This won't work server-to-server, so we'll sync directly
     });

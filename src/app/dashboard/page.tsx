@@ -700,7 +700,7 @@ export default function DashboardPage() {
                   onClick={async () => {
                     setBankSyncing(true);
                     try {
-                      await fetch('/api/bank/sync', { method: 'POST' });
+                      await fetch('/api/bank/sync-now', { method: 'POST' });
                     } catch {}
                     setBankSyncing(false);
                   }}
