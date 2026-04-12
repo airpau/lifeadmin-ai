@@ -95,7 +95,8 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
   const handleSelect = async (institution: Institution) => {
     setConnecting(institution.id);
     try {
-      const res = await fetch(`/api/auth/yapily?institutionId=${encodeURIComponent(institution.id)}`);
+      const returnTo = encodeURIComponent(window.location.pathname);
+      const res = await fetch(`/api/auth/yapily?institutionId=${encodeURIComponent(institution.id)}&returnTo=${returnTo}`);
       const data = await res.json();
       if (data.error) {
         setError(data.error);

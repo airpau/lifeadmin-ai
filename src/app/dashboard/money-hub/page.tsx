@@ -208,7 +208,7 @@ export default function MoneyHubPage() {
       await refreshData();
       await fetchExpectedBills();
       const synced = d.synced || 0;
-      showToast(synced > 0 ? `Synced ${synced} transaction${synced !== 1 ? 's' : ''}` : 'Sync completed. No new transactions.', synced > 0 ? 'success' : 'info');
+      showToast(synced > 0 ? `Synced ${synced} transaction${synced !== 1 ? 's' : ''}` : 'Up to date', synced > 0 ? 'success' : 'info');
     } catch {
       showToast('Sync failed.', 'error');
     }
