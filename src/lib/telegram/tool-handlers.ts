@@ -684,21 +684,17 @@ async function getBudgetStatus(
   userId: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const startDate = new Date(year, month - 1, 1).toISOString();
+  const endDate = new Date(year, month, 1).toISOString();
 
-  const [budgets, transactions] = await Promise.all([
+  const [budgets, spendingRpc] = await Promise.all([
     supabase
       .from('money_hub_budgets')
       .select('category, monthly_limit')
       .eq('user_id', userId),
-    supabase
-      .from('bank_transactions')
-      .select('category, amount')
-      .eq('user_id', userId)
-      .lt('amount', 0)
-      .gte('timestamp', startDate)
-      .lt('timestamp', endDate),
+    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
   ]);
 
   if (!budgets.data || budgets.data.length === 0) {
@@ -707,10 +703,105 @@ async function getBudgetStatus(
     };
   }
 
-  const spent: Record<string, number> = {};
-  for (const t of transactions.data ?? []) {
-    const cat = t.category ?? 'Other';
-    spent[cat] = (spent[cat] ?? 0) + (-Number(t.amount));
+  // Build spending map from RPC (uses user_category, excludes transfers/income)
+  const spentByCategory: Record<string, number> = {};
+  for (const row of spendingRpc.data ?? []) {
+    spentByCategory[row.category] = Number(row.category_total);
+  }
+
+  const budgetCategories = budgets.data.map(b => b.category);
+
+  // Check if any budget category has no matched spending but there IS 'other' spending
+  const otherSpend = spentByCategory['other'] ?? 0;
+  const unmatchedBudgets = budgetCategories.filter(cat => !(spentByCategory[cat] > 0));
+
+  if (otherSpend > 0 && unmatchedBudgets.length > 0) {
+    // Fetch this month's 'other' transactions for AI categorization
+    const { data: otherTxns } = await supabase
+      .from('bank_transactions')
+      .select('id, merchant_name, description, amount, user_category')
+      .eq('user_id', userId)
+      .lt('amount', 0)
+      .gte('timestamp', startDate)
+      .lt('timestamp', endDate)
+      .in('user_category', ['other'])
+      .limit(200);
+
+    if (otherTxns && otherTxns.length > 0) {
+      // Group by merchant name to batch the AI call
+      const merchantTotals: Record<string, number> = {};
+      for (const t of otherTxns) {
+        const merchant = t.merchant_name || t.description || 'Unknown';
+        merchantTotals[merchant] = (merchantTotals[merchant] ?? 0) + Math.abs(Number(t.amount));
+      }
+
+      try {
+        const anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_AGENTS_API_KEY || process.env.ANTHROPIC_API_KEY,
+        });
+
+        const merchantList = Object.entries(merchantTotals)
+          .map(([m, amt]) => `${m}: £${amt.toFixed(2)}`)
+          .join('\n');
+
+        const msg = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          messages: [{
+            role: 'user',
+            content: `Classify these UK bank transactions into one of the user's budget categories.
+
+Budget categories: ${budgetCategories.join(', ')}
+
+Transactions (merchant: total spent this month):
+${merchantList}
+
+Return ONLY a JSON object mapping each merchant name exactly as given to the best matching category name from the list. Use "other" if none fit.
+Example: {"Tesco": "groceries", "National Rail": "travel"}`,
+          }],
+        });
+
+        const raw = msg.content[0].type === 'text' ? msg.content[0].text : '';
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const categoryMap = JSON.parse(jsonMatch[0]) as Record<string, string>;
+
+          // Redistribute spending from 'other' into matched budget categories
+          for (const t of otherTxns) {
+            const merchant = t.merchant_name || t.description || 'Unknown';
+            const assignedCat = categoryMap[merchant];
+            if (assignedCat && assignedCat !== 'other' && budgetCategories.includes(assignedCat)) {
+              const amt = Math.abs(Number(t.amount));
+              spentByCategory['other'] = Math.max(0, (spentByCategory['other'] ?? 0) - amt);
+              spentByCategory[assignedCat] = (spentByCategory[assignedCat] ?? 0) + amt;
+            }
+          }
+
+          // Persist merchant→category mappings so future syncs use them
+          for (const [merchant, cat] of Object.entries(categoryMap)) {
+            if (cat !== 'other' && budgetCategories.includes(cat) && merchant !== 'Unknown') {
+              const pattern = merchant.toLowerCase().slice(0, 50);
+              // Delete any existing pattern to avoid duplicates then insert fresh
+              await supabase
+                .from('money_hub_category_overrides')
+                .delete()
+                .eq('user_id', userId)
+                .eq('merchant_pattern', pattern);
+              await supabase.from('money_hub_category_overrides').insert({
+                user_id: userId,
+                merchant_pattern: pattern,
+                user_category: cat,
+              });
+            }
+          }
+
+          // Re-run auto_categorise so new overrides apply immediately
+          await supabase.rpc('auto_categorise_transactions', { p_user_id: userId });
+        }
+      } catch {
+        // AI categorization is best-effort — continue with whatever we have
+      }
+    }
   }
 
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -718,13 +809,18 @@ async function getBudgetStatus(
 
   for (const b of budgets.data) {
     const limit = Number(b.monthly_limit);
-    const spentAmt = spent[b.category] ?? 0;
+    const spentAmt = spentByCategory[b.category] ?? 0;
     const over = spentAmt > limit;
     const emoji = over ? '🔴' : spentAmt / limit > 0.8 ? '🟡' : '🟢';
     text += `${emoji} *${b.category}*\n`;
     text += `   ${blockBar(spentAmt, limit)} ${fmt(spentAmt)} / ${fmt(limit)}`;
     if (over) text += ` _(over by ${fmt(spentAmt - limit)})_`;
     text += '\n';
+  }
+
+  const remainingOther = spentByCategory['other'] ?? 0;
+  if (remainingOther > 0) {
+    text += `\n_${fmt(remainingOther)} in uncategorised spending not yet assigned to a budget._`;
   }
 
   return { text };
@@ -798,13 +894,12 @@ async function getPriceAlerts(
   const totalImpact = data.reduce((sum, a) => sum + Number(a.annual_impact), 0);
 
   let text = `*Price Increase Alerts (${data.length})*\n`;
-  text += `Total annual impact: *${fmt(totalImpact)}*\n\n`;
+  text += `Total extra cost: *+${fmt(totalImpact)}/year*\n\n`;
 
   for (const a of data) {
-    text += `🔺 *${a.merchant_name ?? 'Unknown'}*\n`;
-    text += `   ${fmt(a.old_amount)}/mo → ${fmt(a.new_amount)}/mo`;
-    text += ` (+${Number(a.increase_pct).toFixed(0)}%) · ${fmt(a.annual_impact)}/year extra\n`;
-    text += `   Detected: ${fmtDate(a.new_date)}\n`;
+    const pct = Number(a.increase_pct);
+    const emoji = pct >= 10 ? '🔴' : '🟡';
+    text += `${emoji} *${a.merchant_name ?? 'Unknown'}*: ${fmt(a.old_amount)} → ${fmt(a.new_amount)}/mo (+${pct.toFixed(0)}%) = +${fmt(a.annual_impact)}/yr\n`;
   }
 
   return { text };
@@ -3085,26 +3180,89 @@ async function getScannerResults(
 ): Promise<ToolResult> {
   const targetStatus = status && status !== 'all' ? status : 'pending_review';
 
+  // Query both task types for opportunity scanner results
+  // 'suggested' is used for low-confidence items; both are shown here
+  const statusFilter =
+    targetStatus === 'pending_review'
+      ? ['pending_review', 'suggested']
+      : [targetStatus];
+
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, title, description, priority, status, created_at, provider_name, source')
+    .select('id, title, description, priority, status, created_at, provider_name')
     .eq('user_id', userId)
     .eq('type', 'opportunity')
-    .eq('status', targetStatus)
+    .in('status', statusFilter)
     .order('created_at', { ascending: false })
     .limit(25);
 
   if (error) {
-    return { text: `Unable to load scanner results: ${error.message}` };
+    // Fallback: try money_hub_alerts which the scanner also populates
+    const { data: alerts, error: alertErr } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title, description, type, value_gbp, created_at, metadata')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(25);
+
+    if (alertErr || !alerts || alerts.length === 0) {
+      return {
+        text: `No email scanner findings yet. Run a scan from paybacker.co.uk/dashboard/scanner to detect overcharges, price increases, and refund opportunities.`,
+      };
+    }
+
+    const priorityEmoji: Record<string, string> = {
+      flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+      overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
+    };
+
+    let fallbackText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+    for (const item of alerts) {
+      const emoji = priorityEmoji[item.type] ?? '🟡';
+      fallbackText += `${emoji} *${item.title}*\n`;
+      if (item.description) fallbackText += `   ${item.description}\n`;
+      if (item.value_gbp && Number(item.value_gbp) > 0) {
+        fallbackText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+      }
+      fallbackText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+    }
+    fallbackText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+    return { text: fallbackText };
   }
 
   if (!data || data.length === 0) {
-    if (targetStatus === 'pending_review') {
-      return {
-        text: `No new scanner findings. Connect your Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, forgotten subscriptions, and refund opportunities.`,
+    // Also check money_hub_alerts before giving up
+    const { data: alerts } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title, description, type, value_gbp, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (alerts && alerts.length > 0) {
+      const priorityEmoji: Record<string, string> = {
+        flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+        overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
       };
+      let altText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+      for (const item of alerts) {
+        const emoji = priorityEmoji[item.type] ?? '🟡';
+        altText += `${emoji} *${item.title}*\n`;
+        if (item.description) altText += `   ${item.description}\n`;
+        if (item.value_gbp && Number(item.value_gbp) > 0) {
+          altText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+        }
+        altText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+      }
+      altText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+      return { text: altText };
     }
-    return { text: `No scanner results found with status "${targetStatus}".` };
+
+    return {
+      text: `No email scanner findings yet. Connect Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, price increases, and refund opportunities.`,
+    };
   }
 
   const priorityEmoji: Record<string, string> = { high: '🔴', medium: '🟠', low: '🟡' };

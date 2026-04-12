@@ -182,22 +182,28 @@ export async function GET(request: NextRequest) {
       const [todayTxResult, last30TxResult] = await Promise.all([
         supabase
           .from('bank_transactions')
-          .select('category, amount')
+          .select('user_category, amount')
           .eq('user_id', userId)
           .lt('amount', 0)
           .gte('timestamp', todayStart.toISOString())
           .lt('timestamp', now.toISOString()),
         supabase
           .from('bank_transactions')
-          .select('amount')
+          .select('user_category, amount')
           .eq('user_id', userId)
           .lt('amount', 0)
           .gte('timestamp', thirtyDaysAgo.toISOString())
           .lt('timestamp', todayStart.toISOString()),
       ]);
 
-      const todayTx = todayTxResult.data ?? [];
-      const last30Tx = last30TxResult.data ?? [];
+      // Exclude transfers and income from spending totals
+      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      const todayTx = (todayTxResult.data ?? []).filter(
+        t => !EXCLUDE_CATS.has(t.user_category ?? ''),
+      );
+      const last30Tx = (last30TxResult.data ?? []).filter(
+        t => !EXCLUDE_CATS.has(t.user_category ?? ''),
+      );
 
       const todayTotal = todayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
       const last30Total = last30Tx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
@@ -217,24 +223,24 @@ export async function GET(request: NextRequest) {
       sections.push(spendingSection);
 
       // ------ 2. Remaining budget for top categories ------
-      const [budgets, monthTxResult] = await Promise.all([
+      // Use get_monthly_spending RPC — correctly reads user_category and excludes
+      // transfers/income. Falls back to empty array if function unavailable.
+      const [budgets, spendingRpcResult] = await Promise.all([
         supabase
           .from('money_hub_budgets')
           .select('category, monthly_limit')
           .eq('user_id', userId),
-        supabase
-          .from('bank_transactions')
-          .select('category, amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', monthStart.toISOString())
-          .lt('timestamp', monthEnd.toISOString()),
+        supabase.rpc('get_monthly_spending', {
+          p_user_id: userId,
+          p_year: now.getFullYear(),
+          p_month: now.getMonth() + 1,
+        }),
       ]);
 
       const spentByCategory: Record<string, number> = {};
-      for (const t of monthTxResult.data ?? []) {
-        const cat = t.category ?? 'Other';
-        spentByCategory[cat] = (spentByCategory[cat] ?? 0) + Math.abs(Number(t.amount));
+      for (const row of spendingRpcResult.data ?? []) {
+        // RPC returns { category: string, category_total: numeric }
+        spentByCategory[row.category] = Number(row.category_total);
       }
 
       const budgetStatus: Array<{
