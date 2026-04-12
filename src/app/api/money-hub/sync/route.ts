@@ -160,11 +160,11 @@ export async function POST() {
     const merchant = (txn.merchant_name || desc.substring(0, 30)).toLowerCase().trim();
     const amount = parseFloat(txn.amount);
 
-    // Priority 1: Keep existing user override, UNLESS it's a generic auto-assigned fallback
-    // ('bills', 'shopping', 'other') that might hide a more specific category.
-    const SOFT_CATEGORIES = new Set(['bills', 'shopping', 'other']);
-    const existingUserCategory = (txn.user_category || '').toLowerCase();
-    if (txn.user_category && !SOFT_CATEGORIES.has(existingUserCategory)) continue;
+    // Priority 1: Skip any transaction that already has a user_category set.
+    // Only process transactions that have never been categorised (null/empty).
+    // This prevents re-classifying the same transactions on every sync, which
+    // was causing runaway Anthropic API costs.
+    if (txn.user_category) continue;
 
     // Priority 2: Check merchant overrides (learned from user corrections)
     let finalCategory: string | null = null;
