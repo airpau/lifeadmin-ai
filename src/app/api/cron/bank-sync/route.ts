@@ -113,10 +113,11 @@ export async function GET(request: NextRequest) {
   const orderedUserIds = sortedProfiles.map((p) => p.id);
 
   // Fetch active bank connections for these users (TrueLayer + Yapily)
+  // Also include 'token_expired' connections — we attempt a token refresh and reset to active on success
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('*')
-    .eq('status', 'active')
+    .in('status', ['active', 'token_expired'])
     .in('provider', ['truelayer', 'yapily'])
     .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000']);
 
@@ -498,10 +499,10 @@ export async function GET(request: NextRequest) {
       // Run recurring detection (JS-side; the DB function above is also called server-side)
       const recurringDetected = await detectRecurring(connection.user_id, supabase);
 
-      // Update last synced
+      // Update last synced; reset token_expired back to active since refresh succeeded
       await supabase
         .from('bank_connections')
-        .update({ last_synced_at: now, updated_at: now })
+        .update({ last_synced_at: now, updated_at: now, status: 'active' })
         .eq('id', connection.id);
 
       // Log success

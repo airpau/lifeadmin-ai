@@ -155,16 +155,37 @@ async function syncTransactionsForConnection(
 ) {
   const { fetchTransactions } = await import('@/lib/truelayer');
 
-  const twelveMonthsAgo = new Date();
-  twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+  // Use the last known transaction date as the starting point so we don't miss
+  // any gap created by a reconnect. Fall back to 12 months ago for first-time connections.
+  let fromDate: Date;
+  const { data: lastTx } = await supabase
+    .from('bank_transactions')
+    .select('timestamp')
+    .eq('user_id', userId)
+    .in('account_id', connection.account_ids || [])
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (lastTx?.timestamp) {
+    // Start from the day of the last transaction to catch any same-day transactions
+    fromDate = new Date(lastTx.timestamp);
+    fromDate.setHours(0, 0, 0, 0);
+    console.log(`TrueLayer callback: backfilling from last known transaction ${fromDate.toISOString()}`);
+  } else {
+    fromDate = new Date();
+    fromDate.setFullYear(fromDate.getFullYear() - 1);
+    console.log('TrueLayer callback: no prior transactions, fetching 12 months history');
+  }
 
   const accountIds = connection.account_ids || [];
   let totalSynced = 0;
   let apiCallsMade = 0;
+  const syncErrors: string[] = [];
 
   for (const accountId of accountIds) {
     try {
-      const transactions = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+      const transactions = await fetchTransactions(accessToken, accountId, fromDate);
       apiCallsMade++;
 
       if (transactions.length === 0) continue;
@@ -188,8 +209,10 @@ async function syncTransactionsForConnection(
 
       if (error) console.error('Error upserting transactions:', error);
       else totalSynced += rows.length;
-    } catch (err) {
-      console.error(`Error syncing account ${accountId}:`, err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Error syncing account ${accountId}:`, msg);
+      syncErrors.push(`${accountId}: ${msg}`);
     }
   }
 
@@ -201,13 +224,19 @@ async function syncTransactionsForConnection(
     .update({ last_synced_at: now, updated_at: now })
     .eq('id', connection.id);
 
-  // Log initial sync to bank_sync_log for cost tracking
+  // Log as failed if no API calls succeeded (silent failure guard)
+  const syncStatus = apiCallsMade > 0 ? 'success' : 'failed';
+  const errorMessage = syncStatus === 'failed'
+    ? `All account fetch attempts failed: ${syncErrors.join('; ') || 'unknown error'}`
+    : null;
+
   await supabase.from('bank_sync_log').insert({
     user_id: userId,
     connection_id: connection.id,
     trigger_type: 'initial',
-    status: 'success',
+    status: syncStatus,
     api_calls_made: apiCallsMade,
+    error_message: errorMessage,
   }).then(({ error }) => {
     if (error) console.error('Failed to log initial sync:', error);
   });
