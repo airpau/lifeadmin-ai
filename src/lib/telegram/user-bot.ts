@@ -369,6 +369,7 @@ export function createUserBot(): Bot<UserBotContext> {
   // /start
   // -------------------------------------------------------
   bot.command('start', async (ctx) => {
+    const startKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
     await ctx.reply(
       `Welcome to *Paybacker* 👋\n\n` +
         `I'm your personal financial assistant. I can:\n\n` +
@@ -382,8 +383,8 @@ export function createUserBot(): Bot<UserBotContext> {
         `1. Go to paybacker.co.uk/dashboard/settings/telegram\n` +
         `2. Click "Generate Link Code"\n` +
         `3. Send: \`/link YOUR_CODE\`\n\n` +
-        `This bot is available to Pro subscribers only.`,
-      { parse_mode: 'Markdown' },
+        `*Pocket Agent is a Pro plan feature* — full spending insights, smart budget alerts, AI-drafted complaint letters, and proactive bill monitoring for *£9.99/month*.`,
+      { parse_mode: 'Markdown', reply_markup: startKeyboard },
     );
   });
 
@@ -437,8 +438,12 @@ export function createUserBot(): Bot<UserBotContext> {
       (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
 
     if (!isPro) {
+      const linkUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
       return ctx.reply(
-        `This bot is for Pro subscribers only.\n\nUpgrade at paybacker.co.uk/dashboard/upgrade`,
+        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
+          `Pro gives you real-time spending insights, smart budget alerts, AI-drafted complaint letters citing UK consumer law, and proactive bill-increase detection — all for *£9.99/month*.\n\n` +
+          `Once upgraded, generate a fresh link code from your dashboard and come back here.`,
+        { parse_mode: 'Markdown', reply_markup: linkUpgradeKeyboard },
       );
     }
 
@@ -1256,8 +1261,11 @@ Return JSON: { "subject": "...", "body": "..." }`;
       (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
 
     if (!isPro) {
+      const chatUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
       return ctx.reply(
-        `This feature requires a Pro subscription.\n\nUpgrade at paybacker.co.uk/dashboard/upgrade`,
+        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
+          `Pro gives you real-time access to your spending, budgets, subscriptions, and disputes — plus AI-drafted complaint letters and proactive bill alerts — all for *£9.99/month*.`,
+        { parse_mode: 'Markdown', reply_markup: chatUpgradeKeyboard },
       );
     }
 

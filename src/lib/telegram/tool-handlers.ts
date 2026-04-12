@@ -3120,7 +3120,7 @@ async function getProfile(
   text += `*Member since:* ${memberSince}\n`;
 
   if (tier === 'free') {
-    text += `\n_Upgrade to Essential or Pro for unlimited letters, bank sync, and full Money Hub access. Upgrade at paybacker.co.uk/dashboard/upgrade_`;
+    text += `\n\n💡 _To unlock bank sync, full monthly spending breakdowns, budget tracking, and smart alerts — upgrade to Essentials (£4.99/mo) or Pro (£9.99/mo) at paybacker.co.uk/dashboard/upgrade_`;
   }
 
   return { text };
