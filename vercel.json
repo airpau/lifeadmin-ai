@@ -126,7 +126,7 @@
     },
     {
       "path": "/api/cron/marketing-automation",
-      "schedule": "0 * * * *"
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/cron/contract-expiry-alerts",
@@ -166,19 +166,19 @@
     },
     {
       "path": "/api/cron/managed-agents?agent=support-triager",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/managed-agents?agent=reviewer",
-      "schedule": "0 */3 * * *"
+      "schedule": "0 */12 * * *"
     },
     {
       "path": "/api/cron/managed-agents?agent=bug-triager",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 */12 * * *"
     },
     {
       "path": "/api/cron/managed-agents?agent=alert-tester",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 */12 * * *"
     },
     {
       "path": "/api/cron/managed-agents?agent=digest-compiler",
