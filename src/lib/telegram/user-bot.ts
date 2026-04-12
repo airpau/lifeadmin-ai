@@ -360,7 +360,7 @@ async function callClaudeWithTools(
 // Bot factory — called by webhook route
 // ============================================================
 export function createUserBot(): Bot<UserBotContext> {
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) throw new Error('TELEGRAM_USER_BOT_TOKEN is not set');
 
   const bot = new Bot<UserBotContext>(token);
@@ -1404,7 +1404,7 @@ export async function sendProactiveAlert(params: {
   };
   showFollowUpButtons?: boolean;
 }): Promise<{ messageId?: number; ok: boolean }> {
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) return { ok: false };
 
   const { chatId, issue, showFollowUpButtons } = params;

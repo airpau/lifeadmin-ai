@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cron/google-sheets-sync",
-      "schedule": "0 6 * * *"
-    },
-    {
       "path": "/api/cron/waitlist-emails",
       "schedule": "0 9 * * 1,4"
     },
@@ -65,16 +61,8 @@
       "schedule": "0 7 * * 1"
     },
     {
-      "path": "/api/cron/sync-audiences",
-      "schedule": "0 6 * * 3"
-    },
-    {
       "path": "/api/cron/churn-prevention",
       "schedule": "0 11 * * 2,5"
-    },
-    {
-      "path": "/api/cron/twitter-engagement",
-      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/price-increases",
@@ -165,36 +153,8 @@
       "schedule": "0 5,8,9,10,13,18 * * *"
     },
     {
-      "path": "/api/cron/managed-agents?agent=support-triager",
-      "schedule": "0 */6 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=reviewer",
-      "schedule": "0 */12 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=bug-triager",
-      "schedule": "0 */12 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=alert-tester",
-      "schedule": "0 */12 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=digest-compiler",
-      "schedule": "0 7,12,17,20 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=email-marketer",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=ux-auditor",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/managed-agents?agent=feature-tester",
-      "schedule": "0 10 * * *"
+      "path": "/api/cron/managed-agents",
+      "schedule": "0 0,6,8,12,18 * * *"
     }
   ]
 }

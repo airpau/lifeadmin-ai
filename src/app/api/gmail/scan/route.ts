@@ -10,7 +10,7 @@ import { getUserPlan } from '@/lib/get-user-plan';
 
 // --- Telegram helper (fire-and-forget, never throws) ---
 async function sendTelegramAlert(chatId: number, message: string): Promise<void> {
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token || !chatId) return;
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
