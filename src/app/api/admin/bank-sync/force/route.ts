@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     await supabase.from('bank_sync_log').insert({
       user_id: connection.user_id,
       connection_id: connectionId,
-      trigger_type: 'admin',
+      trigger_type: 'manual',
       status: 'failed',
       api_calls_made: 0,
       error_message: `Token refresh failed: ${msg}`,
@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
   await supabase.from('bank_sync_log').insert({
     user_id: connection.user_id,
     connection_id: connectionId,
-    trigger_type: 'admin',
+    trigger_type: 'manual',
     status: syncStatus,
     api_calls_made: apiCallsMade,
     error_message: syncStatus === 'failed' ? errorSummary || 'All account fetches failed' : null,
