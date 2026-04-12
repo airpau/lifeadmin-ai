@@ -117,54 +117,54 @@ const COMPLAINT_WIN: SocialTemplate[] = [
 
 const PRODUCT_FEATURE: SocialTemplate[] = [
   {
-    content: "Paybacker scans your inbox to find every subscription you are paying for, including the ones you forgot about. The average UK adult wastes £312 a year on unused subscriptions. We find them so you can cancel them. Try it free at paybacker.co.uk",
-    hashtags: "#SubscriptionTracker #FinTech #MoneySaving #PayBacker #LaunchingSoon",
-    image_prompt: "Dark navy background, gold magnifying glass scanning email icons, subscription detection concept, fintech style",
+    content: "Paybacker's AI lives in your Telegram. It spotted £162 in overcharges across 3 providers for one user in 30 seconds — at midnight, with no app to open. Just a message on your phone.\n\nGet started free at paybacker.co.uk",
+    hashtags: "#TelegramBot #AI #FinTech #MoneySaving #ConsumerRights #PayBacker",
+    image_prompt: "Dark navy background, mint green glowing Telegram messenger concept, abstract AI financial intelligence, clean modern fintech design",
   },
   {
-    content: "Every complaint letter Paybacker generates cites the exact UK legislation that applies to your case. Consumer Rights Act 2015, Ofcom rules, FCA regulations. Companies respond faster when they know you know the law. Try it free at paybacker.co.uk",
-    hashtags: "#AI #ConsumerRights #UKLaw #Complaints #PayBacker #LaunchingSoon",
-    image_prompt: "Dark navy background, gold document with legal scales, AI complaint letter concept, clean design",
+    content: "Every evening at 9pm, Paybacker sends you a financial wrap-up straight to your Telegram. Today's spending, this month's budget, your top categories. Your personal CFO in your pocket — no app to open, no login required.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#TelegramBot #PersonalFinance #FinTech #MoneySaving #AI #PayBacker",
+    image_prompt: "Dark navy background, mint green glowing phone notification concept, abstract evening financial summary, modern fintech aesthetic",
   },
   {
-    content: "Paybacker connects to your bank account to show you every recurring payment in one dashboard. No more surprises on your bank statement. See exactly where your money goes each month. Try it free at paybacker.co.uk",
+    content: "Ask Paybacker anything in Telegram. 'Have my energy costs gone up this year?' 'Am I spending more on subscriptions than last month?' It reads your actual transactions, finds the answer, and drafts a dispute letter if you need one.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#TelegramBot #AI #ConsumerRights #FinTech #MoneySaving #PayBacker",
+    image_prompt: "Dark navy background, mint green glowing chat bubble with financial graph, abstract AI conversation concept, clean fintech design",
+  },
+  {
+    content: "What a solicitor charges £150 to £300 for, Paybacker does for free in your Telegram at 3am. Formal complaint letter. Exact UK legislation cited. Ready to send. No waiting, no billing by the hour.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#TelegramBot #AI #ConsumerRights #MoneySaving #UKLaw #PayBacker",
+    image_prompt: "Dark navy background, mint green glowing legal document concept, abstract AI writing at night, modern fintech aesthetic",
+  },
+  {
+    content: "Paybacker scans your inbox to find every subscription you are paying for, including the ones you forgot about. The average UK adult wastes £312 a year on unused subscriptions. We find them so you can cancel them.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#SubscriptionTracker #FinTech #MoneySaving #ConsumerRights #PayBacker",
+    image_prompt: "Dark navy background, mint green magnifying glass scanning email icons, subscription detection concept, fintech style",
+  },
+  {
+    content: "Every complaint letter Paybacker generates cites the exact UK legislation that applies to your case. Consumer Rights Act 2015, Ofcom rules, FCA regulations. Companies respond faster when they know you know the law.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#AI #ConsumerRights #UKLaw #Complaints #FinTech #PayBacker",
+    image_prompt: "Dark navy background, mint green document with legal scales, AI complaint letter concept, clean design",
+  },
+  {
+    content: "Paybacker connects to your bank account to show you every recurring payment in one dashboard. No more surprises on your bank statement. See exactly where your money goes each month.\n\nTry it free at paybacker.co.uk",
     hashtags: "#OpenBanking #FinTech #BudgetTracker #MoneySaving #PayBacker",
-    image_prompt: "Dark navy background, gold dashboard mockup with subscription list, bank connection concept, fintech aesthetic",
+    image_prompt: "Dark navy background, mint green dashboard mockup with subscription list, bank connection concept, fintech aesthetic",
   },
   {
-    content: "Want to cancel a subscription but dread the phone call? Paybacker generates a professional cancellation email in seconds, citing your legal right to cancel. You review it, approve it, done. Try it free at paybacker.co.uk",
+    content: "Want to cancel a subscription but dread the phone call? Paybacker generates a professional cancellation email in seconds, citing your legal right to cancel. You review it, approve it, done.\n\nTry it free at paybacker.co.uk",
     hashtags: "#CancelSubscriptions #AI #Automation #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, gold email icon with cancel symbol, cancellation email concept, modern design",
+    image_prompt: "Dark navy background, mint green email icon with cancel symbol, cancellation email concept, modern design",
   },
   {
-    content: "Paybacker does not just find problems, it fixes them. Our AI generates formal complaint letters, cancellation emails, and refund requests tailored to your specific situation. Every document cites the relevant UK law. Try it free at paybacker.co.uk",
-    hashtags: "#AI #FinTech #ConsumerRights #Automation #PayBacker #LaunchingSoon",
-    image_prompt: "Dark navy background, three gold document icons, complaint cancellation refund concept, fintech style",
-  },
-  {
-    content: "Paybacker is built exclusively for UK consumers. Every feature is designed around UK law, UK regulators, and UK companies. We cite the Consumer Rights Act, reference Ofcom, Ofgem, and the FCA. Try it free at paybacker.co.uk",
-    hashtags: "#UKConsumer #FinTech #ConsumerRights #MadeInBritain #PayBacker",
-    image_prompt: "Dark navy background, gold Union Jack outline, UK-focused fintech concept, clean design",
-  },
-  {
-    content: "Paybacker spots when your bills increase unexpectedly. Energy price hike? Broadband cost creeping up? Insurance renewal higher than last year? We flag it and draft the complaint for you. Try it free at paybacker.co.uk",
+    content: "Paybacker spots when your bills increase unexpectedly. Energy price hike? Broadband cost creeping up? Insurance renewal higher than last year? We flag it and draft the complaint for you.\n\nTry it free at paybacker.co.uk",
     hashtags: "#BillChecker #MoneySaving #AI #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, gold alert bell with upward arrow, bill increase detection concept, fintech aesthetic",
+    image_prompt: "Dark navy background, mint green alert bell with upward arrow, bill increase detection concept, fintech aesthetic",
   },
   {
-    content: "Three steps. Connect your accounts. Paybacker scans for savings opportunities. Review the AI generated letters and send them. That is it. Your money, recovered. Try it free at paybacker.co.uk",
-    hashtags: "#HowItWorks #FinTech #AI #MoneySaving #PayBacker #LaunchingSoon",
-    image_prompt: "Dark navy background, three gold numbered steps, simple process concept, modern fintech design",
-  },
-  {
-    content: "Every complaint letter Paybacker writes includes a clear response deadline, an ombudsman escalation warning, and the exact legislation that protects you. Companies take formal complaints seriously. Try it free at paybacker.co.uk",
-    hashtags: "#Complaints #ConsumerRights #Ombudsman #UKLaw #PayBacker",
-    image_prompt: "Dark navy background, gold document with checkmarks, professional complaint concept, fintech style",
-  },
-  {
-    content: "Paybacker helps you compare deals on energy, broadband, insurance, and more. We surface where you are overpaying and show you better options. Switch and save without the research. Try it free at paybacker.co.uk",
-    hashtags: "#DealFinder #MoneySaving #Energy #Broadband #PayBacker #LaunchingSoon",
-    image_prompt: "Dark navy background, gold comparison arrows, deal switching concept, clean fintech design",
+    content: "Three steps. Connect your accounts. Paybacker scans for savings opportunities. Review the AI generated letters and send them. That is it. Your money, recovered.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#HowItWorks #FinTech #AI #MoneySaving #ConsumerRights #PayBacker",
+    image_prompt: "Dark navy background, three mint green numbered steps, simple process concept, modern fintech design",
   },
 ];
 
