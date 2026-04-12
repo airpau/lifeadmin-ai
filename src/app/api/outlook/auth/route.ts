@@ -11,7 +11,7 @@ export async function GET() {
       return NextResponse.redirect(new URL('/auth/login?redirect=/dashboard/scanner', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));
     }
 
-    const state = Buffer.from(user.id).toString('base64');
+    const state = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
     const authUrl = getMicrosoftAuthUrl(state);
     return NextResponse.redirect(authUrl);
   } catch {

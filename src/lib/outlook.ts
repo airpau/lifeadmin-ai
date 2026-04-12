@@ -86,7 +86,7 @@ export async function refreshMicrosoftToken(refreshToken: string): Promise<{
 export interface Opportunity {
   id: string;
   emailId: string;
-  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card';
+  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card' | 'bill' | 'contract' | 'dispute_response' | 'cancellation_confirmation' | 'bank_gap' | 'trial_expiry' | 'insurance_renewal' | 'dd_advance_notice' | 'government';
   category: 'streaming' | 'software' | 'fitness' | 'broadband' | 'mobile' | 'utility' | 'insurance' | 'loan' | 'credit_card' | 'mortgage' | 'council_tax' | 'transport' | 'food' | 'shopping' | 'gambling' | 'other';
   title: string;
   description: string;
@@ -268,13 +268,33 @@ const KQL_PAYMENTS =
 const KQL_PRICE_CHANGES =
   'subject:"price increase" OR subject:"price change" OR subject:"new prices" OR subject:"tariff change" OR subject:"rate increase" OR subject:"going up" OR subject:"increasing" OR subject:"new rate" OR subject:"cost increase" OR subject:"premium increase" OR subject:"annual increase" OR subject:CPI OR subject:RPI';
 
+// Query H: free trial expiry (highest priority — auto-converts to paid)
+const KQL_TRIALS =
+  'subject:"trial ends" OR subject:"trial ending" OR subject:"trial expires" OR subject:"free trial" OR subject:"will be charged" OR subject:"upgrade to continue" OR subject:"after your trial" OR subject:"your trial"';
+
+// Query I: insurance renewal notices
+const KQL_INSURANCE =
+  'subject:"renewal notice" OR subject:"policy renewal" OR subject:"your renewal" OR subject:"cover renewal" OR subject:"new premium" OR subject:"renews on" OR subject:"insurance renewal"';
+
+// Query J: direct debit advance notices
+const KQL_DD =
+  'subject:"advance notice" OR subject:"direct debit" OR subject:"payment change" OR subject:"new direct debit" OR subject:"direct debit instruction"';
+
+// Query K: HMRC and government correspondence
+const KQL_GOVERNMENT =
+  'from:hmrc.gov.uk OR from:gov.uk OR from:dvla.gov.uk OR from:nhs.uk OR subject:"self assessment" OR subject:"tax return" OR subject:"tax code" OR subject:"P60" OR subject:"P45" OR subject:"P800" OR subject:HMRC OR subject:DVLA OR subject:"council tax" OR subject:"student loan" OR subject:"MOT reminder"';
+
 export async function scanOutlookForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel (same strategy as Gmail)
-  console.log('[outlook] Starting comprehensive email scan (7 parallel queries)...');
+  console.log('[outlook] Starting comprehensive email scan (11 parallel queries)...');
 
-  const [subjectMsgs, senderMsgs1, senderMsgs2, senderMsgs3, expirationMsgs, paymentMsgs, priceChangeMsgs] = await Promise.all([
+  const [
+    subjectMsgs, senderMsgs1, senderMsgs2, senderMsgs3,
+    expirationMsgs, paymentMsgs, priceChangeMsgs,
+    trialMsgs, insuranceMsgs, ddMsgs, governmentMsgs,
+  ] = await Promise.all([
     fetchMessagesBySearch(accessToken, KQL_SUBJECT, 200),
     fetchMessagesBySearch(accessToken, KQL_SENDERS_1, 200),
     fetchMessagesBySearch(accessToken, KQL_SENDERS_2, 200),
@@ -282,6 +302,10 @@ export async function scanOutlookForOpportunities(
     fetchMessagesBySearch(accessToken, KQL_EXPIRATIONS, 100),
     fetchMessagesBySearch(accessToken, KQL_PAYMENTS, 100),
     fetchMessagesBySearch(accessToken, KQL_PRICE_CHANGES, 100),
+    fetchMessagesBySearch(accessToken, KQL_TRIALS, 100),
+    fetchMessagesBySearch(accessToken, KQL_INSURANCE, 100),
+    fetchMessagesBySearch(accessToken, KQL_DD, 100),
+    fetchMessagesBySearch(accessToken, KQL_GOVERNMENT, 100),
   ]);
 
   // Deduplicate by message ID
@@ -289,6 +313,7 @@ export async function scanOutlookForOpportunities(
   const allMessages = [
     ...subjectMsgs, ...senderMsgs1, ...senderMsgs2, ...senderMsgs3,
     ...expirationMsgs, ...paymentMsgs, ...priceChangeMsgs,
+    ...trialMsgs, ...insuranceMsgs, ...ddMsgs, ...governmentMsgs,
   ].filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
@@ -390,13 +415,33 @@ Look for: recurring emails from services that charge (newsletters with premium t
 - If same sender appears regularly with billing/receipt/payment subjects → likely active subscription
 - Extract amount if visible in any email body
 
-### 5. STANDARD DETECTION (as before)
+### 5. FREE TRIAL EXPIRY (critical — auto-converts to paid)
+Look for: "trial ends", "trial ending", "you'll be charged", "will be charged on", "trial expires", "trial period ends", "after your trial", "subscription begins"
+- Extract the EXACT TRIAL END DATE and AMOUNT to be charged
+- type: "trial_expiry", suggestedAction: "cancel", urgency: "immediate" if within 7 days
+
+### 6. INSURANCE RENEWALS
+Look for: "renewal notice", "policy renewal", "your premium", "your cover renews", "new premium from [date]"
+- Extract OLD premium, NEW premium, RENEWAL DATE
+- type: "insurance_renewal", suggestedAction: "switch_deal"
+- UK tip: always compare before auto-renewing
+
+### 7. DIRECT DEBIT ADVANCE NOTICES (Bacs)
+Look for: "advance notice", "direct debit change", "new direct debit instruction"
+- Extract PAYEE NAME, OLD AMOUNT, NEW AMOUNT, EFFECTIVE DATE
+- type: "dd_advance_notice", urgency: "soon" if effective within 30 days
+
+### 8. HMRC AND GOVERNMENT CORRESPONDENCE
+Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance, council
+- Tax rebate opportunities: P800 overpayment → type: "tax_rebate", urgency: "immediate"
+- Self Assessment deadlines → type: "government", urgency based on deadline
+- DVLA renewals → type: "government", suggestedAction: "monitor"
+
+### 9. STANDARD DETECTION
 - Streaming/software/fitness subscriptions → review if still needed
 - Energy/broadband/mobile from known providers → switching opportunity
-- Insurance emails → renewal comparison
 - Airline emails → flight delay compensation (UK261, up to £520)
 - Bank/lender emails → rate monitoring
-- Council/HMRC emails → tax challenge opportunity
 - Debt collector emails → dispute citing Consumer Credit Act 1974
 
 ## DATA EXTRACTION RULES
@@ -411,7 +456,7 @@ Return a JSON array. Each entry:
 {
   "id": "opp_1",
   "emailId": "the_email_id",
-  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry",
+  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry|trial_expiry|insurance_renewal|dd_advance_notice|government",
   "category": "streaming|software|fitness|broadband|mobile|utility|insurance|loan|credit_card|mortgage|council_tax|transport|food|shopping|gambling|other",
   "title": "short actionable title max 80 chars",
   "description": "2-3 sentences: what was found, exact dates/amounts, what user should do, UK consumer rights if relevant",

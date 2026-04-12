@@ -491,6 +491,43 @@ export default function ScannerPage() {
         </div>
       </div>
 
+      {/* What we scan for — detection category feature panel */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center">
+            <Sparkles className="h-5 w-5 text-mint-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-semibold text-lg">What we scan for</h2>
+            <p className="text-slate-500 text-xs">9 detection categories across Gmail and Outlook — 2 years of email history</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[
+            { icon: '⏰', title: 'Free Trial Expiry', desc: 'Catches free trials before they auto-convert to paid subscriptions. Alerts you with enough time to cancel.', badge: 'Immediate alert', badgeColor: 'text-red-400 bg-red-500/10' },
+            { icon: '📋', title: 'Contracts & Deal Endings', desc: 'Tracks broadband, energy, mobile, and insurance contract end dates with a 90-day warning window.', badge: '90-day warning', badgeColor: 'text-amber-400 bg-amber-500/10' },
+            { icon: '📈', title: 'Price Increases', desc: 'Detects every price rise email — energy, broadband, mobile, streaming. Extracts old vs. new amounts for dispute letters.', badge: 'Dispute-ready', badgeColor: 'text-orange-400 bg-orange-500/10' },
+            { icon: '🔔', title: 'Direct Debit Notices', desc: 'Finds Bacs advance notices before DD amounts change. You have the right to cancel before the payment is taken.', badge: 'Amount extracted', badgeColor: 'text-blue-400 bg-blue-500/10' },
+            { icon: '⚡', title: 'Energy & Broadband Bills', desc: 'Captures bills from all major UK providers — Octopus, British Gas, EDF, Sky, BT, Virgin Media and more.', badge: 'Switch & save', badgeColor: 'text-cyan-400 bg-cyan-500/10' },
+            { icon: '🏛️', title: 'HMRC & Government', desc: 'Spots P800 tax rebate letters, self-assessment deadlines, DVLA renewals, and student loan notices.', badge: 'Money-back alerts', badgeColor: 'text-mint-400 bg-mint-400/10' },
+            { icon: '🛡️', title: 'Insurance Renewals', desc: 'Monitors home, car, and life insurance renewal quotes. Extracts old and new premiums before auto-renewal.', badge: 'Compare before renewing', badgeColor: 'text-emerald-400 bg-emerald-500/10' },
+            { icon: '✈️', title: 'Flight Delay Compensation', desc: 'Scans for delayed or cancelled flight emails. UK261 entitles you to up to £520 per passenger.', badge: 'Up to £520', badgeColor: 'text-sky-400 bg-sky-500/10' },
+            { icon: '💳', title: 'Forgotten Subscriptions', desc: 'Finds recurring billing emails from services you may have forgotten about — SaaS tools, apps, boxes, gaming.', badge: 'Cancel & recover', badgeColor: 'text-purple-400 bg-purple-500/10' },
+          ].map((cat, i) => (
+            <div key={i} className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4 hover:border-navy-600/70 transition-colors">
+              <div className="flex items-start gap-3">
+                <span className="text-xl shrink-0">{cat.icon}</span>
+                <div className="min-w-0">
+                  <p className="text-white text-sm font-medium mb-1">{cat.title}</p>
+                  <p className="text-slate-500 text-xs leading-relaxed mb-2">{cat.desc}</p>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.badgeColor}`}>{cat.badge}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Connect Email Modal */}
       {showConnectModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>

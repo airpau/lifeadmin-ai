@@ -180,7 +180,7 @@ async function fetchEmailDetail(accessToken: string, messageId: string): Promise
 export interface Opportunity {
   id: string;
   emailId: string;
-  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card' | 'bill' | 'contract' | 'dispute_response' | 'cancellation_confirmation' | 'bank_gap';
+  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card' | 'bill' | 'contract' | 'dispute_response' | 'cancellation_confirmation' | 'bank_gap' | 'trial_expiry' | 'insurance_renewal' | 'dd_advance_notice' | 'government';
   category: 'streaming' | 'software' | 'fitness' | 'broadband' | 'mobile' | 'utility' | 'insurance' | 'loan' | 'credit_card' | 'mortgage' | 'council_tax' | 'transport' | 'food' | 'shopping' | 'gambling' | 'other';
   title: string;
   description: string;
@@ -253,12 +253,38 @@ const SCAN_QUERY_DISPUTE_RESPONSES =
 const SCAN_QUERY_CANCELLATIONS =
   'subject:("cancellation confirmed" OR "cancelled successfully" OR "subscription cancelled" OR "membership cancelled" OR "account closed" OR "account cancelled" OR "your cancellation" OR "we\'ve cancelled" OR "we have cancelled" OR "service ended" OR "direct debit cancelled" OR "direct debit removed" OR "last payment" OR "sad to see you go" OR "you\'ve left" OR "you have left") newer_than:365d';
 
+// Query K: free trial expiry detection (highest priority — auto-converts to paid)
+const SCAN_QUERY_TRIALS =
+  'subject:("trial ends" OR "trial ending" OR "trial expires" OR "free trial" OR "you\'ll be charged" OR "will be charged on" OR "trial period ends" OR "after your trial" OR "subscription begins" OR "your trial" OR "upgrade required" OR "premium starts") newer_than:90d';
+
+// Query L: insurance renewal notices
+const SCAN_QUERY_INSURANCE_RENEWALS =
+  '(subject:("renewal notice" OR "policy renewal" OR "your renewal" OR "cover renewal" OR "new premium" OR "renews on" OR "your policy is due") OR (subject:(insurance OR premium) from:(admiral aviva directline axa hastings esure zurich ageas nfu lv swiftcover))) newer_than:365d';
+
+// Query M: direct debit advance notices (Bacs)
+const SCAN_QUERY_DD_NOTICES =
+  'subject:("advance notice" OR "direct debit" OR "DD advance" OR "payment change" OR "new direct debit" OR "direct debit instruction" OR "mandate received") newer_than:180d';
+
+// Query N: energy and broadband bills from UK providers
+const SCAN_QUERY_ENERGY_BROADBAND =
+  'from:(octopusenergy britishgas edfenergy eonnext scottishpower sse ovoenergy utilita goodenergy ecotricity sky.com virginmedia bt.com talktalk plusnet hyperoptic zen.co.uk) newer_than:365d';
+
+// Query O: HMRC and government correspondence
+const SCAN_QUERY_GOVERNMENT =
+  '(from:(hmrc.gov.uk gov.uk dvla.gov.uk nhs.uk dwp.gov.uk studentfinance pension) OR subject:("self assessment" OR "tax return" OR "tax code" OR "P60" OR "P45" OR "P800" OR "council tax" OR "MOT reminder" OR "vehicle tax" OR "HMRC" OR "DVLA" OR "student loan" OR "national insurance" OR "tax rebate" OR "overpayment")) newer_than:730d';
+
 export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel for comprehensive scanning
   // Scan up to 250 emails per query for thorough coverage (2 years of history)
-  const [subjectMessages, senderMessages1, senderMessages2, senderMessages3, expirationMessages, paymentMessages, priceChangeMessages, billMessages, disputeResponseMessages, cancellationMessages] = await Promise.all([
+  const [
+    subjectMessages, senderMessages1, senderMessages2, senderMessages3,
+    expirationMessages, paymentMessages, priceChangeMessages,
+    billMessages, disputeResponseMessages, cancellationMessages,
+    trialMessages, insuranceRenewalMessages, ddMessages,
+    energyBroadbandMessages, governmentMessages,
+  ] = await Promise.all([
     fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 250),
@@ -269,10 +295,21 @@ export async function scanEmailsForOpportunities(
     fetchEmailList(accessToken, SCAN_QUERY_BILLS, 100),
     fetchEmailList(accessToken, SCAN_QUERY_DISPUTE_RESPONSES, 50),
     fetchEmailList(accessToken, SCAN_QUERY_CANCELLATIONS, 50),
+    fetchEmailList(accessToken, SCAN_QUERY_TRIALS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_INSURANCE_RENEWALS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_DD_NOTICES, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_ENERGY_BROADBAND, 150),
+    fetchEmailList(accessToken, SCAN_QUERY_GOVERNMENT, 100),
   ]);
 
   const seen = new Set<string>();
-  const allMessages = [...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3, ...expirationMessages, ...paymentMessages, ...priceChangeMessages, ...billMessages, ...disputeResponseMessages, ...cancellationMessages].filter((m) => {
+  const allMessages = [
+    ...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3,
+    ...expirationMessages, ...paymentMessages, ...priceChangeMessages,
+    ...billMessages, ...disputeResponseMessages, ...cancellationMessages,
+    ...trialMessages, ...insuranceRenewalMessages, ...ddMessages,
+    ...energyBroadbandMessages, ...governmentMessages,
+  ].filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
     return true;
@@ -401,7 +438,7 @@ Return a JSON array. Each entry:
 {
   "id": "opp_1",
   "emailId": "the_email_id",
-  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry|bill|contract|dispute_response|cancellation_confirmation",
+  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry|bill|contract|dispute_response|cancellation_confirmation|trial_expiry|insurance_renewal|dd_advance_notice|government",
   "category": "streaming|software|fitness|broadband|mobile|utility|insurance|loan|credit_card|mortgage|council_tax|transport|food|shopping|gambling|other",
   "title": "short actionable title max 80 chars",
   "description": "2-3 sentences: what was found, exact dates/amounts, what user should do, UK consumer rights if relevant",
@@ -460,6 +497,39 @@ Look for: "your cancellation has been confirmed", "subscription cancelled", "mem
 - nextPaymentDate: effective cancellation date (when service ends)
 - suggestedAction: "monitor" (verify in bank statements that charges stopped)
 - description: confirm what was cancelled and effective date
+
+### 10. FREE TRIAL EXPIRY (critical — auto-converts to paid)
+Look for: "trial ends", "trial ending", "you'll be charged", "will be charged on", "trial expires", "trial period ends", "after your trial", "subscription begins", "upgrade required"
+- Extract the EXACT TRIAL END DATE
+- Extract the AMOUNT that will be charged after the trial
+- type: "trial_expiry", suggestedAction: "cancel" if expiring within 30 days, urgency: "immediate" if within 7 days
+- These are critical — users often forget free trials convert automatically
+
+### 11. INSURANCE RENEWALS
+Look for: "renewal notice", "policy renewal", "your premium", "your cover renews", "new premium from [date]", "your insurance is due for renewal"
+- Extract OLD premium, NEW premium (if increased), RENEWAL DATE
+- Providers: Admiral, Aviva, Direct Line, AXA, Hastings Direct, LV=, NFU, Zurich, Ageas, esure
+- type: "insurance_renewal", suggestedAction: "switch_deal"
+- UK tip: always compare before auto-renewing — insurers often raise premiums 20-40% at renewal
+
+### 12. DIRECT DEBIT ADVANCE NOTICES (Bacs)
+Look for: "advance notice", "direct debit change", "new direct debit instruction", Bacs advance notice
+- Extract PAYEE NAME, OLD AMOUNT, NEW AMOUNT, EFFECTIVE DATE
+- type: "dd_advance_notice", urgency: "soon" if effective within 30 days
+- Users have the right to cancel a DD before the payment date
+
+### 13. ENERGY AND BROADBAND BILLS
+Look for: energy/broadband provider bills (Octopus Energy, British Gas, EDF, E.ON, Sky, BT, Virgin Media, etc.)
+- Extract CURRENT BILL AMOUNT, DUE DATE, and USAGE DATA if present
+- type: "bill", suggestedAction: "switch_deal" if user appears on same tariff for many months
+- UK tip: switching energy tariff or provider can save £200-500/year
+
+### 14. HMRC AND GOVERNMENT CORRESPONDENCE
+Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance, council
+- Tax rebate: P800 overpayment letter → type: "tax_rebate", urgency: "immediate"
+- Self Assessment deadlines → type: "government", urgency based on deadline proximity
+- DVLA renewals → type: "government", suggestedAction: "monitor"
+- UK tip: P800 letters mean HMRC calculated an overpayment — user can claim online at gov.uk
 
 ## RULES
 - ONLY include genuine financial opportunities — subscriptions, bills, recurring payments, overcharges, compensation claims, contracts, dispute responses, cancellation confirmations
