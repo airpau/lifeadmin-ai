@@ -170,6 +170,7 @@ export async function GET(request: NextRequest) {
     try {
       let totalSynced = 0;
       let transactionSyncSucceeded = false;
+      const accountErrors: string[] = [];
 
       if (connection.provider === 'truelayer') {
         // === TrueLayer path ===
@@ -271,7 +272,6 @@ export async function GET(request: NextRequest) {
         const fromDate = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
 
         // Sync transactions for each account
-        const accountErrors: string[] = [];
         for (const accountId of accountIds) {
           try {
             const transactions = await fetchTrueLayerTransactions(accessToken, accountId, fromDate);

@@ -35,7 +35,7 @@ function formatTimeAgo(dateStr: string) {
 type ExpectedBill = {
   name: string; expected_amount: number; category: string;
   paid: boolean; past_due: boolean; source: string; expected_date?: string;
-  billing_day?: number; bill_key?: string;
+  billing_day?: number; bill_key?: string; occurrence_count?: number;
 };
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
@@ -113,6 +113,27 @@ export default function MoneyHubPage() {
         setExpectedBillsTotal(d.totalExpected || 0);
       }
     } catch { /* silent */ }
+  };
+
+  const markBillPaid = async (bill: ExpectedBill, paid: boolean) => {
+    const billKey = bill.bill_key;
+    if (!billKey) return;
+    const billMonth = (selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+    // Optimistic update
+    setExpectedBills(prev => prev.map(b => b.bill_key === billKey ? { ...b, paid, past_due: paid ? false : b.past_due } : b));
+    try {
+      const res = await fetch('/api/money-hub/expected-bills/mark-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bill_key: billKey, bill_month: billMonth, paid }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      showToast(paid ? `${bill.name} marked as paid` : `${bill.name} unmarked`, 'success');
+    } catch {
+      // Revert optimistic update on failure
+      setExpectedBills(prev => prev.map(b => b.bill_key === billKey ? { ...b, paid: !paid } : b));
+      showToast('Could not update bill status', 'error');
+    }
   };
 
   // ─── Initial load ──────────────────────────────────────────────────────
@@ -594,17 +615,35 @@ export default function MoneyHubPage() {
               const amountColor = bill.paid ? 'text-green-400' : bill.past_due ? 'text-red-400' : 'text-amber-400';
               const catLabel = bill.category !== 'other' ? bill.category.replace(/_/g, ' ') : '';
               return (
-                <div key={bill.bill_key || bill.name} className={`rounded-xl p-3 border flex items-center justify-between ${statusColor}`}>
-                  <div className="min-w-0">
-                    <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>{bill.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</span>}
-                      {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
-                      {bill.paid && <span className="text-[10px] text-green-400 font-medium">✓ Paid</span>}
-                      {bill.past_due && !bill.paid && <span className="text-[10px] text-red-400 font-medium">⚠ Not seen</span>}
+                <div key={bill.bill_key || bill.name} className={`rounded-xl p-3 border ${statusColor}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>{bill.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</span>}
+                        {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
+                        {bill.paid && <span className="text-[10px] text-green-400 font-medium">✓ Paid</span>}
+                        {bill.past_due && !bill.paid && <span className="text-[10px] text-red-400 font-medium">⚠ Not seen</span>}
+                      </div>
                     </div>
+                    <span className={`text-sm font-semibold whitespace-nowrap ml-2 ${amountColor}`}>£{fmtNum(bill.expected_amount)}</span>
                   </div>
-                  <span className={`text-sm font-semibold whitespace-nowrap ml-2 ${amountColor}`}>£{fmtNum(bill.expected_amount)}</span>
+                  {bill.bill_key && !bill.paid && (
+                    <button
+                      onClick={() => markBillPaid(bill, true)}
+                      className="mt-2 text-[10px] text-slate-500 hover:text-green-400 transition-colors underline underline-offset-2"
+                    >
+                      Mark as paid
+                    </button>
+                  )}
+                  {bill.bill_key && bill.paid && (
+                    <button
+                      onClick={() => markBillPaid(bill, false)}
+                      className="mt-2 text-[10px] text-slate-600 hover:text-slate-400 transition-colors underline underline-offset-2"
+                    >
+                      Unmark paid
+                    </button>
+                  )}
                 </div>
               );
             })}

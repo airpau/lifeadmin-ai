@@ -20,6 +20,7 @@ const SPENDING_CATEGORY_ALIASES: Record<string, string> = {
   fee: 'fees',
   loan: 'loans',
   utility: 'energy',
+  transport: 'travel',
 };
 
 type OverrideMap = Map<string, string>;
@@ -438,25 +439,40 @@ export function isCountableIncomeType(value: string | null | undefined) {
   return REAL_INCOME_TYPES.has(key);
 }
 
-function detectFallbackSpendingCategory(description: string): string | null {
+export function detectFallbackSpendingCategory(description: string): string | null {
   const d = ` ${description.toLowerCase()} `;
-  
-  if (/\b(skipton|nationwide|halifax|santander.*mortgage|barclays.*mortgage|natwest.*mortgage|hsbc.*mortgage|virgin.*money|coventry|leeds|yorkshire|accord|godiva)\b/.test(d)) return 'mortgage';
-  if (/\b(santander.*loan|amigo|zopa|ratesetter|lending works|funding circle|hitachi.*capital|creation.*finance|motonovo|loan)\b/.test(d)) return 'loans';
-  if (/\b(council|borough|district|city.*of)\b/.test(d) && d.includes('tax')) return 'council_tax';
-  if (/\b(british gas|edf|eon|octopus.*energy|bulb|sse|scottish.*power|ovo|shell.*energy|utilita|so.*energy)\b/.test(d)) return 'energy';
-  if (/\b(thames.*water|severn.*trent|anglian|united.*utilities|wessex|southw|welsh.*water|dwr.*cymru|yorkshire.*water)\b/.test(d)) return 'water';
-  if (/\b(bt|virgin.*media|sky|talktalk|plusnet|hyperoptic|community.*fibre)\b/.test(d)) return 'broadband';
-  if (/\b(three|o2|ee|vodafone|giffgaff|tesco.*mobile|id.*mobile|smarty|lebara)\b/.test(d)) return 'mobile';
-  if (/\b(aviva|direct.*line|admiral|lv=?|axa|zurich|legal.*general|bupa)\b/.test(d) && !d.includes('refund')) return 'insurance';
-  if (/\b(netflix|spotify|disney|apple.*tv|amazon.*prime|now.*tv|youtube.*premium|crunchyroll)\b/.test(d)) return 'streaming';
-  if (/\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first)\b/.test(d)) return 'fitness';
-  if (/\b(tesco|sainsburys|asda|morrisons|aldi|lidl|waitrose|co-op|iceland|ocado|farmfoods|marks and spencer)\b/.test(d)) return 'groceries';
-  if (/\b(amazon|ebay|argos|john lewis|next|asoss|boohoo|primark|tk maxx|boots|superdrug|currys)\b/.test(d)) return 'shopping';
-  if (/\b(mcdonalds|kfc|burger king|nandos|dominos|greggs|costa|starbucks|pret|deliveroo|uber.*eats|just.*eat|wetherspoon)\b/.test(d)) return 'eating_out';
-  if (/\b(tfl|uber|trainline|lner|gwr|tpe|southern|northern|tfl|stagecoach|arriva|first.*bus|national.*express)\b/.test(d)) return 'transport';
-  if (/\b(dvla|vehicle.*tax)\b/.test(d)) return 'motoring';
-  if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf)\b/.test(d)) return 'charity';
+
+  if (/\b(skipton|nationwide|halifax|santander.*mortgage|barclays.*mortgage|natwest.*mortgage|hsbc.*mortgage|virgin.*money|coventry|leeds building|yorkshire building|accord|godiva|paratus|lendinvest|platform.*home|kent reliance)\b/.test(d)) return 'mortgage';
+  if (/\b(santander.*loan|amigo|zopa|ratesetter|lending works|funding circle|hitachi.*capital|creation.*finance|motonovo|loqbox|drafty)\b/.test(d)) return 'loans';
+  if (/\b(council|borough|district|city.*of)\b/.test(d) && /\btax\b/.test(d)) return 'council_tax';
+  if (/\b(british gas|edf|e\.on|eon|octopus.*energy|bulb|sse|scottish.*power|ovo|shell.*energy|utilita|so.*energy|affect.*energy|pure planet|green energy)\b/.test(d)) return 'energy';
+  if (/\b(thames.*water|severn.*trent|anglian|united.*utilities|wessex|south west water|welsh.*water|dwr.*cymru|yorkshire.*water|northumbrian)\b/.test(d)) return 'water';
+  if (/\b(bt |virgin.*media|sky|talktalk|plusnet|hyperoptic|community.*fibre|zen internet|now.*broadband|starlink)\b/.test(d)) return 'broadband';
+  if (/\b(three mobile|o2|ee mobile|vodafone|giffgaff|tesco.*mobile|id.*mobile|smarty|lebara)\b/.test(d)) return 'mobile';
+  if (/\b(aviva|direct.*line|admiral|lv=?|axa|zurich|legal.*general|royal.*london|bupa|vitality|simply.*health|pet plan)\b/.test(d) && !d.includes('refund')) return 'insurance';
+  if (/\b(netflix|spotify|disney\+?|apple.*tv|amazon.*prime|now.*tv|youtube.*premium|crunchyroll|paramount\+?|dazn)\b/.test(d)) return 'streaming';
+  if (/\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first|anytime fitness|jd.*gym|better.*gym)\b/.test(d)) return 'fitness';
+  if (/\b(adobe|microsoft 365|google one|dropbox|icloud|1password|notion|slack|zoom|canva|chatgpt|openai|patreon)\b/.test(d)) return 'software';
+  // Groceries — must come before eating_out (e.g. tesco can be food or petrol, but we treat all tesco as groceries)
+  if (/\b(tesco|sainsbury|asda|morrisons|aldi|lidl|waitrose|co.?op|one stop|spar|nisa|budgens|farmfood|marks.*spencer food|m&s food|iceland food|iceland grocery|costco|amazon.*fresh|amazon grocery|ocado|deliveroo|uber.*eat|just.*eat|juste\s*at)\b/.test(d)) return 'groceries';
+  // Eating out — after groceries check
+  if (/\b(mcdonalds?|mcdonald|kfc|burger king|nandos|dominos?|greggs|costa coffee|starbucks|pret|wetherspoon|wagamama|itsu|pizza hut|yo.*sushi|yo sushi|frankie|harvester)\b/.test(d)) return 'eating_out';
+  // Travel — petrol stations, rail, flights, parking, car hire, ride-hail
+  if (/\b(shell|texaco|gulf petro|jet petro|moto service|welcome break|extra msa|mfg|forecourt|petrol|fuel station)\b/.test(d)) return 'travel';
+  if (/\besso\b/.test(d) && !/shell.*energy/.test(d)) return 'travel';
+  if (/\b(bp |bp petrol|bpme)\b/.test(d)) return 'travel';
+  if (/\b(trainline|national rail|avanti|lner|gwr|crosscountry|tpe|northern rail|southern rail|southeastern|c2c|greater anglia|thameslink|eurostar|first.*capital connect)\b/.test(d)) return 'travel';
+  if (/\b(ryanair|easyjet|british airways|ba\.com|jet2|wizz air|tui|flybe)\b/.test(d)) return 'travel';
+  if (/\b(tfl|oyster|tube fare|bus fare)\b/.test(d)) return 'travel';
+  if (/\b(ncp park|q.?park|parking.*charge|car park|justpark|ringgo|paybyphone|parkopedia)\b/.test(d)) return 'travel';
+  if (/\b(enterprise rent|hertz|europcar|zipcar|sixt rent|avis rent)\b/.test(d)) return 'travel';
+  if (/\b(santander cycle|cycle hire)\b/.test(d)) return 'travel';
+  if (/\b(uber|bolt |lyft|free now|cabify)\b/.test(d) && !/uber.*eat/.test(d)) return 'travel';
+  // Generic transport (older category — alias handles mapping to 'travel')
+  if (/\b(stagecoach|arriva|first.*bus|national.*express)\b/.test(d)) return 'travel';
+  if (/\b(dvla|vehicle.*tax|road.*tax)\b/.test(d)) return 'motoring';
+  if (/\b(amazon|ebay|argos|john lewis|next|asos|boohoo|primark|tk maxx|boots|superdrug|currys|very\.co|studio retail)\b/.test(d)) return 'shopping';
+  if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf|amnesty|british heart)\b/.test(d)) return 'charity';
 
   return null;
 }

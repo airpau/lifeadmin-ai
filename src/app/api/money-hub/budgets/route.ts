@@ -21,15 +21,34 @@ export async function GET() {
 
   if (budgets.length === 0) return NextResponse.json([]);
 
-  // Import the learning engine for runtime categorisation
+  // Import the learning engine + merchant fallback for runtime categorisation
   const { loadLearnedRules, categoriseWithLearningSync: categorise } = await import('@/lib/learning-engine');
+  const { detectFallbackSpendingCategory, normalizeSpendingCategoryKey } = await import('@/lib/money-hub-classification');
   await loadLearnedRules();
+
+  // Soft categories — auto-assigned by the SQL fallback, not user-set.
+  // For these we attempt merchant-level detection before accepting 'other'.
+  const SOFT_CATS = new Set(['other', 'bills', 'shopping']);
 
   // Build spending by category using the same logic as the main money-hub API
   const categorySpend: Record<string, number> = {};
   for (const t of txns) {
-    const rawCat = t.user_category || '';
-    const cat = rawCat || categorise(t.description || '', t.category || '') || 'other';
+    const storedCat = normalizeSpendingCategoryKey(t.user_category || '');
+    let cat: string;
+
+    if (storedCat && !SOFT_CATS.has(storedCat)) {
+      // User-assigned or confidently categorised — use as-is
+      cat = storedCat;
+    } else {
+      // Soft / uncategorised — try merchant detection then learning engine
+      const desc = [t.merchant_name, t.description].filter(Boolean).join(' ');
+      const merchantCat = detectFallbackSpendingCategory(desc);
+      cat = merchantCat
+        || normalizeSpendingCategoryKey(categorise(t.description || '', t.category || ''))
+        || storedCat
+        || 'other';
+    }
+
     const amt = Math.abs(parseFloat(String(t.amount)));
     categorySpend[cat] = (categorySpend[cat] || 0) + amt;
   }
