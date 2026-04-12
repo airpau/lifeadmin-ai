@@ -1,4 +1,3 @@
-// @ts-nocheck - Scanner disabled while Google OAuth verification is pending
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,13 +5,13 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import {
-  ScanSearch, AlertCircle, TrendingUp, Calendar, CreditCard,
+  ScanSearch, AlertCircle, AlertTriangle, TrendingUp, Calendar, CreditCard,
   Sparkles, Mail, CheckCircle2, RefreshCw, Loader2, Plus, Shield,
   X, Lock, Eye, EyeOff, Camera, FileText, ExternalLink,
 } from 'lucide-react';
 import ReceiptScanner from '@/components/scanner/ReceiptScanner';
 import ReceiptResults from '@/components/scanner/ReceiptResults';
-import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
+import BankPickerModal from '@/components/BankPickerModal';
 
 interface EmailConnection {
   id: string;
@@ -106,9 +105,6 @@ export default function ScannerPage() {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [imapMode, setImapMode] = useState(false);
-  const [imapOtherMode, setImapOtherMode] = useState(false);
-  const [connectHost, setConnectHost] = useState('');
-  const [connectPort, setConnectPort] = useState('993');
   const [scanningEmailId, setScanningEmailId] = useState<string | null>(null);
   const [emailScanResults, setEmailScanResults] = useState<Record<string, number>>({});
   const [scanResults, setScanResults] = useState<any[]>([]);
@@ -129,9 +125,9 @@ export default function ScannerPage() {
     setReceiptsLoading(false);
   };
 
-  const detectProvider = (email: string): { name: string; note?: string; known?: boolean } => {
+  const detectProvider = (email: string): { name: string; note?: string } => {
     const domain = email.split('@')[1]?.toLowerCase();
-    const providers: Record<string, { name: string; note?: string; known?: boolean }> = {
+    const providers: Record<string, { name: string; note?: string }> = {
       'gmail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled. Go to myaccount.google.com > Security > App Passwords.' },
       'googlemail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled.' },
       'outlook.com': { name: 'Outlook' },
@@ -150,10 +146,8 @@ export default function ScannerPage() {
       'protonmail.com': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
       'proton.me': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
     };
-    if (!domain) return { name: 'Email', known: false };
-    const found = providers[domain];
-    if (found) return { ...found, known: true };
-    return { name: domain, known: false };
+    if (!domain) return { name: 'Email' };
+    return providers[domain] || { name: domain };
   };
 
   const detectedProvider = connectEmail ? detectProvider(connectEmail) : null;
@@ -183,15 +177,10 @@ export default function ScannerPage() {
     setConnecting(true);
     setConnectError(null);
     try {
-      const connectBody: any = { email: connectEmail, password: connectPassword };
-      if (imapOtherMode && connectHost) {
-        connectBody.host = connectHost;
-        connectBody.port = parseInt(connectPort, 10) || 993;
-      }
       const res = await fetch('/api/email/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(connectBody),
+        body: JSON.stringify({ email: connectEmail, password: connectPassword }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -202,9 +191,6 @@ export default function ScannerPage() {
       setConnectEmail('');
       setConnectPassword('');
       setImapMode(false);
-      setImapOtherMode(false);
-      setConnectHost('');
-      setConnectPort('993');
       loadEmailConnections();
     } catch (err: any) {
       setConnectError(err.message || 'Connection failed');
@@ -367,36 +353,50 @@ export default function ScannerPage() {
         {/* Connected email accounts */}
         {!emailLoading && emailConns.length > 0 && (
           <div className="space-y-3 mb-3">
-            {emailConns.map((conn) => (
-              <div key={conn.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-navy-950/50 rounded-xl px-4 py-3 border border-navy-700/50 gap-3">
+            {emailConns.map((conn) => {
+              const needsReauth = conn.status === 'needs_reauth' || conn.status === 'expired';
+              const providerLabel = conn.provider === 'outlook' ? 'Outlook' : conn.provider === 'gmail' || conn.provider === 'google' ? 'Gmail' : conn.provider;
+              return (
+              <div key={conn.id} className={`flex flex-col sm:flex-row sm:items-center justify-between rounded-xl px-4 py-3 border gap-3 ${needsReauth ? 'bg-amber-500/5 border-amber-500/30' : 'bg-navy-950/50 border-navy-700/50'}`}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  {needsReauth
+                    ? <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                    : <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                  }
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium capitalize">{conn.provider === 'outlook' ? 'Outlook' : conn.provider === 'gmail' ? 'Gmail' : conn.provider}</span>
-                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Connected</span>
+                      <span className="text-white text-sm font-medium capitalize">{providerLabel}</span>
+                      {needsReauth
+                        ? <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded">Reconnect needed</span>
+                        : <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Connected</span>
+                      }
                     </div>
                     <p className="text-slate-400 text-xs truncate">{conn.email}</p>
-                    {conn.last_scanned_at && (
+                    {needsReauth && (
+                      <p className="text-amber-400/80 text-xs mt-0.5">Gmail re-authorisation required — please disconnect and reconnect to continue scanning.</p>
+                    )}
+                    {!needsReauth && conn.last_scanned_at && (
                       <p className="text-slate-500 text-xs">Last scanned: {new Date(conn.last_scanned_at).toLocaleString('en-GB')}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {emailScanResults[conn.id] !== undefined && (
+                  {!needsReauth && emailScanResults[conn.id] !== undefined && (
                     <span className="text-xs text-mint-400">{emailScanResults[conn.id]} opportunities found</span>
                   )}
-                  <button
-                    onClick={() => handleScanEmail(conn.id)}
-                    disabled={scanningEmailId === conn.id}
-                    className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm"
-                  >
-                    {scanningEmailId === conn.id ? (
-                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
-                    ) : (
-                      <><RefreshCw className="h-3.5 w-3.5" /> Scan Now</>
-                    )}
-                  </button>
+                  {!needsReauth && (
+                    <button
+                      onClick={() => handleScanEmail(conn.id)}
+                      disabled={scanningEmailId === conn.id}
+                      className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm"
+                    >
+                      {scanningEmailId === conn.id ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
+                      ) : (
+                        <><RefreshCw className="h-3.5 w-3.5" /> Scan Now</>
+                      )}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDisconnectEmail(conn.id)}
                     className="text-slate-500 hover:text-red-400 text-xs transition-all"
@@ -405,7 +405,8 @@ export default function ScannerPage() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -492,10 +493,10 @@ export default function ScannerPage() {
 
       {/* Connect Email Modal */}
       {showConnectModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); setImapOtherMode(false); setConnectHost(''); setConnectPort('993'); }}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
           <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); setImapOtherMode(false); setConnectHost(''); setConnectPort('993'); }}
+              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
               className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all"
             >
               <X className="h-5 w-5" />
@@ -536,14 +537,14 @@ export default function ScannerPage() {
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
                   </button>
-                  <button onClick={() => { setImapMode(true); setImapOtherMode(false); setConnectEmail(''); setConnectHost(''); setConnectPort('993'); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">📨</span>
                     <div>
                       <p className="text-white text-sm font-medium">Yahoo Mail</p>
                       <p className="text-slate-500 text-[10px]">App password required</p>
                     </div>
                   </button>
-                  <button onClick={() => { setImapMode(true); setImapOtherMode(true); setConnectEmail(''); setConnectHost(''); setConnectPort('993'); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">✉️</span>
                     <div>
                       <p className="text-white text-sm font-medium">Other</p>
@@ -610,38 +611,9 @@ export default function ScannerPage() {
                     </div>
                   )}
 
-                  {/* Custom IMAP host/port for "Other" when domain not auto-detected */}
-                  {imapOtherMode && connectEmail.includes('@') && detectedProvider && !detectedProvider.known && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 space-y-2">
-                      <p className="text-xs text-amber-400">We couldn't auto-detect IMAP settings for this domain. Please enter your mail server details:</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-medium text-slate-400 mb-1">IMAP Server</label>
-                          <input
-                            type="text"
-                            value={connectHost}
-                            onChange={(e) => setConnectHost(e.target.value)}
-                            placeholder="imap.example.com"
-                            className="w-full bg-navy-950 border border-navy-700 rounded-lg px-3 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-medium text-slate-400 mb-1">Port</label>
-                          <input
-                            type="number"
-                            value={connectPort}
-                            onChange={(e) => setConnectPort(e.target.value)}
-                            placeholder="993"
-                            className="w-full bg-navy-950 border border-navy-700 rounded-lg px-3 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   <button
                     onClick={handleConnectEmail}
-                    disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword || (imapOtherMode && detectedProvider && !detectedProvider.known && !connectHost)}
+                    disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword}
                     className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
                   >
                     {connecting ? (
@@ -687,7 +659,7 @@ export default function ScannerPage() {
                   <p className="text-slate-500 text-xs">Connection expired. Your data is safe. Reconnect to resume syncing.</p>
                 </div>
                 <button
-                  onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
+                  onClick={() => setShowBankPicker(true)}
                   className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
                 >
                   <RefreshCw className="h-4 w-4" />
@@ -711,7 +683,7 @@ export default function ScannerPage() {
               <p className="text-slate-400 text-sm">We use Yapily (FCA regulated) to securely read your transactions. We never store your credentials.</p>
             </div>
             <button
-              onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
+              onClick={() => setShowBankPicker(true)}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
             >
               <Plus className="h-4 w-4" />
@@ -1052,7 +1024,7 @@ export default function ScannerPage() {
             <div>
               <h3 className="text-white font-semibold mb-1">Scan complete</h3>
               <p className="text-slate-400 text-sm">
-                Scanned {scanDebug.emailsScanned} emails from the last 12 months.
+                Scanned {scanDebug!.emailsScanned} emails from the last 12 months.
                 Found {opportunities.length} {opportunities.length === 1 ? 'opportunity' : 'opportunities'} across {new Set(opportunities.map(o => o.provider)).size} providers
                 with potential savings of £{totalSavings.toFixed(2)}.
                 {highConfidence > 0 && ` ${highConfidence} ${highConfidence === 1 ? 'item' : 'items'} need attention.`}
@@ -1121,10 +1093,10 @@ export default function ScannerPage() {
           <h3 className="text-xl font-semibold text-white mb-2">No opportunities found</h3>
           {scanDebug && (
             <p className="text-slate-500 text-sm mb-2">
-              Scanned {scanDebug.emailsScanned} of {scanDebug.emailsFound} matching emails
+              Scanned {scanDebug!.emailsScanned} of {scanDebug!.emailsFound} matching emails
             </p>
           )}
-          {scanDebug && scanDebug.emailsFound === 0 && (
+          {scanDebug && scanDebug!.emailsFound === 0 && (
             <p className="text-mint-400 text-sm mb-4">
               No billing emails matched — try disconnecting and reconnecting your inbox to refresh permissions.
             </p>
@@ -1136,8 +1108,8 @@ export default function ScannerPage() {
       {/* Scanned at */}
       {scannedAt && opportunities.length > 0 && (
         <p className="text-slate-500 text-sm mb-4">
-          Last scanned {new Date(scannedAt).toLocaleTimeString('en-GB')} · {connectedAccounts.length} inbox{connectedAccounts.length > 1 ? 'es' : ''}
-          {scanDebug && ` · ${scanDebug.emailsScanned} emails analysed`}
+          Last scanned {new Date(scannedAt!).toLocaleTimeString('en-GB')} · {connectedAccounts.length} inbox{connectedAccounts.length > 1 ? 'es' : ''}
+          {scanDebug && ` · ${scanDebug!.emailsScanned} emails analysed`}
         </p>
       )}
 
@@ -1192,7 +1164,7 @@ export default function ScannerPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {/* Add to subscriptions - for subscriptions, bills, utilities, or when suggestedAction is monitor/track */}
-                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction)) && (
+                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction ?? '')) && (
                             <button
                               disabled={actionLoading === opp.id}
                               onClick={async () => {
