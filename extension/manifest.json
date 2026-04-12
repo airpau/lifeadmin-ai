@@ -1,0 +1,100 @@
+{
+  "manifest_version": 3,
+  "name": "Paybacker — Money-Saving Assistant",
+  "version": "0.1.0",
+  "description": "Detects price increases, trial expiries and renewal notices in your email, then drafts dispute letters and finds better deals — all powered by your Paybacker financial data.",
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "32": "assets/icons/icon32.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png"
+    },
+    "default_title": "Paybacker"
+  },
+  "side_panel": {
+    "default_path": "side-panel/index.html"
+  },
+  "background": {
+    "service_worker": "background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content-scripts/gmail.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://outlook.live.com/*",
+        "https://outlook.office.com/*"
+      ],
+      "js": ["content-scripts/outlook.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.sse.co.uk/*",
+        "https://*.britishgas.co.uk/*",
+        "https://*.edfenergy.com/*",
+        "https://*.eon.co.uk/*",
+        "https://*.bulb.co.uk/*",
+        "https://*.octopus.energy/*",
+        "https://*.ovo.energy/*",
+        "https://*.sky.com/*",
+        "https://*.bt.com/*",
+        "https://*.virginmedia.com/*",
+        "https://*.talktalk.co.uk/*",
+        "https://*.plusnet.co.uk/*",
+        "https://*.ee.co.uk/*",
+        "https://*.o2.co.uk/*",
+        "https://*.three.co.uk/*",
+        "https://*.vodafone.co.uk/*",
+        "https://*.aviva.com/*",
+        "https://*.lv.com/*",
+        "https://*.admiral.com/*",
+        "https://*.directline.com/*",
+        "https://*.confused.com/*",
+        "https://*.comparethemarket.com/*",
+        "https://*.moneysupermarket.com/*",
+        "https://*.uswitch.com/*"
+      ],
+      "js": ["content-scripts/supplier-sites.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "identity",
+    "activeTab",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://outlook.live.com/*",
+    "https://outlook.office.com/*",
+    "https://*.paybacker.co.uk/*",
+    "https://www.googleapis.com/*",
+    "https://graph.microsoft.com/*"
+  ],
+  "oauth2": {
+    "client_id": "__GOOGLE_OAUTH_CLIENT_ID__",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly"
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
