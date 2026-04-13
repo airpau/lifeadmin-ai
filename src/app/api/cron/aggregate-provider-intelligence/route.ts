@@ -95,6 +95,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (process.env.MANAGED_AGENTS_ENABLED !== 'true') {
+    console.log('[aggregate-provider-intelligence] Managed agents disabled (MANAGED_AGENTS_ENABLED != true)');
+    return NextResponse.json({ ok: true, message: 'Managed agents disabled' });
+  }
+
   const supabase = getAdmin();
 
   // Fetch all contract extractions with enough data to aggregate

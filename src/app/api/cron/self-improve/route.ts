@@ -24,6 +24,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (process.env.MANAGED_AGENTS_ENABLED !== 'true') {
+    console.log('[self-improve] Managed agents disabled (MANAGED_AGENTS_ENABLED != true)');
+    return NextResponse.json({ ok: true, message: 'Managed agents disabled' });
+  }
+
   const supabase = getAdmin();
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
