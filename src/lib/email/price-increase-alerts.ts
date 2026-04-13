@@ -47,13 +47,13 @@ export function buildPriceIncreaseEmail(
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
     <div style="text-align: center; padding: 24px 0;">
-      <h1 style="color: #ffffff; font-size: 22px; margin: 0;">Pay<span style="color: #f59e0b;">backer</span></h1>
+      <h1 style="color: #ffffff; font-size: 22px; margin: 0; background: #0a1628; padding: 10px 18px; border-radius: 8px; display: inline-block;">Pay<span style="color: #34d399;">backer</span></h1>
     </div>
 
-    <div style="background: #0f172a; border-radius: 16px; padding: 32px; border: 1px solid #1e293b;">
+    <div style="background: #0a1628; border-radius: 16px; padding: 32px; border: 1px solid #1e293b;">
       <div style="text-align: center; margin-bottom: 24px;">
         <div style="display: inline-block; background: #ef44441a; border: 1px solid #ef444433; border-radius: 12px; padding: 8px 16px;">
           <span style="color: #ef4444; font-weight: 700; font-size: 14px;">${alertArray.length === 1 ? 'Price Increase Detected' : `${alertArray.length} Price Increases Detected`}</span>
@@ -71,7 +71,7 @@ export function buildPriceIncreaseEmail(
       </p>
 
       <div style="text-align: center;">
-        <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #4ade80; color: #020617; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-size: 14px;">
+        <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #34d399; color: #0a1628; font-weight: 700; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 14px;">
           Find Better Deals
         </a>
       </div>

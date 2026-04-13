@@ -33,9 +33,9 @@ const sendReportEmail: ToolDef = {
     const priorityPrefix: Record<string, string> = { low: '', medium: '', high: '[HIGH] ', urgent: '[URGENT] ' };
     const recs = args.recommendations || [];
     const recsHtml = recs.length > 0
-      ? `<div style="background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:20px;margin-top:20px;">
-           <div style="color:#f59e0b;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Recommendations</div>
-           ${recs.map((r: string) => `<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="color:#f59e0b;">-</span><span style="color:#cbd5e1;font-size:14px;">${r}</span></div>`).join('')}
+      ? `<div style="background:#162544;border:1px solid #1e293b;border-radius:12px;padding:20px;margin-top:20px;border-left:3px solid #34d399;">
+           <div style="color:#34d399;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Recommendations</div>
+           ${recs.map((r: string) => `<div style="display:flex;gap:8px;margin-bottom:8px;"><span style="color:#34d399;">-</span><span style="color:#cbd5e1;font-size:14px;">${r}</span></div>`).join('')}
          </div>`
       : '';
 
@@ -48,24 +48,24 @@ const sendReportEmail: ToolDef = {
       </div>` : '';
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:600px;margin:0 auto;">
-    <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
+    <div style="background:#0a1628;padding:20px 32px;border-bottom:1px solid #1e293b;">
       <table style="width:100%;border-collapse:collapse;"><tr>
-        <td style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></td>
+        <td style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></td>
         <td style="text-align:right;color:#475569;font-size:12px;">${args.title}</td>
       </tr></table>
     </div>
-    <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
+    <div style="background:#0a1628;padding:32px;">
       ${priorityBanner}
       <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0 0 16px;line-height:1.3;">${args.title}</h1>
       <div style="color:#e2e8f0;font-size:14px;line-height:1.8;white-space:pre-wrap;">${args.content}</div>
       ${recsHtml}
     </div>
-    <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
+    <div style="background:#0a1628;padding:20px 32px;border-top:1px solid #1e293b;">
       <table style="width:100%;border-collapse:collapse;"><tr>
         <td style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</td>
-        <td style="text-align:right;"><a href="https://paybacker.co.uk/dashboard/admin" style="color:#f59e0b;font-size:11px;text-decoration:none;">View Dashboard</a></td>
+        <td style="text-align:right;"><a href="https://paybacker.co.uk/dashboard/admin" style="color:#34d399;font-size:11px;text-decoration:none;">View Dashboard</a></td>
       </tr></table>
     </div>
   </div>

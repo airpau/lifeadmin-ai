@@ -102,12 +102,12 @@ export function buildRenewalEmail(
   let tableContent: string;
   if (!hasPayments) {
     tableContent = `
-    <table style="width: 100%; background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <table style="width: 100%; background: #0a1628; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
       ${buildRows(subscriptions, 'renews')}
     </table>`;
   } else if (onlyPayments) {
     tableContent = `
-    <table style="width: 100%; background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <table style="width: 100%; background: #0a1628; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
       ${buildRows(payments, 'due')}
     </table>`;
   } else {
@@ -118,25 +118,25 @@ export function buildRenewalEmail(
       ${buildRows(subscriptions, 'renews')}
     </table>
     <div style="color: #94a3b8; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Upcoming payments</div>
-    <table style="width: 100%; background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <table style="width: 100%; background: #0a1628; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
       ${buildRows(payments, 'due')}
     </table>`;
   }
 
   // Deals section — only shown when there are cancellable subscriptions
   const dealsSection = hasSubscriptions ? `
-    <div style="background: #0f172a; border: 1px solid #f59e0b44; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
+    <div style="background: #0a1628; border: 1px solid #34d39944; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+      <div style="color: #34d399; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
       <div style="color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
         Before these renew, check if you can save by switching. Your personalised deals page shows alternatives based on your current providers.
       </div>
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Personalised Deals &rarr;</a>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #34d399; color: #0a1628; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Personalised Deals &rarr;</a>
     </div>` : '';
 
   // "Did you know" tip — only relevant for subscriptions
   const didYouKnow = hasSubscriptions ? `
-    <div style="background: #0f172a; border: 1px solid #1e293b44; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 600; font-size: 13px; margin-bottom: 4px;">Did you know?</div>
+    <div style="background: #0a1628; border: 1px solid #34d39922; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+      <div style="color: #34d399; font-weight: 600; font-size: 13px; margin-bottom: 4px;">Did you know?</div>
       <div style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
         Paybacker can generate a cancellation email for any subscription in seconds, citing the correct UK consumer law. Just click on any subscription in your dashboard.
       </div>
@@ -146,10 +146,10 @@ export function buildRenewalEmail(
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
     <div style="text-align: center; padding: 24px 0;">
-      <div style="font-size: 24px; font-weight: 700; color: #ffffff;">Pay<span style="color: #f59e0b;">backer</span></div>
+      <div style="font-size: 24px; font-weight: 700; color: #ffffff; background: #0a1628; padding: 12px 20px; border-radius: 8px; display: inline-block;">Pay<span style="color: #34d399;">backer</span></div>
     </div>
 
     <!-- Urgency Banner -->
@@ -168,7 +168,7 @@ export function buildRenewalEmail(
     ${dealsSection}
 
     <div style="text-align: center; margin: 24px 0;">
-      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #1e293b; color: #ffffff; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px;">${onlyPayments ? 'Review Payments' : 'Review Subscriptions'}</a>
+      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #34d399; color: #0a1628; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">${onlyPayments ? 'Review Payments' : 'Review Subscriptions'}</a>
     </div>
 
     ${didYouKnow}
@@ -176,7 +176,7 @@ export function buildRenewalEmail(
     <div style="text-align: center; padding: 24px 0; border-top: 1px solid #1e293b;">
       <div style="color: #64748b; font-size: 12px; line-height: 1.6;">
         Paybacker LTD &middot; paybacker.co.uk<br>
-        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #f59e0b; text-decoration: none;">Manage preferences</a>
+        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #34d399; text-decoration: none;">Manage preferences</a>
       </div>
     </div>
   </div>

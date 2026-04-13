@@ -33,32 +33,32 @@ interface GiffgaffPlan {
 
 // Brand design system — matches onboarding-sequence.ts
 const S = {
-  wrap: `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;`,
-  header: `background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`,
+  wrap: `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a1628;border-radius:16px;overflow:hidden;`,
+  header: `background:#0a1628;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`,
   body: `padding:32px;`,
   h1: `color:#ffffff;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`,
   p: `color:#94a3b8;font-size:15px;line-height:1.75;margin:0 0 16px;`,
   pWhite: `color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;`,
-  box: `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #f59e0b;`,
-  cta: `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`,
-  ctaSecondary: `display:inline-block;background:#1e3a5f;color:#e2e8f0;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;margin:8px 0 8px 12px;border:1px solid #1e3a5f;`,
+  box: `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #34d399;`,
+  cta: `display:inline-block;background:#34d399;color:#0a1628;font-weight:700;font-size:15px;padding:14px 28px;border-radius:6px;text-decoration:none;margin:8px 0;`,
+  ctaSecondary: `display:inline-block;background:#1e3a5f;color:#e2e8f0;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;text-decoration:none;margin:8px 0 8px 12px;border:1px solid #1e3a5f;`,
   footer: `padding:20px 32px 28px;border-top:1px solid #1e3a5f;`,
   footerText: `color:#475569;font-size:12px;line-height:1.6;margin:0;text-align:center;`,
-  badge: `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;letter-spacing:0.05em;text-transform:uppercase;`,
+  badge: `display:inline-block;background:#34d399;color:#0a1628;font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;letter-spacing:0.05em;text-transform:uppercase;`,
   statCard: `display:inline-block;background:#162544;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;text-align:center;margin:4px;min-width:120px;`,
-  tipBox: `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #FB923C;`,
+  tipBox: `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #34d399;`,
 };
 
 const Logo = () => `
   <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span>
   </a>
 `;
 
 const Footer = () => `
   <div style="${S.footer}">
     <p style="${S.footerText}">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
+      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
       AI-powered money recovery for UK consumers<br/><br/>
       <a href="https://paybacker.co.uk/privacy-policy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
       <a href="https://paybacker.co.uk/terms-of-service" style="color:#475569;text-decoration:none;">Terms</a> &nbsp;·&nbsp;
@@ -114,8 +114,8 @@ function buildEmailHtml(user: MobileUser, plans: GiffgaffPlan[], _unsubUrl: stri
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/></head>
-<body style="margin:0;padding:0;background-color:#0a0e1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-<div style="background:#0a0e1a;padding:32px 16px;">
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<div style="background:#f8fafc;padding:32px 16px;">
 <div style="${S.wrap}">
   <div style="${S.header}">${Logo()}</div>
   <div style="${S.body}">
@@ -133,7 +133,7 @@ function buildEmailHtml(user: MobileUser, plans: GiffgaffPlan[], _unsubUrl: stri
     </div>
 
     <div style="${S.box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Compare plans</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Compare plans</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
         <thead>
           <tr>
@@ -149,7 +149,7 @@ function buildEmailHtml(user: MobileUser, plans: GiffgaffPlan[], _unsubUrl: stri
     </div>
 
     <div style="${S.tipBox}">
-      <p style="color:#FB923C;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Why giffgaff?</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Why giffgaff?</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">
         <strong style="color:#e2e8f0;">No contracts</strong> — cancel anytime on rolling monthly plans.<br/>
         <strong style="color:#e2e8f0;">O2 network</strong> — excellent UK coverage with 99% population reach.<br/>

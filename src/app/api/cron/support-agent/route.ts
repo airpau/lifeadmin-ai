@@ -280,9 +280,9 @@ export async function GET(request: NextRequest) {
             html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
-    <div style="background:#0f172a;padding:20px 32px;">
+    <div style="background:#0a1628;padding:20px 32px;">
       <table width="100%"><tr>
-        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span></td>
+        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span></td>
         <td align="right"><span style="color:#94a3b8;font-size:12px;">${ticketRef}</span></td>
       </tr></table>
     </div>
@@ -290,10 +290,10 @@ export async function GET(request: NextRequest) {
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:12px 0;">${htmlReply}</p>
     </div>
     <div style="padding:24px 32px;border-top:1px solid #e2e8f0;">
-      <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:10px 20px;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px;">View Dashboard</a>
+      <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#34d399;color:#0a1628;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">View Dashboard</a>
     </div>
     <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
-      Reply to this email to respond &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+      Reply to this email to respond &middot; <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;">paybacker.co.uk</a>
     </div>
   </div>
 </body></html>`,
