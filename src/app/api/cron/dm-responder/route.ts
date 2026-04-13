@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (process.env.MANAGED_AGENTS_ENABLED !== 'true') {
+    console.log('[dm-responder] Managed agents disabled (MANAGED_AGENTS_ENABLED != true)');
+    return NextResponse.json({ ok: true, message: 'Managed agents disabled' });
+  }
+
   const systemToken = process.env.META_ACCESS_TOKEN;
   if (!systemToken) return NextResponse.json({ ok: true, skipped: 'no token' });
 

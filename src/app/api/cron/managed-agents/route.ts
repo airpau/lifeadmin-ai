@@ -28,6 +28,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (process.env.MANAGED_AGENTS_ENABLED !== 'true') {
+    console.log('[managed-agents] Managed agents disabled (MANAGED_AGENTS_ENABLED != true)');
+    return NextResponse.json({ ok: true, message: 'Managed agents disabled' });
+  }
+
   const { searchParams } = new URL(req.url);
   const agentKey = searchParams.get('agent');
   const customTask = searchParams.get('task');
@@ -98,6 +103,11 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (process.env.MANAGED_AGENTS_ENABLED !== 'true') {
+    console.log('[managed-agents] Managed agents disabled (MANAGED_AGENTS_ENABLED != true)');
+    return NextResponse.json({ ok: true, message: 'Managed agents disabled' });
   }
 
   // Determine which agent to run from the URL path or query

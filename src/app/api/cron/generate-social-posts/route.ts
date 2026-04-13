@@ -29,6 +29,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (process.env.MANAGED_AGENTS_ENABLED !== 'true') {
+    console.log('[generate-social-posts] Managed agents disabled (MANAGED_AGENTS_ENABLED != true)');
+    return NextResponse.json({ ok: true, message: 'Managed agents disabled' });
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
