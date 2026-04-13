@@ -171,9 +171,17 @@ export async function POST(request: NextRequest) {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   /**
-   * Smart from-date: use the most recent transaction we already have for this
-   * account so we only fetch the gap since the last sync, not a fixed 90-day window.
-   * Falls back to ninetyDaysAgo if no prior transactions exist.
+   * Smart from-date: always fetch at least the last 30 days to catch any gaps
+   * caused by missed syncs, reconnections, or banking delays.
+   *
+   * Logic: use whichever is EARLIER — the last transaction date or 30 days ago.
+   * This ensures we always backfill any gap even if the last synced transaction
+   * is very recent (e.g. after a reconnection that only fetched today's data).
+   * The upsert with ignoreDuplicates handles re-fetching already-stored transactions safely.
+   *
+   * Hard cap: never go beyond 90 days (TrueLayer API limit).
+   * PSD2/Open Banking: banks must provide 90 days of history from authorisation date,
+   * so requesting data from before today's connected_at is valid and expected.
    */
   async function getSmartFromDate(userId: string, accountId: string): Promise<Date> {
     const { data: lastTx } = await admin
@@ -184,10 +192,16 @@ export async function POST(request: NextRequest) {
       .order('timestamp', { ascending: false })
       .limit(1)
       .single();
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     if (lastTx?.timestamp) {
       const d = new Date(lastTx.timestamp);
-      d.setHours(0, 0, 0, 0); // start of that day to avoid missing same-day transactions
-      return d > ninetyDaysAgo ? d : ninetyDaysAgo;
+      d.setHours(0, 0, 0, 0);
+      // Always go back at least 30 days — whichever is earlier
+      const effectiveFrom = d < thirtyDaysAgo ? d : thirtyDaysAgo;
+      return effectiveFrom > ninetyDaysAgo ? effectiveFrom : ninetyDaysAgo;
     }
     return ninetyDaysAgo;
   }

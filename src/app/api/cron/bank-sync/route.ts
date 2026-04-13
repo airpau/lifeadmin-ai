@@ -139,10 +139,16 @@ export async function GET(request: NextRequest) {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   /**
-   * Smart from-date for a specific account: start from the day of the most recent
-   * transaction already in the DB, so the sync only fills the gap rather than
-   * re-fetching a fixed 90-day window. Falls back to ninetyDaysAgo if no prior
-   * transactions exist for this account.
+   * Smart from-date: always fetch at least the last 30 days to catch any gaps
+   * caused by missed syncs, reconnections, or banking delays.
+   *
+   * Logic: use whichever is EARLIER — the last transaction date or 30 days ago.
+   * This ensures we always backfill any gap even if the last synced transaction
+   * is very recent (e.g. after a reconnection that only fetched today's data).
+   * The upsert with ignoreDuplicates handles re-fetching already-stored transactions safely.
+   *
+   * Hard cap: never go beyond 90 days (TrueLayer API limit).
+   * PSD2/Open Banking: banks must provide 90 days of history from authorisation date.
    */
   async function getSmartFromDate(userId: string, accountId: string): Promise<Date> {
     const { data: lastTx } = await supabase
@@ -153,10 +159,16 @@ export async function GET(request: NextRequest) {
       .order('timestamp', { ascending: false })
       .limit(1)
       .single();
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     if (lastTx?.timestamp) {
       const d = new Date(lastTx.timestamp);
       d.setHours(0, 0, 0, 0);
-      return d > ninetyDaysAgo ? d : ninetyDaysAgo;
+      // Always go back at least 30 days — whichever is earlier
+      const effectiveFrom = d < thirtyDaysAgo ? d : thirtyDaysAgo;
+      return effectiveFrom > ninetyDaysAgo ? effectiveFrom : ninetyDaysAgo;
     }
     return ninetyDaysAgo;
   }
@@ -284,22 +296,14 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
-        // Determine the connected_at floor — some banks (e.g. NatWest via TrueLayer)
-        // restrict history to on or after the consent date, so we never go earlier.
-        const connectedAtDate = connection.connected_at
-          ? new Date(connection.connected_at)
-          : ninetyDaysAgo;
-        connectedAtDate.setHours(0, 0, 0, 0);
-        const connectedAtFloor = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
-
         // Sync transactions for each account
+        // PSD2/Open Banking: UK banks must provide 90 days of history from authorisation date.
+        // We do NOT apply a connected_at floor — getSmartFromDate always backfills 30 days,
+        // which will correctly request transactions that predate a recent reconnection.
         for (const accountId of accountIds) {
           try {
-            // Smart from-date: start from the last transaction we already have for this
-            // account, so we only fill the gap rather than always re-fetching 90 days.
-            const smartFrom = await getSmartFromDate(connection.user_id, accountId);
-            // Respect the connected_at floor to avoid TrueLayer 400 errors on some banks.
-            const fromDate = smartFrom > connectedAtFloor ? smartFrom : connectedAtFloor;
+            // Smart from-date: always backfills at least 30 days to catch gaps from missed syncs.
+            const fromDate = await getSmartFromDate(connection.user_id, accountId);
             const transactions = await fetchTrueLayerTransactions(accessToken, accountId, fromDate);
             connectionApiCalls++;
             transactionSyncSucceeded = true;

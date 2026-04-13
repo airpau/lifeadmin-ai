@@ -164,18 +164,14 @@ async function syncTransactionsForConnection(
 ) {
   const { fetchTransactions } = await import('@/lib/truelayer');
 
-  // Many UK banks (e.g. NatWest via TrueLayer) only serve transactions on or after the
-  // consent / reconnection date. Requesting dates before that returns HTTP 400.
-  // We therefore never go further back than the connected_at date for this authorization.
-  const connectedAtDate = new Date(connection.connected_at);
-  connectedAtDate.setHours(0, 0, 0, 0); // start of that day
-
-  // Also enforce a hard 90-day cap so we never exceed TrueLayer's date range limits.
+  // PSD2/Open Banking: UK banks must provide 90 days of transaction history from the
+  // authorisation date. We do NOT restrict by connected_at — instead we always go back
+  // at least 30 days to catch any transactions that arrived after a previous failed sync.
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-  // The earliest date we are allowed to query (whichever is more recent).
-  const earliestAllowed = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   let fromDate: Date;
   const { data: lastTx } = await supabase
@@ -188,16 +184,15 @@ async function syncTransactionsForConnection(
     .single();
 
   if (lastTx?.timestamp) {
-    // Start from the day of the last known transaction to pick up any new ones.
-    fromDate = new Date(lastTx.timestamp);
-    fromDate.setHours(0, 0, 0, 0);
-    // Never go before the authorization floor — that would cause TrueLayer 400.
-    if (fromDate < earliestAllowed) {
-      fromDate = earliestAllowed;
-    }
-    console.log(`TrueLayer callback: syncing from ${fromDate.toISOString()} (last tx or connected_at floor)`);
+    const d = new Date(lastTx.timestamp);
+    d.setHours(0, 0, 0, 0);
+    // Always go back at least 30 days — whichever is earlier.
+    // This catches transactions that arrived after a reconnection or failed sync period.
+    fromDate = d < thirtyDaysAgo ? d : thirtyDaysAgo;
+    if (fromDate < ninetyDaysAgo) fromDate = ninetyDaysAgo;
+    console.log(`TrueLayer callback: syncing from ${fromDate.toISOString()} (30-day backfill window)`);
   } else {
-    fromDate = earliestAllowed;
+    fromDate = ninetyDaysAgo;
     console.log(`TrueLayer callback: no prior transactions, syncing from ${fromDate.toISOString()}`);
   }
 
