@@ -9,7 +9,7 @@ function scoreColor(score: number): string {
 
 function confidenceBadge(confidence: string): string {
   const colors: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#94a3b8' };
-  return `<span style="background: ${colors[confidence] || '#94a3b8'}; color: #0f172a; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">${confidence}</span>`;
+  return `<span style="background: ${colors[confidence] || '#94a3b8'}; color: #0a1628; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">${confidence}</span>`;
 }
 
 function buildAssessmentRow(a: OverchargeAssessment): string {
@@ -38,7 +38,7 @@ function buildAssessmentRow(a: OverchargeAssessment): string {
         ${a.signals.filter(s => s.score > 0).map(s => `<div style="padding: 2px 0;">&#8226; ${s.detail}</div>`).join('')}
       </div>
       <div style="margin-top: 12px;">
-        <a href="https://paybacker.co.uk/dashboard/subscriptions" style="color: #4ade80; font-size: 12px; text-decoration: underline;">Review &amp; switch</a>
+        <a href="https://paybacker.co.uk/dashboard/subscriptions" style="color: #34d399; font-size: 12px; text-decoration: underline;">Review &amp; switch</a>
       </div>
     </div>`;
 }
@@ -56,7 +56,7 @@ export async function sendOverchargeAlert(
     : `Bill check: ${assessments.length} subscription${assessments.length > 1 ? 's' : ''} reviewed`;
 
   const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 32px 20px;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0a1628; color: #e2e8f0; padding: 32px 20px;">
       <div style="text-align: center; margin-bottom: 24px;">
         <h1 style="color: #ffffff; font-size: 22px; margin: 0 0 8px;">Overcharge Report</h1>
         <p style="color: #94a3b8; font-size: 14px; margin: 0;">Hi ${name}, we found potential savings on your bills.</p>
@@ -70,7 +70,7 @@ export async function sendOverchargeAlert(
       ${assessments.map(a => buildAssessmentRow(a)).join('')}
 
       <div style="text-align: center; margin-top: 24px;">
-        <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #4ade80; color: #0f172a; font-weight: 700; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 15px;">View All Assessments</a>
+        <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #34d399; color: #0a1628; font-weight: 700; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-size: 15px;">View All Assessments</a>
       </div>
 
       <div style="text-align: center; margin-top: 32px; padding-top: 20px; border-top: 1px solid #334155;">

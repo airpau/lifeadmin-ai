@@ -16,8 +16,8 @@ export async function GET(request: Request) {
       to: 'hello@paybacker.co.uk',
       subject: `Resend test — ${new Date().toISOString()}`,
       html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0f172a;color:#e2e8f0;border-radius:12px;">
-          <h2 style="color:#f59e0b;margin:0 0 16px;">Resend domain test</h2>
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0a1628;color:#e2e8f0;border-radius:12px;">
+          <h2 style="color:#34d399;margin:0 0 16px;">Resend domain test</h2>
           <p style="color:#94a3b8;margin:0 0 8px;">This email confirms that Resend is working correctly with the verified <strong style="color:#e2e8f0;">paybacker.co.uk</strong> domain.</p>
           <p style="color:#64748b;font-size:13px;margin:0;">Sent at: ${new Date().toUTCString()}</p>
           <p style="color:#64748b;font-size:13px;margin:4px 0 0;">From: ${FROM_EMAIL}</p>

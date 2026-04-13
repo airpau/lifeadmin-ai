@@ -81,11 +81,11 @@ export function buildWeeklyDigestEmail(
     : 'Your weekly money digest';
 
   const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 0; border-radius: 16px; overflow: hidden;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a1628; color: #e2e8f0; padding: 0; border-radius: 16px; overflow: hidden;">
 
       <!-- Header -->
-      <div style="background: #162544; padding: 24px 32px; text-align: center; border-bottom: 1px solid #1e3a5f;">
-        <span style="font-size: 22px; font-weight: bold; color: white;">Pay<span style="color: #f59e0b;">backer</span></span>
+      <div style="background: #0a1628; padding: 24px 32px; text-align: center; border-bottom: 1px solid #1e3a5f;">
+        <span style="font-size: 22px; font-weight: bold; color: white;">Pay<span style="color: #34d399;">backer</span></span>
         <p style="color: #94a3b8; font-size: 12px; margin: 4px 0 0; text-transform: uppercase; letter-spacing: 1px;">Weekly Money Digest</p>
       </div>
 
@@ -145,14 +145,14 @@ export function buildWeeklyDigestEmail(
 
         <!-- CTA -->
         <div style="text-align: center; margin: 28px 0;">
-          <a href="https://paybacker.co.uk/dashboard/money-hub" style="display: inline-block; background: #f59e0b; color: #0f172a; font-weight: bold; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-size: 15px;">
+          <a href="https://paybacker.co.uk/dashboard/money-hub" style="display: inline-block; background: #34d399; color: #0a1628; font-weight: bold; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px;">
             View Full Breakdown
           </a>
         </div>
 
         <!-- Money tip -->
-        <div style="background: #162544; border-left: 3px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
-          <p style="color: #f59e0b; font-size: 12px; font-weight: bold; margin: 0 0 6px;">MONEY TIP</p>
+        <div style="background: #162544; border-left: 3px solid #34d399; border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 24px;">
+          <p style="color: #34d399; font-size: 12px; font-weight: bold; margin: 0 0 6px;">MONEY TIP</p>
           <p style="color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0;">${tip}</p>
         </div>
 
@@ -162,7 +162,7 @@ export function buildWeeklyDigestEmail(
             Paybacker LTD | ICO Registered | paybacker.co.uk
           </p>
           <p style="color: #475569; font-size: 11px; margin: 8px 0 0;">
-            <a href="https://paybacker.co.uk/dashboard/profile" style="color: #475569; text-decoration: underline;">Manage preferences</a>
+            <a href="https://paybacker.co.uk/dashboard/profile" style="color: #34d399; text-decoration: none;">Manage preferences</a>
           </p>
         </div>
       </div>

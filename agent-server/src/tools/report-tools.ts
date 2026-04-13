@@ -129,43 +129,43 @@ const proposeImprovement: ToolDef = {
     const rejectUrl = `${baseUrl}/api/admin/proposals/approve?token=${approvalToken}&action=reject`;
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:600px;margin:0 auto;">
-    <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
+    <div style="background:#0a1628;padding:20px 32px;border-bottom:1px solid #1e293b;">
       <table style="width:100%;border-collapse:collapse;"><tr>
-        <td style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></td>
+        <td style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></td>
         <td style="text-align:right;color:#475569;font-size:12px;">Improvement Proposal</td>
       </tr></table>
     </div>
-    <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
-      <div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:8px;padding:12px;margin-bottom:20px;">
+    <div style="background:#0a1628;padding:32px;">
+      <div style="background:#34d39922;border:1px solid #34d39944;border-radius:8px;padding:12px;margin-bottom:20px;">
         <table style="width:100%;border-collapse:collapse;"><tr>
-          <td style="color:#f59e0b;font-weight:700;font-size:13px;">From: ${agentRole.toUpperCase()}</td>
-          <td style="text-align:right;color:#f59e0b;font-size:12px;">${args.category} | ${args.priority || 'medium'} priority</td>
+          <td style="color:#34d399;font-weight:700;font-size:13px;">From: ${agentRole.toUpperCase()}</td>
+          <td style="text-align:right;color:#34d399;font-size:12px;">${args.category} | ${args.priority || 'medium'} priority</td>
         </tr></table>
       </div>
       <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0 0 20px;line-height:1.3;">${args.title}</h1>
       <div style="margin-bottom:20px;">
-        <div style="color:#f59e0b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Why</div>
+        <div style="color:#34d399;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Why</div>
         <div style="color:#e2e8f0;font-size:14px;line-height:1.7;">${args.description}</div>
       </div>
       <div style="margin-bottom:20px;">
-        <div style="color:#f59e0b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">How</div>
+        <div style="color:#34d399;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">How</div>
         <div style="color:#e2e8f0;font-size:14px;line-height:1.7;">${args.implementation}</div>
       </div>
       <div style="margin-bottom:24px;">
-        <div style="color:#f59e0b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Expected Impact</div>
+        <div style="color:#34d399;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">Expected Impact</div>
         <div style="color:#e2e8f0;font-size:14px;line-height:1.7;">${args.estimated_impact}</div>
       </div>
       <div style="text-align:center;margin:32px 0;">
-        <a href="${approveUrl}" style="display:inline-block;background:#22c55e;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;margin-right:12px;">Approve</a>
-        <a href="${rejectUrl}" style="display:inline-block;background:#ef4444;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;">Reject</a>
+        <a href="${approveUrl}" style="display:inline-block;background:#22c55e;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:6px;font-weight:700;font-size:15px;margin-right:12px;">Approve</a>
+        <a href="${rejectUrl}" style="display:inline-block;background:#ef4444;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:6px;font-weight:700;font-size:15px;">Reject</a>
       </div>
     </div>
-    <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
+    <div style="background:#0a1628;padding:20px 32px;border-top:1px solid #1e293b;">
       <table style="width:100%;border-collapse:collapse;"><tr>
         <td style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</td>
-        <td style="text-align:right;"><a href="https://paybacker.co.uk/dashboard/admin" style="color:#f59e0b;font-size:11px;text-decoration:none;">View Dashboard</a></td>
+        <td style="text-align:right;"><a href="https://paybacker.co.uk/dashboard/admin" style="color:#34d399;font-size:11px;text-decoration:none;">View Dashboard</a></td>
       </tr></table>
     </div>
   </div>

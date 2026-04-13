@@ -1,26 +1,26 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 
-const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;`;
-const header = `background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`;
+const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a1628;border-radius:16px;overflow:hidden;`;
+const header = `background:#0a1628;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`;
 const body = `padding:32px;`;
 const h1 = `color:#ffffff;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
 const pWhite = `color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #f59e0b;`;
+const box = `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #34d399;`;
 const tipBox = `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #ef4444;`;
-const cta = `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
+const cta = `display:inline-block;background:#34d399;color:#0a1628;font-weight:700;font-size:15px;padding:14px 28px;border-radius:6px;text-decoration:none;margin:8px 0;`;
 const footer = `padding:20px 32px 28px;border-top:1px solid #1e3a5f;`;
 const footerText = `color:#475569;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
 
 const Logo = () => `
   <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span>
   </a>
 `;
 
 const Footer = () => `
   <div style="${footer}">
     <p style="${footerText}">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
+      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
       AI-powered money recovery for UK consumers<br/><br/>
       <a href="https://paybacker.co.uk/privacy-policy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
       <a href="https://paybacker.co.uk/legal/terms" style="color:#475569;text-decoration:none;">Terms</a> &nbsp;·&nbsp;

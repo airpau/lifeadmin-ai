@@ -140,7 +140,7 @@ export function buildDealAlertEmail(
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
             <td style="width: 40px; vertical-align: top; padding-right: 14px;">
-              <div style="width: 40px; height: 40px; background: #f59e0b15; border-radius: 10px; text-align: center; line-height: 40px; font-size: 20px;">${icon}</div>
+              <div style="width: 40px; height: 40px; background: #34d39915; border-radius: 10px; text-align: center; line-height: 40px; font-size: 20px;">${icon}</div>
             </td>
             <td style="vertical-align: top;">
               <div style="font-weight: 700; color: #ffffff; font-size: 15px; letter-spacing: -0.01em;">${a.currentProvider}</div>
@@ -150,7 +150,7 @@ export function buildDealAlertEmail(
             <td style="width: 100px; vertical-align: top; text-align: right; padding-left: 12px;">
               <div style="font-weight: 800; color: #ffffff; font-size: 18px; letter-spacing: -0.02em;">£${a.currentAmount.toFixed(2)}</div>
               <div style="color: #475569; font-size: 11px; margin-top: 2px;">/month</div>
-              <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; margin-top: 10px; background: #f59e0b; color: #0f172a; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 12px; letter-spacing: 0.02em;">COMPARE</a>
+              <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; margin-top: 10px; background: #34d399; color: #0a1628; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 12px; letter-spacing: 0.02em;">COMPARE</a>
             </td>
           </tr>
         </table>
@@ -172,7 +172,7 @@ export function buildDealAlertEmail(
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto;">
     <!-- Preheader -->
     <div style="display: none; max-height: 0; overflow: hidden; font-size: 1px; line-height: 1px; color: #020617;">
@@ -180,50 +180,50 @@ export function buildDealAlertEmail(
     </div>
 
     <!-- Header Bar -->
-    <div style="background: #0f172a; padding: 20px 32px; border-bottom: 1px solid #1e293b;">
+    <div style="background: #0a1628; padding: 20px 32px; border-bottom: 1px solid #1e293b;">
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
-          <td style="font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em;">Pay<span style="color: #f59e0b;">backer</span></td>
+          <td style="font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em;">Pay<span style="color: #34d399;">backer</span></td>
           <td style="text-align: right; color: #475569; font-size: 12px;">Weekly Savings Report</td>
         </tr>
       </table>
     </div>
 
     <!-- Hero Section -->
-    <div style="background: linear-gradient(180deg, #0f172a 0%, #1a1f35 100%); padding: 40px 32px; text-align: center;">
+    <div style="background: #0a1628; padding: 40px 32px; text-align: center;">
       <div style="color: #94a3b8; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Your potential savings</div>
       <div style="font-size: 48px; font-weight: 800; color: #f59e0b; letter-spacing: -0.03em; line-height: 1;">£${potentialSavings}</div>
       <div style="color: #475569; font-size: 13px; margin-top: 8px;">per month · based on £${totalMonthlySpend.toFixed(2)} tracked spend</div>
     </div>
 
     <!-- Intro -->
-    <div style="background: #0f172a; padding: 28px 32px;">
+    <div style="background: #0a1628; padding: 28px 32px;">
       <div style="color: #e2e8f0; font-size: 15px; line-height: 1.7;">
         Hi ${userName},<br><br>
-        We have analysed your subscriptions and bills and found <strong style="color: #f59e0b;">${topAlerts.length} opportunities</strong> where you could be paying less.
+        We have analysed your subscriptions and bills and found <strong style="color: #34d399;">${topAlerts.length} opportunities</strong> where you could be paying less.
       </div>
     </div>
 
     <!-- Deal Cards -->
-    <div style="background: #0f172a; border-top: 2px solid #f59e0b; margin: 0 24px; border-radius: 0 0 16px 16px;">
+    <div style="background: #0a1628; border-top: 2px solid #34d399; margin: 0 24px; border-radius: 0 0 16px 16px;">
       <div style="padding: 16px 24px 8px; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;">Top switching opportunities</div>
       ${alertCards}
     </div>
 
     <!-- CTA -->
     <div style="padding: 32px; text-align: center;">
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #0f172a; padding: 16px 40px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 15px; letter-spacing: 0.02em; box-shadow: 0 4px 14px #f59e0b40;">VIEW ALL DEALS</a>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #34d399; color: #0a1628; padding: 16px 40px; border-radius: 6px; text-decoration: none; font-weight: 800; font-size: 15px; letter-spacing: 0.02em;">VIEW ALL DEALS</a>
       <div style="margin-top: 12px; color: #475569; font-size: 12px;">Compare and switch in minutes</div>
     </div>
 
     <!-- Money Tip -->
-    <div style="margin: 0 24px 24px; background: #0f172a; border: 1px solid #f59e0b22; border-radius: 12px; padding: 20px 24px;">
-      <div style="color: #f59e0b; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">💡 Did you know?</div>
+    <div style="margin: 0 24px 24px; background: #0a1628; border: 1px solid #34d39922; border-radius: 12px; padding: 20px 24px;">
+      <div style="color: #34d399; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">💡 Did you know?</div>
       <div style="color: #94a3b8; font-size: 13px; line-height: 1.6;">${tip.body}</div>
     </div>
 
     <!-- Stats Bar -->
-    <div style="margin: 0 24px; background: #0f172a; border-radius: 12px; padding: 16px 24px;">
+    <div style="margin: 0 24px; background: #0a1628; border-radius: 12px; padding: 16px 24px;">
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
           <td style="text-align: center; padding: 8px;">

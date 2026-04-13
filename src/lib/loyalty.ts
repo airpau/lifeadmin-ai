@@ -279,7 +279,7 @@ async function sendTierUpgradeEmail(userId: string, newTier: keyof typeof LOYALT
       gold: {
         subject: 'You have reached Gold - your free Pro month is ready',
         emoji: '🥇',
-        extra: '<div style="background:#f59e0b22;border:1px solid #f59e0b44;border-radius:12px;padding:16px;margin:20px 0;"><p style="color:#f59e0b;font-weight:700;margin:0;">Your free Pro month has been applied automatically.</p><p style="color:#94a3b8;font-size:13px;margin:8px 0 0;">No action needed - it will appear on your next invoice. Keep going for <strong style="color:#e5e4e2;">Platinum</strong> (5,000 points + 18 months).</p></div>',
+        extra: '<div style="background:#34d39922;border:1px solid #34d39944;border-radius:12px;padding:16px;margin:20px 0;"><p style="color:#34d399;font-weight:700;margin:0;">Your free Pro month has been applied automatically.</p><p style="color:#94a3b8;font-size:13px;margin:8px 0 0;">No action needed - it will appear on your next invoice. Keep going for <strong style="color:#e5e4e2;">Platinum</strong> (5,000 points + 18 months).</p></div>',
       },
       platinum: {
         subject: 'Welcome to Platinum - the highest tier at Paybacker',
@@ -298,12 +298,12 @@ async function sendTierUpgradeEmail(userId: string, newTier: keyof typeof LOYALT
       to: profile.email,
       subject: emailConfig.subject,
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:600px;margin:0 auto;">
-  <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
-    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></span>
+  <div style="background:#0a1628;padding:20px 32px;border-bottom:1px solid #1e293b;">
+    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></span>
   </div>
-  <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;text-align:center;">
+  <div style="background:#0a1628;padding:32px;text-align:center;">
     <div style="font-size:48px;margin-bottom:12px;">${emailConfig.emoji}</div>
     <h1 style="color:#fff;font-size:24px;margin:0 0 8px;">Congratulations, ${name}!</h1>
     <p style="color:${tierInfo.color};font-size:18px;font-weight:700;margin:0 0 16px;">You have reached ${tierInfo.label} status</p>
@@ -313,9 +313,9 @@ async function sendTierUpgradeEmail(userId: string, newTier: keyof typeof LOYALT
     </div>
     <p style="color:#94a3b8;font-size:14px;">You now earn points at ${tierInfo.multiplier}x rate.</p>
     ${emailConfig.extra}
-    <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;margin-top:20px;background:#f59e0b;color:#0f172a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">View Your Rewards</a>
+    <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;margin-top:20px;background:#34d399;color:#0a1628;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;">View Your Rewards</a>
   </div>
-  <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
+  <div style="background:#0a1628;padding:20px 32px;border-top:1px solid #1e293b;">
     <div style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</div>
   </div>
 </div></body></html>`,
@@ -361,16 +361,16 @@ export async function checkPointsExpiry(userId: string): Promise<boolean> {
           to: profile.email,
           subject: 'Your Paybacker points are about to expire',
           html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:600px;margin:0 auto;">
-  <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
-    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></span>
+  <div style="background:#0a1628;padding:20px 32px;border-bottom:1px solid #1e293b;">
+    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></span>
   </div>
-  <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
+  <div style="background:#0a1628;padding:32px;">
     <h1 style="color:#fff;font-size:22px;margin:0 0 12px;">Your points expire in 30 days</h1>
     <p style="color:#94a3b8;font-size:14px;line-height:1.7;">Hi ${profile.first_name || 'there'}, you have <strong style="color:#f59e0b;">${userPoints.balance} points</strong> that will expire if you do not earn any new points in the next 30 days.</p>
     <p style="color:#94a3b8;font-size:14px;">Earn points by generating a complaint letter, connecting your bank, or exploring deals.</p>
-    <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;margin-top:16px;background:#f59e0b;color:#0f172a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Keep Your Points</a>
+    <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;margin-top:16px;background:#34d399;color:#0a1628;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;">Keep Your Points</a>
   </div>
   <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
     <div style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</div>
@@ -761,20 +761,20 @@ async function sendRedemptionEmail(
       to: email,
       subject: `Reward redeemed: ${rewardTitle}`,
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#020617;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <div style="max-width:600px;margin:0 auto;">
-  <div style="background:#0f172a;padding:20px 32px;border-bottom:1px solid #1e293b;">
-    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#f59e0b;">backer</span></span>
+  <div style="background:#0a1628;padding:20px 32px;border-bottom:1px solid #1e293b;">
+    <span style="font-size:22px;font-weight:800;color:#fff;">Pay<span style="color:#34d399;">backer</span></span>
   </div>
-  <div style="background:linear-gradient(180deg,#0f172a 0%,#1a1f35 100%);padding:32px;">
+  <div style="background:#0a1628;padding:32px;">
     <div style="font-size:36px;text-align:center;margin-bottom:12px;">🎁</div>
     <h1 style="color:#fff;font-size:22px;margin:0 0 12px;text-align:center;">${rewardTitle}</h1>
     <p style="color:#94a3b8;font-size:14px;line-height:1.7;text-align:center;">Hi ${name}, ${body}</p>
     <div style="text-align:center;margin-top:20px;">
-      <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">View Your Rewards</a>
+      <a href="https://paybacker.co.uk/dashboard/rewards" style="display:inline-block;background:#34d399;color:#0a1628;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;">View Your Rewards</a>
     </div>
   </div>
-  <div style="background:#0f172a;padding:20px 32px;border-top:1px solid #1e293b;">
+  <div style="background:#0a1628;padding:20px 32px;border-top:1px solid #1e293b;">
     <div style="color:#475569;font-size:11px;">Paybacker LTD - paybacker.co.uk</div>
   </div>
 </div></body></html>`,

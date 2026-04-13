@@ -44,11 +44,11 @@ export function buildContractEndEmail(
     const endDate = new Date(c.contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const dealRow = c.potential_saving_monthly && c.potential_saving_monthly > 0 ? `
       <tr>
-        <td colspan="2" style="padding: 8px 16px 14px; background: #f59e0b11;">
-          <div style="color: #f59e0b; font-size: 13px; font-weight: 600;">
+        <td colspan="2" style="padding: 8px 16px 14px; background: #34d39911;">
+          <div style="color: #34d399; font-size: 13px; font-weight: 600;">
             💰 Switch to ${c.deal_provider || 'a better deal'} and save £${(c.potential_saving_monthly * 12).toFixed(0)}/year
           </div>
-          ${c.deal_url ? `<a href="${c.deal_url}" style="color: #f59e0b; font-size: 12px; text-decoration: underline;">View this deal →</a>` : ''}
+          ${c.deal_url ? `<a href="${c.deal_url}" style="color: #34d399; font-size: 12px; text-decoration: underline;">View this deal →</a>` : ''}
         </td>
       </tr>` : '';
 
@@ -82,10 +82,10 @@ export function buildContractEndEmail(
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
     <div style="text-align: center; padding: 24px 0;">
-      <div style="font-size: 24px; font-weight: 700; color: #ffffff;">Pay<span style="color: #f59e0b;">backer</span></div>
+      <div style="font-size: 24px; font-weight: 700; color: #ffffff; background: #0a1628; padding: 12px 20px; border-radius: 8px; display: inline-block;">Pay<span style="color: #34d399;">backer</span></div>
     </div>
 
     <!-- Urgency Banner -->
@@ -107,26 +107,26 @@ export function buildContractEndEmail(
 
     ${autoRenewWarning}
 
-    <table style="width: 100%; background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <table style="width: 100%; background: #0a1628; border: 1px solid #1e293b; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
       ${contractRows}
     </table>
 
     <!-- Deal CTA -->
     ${hasDeal ? `
-    <div style="background: #0f172a; border: 1px solid #f59e0b44; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 700; font-size: 14px; margin-bottom: 8px;">💰 We found better deals for you</div>
+    <div style="background: #0a1628; border: 1px solid #34d39944; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+      <div style="color: #34d399; font-weight: 700; font-size: 14px; margin-bottom: 8px;">💰 We found better deals for you</div>
       <div style="color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
         Based on your current subscriptions, you could save £${(totalSaving * 12).toFixed(0)} per year by switching. Your personalised deals are ready.
       </div>
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Better Deals →</a>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #34d399; color: #0a1628; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Better Deals →</a>
     </div>` : ''}
 
     <div style="text-align: center; margin: 24px 0;">
-      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #1e293b; color: #ffffff; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px;">Review Your Contracts</a>
+      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #34d399; color: #0a1628; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">Review Your Contracts</a>
     </div>
 
-    <div style="background: #0f172a; border: 1px solid #1e293b44; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 600; font-size: 13px; margin-bottom: 4px;">💡 Tip</div>
+    <div style="background: #0a1628; border: 1px solid #34d39922; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+      <div style="color: #34d399; font-weight: 600; font-size: 13px; margin-bottom: 4px;">💡 Tip</div>
       <div style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
         Upload your latest bill to Paybacker and we'll automatically extract your contract end dates, saving you from having to remember them.
       </div>
@@ -135,7 +135,7 @@ export function buildContractEndEmail(
     <div style="text-align: center; padding: 24px 0; border-top: 1px solid #1e293b;">
       <div style="color: #64748b; font-size: 12px; line-height: 1.6;">
         Paybacker LTD · paybacker.co.uk<br>
-        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #f59e0b; text-decoration: none;">Manage preferences</a>
+        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #34d399; text-decoration: none;">Manage preferences</a>
       </div>
     </div>
   </div>
