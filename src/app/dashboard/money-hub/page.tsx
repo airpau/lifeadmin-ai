@@ -421,6 +421,10 @@ export default function MoneyHubPage() {
   }, null as string | null);
 
   const lastSyncMins = lastSyncedAt ? Math.round((Date.now() - new Date(lastSyncedAt).getTime()) / 60000) : null;
+  // Warn if data is stale — no sync in 30+ days means we may have a gap.
+  // Beyond 90 days the data is permanently lost from Open Banking.
+  const lastSyncDays = lastSyncedAt ? (Date.now() - new Date(lastSyncedAt).getTime()) / 86_400_000 : null;
+  const hasStaleSyncWarning = data.accounts.length > 0 && (lastSyncDays === null || lastSyncDays > 30);
   const canSync = (() => {
     if (syncing) return false;
     if (!lastSyncMins) return true;
@@ -564,6 +568,34 @@ export default function MoneyHubPage() {
             ))}
           </div>
           <p className="text-slate-500 text-xs mt-2">Reconnect to keep your data up to date</p>
+        </div>
+      )}
+
+      {/* Stale sync warning — shown when connected bank hasn't synced in 30+ days */}
+      {hasStaleSyncWarning && expiredConnections.length === 0 && (
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-blue-400 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-blue-300 font-semibold text-sm">Your transaction data may be incomplete</p>
+            <p className="text-slate-400 text-xs mt-1">
+              {lastSyncDays === null
+                ? 'Your bank connection has never synced. Run a sync to pull in your transactions.'
+                : `No sync in ${Math.floor(lastSyncDays)} days. Open Banking only stores 90 days of history — a full sync now will recover any missed transactions.`}
+            </p>
+          </div>
+          {isPro ? (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="shrink-0 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {syncing ? 'Syncing…' : 'Sync now'}
+            </button>
+          ) : (
+            <Link href="/dashboard/scanner" className="shrink-0 text-blue-400 hover:text-blue-300 text-xs font-medium underline underline-offset-2">
+              Go to Scanner →
+            </Link>
+          )}
         </div>
       )}
 

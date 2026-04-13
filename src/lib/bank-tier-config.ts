@@ -10,12 +10,12 @@ export type BankTier = 'free' | 'essential' | 'pro';
 export const TIER_CONFIG = {
   free: {
     maxConnections: 1,
-    dailyCron: false,     // Only syncs on Mondays via cron
-    weeklyCron: true,
+    dailyCron: true,      // All tiers sync daily — transaction fetches are free via Open Banking
+    weeklyCron: false,
     manualSyncAllowed: false,
     manualSyncCooldownHours: 0,
     manualSyncDailyLimit: 0,
-    upgradeMessage: 'Upgrade to Essential for daily auto-sync.',
+    upgradeMessage: 'Upgrade to Pro for on-demand sync.',
   },
   essential: {
     maxConnections: 2,
@@ -45,8 +45,13 @@ export const TIER_CONFIG = {
   upgradeMessage: string | null;
 }>;
 
-/** Global Open Banking (Yapily) cost protection */
-export const GLOBAL_DAILY_API_CEILING = 500;
+/**
+ * Global Open Banking API ceiling.
+ * Transaction fetches via TrueLayer/Yapily do not cost money per call —
+ * only the initial consent/connection does. This ceiling is therefore a soft
+ * safety guard against runaway loops, not a cost limiter. Set generously.
+ */
+export const GLOBAL_DAILY_API_CEILING = 5000;
 export const API_CEILING_ALERT_PCT = 0.8; // Send Telegram alert at 80%
 
 /**

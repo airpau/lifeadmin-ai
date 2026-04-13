@@ -71,7 +71,6 @@ export async function GET(request: NextRequest) {
 
   const supabase = getAdmin();
   const today = new Date();
-  const isMonday = today.getUTCDay() === 1; // 0=Sunday, 1=Monday
   const now = today.toISOString();
 
   // Check global API ceiling before doing anything
@@ -89,17 +88,12 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Determine which tiers to sync today
-  // Pro + Essential: every day. Free: Mondays only.
-  const tiersToSync = isMonday
-    ? ['pro', 'essential', 'free']
-    : ['pro', 'essential'];
-
-  // Fetch all users by tier, maintaining processing order (Pro first)
+  // All tiers sync every day — Open Banking transaction fetches are free.
+  // Pro is processed first so paying users are never deprioritised.
   const { data: allProfiles } = await supabase
     .from('profiles')
     .select('id, subscription_tier')
-    .in('subscription_tier', tiersToSync);
+    .in('subscription_tier', ['pro', 'essential', 'free']);
 
   if (!allProfiles || allProfiles.length === 0) {
     return NextResponse.json({ ok: true, synced: 0, reason: 'No eligible users' });
@@ -607,16 +601,41 @@ export async function GET(request: NextRequest) {
   const totalRecurring = results.reduce((sum, r) => sum + r.recurring, 0);
   const errors = results.filter((r) => r.error).length;
 
+  // Stale sync detection: alert founder if any active connection hasn't synced in 30+ days
+  // (data beyond 90 days is permanently lost from TrueLayer — warn well before that)
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data: staleConns } = await supabase
+      .from('bank_connections')
+      .select('id, bank_name, user_id, last_synced_at')
+      .eq('status', 'active')
+      .or(`last_synced_at.is.null,last_synced_at.lt.${thirtyDaysAgo.toISOString()}`);
+
+    if (staleConns && staleConns.length > 0) {
+      const staleList = staleConns
+        .map((c: any) => `• ${c.bank_name || 'Unknown bank'} (last sync: ${c.last_synced_at ? new Date(c.last_synced_at).toLocaleDateString('en-GB') : 'never'})`)
+        .join('\n');
+      await sendTelegramAlert(
+        `⚠️ *Stale bank sync detected*\n\n` +
+        `${staleConns.length} connection${staleConns.length > 1 ? 's have' : ' has'} not synced in 30+ days.\n` +
+        `Transactions beyond 90 days cannot be recovered.\n\n` +
+        `${staleList}\n\n` +
+        `Users with stale data will see a reconnect prompt in Money Hub.`
+      );
+    }
+  } catch {
+    // Non-fatal — stale check should never block the sync response
+  }
+
   console.log(
     `Bank sync complete: connections=${results.length} txs=${totalTxs} ` +
-    `recurring=${totalRecurring} errors=${errors} api_calls=${totalApiCalls} ` +
-    `monday=${isMonday} tiers_synced=${tiersToSync.join(',')}`
+    `recurring=${totalRecurring} errors=${errors} api_calls=${totalApiCalls}`
   );
 
   return NextResponse.json({
     ok: true,
-    is_monday: isMonday,
-    tiers_synced: tiersToSync,
     connections_processed: results.length,
     total_transactions: totalTxs,
     total_recurring: totalRecurring,
