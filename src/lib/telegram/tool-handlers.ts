@@ -59,6 +59,10 @@ export interface PendingAction {
   desired_outcome: string;
   issue_type: string;
   letter_text: string;
+  /** If this letter is a reply within an existing dispute thread, the dispute's UUID */
+  dispute_id?: string;
+  /** Whether the incoming correspondence was already saved before drafting this letter */
+  incoming_saved?: boolean;
 }
 
 export interface ToolResult {
@@ -142,6 +146,7 @@ export async function executeToolCall(
         issue_description: toolInput.issue_description as string,
         desired_outcome: toolInput.desired_outcome as string,
         issue_type: (toolInput.issue_type as string | undefined) ?? 'complaint',
+        incoming_correspondence: toolInput.incoming_correspondence as string | undefined,
       });
     case 'search_legal_rights':
       return searchLegalRights(
@@ -917,41 +922,90 @@ async function draftDisputeLetter(
     issue_description: string;
     desired_outcome: string;
     issue_type: string;
+    incoming_correspondence?: string;
   },
 ): Promise<ToolResult> {
-  // Get user's name and address for the letter
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, first_name, last_name, address, postcode, email')
-    .eq('id', userId)
-    .single();
+  const now = new Date().toISOString();
+
+  // Fetch user profile and look up existing open dispute in parallel
+  const [profileResult, disputeResult] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name, first_name, last_name, address, postcode, email')
+      .eq('id', userId)
+      .single(),
+    supabase
+      .from('disputes')
+      .select('id, provider_name, account_number, issue_type, status')
+      .eq('user_id', userId)
+      .ilike('provider_name', `%${params.provider}%`)
+      .not('status', 'in', '("resolved_won","resolved_partial","resolved_lost","closed")')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const profile = profileResult.data;
+  const existingDispute = disputeResult.data;
 
   const fullName =
     profile?.full_name ??
     [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
     'Customer';
 
-  // Use Claude Sonnet for letter quality
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // If the user shared incoming correspondence, save it to the existing dispute thread NOW
+  // so it's persisted regardless of whether they approve the reply letter
+  let incomingSaved = false;
+  if (params.incoming_correspondence && existingDispute?.id) {
+    await supabase.from('correspondence').insert({
+      dispute_id: existingDispute.id,
+      user_id: userId,
+      entry_type: 'company_email',
+      title: `Email received from ${existingDispute.provider_name}`,
+      content: params.incoming_correspondence,
+      entry_date: now,
+      source: 'telegram',
+    });
+    // Mark dispute as open (received response, preparing reply)
+    await supabase
+      .from('disputes')
+      .update({ status: 'open', updated_at: now })
+      .eq('id', existingDispute.id);
+    incomingSaved = true;
+  }
+
+  // Build letter prompt — use real account number if known, never use placeholders
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const addrLine = [profile?.address, profile?.postcode].filter(Boolean).join(', ') || '[Address]';
+  const accountLine = existingDispute?.account_number
+    ? `Account number: ${existingDispute.account_number}`
+    : '';
+
+  const incomingContext = params.incoming_correspondence
+    ? `\n\nThe customer received the following correspondence from ${params.provider} that this letter is responding to:\n---\n${params.incoming_correspondence}\n---`
+    : '';
 
   const letterPrompt = `Write a professional complaint letter from a UK consumer to ${params.provider}.
 
 Customer name: ${fullName}
-Customer address: ${profile?.address ?? '[Address]'}, ${profile?.postcode ?? '[Postcode]'}
+Customer address: ${addrLine}
+Today's date: ${today}
+${accountLine}
 Issue: ${params.issue_description}
 Desired outcome: ${params.desired_outcome}
-Letter type: ${params.issue_type.replace(/_/g, ' ')}
+Letter type: ${params.issue_type.replace(/_/g, ' ')}${incomingContext}
 
 Requirements:
-- Formal, professional tone
+- Formal, professional tone — reads as intelligent human writing, not AI
 - Cite specific UK consumer law (Consumer Rights Act 2015, relevant sector regulations like Ofgem/Ofcom rules)
 - Reference specific legislation sections where applicable
-- State the desired outcome clearly and the timeframe for response (14 days)
-- Mention escalation path (relevant ombudsman/regulator) if not resolved
-- Include placeholders for date and account number where needed
+- State the desired outcome clearly with a 14-day response deadline
+- Name the specific ombudsman or regulator for escalation if unresolved
+- Do NOT include placeholders like [INSERT ACCOUNT NUMBER] or [INSERT DATE] — use the real data provided above or omit that line entirely
 - Keep under 400 words
-- Do NOT include a subject line — the letter body only, starting with "Dear [Provider Name] Customer Services,"`;
+- Do NOT include a subject line — the letter body only, starting with "Dear ${params.provider} Customer Services,"`;
 
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const letterResponse = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
@@ -970,14 +1024,20 @@ Requirements:
     desired_outcome: params.desired_outcome,
     issue_type: params.issue_type,
     letter_text: letterText,
+    dispute_id: existingDispute?.id ?? undefined,
+    incoming_saved: incomingSaved,
   };
 
   const preview = letterText.length > 800
     ? letterText.slice(0, 800) + '...\n\n_[Letter truncated — full version saved on approval]_'
     : letterText;
 
+  const savedNote = incomingSaved
+    ? '\n\n_✓ The email you shared has been saved to your dispute thread._'
+    : '';
+
   return {
-    text: `*Draft letter for ${params.provider}:*\n\n${preview}`,
+    text: `*Draft reply for ${params.provider}:*\n\n${preview}${savedNote}`,
     pendingAction,
   };
 }

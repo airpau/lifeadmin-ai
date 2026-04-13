@@ -352,7 +352,7 @@ export const telegramTools: Tool[] = [
   {
     name: 'draft_dispute_letter',
     description:
-      'Draft a professional complaint or dispute letter citing exact UK consumer law. Returns a preview the user must approve before it is saved. Use Claude Sonnet for letter quality.',
+      'Draft a professional complaint or dispute letter citing exact UK consumer law. Returns a preview the user must approve before it is saved. If the user has pasted or shared correspondence they RECEIVED from the company (an email, letter, or message), pass it as incoming_correspondence — the tool will save it to the dispute thread automatically before drafting the reply.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -386,6 +386,11 @@ export const telegramTools: Tool[] = [
             'nhs_complaint',
           ],
           description: 'Category of dispute. Defaults to complaint if not specified.',
+        },
+        incoming_correspondence: {
+          type: 'string',
+          description:
+            'The full text of an email, letter, or message the user received FROM the company. Pass this when the user is sharing company correspondence and wants a reply drafted. The tool saves it to the dispute history automatically.',
         },
       },
       required: ['provider', 'issue_description', 'desired_outcome'],

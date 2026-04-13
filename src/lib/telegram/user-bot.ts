@@ -157,7 +157,8 @@ WRITE TOOLS:
 
 RULES:
 - ALWAYS call the relevant tool before answering — never make up numbers or say "I can't access that"
-- draft_dispute_letter is TERMINAL: call it exactly once when asked for a complaint letter. Do NOT call search_legal_rights first. Do NOT call anything after it.
+- draft_dispute_letter is TERMINAL: call it exactly once when asked for a complaint letter OR when drafting a reply to received correspondence. If the user has pasted or forwarded an email/letter/message they received FROM a company, pass it as incoming_correspondence — the tool saves it to the dispute thread automatically before drafting the reply. Do NOT call search_legal_rights first. Do NOT call anything after it.
+- When a user shares correspondence they received (e.g. "Onestream just sent me this:", "Here's what BT replied:"), immediately call draft_dispute_letter with the pasted text as incoming_correspondence. Do not call update_dispute_status separately — draft_dispute_letter handles saving the incoming message.
 - generate_cancellation_email: call once when user wants to cancel a specific provider. Returns a ready-to-send letter.
 - create_support_ticket: only use when the user genuinely needs human support, not for questions you can answer yourself.
 - DO IT with a tool — never suggest the user "go to the dashboard" for something you can do here.
@@ -533,7 +534,6 @@ export function createUserBot(): Bot<UserBotContext> {
   bot.callbackQuery(/^approve_(.+)$/, async (ctx) => {
     const actionId = ctx.match[1];
     const supabase = getAdmin();
-    // Extract chatId and msgId from the raw update — more reliable than ctx.chatId shorthand
     const chatId = ctx.update.callback_query?.message?.chat?.id;
     const msgId = ctx.update.callback_query?.message?.message_id;
 
@@ -566,63 +566,136 @@ export function createUserBot(): Bot<UserBotContext> {
       desired_outcome: string;
       issue_type: string;
       letter_text: string;
+      dispute_id?: string;
+      incoming_saved?: boolean;
     };
 
-    // Save dispute
-    const { data: dispute } = await supabase
-      .from('disputes')
-      .insert({
-        user_id: pending.user_id,
-        provider_name: payload.provider,
-        issue_type: payload.issue_type ?? 'complaint',
-        issue_summary: payload.issue_description,
-        desired_outcome: payload.desired_outcome,
-        status: 'open',
-      })
-      .select('id')
-      .single();
+    const now = new Date().toISOString();
+    const todayStr = new Date().toLocaleDateString('en-GB');
+    let disputeId: string;
+    let isExistingDispute = false;
 
-    // Save correspondence
-    if (dispute?.id) {
+    if (payload.dispute_id) {
+      // ── EXISTING DISPUTE — add correspondence to the existing thread ──
+      isExistingDispute = true;
+      disputeId = payload.dispute_id;
+
       await supabase.from('correspondence').insert({
-        dispute_id: dispute.id,
+        dispute_id: disputeId,
+        user_id: pending.user_id,
+        entry_type: 'ai_letter',
+        title: `Reply letter to ${payload.provider}`,
+        content: payload.letter_text,
+        entry_date: now,
+        source: 'telegram',
+        telegram_chat_id: chatId,
+      });
+
+      // Move dispute to awaiting_response — letter has been sent
+      await supabase
+        .from('disputes')
+        .update({ status: 'awaiting_response', updated_at: now })
+        .eq('id', disputeId);
+
+      // Audit log entry — Telegram approval recorded in dispute history
+      await supabase.from('correspondence').insert({
+        dispute_id: disputeId,
+        user_id: pending.user_id,
+        entry_type: 'user_note',
+        title: 'Letter approved via Telegram',
+        content: `Letter approved and saved via Telegram Pocket Agent on ${todayStr}. Preview: "${payload.letter_text.slice(0, 120)}..."`,
+        entry_date: now,
+        source: 'telegram',
+        telegram_chat_id: chatId,
+      });
+    } else {
+      // ── NEW DISPUTE — create a fresh dispute thread ──
+      const { data: dispute, error: insertErr } = await supabase
+        .from('disputes')
+        .insert({
+          user_id: pending.user_id,
+          provider_name: payload.provider,
+          issue_type: payload.issue_type ?? 'complaint',
+          issue_summary: payload.issue_description,
+          desired_outcome: payload.desired_outcome,
+          status: 'awaiting_response',
+        })
+        .select('id')
+        .single();
+
+      if (insertErr || !dispute?.id) {
+        console.error('[UserBot] approve_: failed to insert dispute', insertErr);
+        await safeEdit(bot.api, chatId, msgId, 'Sorry, there was a problem saving your dispute. Please try again.');
+        return;
+      }
+
+      disputeId = dispute.id;
+
+      await supabase.from('correspondence').insert({
+        dispute_id: disputeId,
         user_id: pending.user_id,
         entry_type: 'ai_letter',
         title: `Complaint letter to ${payload.provider}`,
         content: payload.letter_text,
-        entry_date: new Date().toISOString(),
+        entry_date: now,
+        source: 'telegram',
+        telegram_chat_id: chatId,
       });
 
-      // Schedule 14-day follow-up via detected_issues
-      const followUpDate = new Date();
-      followUpDate.setDate(followUpDate.getDate() + 14);
+      // Audit log
+      await supabase.from('correspondence').insert({
+        dispute_id: disputeId,
+        user_id: pending.user_id,
+        entry_type: 'user_note',
+        title: 'Dispute opened via Telegram',
+        content: `Dispute created and letter approved via Telegram Pocket Agent on ${todayStr}.`,
+        entry_date: now,
+        source: 'telegram',
+        telegram_chat_id: chatId,
+      });
+    }
 
+    // Schedule 14-day follow-up (skip if one already exists for this dispute)
+    const followUpDate = new Date();
+    followUpDate.setDate(followUpDate.getDate() + 14);
+    const { count: existingFollowUp } = await supabase
+      .from('detected_issues')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', pending.user_id)
+      .eq('source_id', disputeId)
+      .eq('issue_type', 'dispute_no_response')
+      .not('status', 'eq', 'dismissed');
+
+    if (!existingFollowUp || existingFollowUp === 0) {
       await supabase.from('detected_issues').insert({
         user_id: pending.user_id,
         issue_type: 'dispute_no_response',
         title: `${payload.provider} complaint — follow-up due`,
-        detail: `You sent a complaint letter to ${payload.provider} on ${new Date().toLocaleDateString('en-GB')}. If they haven't responded within 14 days, you can escalate.`,
+        detail: `You sent a complaint letter to ${payload.provider} on ${todayStr}. If they haven't responded within 14 days, you can escalate.`,
         recommendation: `Escalate to the relevant ombudsman if ${payload.provider} hasn't responded.`,
         source_type: 'dispute',
-        source_id: dispute.id,
-        telegram_chat_id: chatId ?? null,
+        source_id: disputeId,
+        telegram_chat_id: chatId,
         status: 'actioned',
         follow_up_due_at: followUpDate.toISOString(),
-        actioned_at: new Date().toISOString(),
+        actioned_at: now,
       });
     }
 
     // Delete pending action
     await supabase.from('telegram_pending_actions').delete().eq('id', actionId);
 
+    const incomingNote = payload.incoming_saved
+      ? `\n\nThe email you received from ${payload.provider} has also been saved to the thread.`
+      : '';
+
     await safeEdit(
       bot.api,
       chatId,
       msgId,
-      `✅ *Letter saved!*\n\n` +
-        `Your complaint to ${payload.provider} has been saved to your Disputes dashboard.\n\n` +
+      `✅ *Letter saved to your ${payload.provider} dispute.*${incomingNote}\n\n` +
         `I'll remind you in 14 days if you haven't had a response — you can then escalate to the relevant regulator or ombudsman.\n\n` +
-        `View it at: paybacker.co.uk/dashboard/disputes`,
+        `View the full thread at: paybacker.co.uk/dashboard/disputes`,
     );
   });
 
@@ -637,7 +710,32 @@ export function createUserBot(): Bot<UserBotContext> {
     const msgId = ctx.update.callback_query?.message?.message_id;
     const supabase = getAdmin();
 
+    // Read payload before deleting — needed for audit log
+    const { data: pending } = await supabase
+      .from('telegram_pending_actions')
+      .select('user_id, payload')
+      .eq('id', actionId)
+      .single();
+
     await supabase.from('telegram_pending_actions').delete().eq('id', actionId);
+
+    // Audit log — record the cancellation on the dispute thread if one exists
+    if (pending) {
+      const payload = pending.payload as { provider?: string; dispute_id?: string };
+      if (payload.dispute_id) {
+        await supabase.from('correspondence').insert({
+          dispute_id: payload.dispute_id,
+          user_id: pending.user_id,
+          entry_type: 'user_note',
+          title: 'Letter draft cancelled via Telegram',
+          content: `User cancelled the draft letter for ${payload.provider ?? 'provider'} via Telegram Pocket Agent on ${new Date().toLocaleDateString('en-GB')}.`,
+          entry_date: new Date().toISOString(),
+          source: 'telegram',
+          telegram_chat_id: chatId ?? null,
+        });
+      }
+    }
+
     if (chatId) {
       await safeEdit(bot.api, chatId, msgId, 'Letter cancelled. Send me a message if you want to try again.');
     }
