@@ -143,13 +143,18 @@ export async function GET(request: Request) {
       : currentSummary.categoryBreakdown;
 
     // Build authoritative income breakdown from RPC
+    // NOTE: get_monthly_income returns { source, source_total } — handle both column name variants
     const authIncomeBreakdown: Record<string, number> = {};
     if (rpcIncomeCategories && Array.isArray(rpcIncomeCategories) && rpcIncomeCategories.length > 0) {
       for (const row of rpcIncomeCategories) {
-        const key = (row.category || 'other').toLowerCase().trim();
-        authIncomeBreakdown[key] = (authIncomeBreakdown[key] || 0) + parseFloat(String(row.category_total || 0));
+        // Support both { source, source_total } and legacy { category, category_total }
+        const key = ((row.source || row.category || 'other') as string).toLowerCase().trim();
+        const val = parseFloat(String(row.source_total ?? row.category_total ?? 0));
+        if (val > 0) authIncomeBreakdown[key] = (authIncomeBreakdown[key] || 0) + val;
       }
-    } else {
+    }
+    // Always merge JS-side income rows as fallback for any uncovered transactions
+    if (Object.keys(authIncomeBreakdown).length === 0) {
       Object.assign(authIncomeBreakdown, currentSummary.incomeRows);
     }
 

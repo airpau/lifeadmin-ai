@@ -38,11 +38,15 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: stri
   cash: { label: 'Cash', icon: '🏧', color: '#78716c' },
   childcare: { label: 'Childcare', icon: '👶', color: '#f472b6' },
   motoring: { label: 'Motoring', icon: '🚗', color: '#94a3b8' },
+  property_management: { label: 'Property Management', icon: '🏢', color: '#f59e0b' },
+  utility: { label: 'Utilities', icon: '⚡', color: '#f59e0b' },
+  utilities: { label: 'Utilities', icon: '⚡', color: '#f59e0b' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
 function getCatMeta(key: string) {
-  return CATEGORY_LABELS[key] || { label: key.replace(/_/g, ' '), icon: '📋', color: '#475569' };
+  const fallbackLabel = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return CATEGORY_LABELS[key] || { label: fallbackLabel, icon: '📋', color: '#475569' };
 }
 
 export default function SpendingPanel({ data, isPro, refreshData, selectedMonth }: { data: any, isPro: boolean, refreshData: () => void, selectedMonth: string }) {

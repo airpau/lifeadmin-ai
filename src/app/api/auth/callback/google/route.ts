@@ -23,11 +23,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=missing_params`);
   }
 
-  // Verify state contains a valid user ID
+  // Verify state contains a valid user ID (supports both legacy and JSON state)
   let userId: string;
+  let returnTo = '/dashboard/scanner';
   try {
     const decoded = Buffer.from(state, 'base64').toString('utf-8');
-    userId = decoded.split(':')[0];
+    // Try JSON format first (new format)
+    try {
+      const parsed = JSON.parse(decoded);
+      userId = parsed.userId;
+      if (parsed.returnTo) returnTo = parsed.returnTo;
+    } catch {
+      // Fall back to legacy userId:timestamp format
+      userId = decoded.split(':')[0];
+    }
     if (!userId) throw new Error('Invalid state');
   } catch {
     console.error('[google-callback] Invalid state parameter');
@@ -93,11 +102,11 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[google-callback] Successfully saved Gmail connection for', tokens.email);
-    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?gmail_connected=true`);
+    return NextResponse.redirect(`${baseUrl}${returnTo}?gmail_connected=true`);
   } catch (err: any) {
     console.error('[google-callback] Error:', err.message, err.stack);
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Gmail connection failed: ' + err.message)}`
+      `${baseUrl}${returnTo}?error=${encodeURIComponent('Gmail connection failed: ' + err.message)}`
     );
   }
 }

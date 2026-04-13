@@ -33,6 +33,7 @@ const navItems = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Money Hub', href: '/dashboard/money-hub', icon: Wallet },
   { name: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
+  { name: 'Scanner', href: '/dashboard/scanner', icon: ScanSearch },
   { name: 'Disputes', href: '/dashboard/disputes', icon: FileText },
   { name: 'Contract Vault', href: '/dashboard/contract-vault', icon: FolderLock },
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },

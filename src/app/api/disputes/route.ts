@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     if (issueType === 'energy_dispute' || /british gas|eon|e\.on|octopus|ovo|edf|scottish power|sse|shell energy|bulb/i.test(n)) return 'energy';
     if (issueType === 'broadband_complaint' || /sky|virgin media|bt|onestream|talktalk|plusnet|vodafone|ee|three|o2/i.test(n)) return 'broadband';
     if (issueType === 'flight_compensation') return 'travel';
+    if (issueType === 'train_delay_compensation' || /avanti|gwr|tfl|southeastern|southern railway|thameslink|great northern|c2c|chiltern|east midlands|lner|northern rail|scotrail|transpennine|west midlands trains|crosscountry|hull trains|grand central|heathrow express|gatwick express|stansted express|arriva|stagecoach/i.test(n)) return 'rail';
     if (issueType === 'parking_appeal') return 'parking';
     if (issueType === 'gym_membership' || /puregym|the gym group|david lloyd|nuffield health|fitness first|anytime fitness|village gym|bannatyne|leisure centre/i.test(n)) return 'gym';
     if (issueType === 'insurance_dispute' || /aviva|axa|admiral|direct line|churchill|more than|comparethemarket|moneysupermarket|hastings direct|esure|zurich|legal & general|prudential|royal london|lloyds insurance|allianz/i.test(n)) return 'insurance';

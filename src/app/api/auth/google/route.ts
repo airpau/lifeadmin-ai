@@ -10,8 +10,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', request.url));
   }
 
-  // State = base64(userId:timestamp) — verified in callback to prevent CSRF
-  const state = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
+  const returnTo = request.nextUrl.searchParams.get('returnTo') || '/dashboard/scanner';
+
+  // State = base64(JSON) — includes userId, timestamp, and returnTo
+  const state = Buffer.from(JSON.stringify({
+    userId: user.id,
+    ts: Date.now(),
+    returnTo,
+  })).toString('base64');
   const authUrl = getGoogleAuthUrl(state);
 
   return NextResponse.redirect(authUrl);

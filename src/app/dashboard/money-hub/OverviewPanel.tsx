@@ -12,6 +12,7 @@ const INCOME_LABELS: Record<string, { label: string; icon: string; color: string
   rental: { label: 'Rental Income', icon: '🏠', color: '#f59e0b' },
   rental_airbnb: { label: 'Rental Income', icon: '🏠', color: '#f59e0b' },
   rental_direct: { label: 'Rental Income', icon: '🏠', color: '#f59e0b' },
+  property_management: { label: 'Rental / Property', icon: '🏠', color: '#f59e0b' },
   investment: { label: 'Investments', icon: '📈', color: '#06b6d4' },
   refund: { label: 'Refunds', icon: '💸', color: '#10b981' },
   loan_repayment: { label: 'Loan Repayment', icon: '🏦', color: '#ef4444' },
@@ -43,9 +44,7 @@ function getSpendMeta(key: string) {
 
 export default function OverviewPanel({ data, refreshData, selectedMonth }: { data: any, refreshData?: () => void, selectedMonth?: string }) {
   const [drillIncomeType, setDrillIncomeType] = useState<string | null>(null);
-  const [drillSpendingCategory, setDrillSpendingCategory] = useState<string | null>(null);
   const [showAllIncome, setShowAllIncome] = useState(false);
-  const [showAllSpending, setShowAllSpending] = useState(false);
 
   const { overview, healthScore, spending } = data;
   const { monthlyIncome, monthlyOutgoings, savingsRate, incomeBreakdown } = overview;
@@ -63,12 +62,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
 
   const totalIncomeFromBreakdown = incomeEntries.reduce((s, e) => s + e.amount, 0);
 
-  const spendingCategories = spending?.categories || [];
-  const totalSpentFromBreakdown = spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
-
   const VISIBLE_ROWS = 6;
   const visibleIncomeEntries = showAllIncome ? incomeEntries : incomeEntries.slice(0, VISIBLE_ROWS);
-  const visibleSpendingCategories = showAllSpending ? spendingCategories : spendingCategories.slice(0, VISIBLE_ROWS);
 
   // Monthly trends max for bar scaling
   const trendsMax = monthlyTrends.length > 0
@@ -123,10 +118,9 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
         </div>
       </div>
 
-      {/* Side-by-side Income + Spending Breakdowns */}
-      {(incomeEntries.length > 0 || spendingCategories.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Income Breakdown */}
+      {/* Income Breakdown — full width (Spending has its own dedicated section below) */}
+      {incomeEntries.length > 0 && (
+        <div>
           <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold flex items-center gap-2">
@@ -180,62 +174,6 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
               </div>
             )}
           </div>
-
-          {/* Spending Breakdown */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-amber-400" />
-                Spending
-              </h3>
-              <span className="text-slate-500 text-xs">Tap to recategorise</span>
-            </div>
-
-            {spendingCategories.length > 0 ? (
-              <div className="space-y-2">
-                {visibleSpendingCategories.map((c: any) => {
-                  const meta = getSpendMeta(c.category);
-                  const pct = totalSpentFromBreakdown > 0 ? (c.total / totalSpentFromBreakdown) * 100 : 0;
-                  return (
-                    <div
-                      key={c.category}
-                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
-                      onClick={() => setDrillSpendingCategory(c.category)}
-                    >
-                      <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
-                          <span>{meta.icon}</span>
-                          {meta.label}
-                          <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
-                        </span>
-                        <span className="text-amber-400 font-semibold">£{fmtNum(c.total)}</span>
-                      </div>
-                      <div className="w-full bg-navy-800 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
-                      </div>
-                    </div>
-                  );
-                })}
-                {spendingCategories.length > VISIBLE_ROWS && (
-                  <button
-                    onClick={() => setShowAllSpending(!showAllSpending)}
-                    className="text-xs text-slate-500 hover:text-amber-400 transition-colors mt-1 w-full text-left"
-                  >
-                    {showAllSpending ? 'Show less' : `+${spendingCategories.length - VISIBLE_ROWS} more`}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <p className="text-slate-500 text-sm">No spending recorded this month</p>
-            )}
-
-            {totalSpentFromBreakdown > 0 && (
-              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-                <span className="text-slate-400">Total</span>
-                <span className="text-amber-400 font-bold">£{fmtNum(totalSpentFromBreakdown)}</span>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -286,15 +224,6 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
         />
       )}
 
-      {drillSpendingCategory && (
-        <CategoryDrillDownModal
-          isOpen={!!drillSpendingCategory}
-          onClose={() => setDrillSpendingCategory(null)}
-          category={drillSpendingCategory}
-          selectedMonth={selectedMonth || ''}
-          onRecategorised={() => { setDrillSpendingCategory(null); refreshData?.(); }}
-        />
-      )}
     </div>
   );
 }

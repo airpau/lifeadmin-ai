@@ -315,14 +315,28 @@ export default function ScannerPage() {
                     {conn.last_synced_at && ` · Last synced: ${new Date(conn.last_synced_at).toLocaleString('en-GB')}`}
                   </p>
                 </div>
-                <button
-                  onClick={handleSync}
-                  disabled={syncing}
-                  className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
-                >
-                  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? 'Syncing...' : 'Sync Now'}
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleSync}
+                    disabled={syncing}
+                    className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Syncing...' : 'Sync Now'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Disconnect this bank account? Your transaction history will be kept but new syncs will stop.')) return;
+                      try {
+                        await fetch(`/api/bank/disconnect?id=${conn.id}`, { method: 'DELETE' });
+                        setBankConnections((prev) => prev.filter((c) => c.id !== conn.id));
+                      } catch {}
+                    }}
+                    className="text-slate-500 hover:text-red-400 text-xs transition-all px-2 py-1"
+                  >
+                    Disconnect
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -356,6 +370,12 @@ export default function ScannerPage() {
             {emailConns.map((conn) => {
               const needsReauth = conn.status === 'needs_reauth' || conn.status === 'expired';
               const providerLabel = conn.provider === 'outlook' ? 'Outlook' : conn.provider === 'gmail' || conn.provider === 'google' ? 'Gmail' : conn.provider;
+              const isOAuth = conn.authMethod === 'oauth';
+              const reconnectUrl = conn.provider === 'google' || conn.provider === 'gmail'
+                ? '/api/auth/google?returnTo=/dashboard/scanner'
+                : conn.provider === 'outlook'
+                ? '/api/auth/outlook?returnTo=/dashboard/scanner'
+                : null;
               return (
               <div key={conn.id} className={`flex flex-col sm:flex-row sm:items-center justify-between rounded-xl px-4 py-3 border gap-3 ${needsReauth ? 'bg-amber-500/5 border-amber-500/30' : 'bg-navy-950/50 border-navy-700/50'}`}>
                 <div className="flex items-center gap-3 min-w-0">
@@ -373,7 +393,7 @@ export default function ScannerPage() {
                     </div>
                     <p className="text-slate-400 text-xs truncate">{conn.email}</p>
                     {needsReauth && (
-                      <p className="text-amber-400/80 text-xs mt-0.5">Gmail re-authorisation required — please disconnect and reconnect to continue scanning.</p>
+                      <p className="text-amber-400/80 text-xs mt-0.5">Re-authorisation required to continue scanning your {providerLabel} inbox.</p>
                     )}
                     {!needsReauth && conn.last_scanned_at && (
                       <p className="text-slate-500 text-xs">Last scanned: {new Date(conn.last_scanned_at).toLocaleString('en-GB')}</p>
@@ -383,6 +403,22 @@ export default function ScannerPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   {!needsReauth && emailScanResults[conn.id] !== undefined && (
                     <span className="text-xs text-mint-400">{emailScanResults[conn.id]} opportunities found</span>
+                  )}
+                  {needsReauth && reconnectUrl && (
+                    <a
+                      href={reconnectUrl}
+                      className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Reconnect
+                    </a>
+                  )}
+                  {needsReauth && !reconnectUrl && (
+                    <button
+                      onClick={() => { setShowConnectModal(true); setConnectError(null); }}
+                      className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Reconnect
+                    </button>
                   )}
                   {!needsReauth && (
                     <button
@@ -680,7 +716,7 @@ export default function ScannerPage() {
       )}
 
       {/* Expired bank connections */}
-      {!bankLoading && expiredBanks.length > 0 && bankConnections.length === 0 && (
+      {!bankLoading && expiredBanks.length > 0 && (
         <div className="mb-6 space-y-3">
           {expiredBanks.map((conn) => (
             <div key={conn.id} className="bg-navy-900 border border-mint-400/30 rounded-2xl p-5">

@@ -166,8 +166,31 @@ export async function POST(request: NextRequest) {
   }
 
   // Run sync for each connection
+  // Hard cap: never fetch more than 90 days of history (TrueLayer API limit)
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  /**
+   * Smart from-date: use the most recent transaction we already have for this
+   * account so we only fetch the gap since the last sync, not a fixed 90-day window.
+   * Falls back to ninetyDaysAgo if no prior transactions exist.
+   */
+  async function getSmartFromDate(userId: string, accountId: string): Promise<Date> {
+    const { data: lastTx } = await admin
+      .from('bank_transactions')
+      .select('timestamp')
+      .eq('user_id', userId)
+      .eq('account_id', accountId)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .single();
+    if (lastTx?.timestamp) {
+      const d = new Date(lastTx.timestamp);
+      d.setHours(0, 0, 0, 0); // start of that day to avoid missing same-day transactions
+      return d > ninetyDaysAgo ? d : ninetyDaysAgo;
+    }
+    return ninetyDaysAgo;
+  }
 
   let totalSynced = 0;
   let apiCallsMade = 0;
@@ -255,7 +278,8 @@ export async function POST(request: NextRequest) {
 
       for (const accountId of accountIds) {
         try {
-          const transactions = await fetchTrueLayerTransactions(accessToken, accountId, ninetyDaysAgo);
+          const fromDate = await getSmartFromDate(user.id, accountId);
+          const transactions = await fetchTrueLayerTransactions(accessToken, accountId, fromDate);
           apiCallsMade++;
           transactionSyncSucceeded = true;
 
@@ -408,10 +432,10 @@ export async function POST(request: NextRequest) {
 
       for (const accountId of accountIds) {
         try {
-          const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          const toDate = tomorrow.toISOString().split('T')[0];
+          const smartFrom = await getSmartFromDate(user.id, accountId);
+          const fromDate = smartFrom.toISOString().split('T')[0];
+          // Use today (not tomorrow) — future dates cause 400 errors on some providers
+          const toDate = new Date().toISOString().split('T')[0];
           const transactions = await getTransactions(accountId, consentToken, fromDate, toDate);
           apiCallsMade++;
           transactionSyncSucceeded = true;

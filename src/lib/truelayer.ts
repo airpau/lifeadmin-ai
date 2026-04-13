@@ -161,9 +161,7 @@ export async function fetchCardTransactions(
   fromDate: Date
 ): Promise<TrueLayerTransaction[]> {
   const from = fromDate.toISOString().split('T')[0];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const to = tomorrow.toISOString().split('T')[0];
+  const to = new Date().toISOString(); // current UTC timestamp, not tomorrow (TrueLayer rejects future dates)
 
   try {
     const url = `${TRUELAYER_API_URL}/data/v1/cards/${cardId}/transactions?from=${from}&to=${to}`;
@@ -207,10 +205,12 @@ export async function fetchTransactions(
   fromDate: Date
 ): Promise<TrueLayerTransaction[]> {
   const from = fromDate.toISOString().split('T')[0];
-  // TrueLayer 'to' is exclusive — add +1 day to include today's transactions
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const to = tomorrow.toISOString().split('T')[0];
+  // Use the current UTC datetime as the `to` parameter.
+  // TrueLayer rejects date-only values like "2026-04-14" because they interpret them as
+  // "2026-04-14T23:59:59Z" which is in the future. Passing the actual current timestamp
+  // (e.g. "2026-04-13T12:00:00.000Z") avoids this 400 error while still including all
+  // transactions up to this moment.
+  const to = new Date().toISOString();
 
   const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions?from=${from}&to=${to}`;
   const res = await fetch(url, {

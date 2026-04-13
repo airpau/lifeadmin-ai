@@ -97,7 +97,17 @@ export async function GET(request: NextRequest) {
   // Use first account ID as provider_id to identify the bank
   const providerId = accountIds[0] || `truelayer_${Date.now()}`;
 
-  // Store connection in DB (upsert on user_id + provider_id)
+  // Check if this bank connection already exists (reconnection vs first-time)
+  const { data: existingConn } = await supabase
+    .from('bank_connections')
+    .select('id, connected_at')
+    .eq('user_id', user.id)
+    .eq('provider_id', providerId)
+    .maybeSingle();
+
+  // Store connection in DB (upsert on user_id + provider_id).
+  // IMPORTANT: preserve the original connected_at on reconnection — if we reset it to today,
+  // the TrueLayer callback sync floor moves to today and we can never fetch older transactions.
   const { data: connection, error: upsertError } = await supabase
     .from('bank_connections')
     .upsert({
@@ -111,7 +121,9 @@ export async function GET(request: NextRequest) {
       account_display_names: accountDisplayNames,
       bank_name: bankName,
       status: 'active',
-      connected_at: new Date().toISOString(),
+      // Only set connected_at for brand-new connections; preserve existing date on reconnect.
+      // This ensures the sync window goes back to the original connection date, not today.
+      connected_at: existingConn?.connected_at ?? new Date().toISOString(),
     }, { onConflict: 'user_id,provider_id' })
     .select()
     .single();

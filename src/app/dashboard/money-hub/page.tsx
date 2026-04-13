@@ -32,6 +32,12 @@ function formatTimeAgo(dateStr: string) {
   return `${days} days ago`;
 }
 
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 type ExpectedBill = {
   name: string; expected_amount: number; category: string;
   paid: boolean; past_due: boolean; source: string; expected_date?: string;
@@ -223,15 +229,22 @@ export default function MoneyHubPage() {
       if (res.status === 401) { showToast('Bank connection expired. Please reconnect.', 'error'); setSyncing(false); return; }
       if (!res.ok) { showToast('Sync failed.', 'error'); setSyncing(false); return; }
       const d = await res.json();
-      await fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
-      await fetch('/api/gmail/scan', { method: 'POST' }).catch(() => {});
-      localStorage.setItem('pb_last_gmail_scan', Date.now().toString());
-      await refreshData();
-      await fetchExpectedBills();
+      // Fire-and-forget secondary operations — never let them throw into handleSync
+      fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
+      fetch('/api/gmail/scan', { method: 'POST' }).catch(() => {});
+      try { localStorage.setItem('pb_last_gmail_scan', Date.now().toString()); } catch { /* ignore */ }
+      // Refresh dashboard data — isolated try/catch so a slow reload doesn't crash the page
+      try {
+        await refreshData();
+        await fetchExpectedBills();
+      } catch {
+        // Silent — data will refresh on next page load
+      }
       const synced = d.synced || 0;
       showToast(synced > 0 ? `Synced ${synced} transaction${synced !== 1 ? 's' : ''}` : 'Up to date', synced > 0 ? 'success' : 'info');
     } catch {
-      showToast('Sync failed.', 'error');
+      // Sync request itself failed (e.g. timeout) — show error but don't crash the page
+      showToast('Sync timed out. Your data may still update in the background.', 'error');
     }
     setSyncing(false);
   };
@@ -605,6 +618,19 @@ export default function MoneyHubPage() {
               <span className="flex items-center gap-1"><span className="w-2 h-2 bg-amber-400 rounded-full" /> Upcoming</span>
             </div>
           </div>
+
+          {/* Bank sync warning — shown when connections are expired and bills show as "Not seen" */}
+          {expiredConnections.length > 0 && expectedBills.some((b: any) => b.past_due && !b.paid) && (
+            <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-amber-300 text-xs font-semibold">Bank sync needed</p>
+                <p className="text-slate-400 text-xs mt-0.5">Your bank connection has expired so recent payments can&#39;t be verified. Bills paid since the last sync may show as &#34;Not seen&#34;. Reconnect your bank or mark them paid manually.</p>
+              </div>
+              <Link href="/dashboard/scanner" className="text-xs text-amber-400 hover:text-amber-300 font-medium whitespace-nowrap transition-colors">Reconnect →</Link>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {expectedBills.slice(0, 12).map((bill: any) => {
               const statusColor = bill.paid
@@ -620,7 +646,7 @@ export default function MoneyHubPage() {
                     <div className="min-w-0 flex-1">
                       <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>{bill.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</span>}
+                        {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{ordinal(bill.billing_day)}</span>}
                         {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
                         {bill.paid && <span className="text-[10px] text-green-400 font-medium">✓ Paid</span>}
                         {bill.past_due && !bill.paid && <span className="text-[10px] text-red-400 font-medium">⚠ Not seen</span>}
@@ -631,9 +657,13 @@ export default function MoneyHubPage() {
                   {bill.bill_key && !bill.paid && (
                     <button
                       onClick={() => markBillPaid(bill, true)}
-                      className="mt-2 text-[10px] text-slate-500 hover:text-green-400 transition-colors underline underline-offset-2"
+                      className={`mt-2 w-full text-xs font-medium rounded-lg py-1.5 px-2 transition-colors ${
+                        bill.past_due
+                          ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-500/30'
+                          : 'text-slate-500 hover:text-green-400 underline underline-offset-2'
+                      }`}
                     >
-                      Mark as paid
+                      {bill.past_due ? '✓ Mark as paid' : 'Mark as paid'}
                     </button>
                   )}
                   {bill.bill_key && bill.paid && (
@@ -748,7 +778,7 @@ export default function MoneyHubPage() {
           )}
 
           {/* Better Deals Section */}
-          {deals && deals.subscriptions && deals.subscriptions.length > 0 ? (
+          {deals && deals.subscriptions && deals.subscriptions.some((sub: any) => (sub.comparisons || []).some((d: any) => (d.annualSaving || 0) > 0)) ? (
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
@@ -759,6 +789,7 @@ export default function MoneyHubPage() {
               <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
                 {deals.subscriptions.flatMap((sub: any) =>
                   (sub.comparisons || [])
+                    .filter((deal: any) => (deal.annualSaving || 0) > 0)
                     .sort((a: any, b: any) => (b.annualSaving || 0) - (a.annualSaving || 0))
                     .map((deal: any, idx: number) => (
                       <div key={`${sub.subscriptionName}-${idx}`} className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
