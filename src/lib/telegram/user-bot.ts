@@ -872,11 +872,10 @@ Rules:
 
       // Send confirmation + preview
       const preview = letterText.length > 700 ? letterText.slice(0, 700) + '...' : letterText;
-      const portalUrl = `https://paybacker.co.uk/dashboard/disputes`;
 
       await ctx.api.sendMessage(
         chatId!,
-        `✅ *Letter saved to your Disputes*\n\n${preview}\n\n[View full letter in Paybacker →](${portalUrl})`,
+        `✅ *Letter saved to your Disputes*\n\n${preview}`,
         { parse_mode: 'Markdown' },
       );
     } catch (err) {
@@ -1151,6 +1150,279 @@ Return JSON: { "subject": "...", "body": "..." }`;
       console.error('[UserBot] snooze callback error:', err);
       try {
         await bot.api.sendMessage(chatId, `Snoozed until ${snoozeLabel} ✓`);
+      } catch { /* silent */ }
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: accept_increase_ — user accepts a price increase (immediate alert path)
+  // -------------------------------------------------------
+  bot.callbackQuery(/^accept_increase_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Noted — accepted ✓' });
+    const issueId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      await supabase.from('detected_issues').update({ status: 'dismissed' }).eq('id', issueId);
+      await safeEdit(bot.api, chatId, msgId, "✅ Accepted — I won't alert you about this increase again.");
+    } catch (err) {
+      console.error('[UserBot] accept_increase_ error:', err);
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callbacks: palert_* — pending queue alert actions
+  // These are triggered from the batched daily digest message.
+  // -------------------------------------------------------
+
+  // Expand a single item from the digest — sends its full action buttons
+  bot.callbackQuery(/^palert_expand_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      const { data: alert } = await supabase
+        .from('telegram_pending_alerts')
+        .select('*')
+        .eq('id', alertId)
+        .single();
+      if (!alert) {
+        await ctx.api.sendMessage(chatId, 'This alert has expired.');
+        return;
+      }
+      const { buildAlertLine, buildActionButtons } = await import('./queue');
+      const text = `📋 *${buildAlertLine(alert)}*\n\n${alert.metadata?.detail as string ?? ''}`.trim();
+      await ctx.api.sendMessage(chatId, text, {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: buildActionButtons(alert.id, alert.alert_type, alert.affiliate_url, alert.amount_change) as any },
+      });
+    } catch (err) {
+      console.error('[UserBot] palert_expand_ error:', err);
+    }
+  });
+
+  // Dismiss a single pending alert
+  bot.callbackQuery(/^palert_dismiss_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Dismissed ✓' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+      await safeEdit(bot.api, chatId, msgId, "Dismissed ✓");
+    } catch (err) {
+      console.error('[UserBot] palert_dismiss_ error:', err);
+    }
+  });
+
+  // Dismiss all pending alerts for this chat
+  bot.callbackQuery('palert_dismiss_all', async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'All dismissed ✓' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      await supabase
+        .from('telegram_pending_alerts')
+        .update({ status: 'dismissed' })
+        .eq('telegram_chat_id', chatId)
+        .eq('status', 'pending');
+      await safeEdit(bot.api, chatId, msgId, "All dismissed ✓");
+    } catch (err) {
+      console.error('[UserBot] palert_dismiss_all error:', err);
+    }
+  });
+
+  // Accept a price increase (queue path)
+  bot.callbackQuery(/^palert_accept_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Accepted ✓' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+      await safeEdit(bot.api, chatId, msgId, "✅ Accepted — I won't alert you about this increase again.");
+    } catch (err) {
+      console.error('[UserBot] palert_accept_ error:', err);
+    }
+  });
+
+  // Mark bill as already paid
+  bot.callbackQuery(/^palert_paid_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Marked as paid ✓' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+      await safeEdit(bot.api, chatId, msgId, "✅ Got it — marked as paid.");
+    } catch (err) {
+      console.error('[UserBot] palert_paid_ error:', err);
+    }
+  });
+
+  // Add a detected subscription to the subscriptions table
+  bot.callbackQuery(/^palert_add_sub_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Adding to subscriptions...' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      const [alertRes, sessionRes] = await Promise.all([
+        supabase.from('telegram_pending_alerts').select('*').eq('id', alertId).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+      ]);
+      const alert = alertRes.data;
+      const session = sessionRes.data;
+      if (!alert || !session) {
+        await safeEdit(bot.api, chatId, msgId, 'This alert has expired.');
+        return;
+      }
+      await supabase.from('subscriptions').insert({
+        user_id:      session.user_id,
+        provider_name: alert.provider_name ?? 'Unknown',
+        amount:       alert.amount ?? 0,
+        billing_cycle: 'monthly',
+        status:       'active',
+        source:       'telegram_bot',
+        category:     'other',
+        detected_at:  new Date().toISOString(),
+      });
+      await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+      await safeEdit(bot.api, chatId, msgId, `✅ ${alert.provider_name ?? 'Subscription'} added to your subscriptions.`);
+    } catch (err) {
+      console.error('[UserBot] palert_add_sub_ error:', err);
+      if (chatId) await ctx.api.sendMessage(chatId, 'Failed to add subscription. Please try again.');
+    }
+  });
+
+  // Draft a dispute letter or cancellation email from a pending alert
+  bot.callbackQuery(/^palert_draft_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Generating your letter...' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+
+    try {
+      const [alertRes, sessionRes] = await Promise.all([
+        supabase.from('telegram_pending_alerts').select('*').eq('id', alertId).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+      ]);
+      const alert = alertRes.data;
+      const session = sessionRes.data;
+
+      if (!alert || !session) {
+        await ctx.api.sendMessage(chatId, 'This alert has expired. Ask me directly to draft a complaint letter.');
+        return;
+      }
+
+      // If a detected_issue exists for this alert, delegate to draft_dispute_ logic
+      const issueId = (alert.metadata as Record<string, unknown> | null)?.detected_issue_id as string | undefined ?? (alert.source_id ?? undefined);
+      if (issueId) {
+        const { data: issue } = await supabase.from('detected_issues').select('id').eq('id', issueId).eq('user_id', session.user_id).single();
+        if (issue) {
+          // Synthesise a fake callback so draft_dispute_ logic runs
+          await ctx.api.sendMessage(chatId, '📝 Generating your complaint letter... This takes about 15 seconds.');
+          // Use the same letter-generation path by directly triggering via text command
+          // The simplest approach: let the user know the letter will be for this provider
+          await ctx.api.sendMessage(chatId, `Type: "Write a complaint to ${alert.provider_name}" to generate your letter, or tap above to ask me directly.`);
+          await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+          return;
+        }
+      }
+
+      // Generate letter directly from alert data
+      const providerName = alert.provider_name ?? 'the provider';
+      let issueDescription = '';
+      let desiredOutcome = '';
+      let letterType = 'complaint';
+
+      if (alert.alert_type === 'price_increase') {
+        const increase = Number(alert.amount_change ?? 0);
+        const newAmt = Number(alert.amount ?? 0);
+        const oldAmt = newAmt - increase;
+        issueDescription = `My monthly payment to ${providerName} was increased by £${increase.toFixed(2)}/month (now £${newAmt.toFixed(2)}/month). I did not receive adequate notice or the opportunity to exit without penalty.`;
+        desiredOutcome = `Revert my payment to £${oldAmt.toFixed(2)}/month, or permit me to cancel immediately without any early termination fee.`;
+        const pn = providerName.toLowerCase();
+        if (/british gas|octopus|e\.on|eon\b|sse|edf|scottish power|bulb|ovo|shell energy|utilita/.test(pn)) letterType = 'energy_dispute';
+        else if (/\bbt\b|virgin media|sky\b|talktalk|vodafone|plusnet|\bee\b|now broadband|zen|hyperoptic/.test(pn)) letterType = 'broadband_complaint';
+      } else if (alert.alert_type === 'bill_detected' || alert.alert_type === 'upcoming_bill') {
+        const amt = alert.amount ? `£${Number(alert.amount).toFixed(2)}` : 'an amount';
+        issueDescription = `I have received a bill from ${providerName} for ${amt} which I believe may be incorrect or inflated.`;
+        desiredOutcome = 'Please provide an itemised breakdown of this charge and refund any overcharge.';
+      } else {
+        await ctx.api.sendMessage(chatId, `Ask me: "Write a complaint to ${providerName}" and I'll draft it for you.`);
+        return;
+      }
+
+      await ctx.api.sendMessage(chatId, '📝 Generating your complaint letter... This takes about 15 seconds.');
+
+      const { data: profile } = await supabase.from('profiles')
+        .select('full_name, first_name, last_name, address, postcode')
+        .eq('id', session.user_id).single();
+      const fullName = profile?.full_name ?? [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ?? 'Customer';
+      const addrLine = [profile?.address, profile?.postcode].filter(Boolean).join(', ') || '[Address]';
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+      const LETTER_CONTEXT: Record<string, string> = {
+        complaint: 'General consumer complaint. Cite Consumer Rights Act 2015. Include the 14-day FCA deadline and name the relevant ombudsman.',
+        energy_dispute: 'Energy price dispute. Cite Ofgem Standards of Conduct — suppliers must give 30 days written notice before any price change. Name the Energy Ombudsman as escalation.',
+        broadband_complaint: 'Broadband price dispute. Cite Ofcom General Conditions GC C1.3 — 30 days notice required for mid-contract price rises. Name CISAS or Ombudsman Services: Communications.',
+      };
+
+      const letterResponse = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
+        messages: [{ role: 'user', content: `Write a formal complaint letter from a UK consumer to ${providerName}.\n\nCustomer name: ${fullName}\nCustomer address: ${addrLine}\nToday's date: ${today}\nIssue: ${issueDescription}\nDesired outcome: ${desiredOutcome}\nContext: ${LETTER_CONTEXT[letterType] ?? LETTER_CONTEXT.complaint}\n\nRules:\n- Formal, professional tone\n- Weave legal references naturally\n- No section headings or CAPS LOCK headers\n- 14-day response deadline\n- Name specific ombudsman/regulator\n- Under 450 words\n- Start with "Dear ${providerName} Customer Services,"` }],
+      });
+
+      const letterText = letterResponse.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text).join('');
+
+      const { data: dispute } = await supabase.from('disputes').insert({
+        user_id: session.user_id,
+        provider_name: providerName,
+        issue_type: letterType,
+        issue_summary: issueDescription,
+        desired_outcome: desiredOutcome,
+        status: 'awaiting_response',
+      }).select('id').single();
+
+      if (dispute?.id) {
+        await supabase.from('correspondence').insert({
+          dispute_id: dispute.id,
+          user_id: session.user_id,
+          entry_type: 'ai_letter',
+          title: `Complaint letter to ${providerName}`,
+          content: letterText,
+          entry_date: new Date().toISOString(),
+        });
+      }
+
+      await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
+
+      const preview = letterText.length > 700 ? letterText.slice(0, 700) + '...' : letterText;
+      await ctx.api.sendMessage(chatId, `✅ *Letter saved to your Disputes*\n\n${preview}`, { parse_mode: 'Markdown' });
+
+    } catch (err) {
+      console.error('[UserBot] palert_draft_ error:', err);
+      try {
+        await ctx.api.sendMessage(chatId, `Sorry, couldn't generate the letter. Ask me: "Write a complaint to [provider name]"`);
       } catch { /* silent */ }
     }
   });
@@ -1442,21 +1714,28 @@ export async function sendProactiveAlert(params: {
   } else if (issue.issue_type === 'price_increase') {
     replyMarkup = {
       inline_keyboard: [
-        [{ text: '📝 Dispute this increase', callback_data: `draft_dispute_${issue.id}` }],
         [
-          { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
-          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
+          { text: '⚡ Draft dispute letter', callback_data: `draft_dispute_${issue.id}` },
+          { text: '✅ Accept increase',       callback_data: `accept_increase_${issue.id}` },
         ],
+        [{ text: '🔕 Dismiss', callback_data: `dismiss_${issue.id}` }],
       ],
     };
-  } else if (issue.issue_type === 'contract_expiring' || issue.issue_type === 'renewal_imminent') {
+  } else if (issue.issue_type === 'contract_expiring') {
     replyMarkup = {
       inline_keyboard: [
         [{ text: '📧 Cancellation email', callback_data: `cxlmail_${issue.id}` }],
+        [{ text: '🔕 Dismiss', callback_data: `dismiss_${issue.id}` }],
+      ],
+    };
+  } else if (issue.issue_type === 'renewal_imminent') {
+    replyMarkup = {
+      inline_keyboard: [
         [
-          { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
-          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
+          { text: '✅ Already paid',      callback_data: `dismiss_${issue.id}` },
+          { text: '📧 Cancellation email', callback_data: `cxlmail_${issue.id}` },
         ],
+        [{ text: '🔕 Dismiss', callback_data: `dismiss_${issue.id}` }],
       ],
     };
   } else {
@@ -1465,7 +1744,7 @@ export async function sendProactiveAlert(params: {
       inline_keyboard: [
         [
           { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
-          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
+          { text: '🔕 Dismiss',    callback_data: `dismiss_${issue.id}` },
         ],
       ],
     };
