@@ -371,7 +371,7 @@ export async function POST(request: NextRequest) {
       if (telegramSession?.telegram_chat_id) {
         const chatId = Number(telegramSession.telegram_chat_id);
         const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-        const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
+        const slugify = (s: string | null | undefined) => (s || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
 
         // Price increases (highest priority)
         for (const p of priceAlerts.slice(0, 3)) {

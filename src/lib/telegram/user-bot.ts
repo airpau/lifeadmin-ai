@@ -1331,7 +1331,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .from('telegram_pending_alerts')
         .update({ status: 'dismissed' })
         .eq('telegram_chat_id', chatId)
-        .eq('status', 'pending');
+        .in('status', ['pending', 'sent']);
       await safeEdit(bot.api, chatId, msgId, "All dismissed ✓");
     } catch (err) {
       console.error('[UserBot] palert_dismiss_all error:', err);
@@ -1428,16 +1428,88 @@ Return JSON: { "subject": "...", "body": "..." }`;
         return;
       }
 
-      // If a detected_issue exists for this alert, delegate to draft_dispute_ logic
+      // If a detected_issue exists for this alert, use its detail to generate the letter
       const issueId = (alert.metadata as Record<string, unknown> | null)?.detected_issue_id as string | undefined ?? (alert.source_id ?? undefined);
       if (issueId) {
-        const { data: issue } = await supabase.from('detected_issues').select('id').eq('id', issueId).eq('user_id', session.user_id).single();
+        const { data: issue } = await supabase
+          .from('detected_issues')
+          .select('id, detail, issue_type')
+          .eq('id', issueId)
+          .eq('user_id', session.user_id)
+          .single();
         if (issue) {
-          // Synthesise a fake callback so draft_dispute_ logic runs
-          await ctx.api.sendMessage(chatId, '📝 Generating your complaint letter... This takes about 15 seconds.');
-          // Use the same letter-generation path by directly triggering via text command
-          // The simplest approach: let the user know the letter will be for this provider
-          await ctx.api.sendMessage(chatId, `Type: "Write a complaint to ${alert.provider_name}" to generate your letter, or tap above to ask me directly.`);
+          const providerName = alert.provider_name ?? 'the provider';
+          await ctx.api.sendMessage(chatId, `⏳ Drafting your complaint letter to ${providerName}...`);
+
+          let letterType = 'complaint';
+          const pn = providerName.toLowerCase();
+          if (issue.issue_type === 'price_increase') {
+            if (/british gas|octopus|e\.on|eon\b|sse|edf|scottish power|bulb|ovo|shell energy|utilita/.test(pn)) letterType = 'energy_dispute';
+            else if (/\bbt\b|virgin media|sky\b|talktalk|vodafone|plusnet|\bee\b|now broadband|zen|hyperoptic/.test(pn)) letterType = 'broadband_complaint';
+          }
+
+          const { data: profile } = await supabase.from('profiles')
+            .select('full_name, first_name, last_name, address, postcode')
+            .eq('id', session.user_id).single();
+          const fullName = profile?.full_name ?? [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ?? 'Customer';
+          const addrLine = [profile?.address, profile?.postcode].filter(Boolean).join(', ') || '[Address]';
+          const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+          const LETTER_CONTEXT: Record<string, string> = {
+            complaint: 'General consumer complaint. Cite Consumer Rights Act 2015. Include the 14-day FCA deadline and name the relevant ombudsman.',
+            energy_dispute: 'Energy price dispute. Cite Ofgem Standards of Conduct — suppliers must give 30 days written notice before any price change. Name the Energy Ombudsman as escalation.',
+            broadband_complaint: 'Broadband price dispute. Cite Ofcom General Conditions GC C1.3 — 30 days notice required for mid-contract price rises. Name CISAS or Ombudsman Services: Communications.',
+          };
+
+          const issueDescription = issue.detail ?? `I have a complaint about ${providerName}.`;
+          const desiredOutcome = 'Please resolve this issue promptly.';
+
+          const letterResponse = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1200,
+            messages: [{ role: 'user', content: `Write a formal complaint letter from a UK consumer to ${providerName}.\n\nCustomer name: ${fullName}\nCustomer address: ${addrLine}\nToday's date: ${today}\nIssue: ${issueDescription}\nDesired outcome: ${desiredOutcome}\nContext: ${LETTER_CONTEXT[letterType] ?? LETTER_CONTEXT.complaint}\n\nRules:\n- Formal, professional tone\n- Weave legal references naturally\n- No section headings or CAPS LOCK headers\n- 14-day response deadline\n- Name specific ombudsman/regulator\n- Under 450 words\n- Start with "Dear ${providerName} Customer Services,"` }],
+          });
+
+          const letterText = letterResponse.content
+            .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+            .map((b) => b.text).join('');
+
+          // Store in pending_actions so user can approve before the letter is saved
+          const { data: pendingRecord } = await supabase
+            .from('telegram_pending_actions')
+            .insert({
+              user_id: session.user_id,
+              telegram_chat_id: chatId,
+              action_type: 'dispute_letter',
+              payload: {
+                provider: providerName,
+                issue_description: issueDescription,
+                desired_outcome: desiredOutcome,
+                issue_type: letterType,
+                letter_text: letterText,
+              },
+            })
+            .select('id')
+            .single();
+
+          const preview = letterText.length > 700 ? letterText.slice(0, 700) + '...' : letterText;
+          await ctx.api.sendMessage(
+            chatId,
+            `📝 *Complaint letter drafted*\n\n${preview}`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: 'Approve and save ✓', callback_data: `approve_${pendingRecord?.id}` },
+                    { text: 'Cancel ✗',            callback_data: `cancel_${pendingRecord?.id}` },
+                  ],
+                ],
+              } as any,
+            },
+          );
+
+          // Dismiss the queued alert now that the letter is drafted and shown
           await supabase.from('telegram_pending_alerts').update({ status: 'dismissed' }).eq('id', alertId);
           return;
         }
