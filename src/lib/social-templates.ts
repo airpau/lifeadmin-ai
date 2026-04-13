@@ -117,54 +117,54 @@ const COMPLAINT_WIN: SocialTemplate[] = [
 
 const PRODUCT_FEATURE: SocialTemplate[] = [
   {
-    content: "Paybacker's AI lives in your Telegram. It spotted £162 in overcharges across 3 providers for one user in 30 seconds — at midnight, with no app to open. Just a message on your phone.\n\nGet started free at paybacker.co.uk",
-    hashtags: "#TelegramBot #AI #FinTech #MoneySaving #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, mint green glowing Telegram messenger concept, abstract AI financial intelligence, clean modern fintech design",
+    content: "Paybacker writes your complaint letter in 30 seconds.\n\nEnergy overcharge. Broadband price rise. Flight delay. Parking ticket. It does not matter — the AI generates a professional formal letter citing the exact UK law that applies to your case.\n\nConsumer Rights Act 2015. Ofcom rules. Ofgem. UK261. Word for word.\n\nCompanies respond faster when they know you know the law.\n\nSign up free at paybacker.co.uk",
+    hashtags: "#ConsumerRights #AIDisputes #UKLaw #MoneySaving #FinTech #PayBacker #ComplaintLetter",
+    image_prompt: "Dark navy background, mint green glowing document with scales of justice, abstract AI legal letter concept, clean modern fintech design",
   },
   {
-    content: "Every evening at 9pm, Paybacker sends you a financial wrap-up straight to your Telegram. Today's spending, this month's budget, your top categories. Your personal CFO in your pocket — no app to open, no login required.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#TelegramBot #PersonalFinance #FinTech #MoneySaving #AI #PayBacker",
-    image_prompt: "Dark navy background, mint green glowing phone notification concept, abstract evening financial summary, modern fintech aesthetic",
+    content: "A solicitor charges £150 to £300 to write a formal complaint letter.\n\nPaybacker does it for free in 30 seconds.\n\nSame result: a professional letter citing Consumer Rights Act 2015, Ofcom speed guarantees, Ofgem billing rules, or whichever regulation applies. Ready to send.\n\nYour rights. No bill.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#ConsumerRights #FreeAI #UKLaw #Complaints #FinTech #MoneySaving #PayBacker",
+    image_prompt: "Dark navy background, mint green glowing scales balanced against a bill, solicitor vs AI concept, abstract fintech design",
   },
   {
-    content: "Ask Paybacker anything in Telegram. 'Have my energy costs gone up this year?' 'Am I spending more on subscriptions than last month?' It reads your actual transactions, finds the answer, and drafts a dispute letter if you need one.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#TelegramBot #AI #ConsumerRights #FinTech #MoneySaving #PayBacker",
-    image_prompt: "Dark navy background, mint green glowing chat bubble with financial graph, abstract AI conversation concept, clean fintech design",
+    content: "Paybacker Assist scanned one user's account and found:\n\n- £340 sitting in energy credit (supplier was holding it)\n- A £47 per month subscription they had forgotten about\n- A broadband price rise that Ofcom rules let them exit penalty-free\n\nTotal recovered: £1,100+\n\nConnect your bank. Paybacker Assist does the rest.\n\nSign up free at paybacker.co.uk",
+    hashtags: "#PaybackerAssist #BankScan #SubscriptionTracker #ConsumerRights #MoneySaving #FinTech #PayBacker",
+    image_prompt: "Dark navy background, mint green magnifying glass scanning bank statement, abstract money recovery concept, clean fintech aesthetic",
   },
   {
-    content: "What a solicitor charges £150 to £300 for, Paybacker does for free in your Telegram at 3am. Formal complaint letter. Exact UK legislation cited. Ready to send. No waiting, no billing by the hour.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#TelegramBot #AI #ConsumerRights #MoneySaving #UKLaw #PayBacker",
-    image_prompt: "Dark navy background, mint green glowing legal document concept, abstract AI writing at night, modern fintech aesthetic",
+    content: "Ask Paybacker Assist anything about your finances.\n\n'Have my energy bills gone up this year?'\n'Am I paying for any subscriptions I don't use?'\n'Can I exit my broadband contract early?'\n\nIt reads your actual bank transactions and gives you a real answer. Then it writes the letter if you need one.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#PaybackerAssist #AI #ConsumerRights #FinTech #MoneySaving #OpenBanking #PayBacker",
+    image_prompt: "Dark navy background, mint green chat bubble with financial graph, abstract AI conversation about money, modern fintech design",
   },
   {
-    content: "Paybacker scans your inbox to find every subscription you are paying for, including the ones you forgot about. The average UK adult wastes £312 a year on unused subscriptions. We find them so you can cancel them.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#SubscriptionTracker #FinTech #MoneySaving #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, mint green magnifying glass scanning email icons, subscription detection concept, fintech style",
+    content: "Flight delayed over 3 hours?\n\nUnder UK261 you are entitled to between £220 and £520 per passenger. Airlines count on you not knowing this, or not bothering to claim.\n\nPaybacker writes the compensation claim letter in 30 seconds, citing UK261 with the exact wording airlines cannot argue with.\n\nYou can claim for flights delayed in the last 6 years.\n\nSign up free at paybacker.co.uk",
+    hashtags: "#FlightDelay #UK261 #Compensation #ConsumerRights #AI #FinTech #PayBacker",
+    image_prompt: "Dark navy background, mint green aeroplane with compensation claim concept, abstract flight delay rights, modern fintech style",
   },
   {
-    content: "Every complaint letter Paybacker generates cites the exact UK legislation that applies to your case. Consumer Rights Act 2015, Ofcom rules, FCA regulations. Companies respond faster when they know you know the law.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#AI #ConsumerRights #UKLaw #Complaints #FinTech #PayBacker",
-    image_prompt: "Dark navy background, mint green document with legal scales, AI complaint letter concept, clean design",
+    content: "The average UK household overpays on bills by over £1,000 a year without realising it.\n\nEnergy credits not refunded. Broadband speeds below the guaranteed minimum. Mid-contract price rises you can legally challenge. Subscriptions you forgot you were paying for.\n\nPaybacker Assist finds every one of them and tells you exactly what to do.\n\nSign up free at paybacker.co.uk",
+    hashtags: "#MoneySaving #PaybackerAssist #ConsumerRights #UKFinance #BillCheck #FinTech #PayBacker",
+    image_prompt: "Dark navy background, mint green coins being discovered from behind bills, abstract overpayment recovery concept, clean fintech design",
   },
   {
-    content: "Paybacker connects to your bank account to show you every recurring payment in one dashboard. No more surprises on your bank statement. See exactly where your money goes each month.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#OpenBanking #FinTech #BudgetTracker #MoneySaving #PayBacker",
-    image_prompt: "Dark navy background, mint green dashboard mockup with subscription list, bank connection concept, fintech aesthetic",
+    content: "Every subscription company is hoping you will not cancel.\n\nPaybacker generates a cancellation email in 30 seconds, citing your legal right under the Consumer Contracts Regulations 2013. No awkward phone calls. No retentions team pressure. Just a formal email they have to act on.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#CancelSubscriptions #ConsumerRights #AI #MoneySaving #FinTech #PayBacker #CancelCulture",
+    image_prompt: "Dark navy background, mint green email icon breaking a subscription chain, abstract cancellation concept, modern fintech aesthetic",
   },
   {
-    content: "Want to cancel a subscription but dread the phone call? Paybacker generates a professional cancellation email in seconds, citing your legal right to cancel. You review it, approve it, done.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#CancelSubscriptions #AI #Automation #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, mint green email icon with cancel symbol, cancellation email concept, modern design",
+    content: "Paybacker Assist detected a broadband price rise one user had not noticed.\n\nTheir provider increased the monthly cost by £7.50 mid-contract. Under Ofcom rules, a mid-contract price rise above what was agreed at sign-up gives you the right to exit without penalty.\n\nPaybacker wrote the exit letter. The user left with no cancellation fee and switched to a cheaper deal the same day.\n\nSign up free at paybacker.co.uk",
+    hashtags: "#Broadband #Ofcom #ConsumerRights #PaybackerAssist #MoneySaving #FinTech #PayBacker",
+    image_prompt: "Dark navy background, mint green contract being cut free, abstract broadband exit rights concept, clean fintech design",
   },
   {
-    content: "Paybacker spots when your bills increase unexpectedly. Energy price hike? Broadband cost creeping up? Insurance renewal higher than last year? We flag it and draft the complaint for you.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#BillChecker #MoneySaving #AI #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, mint green alert bell with upward arrow, bill increase detection concept, fintech aesthetic",
+    content: "Your energy supplier could be sitting on your money right now.\n\nUnder Ofgem rules, if your account is in credit they must refund it within 10 working days of you asking. The average credit balance is around £150.\n\nPaybacker writes the refund request letter for you, citing Ofgem's exact rules.\n\nThat is £150 back in your account this week.\n\nTry it free at paybacker.co.uk",
+    hashtags: "#EnergyBills #Ofgem #Refund #ConsumerRights #AI #MoneySaving #PayBacker",
+    image_prompt: "Dark navy background, mint green energy bolt with refund arrow, abstract energy credit recovery, modern fintech style",
   },
   {
-    content: "Three steps. Connect your accounts. Paybacker scans for savings opportunities. Review the AI generated letters and send them. That is it. Your money, recovered.\n\nTry it free at paybacker.co.uk",
-    hashtags: "#HowItWorks #FinTech #AI #MoneySaving #ConsumerRights #PayBacker",
-    image_prompt: "Dark navy background, three mint green numbered steps, simple process concept, modern fintech design",
+    content: "How Paybacker works:\n\n1. Connect your bank account (read-only, FCA regulated, takes 60 seconds)\n2. Paybacker Assist scans for overcharges, forgotten subscriptions, and bills you can dispute\n3. Pick an opportunity. Get a 30-second AI letter citing the exact UK law\n4. Send it. Get your money back\n\nFree to start. No credit card needed.\n\nSign up free at paybacker.co.uk",
+    hashtags: "#HowItWorks #PaybackerAssist #ConsumerRights #AI #FinTech #MoneySaving #PayBacker",
+    image_prompt: "Dark navy background, four mint green numbered steps flowing downward, abstract simple process concept, clean modern fintech design",
   },
 ];
 
@@ -229,10 +229,10 @@ export const TEMPLATES: Record<string, SocialTemplate[]> = {
 };
 
 const DEFAULT_IMAGE_PROMPTS: Record<string, string> = {
-  money_tip: "Dark navy background, gold pound coin icon, money saving concept, clean fintech aesthetic",
-  complaint_win: "Dark navy background, gold checkmark with pound sign, complaint success concept, fintech style",
-  product_feature: "Dark navy background, gold AI circuit icon, fintech product concept, modern design",
-  consumer_rights: "Dark navy background, gold scales of justice, UK consumer rights concept, clean design",
+  money_tip: "Dark navy background, mint green glowing pound coin icon, money saving concept, clean fintech aesthetic",
+  complaint_win: "Dark navy background, mint green glowing checkmark with pound sign, complaint success concept, fintech style",
+  product_feature: "Dark navy background, mint green glowing document with scales of justice, AI disputes concept, modern fintech design",
+  consumer_rights: "Dark navy background, mint green glowing scales of justice, UK consumer rights concept, clean design",
 };
 
 /**
