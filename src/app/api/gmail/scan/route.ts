@@ -7,98 +7,7 @@ import { scanEmailsForOpportunities, refreshAccessToken } from '@/lib/gmail';
 import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
-
-// --- Telegram helper (fire-and-forget, never throws) ---
-async function sendTelegramAlert(chatId: number, message: string): Promise<void> {
-  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
-  if (!token || !chatId) return;
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'Markdown' }),
-  }).catch(() => {});
-}
-
-// Build per-category Telegram notification messages
-function buildTelegramMessage(findings: {
-  bills: any[];
-  contracts: any[];
-  disputeResponses: any[];
-  cancellations: any[];
-  bankGaps: any[];
-  priceIncreases: any[];
-}): string | null {
-  const parts: string[] = [];
-
-  if (findings.bills.length > 0) {
-    parts.push(`*Bills detected in email (${findings.bills.length})*`);
-    for (const b of findings.bills.slice(0, 3)) {
-      const due = b.nextPaymentDate ? ` — due ${new Date(b.nextPaymentDate).toLocaleDateString('en-GB')}` : '';
-      const amt = b.paymentAmount ? ` — £${Number(b.paymentAmount).toFixed(2)}` : '';
-      const urgency = b.urgency === 'immediate' ? '🔴' : b.urgency === 'soon' ? '🟡' : '📄';
-      parts.push(`${urgency} ${b.provider}${amt}${due}`);
-    }
-    parts.push('_Go to Scanner to review and dispute if inflated._\n');
-  }
-
-  if (findings.disputeResponses.length > 0) {
-    parts.push(`*Supplier response received (${findings.disputeResponses.length})*`);
-    for (const d of findings.disputeResponses.slice(0, 3)) {
-      const type = d.correspondenceType === 'rejection' ? '❌' : d.correspondenceType === 'resolution' ? '✅' : d.correspondenceType === 'escalation' ? '⚠️' : '📩';
-      parts.push(`${type} ${d.provider}: ${d.title}`);
-    }
-    parts.push('_Ask me to help draft a follow-up response._\n');
-  }
-
-  if (findings.cancellations.length > 0) {
-    parts.push(`*Cancellation confirmed (${findings.cancellations.length})*`);
-    for (const c of findings.cancellations.slice(0, 3)) {
-      const date = c.nextPaymentDate ? ` — effective ${new Date(c.nextPaymentDate).toLocaleDateString('en-GB')}` : '';
-      parts.push(`✅ ${c.provider}${date}`);
-    }
-    parts.push('_I\'ll watch your bank statements to confirm charges stopped._\n');
-  }
-
-  if (findings.contracts.length > 0) {
-    parts.push(`*Contract terms detected (${findings.contracts.length})*`);
-    for (const c of findings.contracts.slice(0, 3)) {
-      const end = c.contractEndDate ? ` — ends ${new Date(c.contractEndDate).toLocaleDateString('en-GB')}` : '';
-      parts.push(`📋 ${c.provider}${end}`);
-    }
-    parts.push('_Go to Scanner to save to your Contract Vault._\n');
-  }
-
-  if (findings.bankGaps.length > 0) {
-    parts.push(`*Subscriptions in email but not in bank (${findings.bankGaps.length})*`);
-    for (const g of findings.bankGaps.slice(0, 3)) {
-      const amt = g.paymentAmount ? ` — £${Number(g.paymentAmount).toFixed(2)}/mo` : '';
-      parts.push(`💸 ${g.provider}${amt} — may be charged to a different card`);
-    }
-    parts.push('_These might be on a card not connected to Paybacker._\n');
-  }
-
-  if (findings.priceIncreases.length > 0) {
-    const total = findings.priceIncreases.reduce((s: number, p: any) => {
-      if (p.paymentAmount && p.previousAmount) {
-        return s + (Number(p.paymentAmount) - Number(p.previousAmount)) * 12;
-      }
-      return s;
-    }, 0);
-    parts.push(`*Price increases detected (${findings.priceIncreases.length})*`);
-    for (const p of findings.priceIncreases.slice(0, 3)) {
-      if (p.previousAmount && p.paymentAmount) {
-        parts.push(`🔴 ${p.provider}: £${Number(p.previousAmount).toFixed(2)} -> £${Number(p.paymentAmount).toFixed(2)}/mo`);
-      } else {
-        parts.push(`🔴 ${p.provider}: ${p.title}`);
-      }
-    }
-    if (total > 0) parts.push(`_Total impact: +£${total.toFixed(2)}/year. Ask me to draft dispute letters._\n`);
-  }
-
-  if (parts.length === 0) return null;
-
-  return `*Email scan complete*\n\n${parts.join('\n')}\nVisit paybacker.co.uk/dashboard/scanner for full details.`;
-}
+import { queueTelegramAlert } from '@/lib/telegram/queue';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -448,7 +357,10 @@ export async function POST(request: NextRequest) {
         ).then(({ error: e }) => { if (e) console.error('[gmail-scan] scanned_receipts insert:', e.message); });
       }
 
-      // ---- 6. Telegram notification for actionable high-priority finds ----
+      // ---- 6. Queue actionable findings for the daily Telegram digest ----
+      // Nothing is sent immediately — findings are batched and delivered once
+      // per day by the evening-summary cron. Deduped by (user_id, reference_key)
+      // so re-scanning the same month never re-queues the same item.
       const { data: telegramSession } = await admin
         .from('telegram_sessions')
         .select('telegram_chat_id')
@@ -458,23 +370,74 @@ export async function POST(request: NextRequest) {
 
       if (telegramSession?.telegram_chat_id) {
         const chatId = Number(telegramSession.telegram_chat_id);
-        const bankGapFindings = opportunities.filter((o: any) => o.type === 'bank_gap');
-        const msg = buildTelegramMessage({
-          bills,
-          contracts,
-          disputeResponses: disputeResps,
-          cancellations: cancels,
-          bankGaps: bankGapFindings,
-          priceIncreases: priceAlerts,
-        });
-        if (msg) {
-          await sendTelegramAlert(chatId, msg);
-          // Mark all new email_scan_findings as notified (fire-and-forget)
-          void admin.from('email_scan_findings')
-            .update({ telegram_notified_at: new Date().toISOString() })
-            .eq('user_id', user.id)
-            .eq('scan_session_id', sessionId);
+        const monthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40);
+
+        // Price increases (highest priority)
+        for (const p of priceAlerts.slice(0, 3)) {
+          const change = p.paymentAmount && p.previousAmount
+            ? Number(p.paymentAmount) - Number(p.previousAmount)
+            : null;
+          await queueTelegramAlert(admin, {
+            userId:       user.id,
+            chatId,
+            alertType:    'price_increase',
+            providerName: p.provider,
+            amount:       p.paymentAmount ? Number(p.paymentAmount) : undefined,
+            amountChange: change ?? undefined,
+            referenceKey: `scan_price_${slugify(p.provider)}_${monthKey}`,
+            sourceId:     p.id ?? undefined,
+            metadata:     { source: 'email_scan' },
+          });
         }
+
+        // Bills
+        for (const b of bills.slice(0, 3)) {
+          await queueTelegramAlert(admin, {
+            userId:       user.id,
+            chatId,
+            alertType:    'bill_detected',
+            providerName: b.provider,
+            amount:       b.paymentAmount ? Number(b.paymentAmount) : undefined,
+            referenceKey: `scan_bill_${slugify(b.provider)}_${monthKey}`,
+            sourceId:     b.id ?? undefined,
+            metadata:     { source: 'email_scan', urgency: b.urgency },
+          });
+        }
+
+        // Bank gaps (subscriptions in email but not in bank)
+        const bankGapFindings = opportunities.filter((o: any) => o.type === 'bank_gap');
+        for (const g of bankGapFindings.slice(0, 3)) {
+          await queueTelegramAlert(admin, {
+            userId:       user.id,
+            chatId,
+            alertType:    'subscription_detected',
+            providerName: g.provider,
+            amount:       g.paymentAmount ? Number(g.paymentAmount) : undefined,
+            referenceKey: `scan_sub_${slugify(g.provider)}_${monthKey}`,
+            sourceId:     g.id ?? undefined,
+            metadata:     { source: 'email_scan' },
+          });
+        }
+
+        // Dispute responses
+        for (const d of disputeResps.slice(0, 2)) {
+          await queueTelegramAlert(admin, {
+            userId:       user.id,
+            chatId,
+            alertType:    'dispute_response',
+            providerName: d.provider,
+            referenceKey: `scan_dispute_${slugify(d.provider)}_${monthKey}`,
+            sourceId:     d.id ?? undefined,
+            metadata:     { source: 'email_scan', correspondenceType: (d as any).correspondenceType },
+          });
+        }
+
+        // Mark scan findings as queued (fire-and-forget)
+        void admin.from('email_scan_findings')
+          .update({ telegram_notified_at: new Date().toISOString() })
+          .eq('user_id', user.id)
+          .eq('scan_session_id', sessionId);
       }
 
       // Return all new findings for the UI

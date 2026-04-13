@@ -10,13 +10,19 @@
  * 4. Disputes with no response after 14 days (follow-up)
  * 5. Subscriptions renewing within 7 days
  *
- * Pushes actionable Telegram messages with inline keyboard buttons.
- * Deduplicates: each issue is sent at most once per 7 days.
+ * Routing:
+ *   Urgent (price increase > £240/yr annual impact, renewal within 3 days) →
+ *     send immediately via sendProactiveAlert with inline buttons
+ *   Non-urgent →
+ *     queue to telegram_pending_alerts for the evening digest
+ *
+ * Deduplicates: each issue is created in detected_issues at most once per 7 days.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
+import { queueTelegramAlert } from '@/lib/telegram/queue';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -136,18 +142,40 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (issue) {
-        const { ok, messageId } = await sendProactiveAlert({
-          chatId: Number(chatId),
-          issue: { id: issue.id, title, detail, recommendation, amount_impact: Number(alert.annual_impact), issue_type: 'price_increase' },
-        });
-
-        if (ok && messageId) {
+        const annualImpact = Number(alert.annual_impact);
+        if (annualImpact > 240) {
+          // > £20/mo: send immediately
+          const { ok, messageId } = await sendProactiveAlert({
+            chatId: Number(chatId),
+            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualImpact, issue_type: 'price_increase' },
+          });
+          if (ok && messageId) {
+            await supabase
+              .from('detected_issues')
+              .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+              .eq('id', issue.id);
+          }
+          results.push({ userId, type: 'price_increase', sent: ok });
+        } else {
+          // ≤ £20/mo: queue for evening digest
+          const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+          await queueTelegramAlert(supabase, {
+            userId,
+            chatId:      Number(chatId),
+            alertType:   'price_increase',
+            providerName: alert.merchant_name ?? undefined,
+            amount:      Number(alert.new_amount),
+            amountChange: Number(alert.new_amount) - Number(alert.old_amount),
+            referenceKey: `alerts_price_${String(alert.merchant_name ?? 'unknown').toLowerCase().replace(/\s+/g, '_')}_${monthStr}`,
+            sourceId:    issue.id,
+            metadata:    { detected_issue_id: issue.id, source: 'telegram_alerts' },
+          });
           await supabase
             .from('detected_issues')
-            .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+            .update({ delivered_at: new Date().toISOString() })
             .eq('id', issue.id);
+          results.push({ userId, type: 'price_increase', sent: true });
         }
-        results.push({ userId, type: 'price_increase', sent: ok });
       }
     }
 
@@ -206,18 +234,38 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (issue) {
-        const { ok, messageId } = await sendProactiveAlert({
-          chatId: Number(chatId),
-          issue: { id: issue.id, title, detail, recommendation, amount_impact: annualCost, issue_type: 'contract_expiring' },
-        });
-
-        if (ok && messageId) {
+        if (daysLeft <= 3) {
+          // Expiring very soon: send immediately
+          const { ok, messageId } = await sendProactiveAlert({
+            chatId: Number(chatId),
+            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualCost, issue_type: 'contract_expiring' },
+          });
+          if (ok && messageId) {
+            await supabase
+              .from('detected_issues')
+              .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+              .eq('id', issue.id);
+          }
+          results.push({ userId, type: 'contract_expiring', sent: ok });
+        } else {
+          // > 3 days: queue for evening digest
+          const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+          await queueTelegramAlert(supabase, {
+            userId,
+            chatId:      Number(chatId),
+            alertType:   'contract_expiring',
+            providerName: contract.provider_name,
+            amount:      Number(contract.amount),
+            referenceKey: `alerts_contract_${contract.id}_${monthStr}`,
+            sourceId:    issue.id,
+            metadata:    { detected_issue_id: issue.id, source: 'telegram_alerts', days_left: daysLeft },
+          });
           await supabase
             .from('detected_issues')
-            .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
+            .update({ delivered_at: new Date().toISOString() })
             .eq('id', issue.id);
+          results.push({ userId, type: 'contract_expiring', sent: true });
         }
-        results.push({ userId, type: 'contract_expiring', sent: ok });
       }
     }
 
@@ -288,18 +336,23 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (issue) {
-        const { ok, messageId } = await sendProactiveAlert({
-          chatId: Number(chatId),
-          issue: { id: issue.id, title, detail, recommendation, amount_impact: overBy * 12, issue_type: 'budget_overrun' },
+        // Budget overruns are non-urgent — queue for evening digest
+        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        await queueTelegramAlert(supabase, {
+          userId,
+          chatId:      Number(chatId),
+          alertType:   'budget_overrun',
+          providerName: budget.category,
+          amountChange: overBy,
+          referenceKey: `alerts_budget_${budget.category}_${monthStr}`,
+          sourceId:    issue.id,
+          metadata:    { detected_issue_id: issue.id, source: 'telegram_alerts' },
         });
-
-        if (ok && messageId) {
-          await supabase
-            .from('detected_issues')
-            .update({ telegram_message_id: messageId, delivered_at: new Date().toISOString() })
-            .eq('id', issue.id);
-        }
-        results.push({ userId, type: 'budget_overrun', sent: ok });
+        await supabase
+          .from('detected_issues')
+          .update({ delivered_at: new Date().toISOString() })
+          .eq('id', issue.id);
+        results.push({ userId, type: 'budget_overrun', sent: true });
       }
     }
 
@@ -318,10 +371,11 @@ export async function GET(request: NextRequest) {
       .limit(3);
 
     for (const issue of followUpIssues ?? []) {
+      // Dispute follow-ups are time-sensitive — send immediately with resolution buttons
       const followUpText = {
         title: `${issue.title} — 14-day deadline passed`,
         detail: `It's been 14 days since your complaint was sent. No response yet means you can escalate to the relevant regulator or ombudsman.`,
-        recommendation: `Ask me: "Escalate my complaint" and I'll help you take the next step.`,
+        recommendation: null,
       };
 
       const { ok, messageId } = await sendProactiveAlert({
@@ -340,7 +394,7 @@ export async function GET(request: NextRequest) {
       if (ok) {
         await supabase
           .from('detected_issues')
-          .update({ follow_up_sent_at: new Date().toISOString() })
+          .update({ follow_up_sent_at: new Date().toISOString(), ...(messageId ? { telegram_message_id: messageId } : {}) })
           .eq('id', issue.id);
         results.push({ userId, type: 'dispute_follow_up', sent: true });
       }
