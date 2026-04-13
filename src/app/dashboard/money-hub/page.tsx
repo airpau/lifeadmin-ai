@@ -204,14 +204,20 @@ export default function MoneyHubPage() {
   const markFacPaid = async (id: string) => {
     // Mark needs_review = false so item no longer surfaces as needing action
     try {
-      await fetch(`/api/subscriptions/${id}`, {
+      const response = await fetch(`/api/subscriptions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ needs_review: false }),
       });
-      setFacItems(prev => prev.map(it => it.id === id ? { ...it, bankStatus: 'bank_matched' as FacBankStatus } : it));
-      showToast('Marked as paid', 'success');
-    } catch { /* silent */ }
+      if (response.ok) {
+        setFacItems(prev => prev.map(it => it.id === id ? { ...it, bankStatus: 'bank_matched' as FacBankStatus } : it));
+        showToast('Marked as paid', 'success');
+      } else {
+        showToast('Failed to update — please try again', 'error');
+      }
+    } catch {
+      showToast('Failed to update — please try again', 'error');
+    }
   };
 
   // ─── Initial load ──────────────────────────────────────────────────────

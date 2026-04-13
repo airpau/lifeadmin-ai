@@ -82,7 +82,7 @@ export async function GET() {
     const today = new Date().toISOString().split('T')[0];
     const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const [{ data: subs }, { data: txns }] = await Promise.all([
+    const [{ data: subs, error: subsError }, { data: txns, error: txnsError }] = await Promise.all([
       admin
         .from('subscriptions')
         .select('id, provider_name, amount, billing_cycle, category, status, next_billing_date, source, needs_review, notes')
@@ -97,6 +97,15 @@ export async function GET() {
         .gte('timestamp', ninetyDaysAgo)
         .lt('amount', 0),  // spending only (negative = money out)
     ]);
+
+    if (subsError) {
+      console.error('FAC subscriptions query error:', subsError.message);
+      return NextResponse.json({ error: 'Failed to load subscriptions' }, { status: 500 });
+    }
+    if (txnsError) {
+      console.error('FAC transactions query error:', txnsError.message);
+      return NextResponse.json({ error: 'Failed to load transactions' }, { status: 500 });
+    }
 
     const transactions = (txns || []).map((t: any) => ({
       merchant_name: (t.merchant_name || t.description || '').trim(),
