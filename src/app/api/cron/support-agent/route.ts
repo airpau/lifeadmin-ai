@@ -436,11 +436,8 @@ export async function GET(request: NextRequest) {
     <div style="padding:32px;color:#334155;font-size:14px;line-height:1.7;">
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:12px 0;">${htmlReply}</p>
     </div>
-    <div style="padding:24px 32px;border-top:1px solid #e2e8f0;">
-      <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:10px 20px;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px;">View Dashboard</a>
-    </div>
     <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
-      Reply to this email to respond &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+      Simply reply to this email if you need further help &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
     </div>
   </div>
 </body></html>`,

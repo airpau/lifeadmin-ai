@@ -3792,11 +3792,8 @@ async function createSupportTicket(
       <p style="margin:0 0 12px;">You can reply to this email to add further details to your ticket.</p>
       <p style="margin:0;color:#64748b;">Best,<br/>The Paybacker Support Team</p>
     </div>
-    <div style="padding:24px 32px;border-top:1px solid #e2e8f0;">
-      <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:10px 20px;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px;">View Dashboard</a>
-    </div>
     <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+      Simply reply to this email if you need to add more details &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
     </div>
   </div>
 </body></html>`,
@@ -3840,7 +3837,7 @@ async function createSupportTicket(
   text += `*Priority:* ${params.priority}\n`;
   text += `*Status:* Open\n\n`;
   text += `Our team will respond within 24 hours. You'll receive an email at ${userEmail ?? 'your registered email'} when we reply.\n\n`;
-  text += `_You can also view your ticket at paybacker.co.uk/dashboard/pocket-agent_`;
+  text += `_Reply to the confirmation email if you need to add more details._`;
 
   return { text };
 }
