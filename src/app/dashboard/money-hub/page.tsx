@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   Wallet, Building2, Shield, RefreshCw, X, MessageCircle,
   ArrowLeft, ArrowRight, HelpCircle, AlertTriangle, Clock, Send, Mail, Zap, Loader2, Trash2, ExternalLink,
+  Pencil, Check, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Link from 'next/link';
 import { fmtNum } from '@/lib/format';
@@ -36,6 +37,21 @@ type ExpectedBill = {
   name: string; expected_amount: number; category: string;
   paid: boolean; past_due: boolean; source: string; expected_date?: string;
   billing_day?: number; bill_key?: string; occurrence_count?: number;
+};
+
+type FacBankStatus = 'bank_matched' | 'not_in_bank' | 'due_soon' | 'overdue';
+
+type FacItem = {
+  id: string;
+  provider_name: string;
+  amount: number;
+  billing_cycle: string | null;
+  category: string | null;
+  next_billing_date: string | null;
+  source: string | null;
+  needs_review: boolean;
+  bankStatus: FacBankStatus;
+  matchedTxn: { merchant_name: string; amount: number; timestamp: string } | null;
 };
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
@@ -77,6 +93,15 @@ export default function MoneyHubPage() {
   // Deals
   const [deals, setDeals] = useState<any>(null);
 
+  // FAC (Financial Action Centre)
+  const [facItems, setFacItems] = useState<FacItem[]>([]);
+  const [facCounts, setFacCounts] = useState<Record<string, number>>({});
+  const [facLoading, setFacLoading] = useState(false);
+  const [facShowAll, setFacShowAll] = useState(false);
+  const [facEditId, setFacEditId] = useState<string | null>(null);
+  const [facEditFields, setFacEditFields] = useState<{ amount: string; billing_cycle: string; category: string }>({ amount: '', billing_cycle: 'monthly', category: 'other' });
+  const [facSaving, setFacSaving] = useState(false);
+
   const supabase = createClient();
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -115,6 +140,7 @@ export default function MoneyHubPage() {
     } catch { /* silent */ }
   };
 
+  // FAC Handlers
   const dismissBill = async (bill: ExpectedBill) => {
     if (!userId || !bill.bill_key) return;
     const now = new Date();
@@ -153,6 +179,84 @@ export default function MoneyHubPage() {
       // Revert optimistic update on failure
       setExpectedBills(prev => prev.map(b => b.bill_key === billKey ? { ...b, paid: !paid } : b));
       showToast('Could not update bill status', 'error');
+  // More FAC Handlers
+  const fetchFac = async () => {
+    setFacLoading(true);
+    try {
+      const res = await fetch('/api/money-hub/fac');
+      const d = await res.json();
+      if (!d.error) {
+        setFacItems(d.items || []);
+        setFacCounts(d.counts || {});
+      }
+    } catch { /* silent */ }
+    setFacLoading(false);
+  };
+
+  const openFacEdit = (item: FacItem) => {
+    setFacEditId(item.id);
+    setFacEditFields({
+      amount: String(item.amount),
+      billing_cycle: item.billing_cycle || 'monthly',
+      category: item.category || 'other',
+    });
+  };
+
+  const saveFacEdit = async (id: string) => {
+    setFacSaving(true);
+    try {
+      const res = await fetch(`/api/subscriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(facEditFields.amount) || 0,
+          billing_cycle: facEditFields.billing_cycle,
+          category: facEditFields.category,
+        }),
+      });
+      if (res.ok) {
+        setFacItems(prev => prev.map(it => it.id === id ? {
+          ...it,
+          amount: parseFloat(facEditFields.amount) || 0,
+          billing_cycle: facEditFields.billing_cycle,
+          category: facEditFields.category,
+        } : it));
+        setFacEditId(null);
+        showToast('Updated', 'success');
+      } else {
+        showToast('Update failed', 'error');
+      }
+    } catch { showToast('Update failed', 'error'); }
+    setFacSaving(false);
+  };
+
+  const dismissFacItem = async (id: string) => {
+    try {
+      const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setFacItems(prev => prev.filter(it => it.id !== id));
+        setFacCounts(prev => ({ ...prev, total: (prev.total || 1) - 1 }));
+        showToast('Dismissed', 'info');
+      }
+    } catch { /* silent */ }
+  };
+
+  const markFacPaid = async (id: string) => {
+    // Mark needs_review = false so item no longer surfaces as needing action
+    try {
+      const response = await fetch(`/api/subscriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ needs_review: false }),
+      });
+      if (response.ok) {
+        setFacItems(prev => prev.map(it => it.id === id ? { ...it, bankStatus: 'bank_matched' as FacBankStatus } : it));
+        showToast('Marked as paid', 'success');
+      } else {
+        showToast('Failed to update — please try again', 'error');
+      }
+    } catch {
+      showToast('Failed to update — please try again', 'error');
     }
   };
 
@@ -173,6 +277,7 @@ export default function MoneyHubPage() {
   useEffect(() => {
     refreshData();
     fetchExpectedBills();
+    fetchFac();
 
     // Fetch deals
     (async () => {
@@ -723,12 +828,19 @@ export default function MoneyHubPage() {
             <h3 className="text-white font-semibold text-lg flex items-center gap-2">
               <Zap className="h-5 w-5 text-amber-400" />
               Financial Action Centre
+              {facItems.length > 0 && (
+                <span className="text-xs font-normal text-slate-400 ml-1">
+                  {facCounts.overdue > 0 && <span className="text-red-400 font-semibold">{facCounts.overdue} overdue · </span>}
+                  {facCounts.due_soon > 0 && <span className="text-amber-400 font-semibold">{facCounts.due_soon} due soon · </span>}
+                  {facItems.length} tracked
+                </span>
+              )}
             </h3>
             <Link href="/dashboard/deals" className="text-mint-400 hover:text-mint-300 text-sm font-medium">Browse deals →</Link>
           </div>
 
           {/* Email scan results / alerts */}
-          <div className="mb-4">
+          <div className="mb-5">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5 text-purple-400" /> Inbox Scan
@@ -758,27 +870,175 @@ export default function MoneyHubPage() {
             )}
           </div>
 
-          {/* Subscriptions that could be reviewed */}
-          {data.subscriptions && data.subscriptions.length > 0 && (
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-amber-400" /> Active Subscriptions ({data.subscriptions.filter((s: any) => s.status === 'active').length})
-                </p>
+          {/* Subscriptions with bank deduplication */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-amber-400" /> Tracked Subscriptions
+              </p>
+              <div className="flex items-center gap-3">
+                {facLoading && <Loader2 className="h-3 w-3 text-slate-500 animate-spin" />}
                 <Link href="/dashboard/subscriptions" className="text-xs text-mint-400 hover:text-mint-300 font-medium">View all →</Link>
               </div>
-              <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
-                {data.subscriptions
-                  .filter((s: any) => s.status === 'active')
-                  .map((s: any) => (
-                    <div key={s.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg p-3 border border-navy-800">
-                      <span className="text-sm text-white truncate">{s.provider_name}</span>
-                      <span className="text-amber-400 text-sm font-medium whitespace-nowrap ml-2">£{fmtNum(parseFloat(s.amount) || 0)}/{s.billing_cycle === 'yearly' ? 'yr' : 'mo'}</span>
-                    </div>
-                  ))}
-              </div>
             </div>
-          )}
+
+            {facItems.length === 0 && !facLoading && (
+              <p className="text-slate-500 text-xs py-2">No active subscriptions tracked.</p>
+            )}
+
+            {facItems.length > 0 && (() => {
+              const displayItems = facShowAll ? facItems : facItems.slice(0, 8);
+              return (
+                <div className="space-y-2">
+                  {displayItems.map((item) => {
+                    const isEditing = facEditId === item.id;
+                    const cycleLabel = (c: string | null) => c === 'yearly' ? 'yr' : c === 'quarterly' ? 'qtr' : c === 'weekly' ? 'wk' : 'mo';
+                    const statusBadge = (() => {
+                      if (item.bankStatus === 'bank_matched') return (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">
+                          <Check className="h-2.5 w-2.5" /> In bank data
+                        </span>
+                      );
+                      if (item.bankStatus === 'overdue') return (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">
+                          <AlertTriangle className="h-2.5 w-2.5" /> Overdue
+                        </span>
+                      );
+                      if (item.bankStatus === 'due_soon') return (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">
+                          <Clock className="h-2.5 w-2.5" /> Due soon
+                        </span>
+                      );
+                      return (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">
+                          Not in bank
+                        </span>
+                      );
+                    })();
+
+                    return (
+                      <div key={item.id} className={`rounded-lg border transition-colors ${isEditing ? 'bg-navy-800 border-mint-400/40' : 'bg-navy-950/50 border-navy-800'}`}>
+                        <div className="flex items-center gap-2 p-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm text-white font-medium truncate">{item.provider_name}</span>
+                              {statusBadge}
+                            </div>
+                            {item.matchedTxn && (
+                              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                                Last seen: £{fmtNum(item.matchedTxn.amount)} on {new Date(item.matchedTxn.timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                              </p>
+                            )}
+                            {item.next_billing_date && item.bankStatus !== 'bank_matched' && (
+                              <p className="text-[10px] text-slate-500 mt-0.5">
+                                Due: {new Date(item.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className={`text-sm font-semibold whitespace-nowrap ${item.bankStatus === 'overdue' ? 'text-red-400' : 'text-amber-400'}`}>
+                              £{fmtNum(item.amount)}/{cycleLabel(item.billing_cycle)}
+                            </span>
+                            <button
+                              onClick={() => isEditing ? setFacEditId(null) : openFacEdit(item)}
+                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-navy-700 transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => dismissFacItem(item.id)}
+                              className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              title="Dismiss"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Inline edit form */}
+                        {isEditing && (
+                          <div className="px-3 pb-3 border-t border-navy-700 pt-3">
+                            <div className="grid grid-cols-3 gap-2 mb-2">
+                              <div>
+                                <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Amount (£)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={facEditFields.amount}
+                                  onChange={e => setFacEditFields(f => ({ ...f, amount: e.target.value }))}
+                                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-mint-400"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Frequency</label>
+                                <select
+                                  value={facEditFields.billing_cycle}
+                                  onChange={e => setFacEditFields(f => ({ ...f, billing_cycle: e.target.value }))}
+                                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-mint-400"
+                                >
+                                  <option value="weekly">Weekly</option>
+                                  <option value="monthly">Monthly</option>
+                                  <option value="quarterly">Quarterly</option>
+                                  <option value="yearly">Yearly</option>
+                                  <option value="one-time">One-off</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Category</label>
+                                <select
+                                  value={facEditFields.category}
+                                  onChange={e => setFacEditFields(f => ({ ...f, category: e.target.value }))}
+                                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-mint-400"
+                                >
+                                  {['streaming', 'software', 'fitness', 'broadband', 'mobile', 'utility', 'insurance', 'loan', 'credit_card', 'mortgage', 'council_tax', 'transport', 'shopping', 'charity', 'other'].map(c => (
+                                    <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              {item.bankStatus !== 'bank_matched' && (
+                                <button
+                                  onClick={() => markFacPaid(item.id)}
+                                  className="text-xs text-green-400 hover:text-green-300 font-medium px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 rounded-lg transition-colors"
+                                >
+                                  Already paid
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setFacEditId(null)}
+                                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 bg-navy-800 hover:bg-navy-700 rounded-lg transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => saveFacEdit(item.id)}
+                                disabled={facSaving}
+                                className="text-xs text-navy-950 font-semibold px-3 py-1.5 bg-mint-400 hover:bg-mint-300 disabled:opacity-50 rounded-lg transition-colors"
+                              >
+                                {facSaving ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {facItems.length > 8 && (
+                    <button
+                      onClick={() => setFacShowAll(v => !v)}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-white py-2 transition-colors"
+                    >
+                      {facShowAll ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</> : <><ChevronDown className="h-3.5 w-3.5" /> Show all {facItems.length} subscriptions</>}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
 
           {/* Better Deals Section */}
           {deals && deals.subscriptions && deals.subscriptions.length > 0 ? (
@@ -824,7 +1084,7 @@ export default function MoneyHubPage() {
           <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
             <Building2 className="h-5 w-5 text-amber-400 shrink-0" />
             <div>
-              <p className="text-white font-medium text-sm">{(data.subscriptions && data.subscriptions.filter((s: any) => s.status === 'active').length > 0) ? `Manage ${data.subscriptions.filter((s: any) => s.status === 'active').length} subscriptions` : 'Subscription Audit'}</p>
+              <p className="text-white font-medium text-sm">{facItems.length > 0 ? `Manage ${facItems.length} subscriptions` : 'Subscription Audit'}</p>
               <p className="text-slate-500 text-xs">Review, cancel, or switch</p>
             </div>
           </Link>
