@@ -179,6 +179,9 @@ export default function MoneyHubPage() {
       // Revert optimistic update on failure
       setExpectedBills(prev => prev.map(b => b.bill_key === billKey ? { ...b, paid: !paid } : b));
       showToast('Could not update bill status', 'error');
+    }
+  };
+
   // More FAC Handlers
   const fetchFac = async () => {
     setFacLoading(true);
