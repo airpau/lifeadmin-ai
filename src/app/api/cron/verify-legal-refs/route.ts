@@ -19,10 +19,11 @@ function hashContent(text: string): string {
 }
 
 /**
- * Weekly legal reference verification cron.
- * Schedule: Sundays at 6am — configured in vercel.json
+ * Daily legal reference verification cron.
+ * Schedule: Daily at 5am — configured in vercel.json
  *
- * Two verification methods:
+ * Cost-efficient: only calls Claude Haiku when a content_hash has changed.
+ * On no-change days, the entire run is pure HTTP fetches (~£0).
  * a) Statutes: Check legislation.gov.uk API for amendments
  * b) Regulator rules: Fetch page content, compare content_hash, Claude Haiku for changes
  *
