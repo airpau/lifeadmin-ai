@@ -115,6 +115,26 @@ export default function MoneyHubPage() {
     } catch { /* silent */ }
   };
 
+  const dismissBill = async (bill: ExpectedBill) => {
+    if (!userId || !bill.bill_key) return;
+    const now = new Date();
+    const targetMonth = selectedMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [year, month] = targetMonth.split('-').map(Number);
+    // Optimistic removal
+    setExpectedBills(prev => prev.filter(b => b.bill_key !== bill.bill_key));
+    setExpectedBillsTotal(prev => parseFloat((prev - bill.expected_amount).toFixed(2)));
+    const { error } = await supabase.rpc('dismiss_expected_bill', {
+      p_user_id: userId,
+      p_bill_key: bill.bill_key,
+      p_year: year,
+      p_month: month,
+    });
+    if (error) {
+      showToast('Failed to dismiss bill.', 'error');
+      fetchExpectedBills();
+    }
+  };
+
   // ─── Initial load ──────────────────────────────────────────────────────
 
   // Handle ?connected=true redirect after bank reconnection
@@ -604,7 +624,18 @@ export default function MoneyHubPage() {
                       {bill.past_due && !bill.paid && <span className="text-[10px] text-red-400 font-medium">⚠ Not seen</span>}
                     </div>
                   </div>
-                  <span className={`text-sm font-semibold whitespace-nowrap ml-2 ${amountColor}`}>£{fmtNum(bill.expected_amount)}</span>
+                  <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                    <span className={`text-sm font-semibold whitespace-nowrap ${amountColor}`}>£{fmtNum(bill.expected_amount)}</span>
+                    {!bill.paid && bill.bill_key && (
+                      <button
+                        onClick={() => dismissBill(bill)}
+                        className="text-slate-600 hover:text-slate-400 transition-colors p-0.5"
+                        title="Dismiss this expected bill"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
