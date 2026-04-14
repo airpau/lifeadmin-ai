@@ -56,9 +56,24 @@ export async function GET(request: NextRequest) {
 
   await loadLearnedRules();
   const overrides = buildMoneyHubOverrideMaps(overrideRows || []);
-  const internalTransfers = applyInternalTransferHeuristic(txns || []);
   
-  const resolvedTransactions = (txns || []).map((txn) => {
+  // Deduplicate before processing — same amount + date + merchant = duplicate
+  const dedupedTxns = (() => {
+    const seen = new Map<string, boolean>();
+    return (txns || []).filter(txn => {
+      const date = (txn.timestamp || '').substring(0, 10);
+      const merchant = (txn.merchant_name || txn.description || '').toLowerCase().trim();
+      const amt = parseFloat(String(txn.amount)) || 0;
+      const key = `${amt}|${date}|${merchant}`;
+      if (seen.has(key)) return false;
+      seen.set(key, true);
+      return true;
+    });
+  })();
+  
+  const internalTransfers = applyInternalTransferHeuristic(dedupedTxns);
+  
+  const resolvedTransactions = dedupedTxns.map((txn) => {
     const overrideCategory = findMatchingCategoryOverride(
       txn,
       overrides.transactionOverrides,

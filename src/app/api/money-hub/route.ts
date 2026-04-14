@@ -20,6 +20,25 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
   return timestamp.startsWith(monthKey);
 }
 
+/**
+ * Client-side deduplication of bank transactions.
+ * Matches the DB-level deduplicate_bank_transactions RPC logic:
+ * same amount + same date + same merchant/description → keep only the first (newest sync).
+ * This catches duplicates from overlapping TrueLayer/Yapily connections.
+ */
+function deduplicateTransactions(txns: any[]): any[] {
+  const seen = new Map<string, boolean>();
+  return txns.filter(txn => {
+    const date = (txn.timestamp || '').substring(0, 10); // YYYY-MM-DD
+    const merchant = (txn.merchant_name || txn.description || '').toLowerCase().trim();
+    const amt = parseFloat(String(txn.amount)) || 0;
+    const key = `${amt}|${date}|${merchant}`;
+    if (seen.has(key)) return false;
+    seen.set(key, true);
+    return true;
+  });
+}
+
 function summariseTransactionsForMonth(txns: any[], overrides: any, monthKey: string, internalTransfers: Set<string>) {
   const categoryTotals: Record<string, number> = {};
   const incomeRows: Record<string, number> = {};
@@ -121,7 +140,8 @@ export async function GET(request: Request) {
       admin.rpc('get_monthly_income', { p_user_id: user.id, p_year: selYear, p_month: selMonth }),
     ]);
 
-    const allTxns = txns || [];
+    // Deduplicate transactions before any computation
+    const allTxns = deduplicateTransactions(txns || []);
     await loadLearnedRules();
     const overrides = buildMoneyHubOverrideMaps(categoryOverrides || []);
     const internalTransfers = applyInternalTransferHeuristic(allTxns);
