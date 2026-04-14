@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing referralCode' }, { status: 400 });
     }
 
-    const result = await processReferral(referralCode, userId, email);
+    const result = await processReferral(referralCode, userId, email || '');
 
     if (result.success) {
       console.log(`Referral processed: code=${referralCode} newUser=${userId} referrer=${result.referrerId}`);

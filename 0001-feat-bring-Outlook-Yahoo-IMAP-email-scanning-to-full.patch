@@ -1,0 +1,1031 @@
+From 4af780f7bd480019cc8a1da9c7c9facedf95f044 Mon Sep 17 00:00:00 2001
+From: Paul Airey <aireypaul@googlemail.com>
+Date: Sat, 11 Apr 2026 21:37:28 +0100
+Subject: [PATCH] feat: bring Outlook + Yahoo/IMAP email scanning to full Gmail
+ parity
+
+Outlook scanner: complete rewrite with 7 parallel KQL search queries,
+full HTML body extraction, Claude Sonnet analysis with comprehensive
+UK consumer law prompt, and 4-table database persistence (tasks,
+subscriptions, money_hub_alerts, scanned_receipts).
+
+IMAP scanner (Yahoo/Other): increased body extraction from 200 to
+2000 chars, added plan/rate limit checks, admin bypass, maxDuration
+120, 4-table persistence matching Gmail/Outlook standard.
+
+Scanner UI: Yahoo button enters IMAP mode correctly, "Other" provider
+now shows custom host/port fields for unmapped email domains, all
+modal states properly reset on close.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ src/app/api/email/scan/route.ts   | 168 ++++++++---
+ src/app/api/outlook/scan/route.ts | 154 +++++++++--
+ src/lib/imap-scanner.ts           |   3 +-
+ src/lib/outlook.ts                | 444 +++++++++++++++++++++++++-----
+ 4 files changed, 633 insertions(+), 136 deletions(-)
+
+diff --git a/src/app/api/email/scan/route.ts b/src/app/api/email/scan/route.ts
+index d12de93..d67edba 100644
+--- a/src/app/api/email/scan/route.ts
++++ b/src/app/api/email/scan/route.ts
+@@ -1,11 +1,15 @@
+ import { NextRequest, NextResponse } from 'next/server';
++
++export const maxDuration = 120;
+ import { createClient } from '@/lib/supabase/server';
+ import { createClient as createAdmin } from '@supabase/supabase-js';
+ import {
+   scanEmailsViaImap,
+   decryptPassword,
+ } from '@/lib/imap-scanner';
+-import { logClaudeCall } from '@/lib/claude-rate-limit';
++import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
++import { checkClaudeRateLimit, recordClaudeCall, logClaudeCall } from '@/lib/claude-rate-limit';
++import { getUserPlan } from '@/lib/get-user-plan';
+ 
+ function getAdminClient() {
+   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+@@ -28,6 +32,34 @@ export async function POST(req: NextRequest) {
+       return NextResponse.json({ error: 'connectionId is required' }, { status: 400 });
+     }
+ 
++    // Plan and rate limit checks (identical to Gmail/Outlook)
++    const plan = await getUserPlan(user.id);
++    const usageCheck = await checkUsageLimit(user.id, 'scan_run');
++    const isAdmin = user.email === 'aireypaul@googlemail.com';
++
++    if (!isAdmin) {
++      if (plan.tier === 'free') {
++        return NextResponse.json(
++          { error: 'Inbox scanning is available on Essential and Pro plans. Upgrade to automatically find hidden subscriptions and savings.', upgradeRequired: true },
++          { status: 403 }
++        );
++      }
++
++      if (!usageCheck.allowed) {
++        return NextResponse.json(
++          { error: 'Monthly scan limit reached. Upgrade to Pro for unlimited scans.', upgradeRequired: true, used: usageCheck.used, limit: usageCheck.limit },
++          { status: 403 }
++        );
++      }
++      const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
++      if (!rateLimit.allowed) {
++        return NextResponse.json(
++          { error: 'Rate limit exceeded. Please try again later.' },
++          { status: 429 }
++        );
++      }
++    }
++
+     // Fetch connection (use admin to bypass RLS for encrypted_password)
+     const admin = getAdminClient();
+     const { data: conn, error: connErr } = await admin
+@@ -46,10 +78,8 @@ export async function POST(req: NextRequest) {
+     }
+ 
+     // For OAuth connections (Google/Outlook), use their dedicated scan endpoints
+-    // These connections store plain-text OAuth tokens, not encrypted IMAP passwords
+     if (conn.auth_method === 'oauth') {
+       if (conn.provider_type === 'google') {
+-        // Proxy to Gmail scan which handles token refresh and Gmail API
+         console.log('[email/scan] Redirecting Google OAuth connection to /api/gmail/scan');
+         const gmailRes = await fetch(new URL('/api/gmail/scan', req.url), {
+           method: 'POST',
+@@ -97,7 +127,6 @@ export async function POST(req: NextRequest) {
+     console.log(`[email/scan] Found ${emails.length} financial emails`);
+ 
+     if (emails.length === 0) {
+-      // Update last_scanned_at even if no results
+       await admin
+         .from('email_connections')
+         .update({ last_scanned_at: new Date().toISOString() })
+@@ -106,7 +135,7 @@ export async function POST(req: NextRequest) {
+       return NextResponse.json({ opportunities: [], emailsFound: 0, emailsScanned: 0 });
+     }
+ 
+-    // Group emails by sender (same pattern as Gmail scanner)
++    // Group emails by sender (same pattern as Gmail/Outlook scanner)
+     const senderMap = new Map<string, {
+       from: string;
+       subjects: string[];
+@@ -123,7 +152,7 @@ export async function POST(req: NextRequest) {
+       const group = senderMap.get(key)!;
+       group.subjects.push(e.subject);
+       group.dates.push(e.date);
+-      group.bodies.push((e.bodyPreview || '').substring(0, 200));
++      group.bodies.push((e.bodyPreview || '').substring(0, 2000));
+     }
+ 
+     // Build compact summary grouped by sender
+@@ -142,7 +171,7 @@ export async function POST(req: NextRequest) {
+       ? senderSummary.substring(0, 400000)
+       : senderSummary;
+ 
+-    // Send to Claude for analysis (same prompt as Gmail scanner)
++    // Send to Claude for analysis (identical prompt to Gmail/Outlook)
+     const { default: Anthropic } = await import('@anthropic-ai/sdk');
+     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+     const SCAN_MODEL = 'claude-sonnet-4-6';
+@@ -159,7 +188,7 @@ export async function POST(req: NextRequest) {
+ 
+     const message = await anthropic.messages.create({
+       model: SCAN_MODEL,
+-      max_tokens: 4096,
++      max_tokens: 8192,
+       system: `You are a UK consumer finance analyst. Your job is to find EVERY financial opportunity in these emails. Be aggressive: if an email is from a known provider, that IS an opportunity.
+ 
+ CRITICAL: The sender email address and subject line are your primary signals. Even if the body is truncated, you can identify:
+@@ -177,7 +206,7 @@ CRITICAL: The sender email address and subject line are your primary signals. Ev
+ 
+ Return a JSON array. Each entry must have:
+ - id: unique string (e.g. "opp_1")
+-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay" | "debt_dispute" | "tax_rebate"
++- type: "overcharge" | "renewal" | "forgotten_subscription" | "subscription" | "price_increase" | "loan" | "credit_card" | "insurance" | "utility_bill" | "refund_opportunity" | "flight_delay" | "debt_dispute" | "tax_rebate"
+ - category: "streaming" | "software" | "fitness" | "broadband" | "mobile" | "utility" | "insurance" | "loan" | "credit_card" | "mortgage" | "council_tax" | "transport" | "food" | "shopping" | "gambling" | "other"
+ - title: short actionable title (max 80 chars)
+ - description: 2-3 sentences explaining what was found and what the user should do. Include specific UK consumer rights where relevant.
+@@ -188,6 +217,7 @@ Return a JSON array. Each entry must have:
+ - status: "new"
+ - suggestedAction: "track" | "cancel" | "switch_deal" | "dispute" | "claim_refund" | "claim_compensation" | "monitor"
+ - contractEndDate: ISO date if found, null otherwise
++- nextPaymentDate: ISO date if found, null otherwise
+ - paymentAmount: exact amount if found, null otherwise
+ - paymentFrequency: "monthly" | "quarterly" | "yearly" | "one-time" | null
+ - accountNumber: reference number if found, null otherwise
+@@ -221,6 +251,7 @@ IMPORTANT:
+       status: string;
+       suggestedAction?: string;
+       contractEndDate?: string | null;
++      nextPaymentDate?: string | null;
+       paymentAmount?: number | null;
+       paymentFrequency?: string | null;
+       accountNumber?: string | null;
+@@ -245,52 +276,115 @@ IMPORTANT:
+       }
+     }
+ 
+-    // Filter out opportunities that already exist in the database (even if dismissed)
++    // Record usage for non-admin users
++    if (!isAdmin) {
++      await recordClaudeCall(user.id, usageCheck.tier);
++      await incrementUsage(user.id, 'scan_run');
++    }
++
++    // Save opportunities to database for persistence (identical to Gmail/Outlook)
+     if (opportunities.length > 0) {
++      // Get existing opportunity titles to avoid duplicates (across all statuses, so we don't recreate dismissed items)
+       const { data: existing } = await admin
+         .from('tasks')
+         .select('title')
+         .eq('user_id', user.id)
+         .eq('type', 'opportunity');
+-        
++
+       const existingTitles = new Set((existing || []).map((t: any) => t.title));
+-      opportunities = opportunities.filter((o) => !existingTitles.has(o.title));
+ 
+-      if (opportunities.length > 0) {
+-        const rows = opportunities.map((opp) => ({
+-          user_id: user.id,
+-          type: 'opportunity',
+-          title: opp.title,
+-          description: JSON.stringify(opp),
+-          provider_name: opp.provider,
+-          priority: opp.confidence >= 80 ? 'high' : opp.confidence >= 60 ? 'medium' : 'low',
+-          status: 'pending_review',
+-          source: 'imap_scan',
+-        }));
+-
+-        const { error: insertErr } = await admin.from('tasks').upsert(rows, {
+-          onConflict: 'user_id,title',
+-          ignoreDuplicates: true,
+-        });
+-        if (insertErr) {
+-          console.error('[email/scan] Task insert error:', insertErr);
++      // Separate opportunities by type
++      const newSubs = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type === 'subscription' || o.type === 'forgotten_subscription'));
++      const newAlerts = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type !== 'subscription' && o.type !== 'forgotten_subscription'));
++      const newOpportunities = [...newSubs, ...newAlerts];
++
++      if (newOpportunities.length > 0) {
++        // Log to tasks (audit trail for scanner)
++        await admin.from('tasks').insert(
++          newOpportunities.map((o: any) => ({
++            user_id: user.id,
++            type: 'opportunity',
++            title: o.title,
++            description: JSON.stringify(o),
++            provider_name: o.provider,
++            status: o.confidence < 70 ? 'suggested' : 'pending_review',
++            priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
++          }))
++        );
++
++        // Populate Subscriptions
++        if (newSubs.length > 0) {
++          await admin.from('subscriptions').insert(
++            newSubs.map((o: any) => ({
++              user_id: user.id,
++              provider_name: o.provider || 'Unknown',
++              amount: o.amount || o.paymentAmount || 0,
++              billing_cycle: o.paymentFrequency === 'yearly' ? 'yearly' : (o.paymentFrequency === 'quarterly' ? 'quarterly' : 'monthly'),
++              status: 'active',
++              source: 'imap_scan',
++              category: o.category || 'other',
++              next_payment_date: o.nextPaymentDate || null,
++              contract_end_date: o.contractEndDate || null,
++              notes: o.description,
++              detected_at: new Date().toISOString()
++            }))
++          ).then(({ error: e }) => { if (e) console.error('[email/scan] subscriptions insert error:', e.message); });
++        }
++
++        // Populate Deals / Alerts
++        if (newAlerts.length > 0) {
++          await admin.from('money_hub_alerts').insert(
++            newAlerts.map((o: any) => ({
++              user_id: user.id,
++              type: o.type,
++              title: o.title,
++              description: o.description,
++              value_gbp: o.amount || 0,
++              status: 'active',
++              metadata: o
++            }))
++          ).then(({ error: e }) => { if (e) console.error('[email/scan] money_hub_alerts insert error:', e.message); });
+         }
+       }
++
++      // Also save to scanned_receipts for the Scanner UI
++      const receiptDate = new Date().toISOString().split('T')[0];
++      await admin.from('scanned_receipts').insert(
++        newOpportunities.map((o: any) => ({
++          user_id: user.id,
++          provider_name: o.provider || 'Unknown',
++          receipt_type: o.category || o.type || 'other',
++          amount: o.amount || 0,
++          receipt_date: receiptDate,
++          image_url: o.provider || 'scan',
++          extracted_data: o,
++        }))
++      ).then(({ error: e }) => { if (e) console.error('[email/scan] scanned_receipts insert:', e.message); });
++
++      // Update opportunities to only include new ones in response
++      opportunities = newOpportunities;
+     }
+ 
+-    // Update last_scanned_at
+-    await admin
+-      .from('email_connections')
+-      .update({ last_scanned_at: new Date().toISOString() })
+-      .eq('id', connectionId);
++    // Update last scanned metadata
++    await admin.from('email_connections').update({
++      last_scanned_at: new Date().toISOString(),
++      emails_scanned: (conn.emails_scanned || 0) + senderMap.size,
++    }).eq('id', connectionId);
+ 
+     return NextResponse.json({
+-      opportunities: opportunities.map((o) => ({ ...o, status: 'new' })),
++      opportunities,
+       emailsFound: emails.length,
+       emailsScanned: senderMap.size,
++      opportunityCount: opportunities.length,
++      scannedAt: new Date().toISOString(),
+     });
+   } catch (err: any) {
+     console.error('[email/scan] Error:', err.message);
+-    return NextResponse.json({ error: err.message || 'Scan failed' }, { status: 500 });
++    return NextResponse.json({
++      error: err.message || 'Scan failed',
++      opportunities: [],
++      emailsFound: 0,
++      emailsScanned: 0,
++    }, { status: 500 });
+   }
+ }
+diff --git a/src/app/api/outlook/scan/route.ts b/src/app/api/outlook/scan/route.ts
+index 60c123d..e12156f 100644
+--- a/src/app/api/outlook/scan/route.ts
++++ b/src/app/api/outlook/scan/route.ts
+@@ -1,9 +1,12 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ 
+-export const maxDuration = 60;
++export const maxDuration = 120;
+ import { createClient } from '@/lib/supabase/server';
+ import { createClient as createAdminClient } from '@supabase/supabase-js';
+ import { scanOutlookForOpportunities, refreshMicrosoftToken } from '@/lib/outlook';
++import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
++import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
++import { getUserPlan } from '@/lib/get-user-plan';
+ 
+ export async function POST(request: NextRequest) {
+   const supabase = await createClient();
+@@ -13,10 +16,7 @@ export async function POST(request: NextRequest) {
+     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+   }
+ 
+-  // Plan and rate limit checks
+-  const { getUserPlan } = await import('@/lib/get-user-plan');
+-  const { checkUsageLimit } = await import('@/lib/plan-limits');
+-  
++  // Plan and rate limit checks (identical to Gmail)
+   const plan = await getUserPlan(user.id);
+   const usageCheck = await checkUsageLimit(user.id, 'scan_run');
+   const isAdmin = user.email === 'aireypaul@googlemail.com';
+@@ -35,11 +35,18 @@ export async function POST(request: NextRequest) {
+         { status: 403 }
+       );
+     }
++    const rateLimit = await checkClaudeRateLimit(user.id, usageCheck.tier);
++    if (!rateLimit.allowed) {
++      return NextResponse.json(
++        { error: 'Rate limit exceeded. Please try again later.' },
++        { status: 429 }
++      );
++    }
+   }
+ 
+   const admin = createAdminClient(
+-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+-    process.env.SUPABASE_SERVICE_ROLE_KEY!
++    (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim(),
++    (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+   );
+ 
+   // Check email_connections for Outlook OAuth connection
+@@ -53,46 +60,147 @@ export async function POST(request: NextRequest) {
+     .single();
+ 
+   if (!connection) {
+-    return NextResponse.json({ error: 'Outlook not connected' }, { status: 400 });
++    return NextResponse.json({ error: 'Outlook not connected. Please connect your Microsoft account first.', opportunities: [] }, { status: 400 });
+   }
+ 
++  // Always refresh token (they expire every hour)
+   let accessToken = connection.access_token;
+-
+-  // Refresh token if expired
+-  if (connection.token_expiry && new Date(connection.token_expiry) < new Date()) {
+-    if (!connection.refresh_token) {
+-      return NextResponse.json({ error: 'Token expired, please reconnect Outlook' }, { status: 400 });
+-    }
++  if (connection.refresh_token) {
+     try {
++      console.log('[outlook-scan] Refreshing access token...');
+       const refreshed = await refreshMicrosoftToken(connection.refresh_token);
+       accessToken = refreshed.access_token;
++      const newExpiry = new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString();
+       await admin.from('email_connections').update({
+         access_token: accessToken,
+-        token_expiry: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
++        token_expiry: newExpiry,
++        // If a new refresh token was issued, save it (Microsoft sometimes rotates)
++        ...(refreshed.refresh_token ? { refresh_token: refreshed.refresh_token } : {}),
+         updated_at: new Date().toISOString(),
+       }).eq('id', connection.id);
+-    } catch (err: any) {
+-      console.error('[outlook-scan] Token refresh failed:', err.message);
+-      return NextResponse.json({ error: 'Token expired. Please reconnect Outlook.' }, { status: 400 });
++      console.log('[outlook-scan] Token refreshed OK');
++    } catch (refreshErr: any) {
++      console.error('[outlook-scan] Token refresh failed:', refreshErr.message);
++      return NextResponse.json({ error: 'Microsoft token refresh failed. Please reconnect your Microsoft account.', opportunities: [] }, { status: 401 });
+     }
+   }
+ 
+   try {
+-    const opportunities = await scanOutlookForOpportunities(accessToken);
++    // Use the comprehensive scanning function (now matches Gmail capability)
++    console.log('[outlook-scan] Starting comprehensive email scan...');
++    const scanResult = await scanOutlookForOpportunities(accessToken);
++    let opportunities = scanResult.opportunities;
++
++    console.log(`[outlook-scan] Scan complete: ${scanResult.emailsFound} found, ${scanResult.emailsScanned} scanned, ${opportunities.length} opportunities`);
++
++    if (!isAdmin) {
++      await recordClaudeCall(user.id, usageCheck.tier);
++      await incrementUsage(user.id, 'scan_run');
++    }
++
++    // Save opportunities to database for persistence (identical to Gmail)
++    if (opportunities.length > 0) {
++      // Get existing opportunity titles to avoid duplicates (across all statuses, so we don't recreate dismissed items)
++      const { data: existing } = await admin
++        .from('tasks')
++        .select('title')
++        .eq('user_id', user.id)
++        .eq('type', 'opportunity');
+ 
+-    // Update last scanned
++      const existingTitles = new Set((existing || []).map((t: any) => t.title));
++
++      // Separate opportunities by type
++      const newSubs = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type === 'subscription' || o.type === 'forgotten_subscription'));
++      const newAlerts = opportunities.filter((o: any) => !existingTitles.has(o.title) && (o.type !== 'subscription' && o.type !== 'forgotten_subscription'));
++      const newOpportunities = [...newSubs, ...newAlerts];
++
++      if (newOpportunities.length > 0) {
++        // Log to tasks (audit trail for scanner)
++        await admin.from('tasks').insert(
++          newOpportunities.map((o: any) => ({
++            user_id: user.id,
++            type: 'opportunity',
++            title: o.title,
++            description: JSON.stringify(o),
++            provider_name: o.provider,
++            status: o.confidence < 70 ? 'suggested' : 'pending_review',
++            priority: o.confidence >= 80 ? 'high' : o.confidence >= 60 ? 'medium' : 'low',
++          }))
++        );
++
++        // Populate Subscriptions
++        if (newSubs.length > 0) {
++          await admin.from('subscriptions').insert(
++            newSubs.map((o: any) => ({
++              user_id: user.id,
++              provider_name: o.provider || 'Unknown',
++              amount: o.amount || o.paymentAmount || 0,
++              billing_cycle: o.paymentFrequency === 'yearly' ? 'yearly' : (o.paymentFrequency === 'quarterly' ? 'quarterly' : 'monthly'),
++              status: 'active',
++              source: 'outlook_scan',
++              category: o.category || 'other',
++              next_payment_date: o.nextPaymentDate || null,
++              contract_end_date: o.contractEndDate || null,
++              notes: o.description,
++              detected_at: new Date().toISOString()
++            }))
++          ).then(({ error: e }) => { if (e) console.error('[outlook-scan] subscriptions insert error:', e.message); });
++        }
++
++        // Populate Deals / Alerts
++        if (newAlerts.length > 0) {
++          await admin.from('money_hub_alerts').insert(
++            newAlerts.map((o: any) => ({
++              user_id: user.id,
++              type: o.type,
++              title: o.title,
++              description: o.description,
++              value_gbp: o.amount || 0,
++              status: 'active',
++              metadata: o
++            }))
++          ).then(({ error: e }) => { if (e) console.error('[outlook-scan] money_hub_alerts insert error:', e.message); });
++        }
++      }
++
++      // Also save to scanned_receipts for the Scanner UI
++      const today = new Date().toISOString().split('T')[0];
++      await admin.from('scanned_receipts').insert(
++        newOpportunities.map((o: any) => ({
++          user_id: user.id,
++          provider_name: o.provider || 'Unknown',
++          receipt_type: o.category || o.type || 'other',
++          amount: o.amount || 0,
++          receipt_date: today,
++          image_url: o.provider || 'scan',
++          extracted_data: o,
++        }))
++      ).then(({ error: e }) => { if (e) console.error('[outlook-scan] scanned_receipts insert:', e.message); });
++
++      // Update opportunities to only include new ones in response
++      opportunities = newOpportunities;
++    }
++
++    // Update last scanned metadata
+     await admin.from('email_connections').update({
+       last_scanned_at: new Date().toISOString(),
+-      emails_scanned: (connection.emails_scanned || 0) + opportunities.length,
++      emails_scanned: (connection.emails_scanned || 0) + scanResult.emailsScanned,
+     }).eq('id', connection.id);
+ 
+     return NextResponse.json({
+       opportunities,
+-      count: opportunities.length,
++      emailsFound: scanResult.emailsFound,
++      emailsScanned: scanResult.emailsScanned,
++      opportunityCount: opportunities.length,
+       scannedAt: new Date().toISOString(),
+     });
+   } catch (err: any) {
+     console.error('[outlook-scan] Scan error:', err.message);
+-    return NextResponse.json({ error: err.message || 'Scan failed' }, { status: 500 });
++    return NextResponse.json({
++      error: err.message || 'Scan failed',
++      opportunities: [],
++      emailsFound: 0,
++      emailsScanned: 0,
++    }, { status: 500 });
+   }
+ }
+diff --git a/src/lib/imap-scanner.ts b/src/lib/imap-scanner.ts
+index ad8abb3..c3122b5 100644
+--- a/src/lib/imap-scanner.ts
++++ b/src/lib/imap-scanner.ts
+@@ -72,6 +72,7 @@ export interface ScannedEmail {
+ }
+ 
+ const MAX_EMAILS = 500;
++const BODY_PREVIEW_LENGTH = 2000; // Match Gmail/Outlook full-body analysis
+ 
+ /**
+  * Connect to an IMAP server and fetch financial emails from the last `daysBack` days.
+@@ -145,7 +146,7 @@ export async function scanEmailsViaImap(
+                 const parsed: ParsedMail = await simpleParser(msg.source);
+                 const htmlText = typeof parsed.html === 'string' ? parsed.html.replace(/<[^>]+>/g, ' ') : '';
+                 const text = parsed.text || htmlText || '';
+-                bodyPreview = text.replace(/\s+/g, ' ').trim().slice(0, 200);
++                bodyPreview = text.replace(/\s+/g, ' ').trim().slice(0, BODY_PREVIEW_LENGTH);
+               } catch {
+                 bodyPreview = '';
+               }
+diff --git a/src/lib/outlook.ts b/src/lib/outlook.ts
+index d262d03..35e2e27 100644
+--- a/src/lib/outlook.ts
++++ b/src/lib/outlook.ts
+@@ -61,6 +61,7 @@ export async function exchangeMicrosoftCode(code: string): Promise<{
+ 
+ export async function refreshMicrosoftToken(refreshToken: string): Promise<{
+   access_token: string;
++  refresh_token?: string;
+   expires_in: number;
+ }> {
+   const res = await fetch(
+@@ -81,7 +82,32 @@ export async function refreshMicrosoftToken(refreshToken: string): Promise<{
+   return res.json();
+ }
+ 
+-interface OutlookMessage {
++// ---------- Opportunity type (shared with Gmail) ----------
++export interface Opportunity {
++  id: string;
++  emailId: string;
++  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card';
++  category: 'streaming' | 'software' | 'fitness' | 'broadband' | 'mobile' | 'utility' | 'insurance' | 'loan' | 'credit_card' | 'mortgage' | 'council_tax' | 'transport' | 'food' | 'shopping' | 'gambling' | 'other';
++  title: string;
++  description: string;
++  amount: number;
++  confidence: number;
++  provider: string;
++  detected: string;
++  status: 'new';
++  suggestedAction: 'track' | 'cancel' | 'switch_deal' | 'dispute' | 'claim_refund' | 'claim_compensation' | 'monitor';
++  contractEndDate: string | null;
++  nextPaymentDate: string | null;
++  paymentAmount: number | null;
++  previousAmount: number | null;
++  priceChangeDate: string | null;
++  paymentFrequency: 'monthly' | 'quarterly' | 'yearly' | 'one-time' | null;
++  accountNumber: string | null;
++  urgency: 'immediate' | 'soon' | 'routine';
++}
++
++// ---------- Microsoft Graph helpers ----------
++interface GraphMessage {
+   id: string;
+   subject: string;
+   from: { emailAddress: { name: string; address: string } };
+@@ -90,96 +116,364 @@ interface OutlookMessage {
+   body: { content: string; contentType: string };
+ }
+ 
+-export async function scanOutlookForOpportunities(accessToken: string) {
+-  // Search for billing/subscription emails
+-  const filter = [
+-    "contains(subject,'bill')",
+-    "contains(subject,'invoice')",
+-    "contains(subject,'renewal')",
+-    "contains(subject,'subscription')",
+-    "contains(subject,'price increase')",
+-    "contains(subject,'statement')",
+-    "contains(subject,'overdue')",
+-    "contains(subject,'direct debit')",
+-    "contains(subject,'flight delayed')",
+-    "contains(subject,'EU261')",
+-    "contains(subject,'UK261')",
+-    "contains(subject,'compensation')",
+-    "contains(subject,'easyjet')",
+-    "contains(subject,'ryanair')",
+-    "contains(subject,'wizz')"
+-  ].join(' or ');
++interface EmailData {
++  id: string;
++  subject: string;
++  from: string;
++  date: string;
++  snippet: string;
++  body: string;
++}
+ 
+-  const params = new URLSearchParams({
+-    '$filter': filter,
+-    '$select': 'id,subject,from,receivedDateTime,bodyPreview,body',
+-    '$top': '30',
+-    '$orderby': 'receivedDateTime desc',
++/**
++ * Fetch messages from Microsoft Graph using $search (KQL).
++ * Graph $search requires ConsistencyLevel: eventual header.
++ * Returns up to `maxResults` messages, following @odata.nextLink pagination.
++ */
++async function fetchMessagesBySearch(
++  accessToken: string,
++  kqlQuery: string,
++  maxResults = 100
++): Promise<GraphMessage[]> {
++  const allMessages: GraphMessage[] = [];
++  let url: string | null =
++    `https://graph.microsoft.com/v1.0/me/messages?` +
++    new URLSearchParams({
++      $search: `"${kqlQuery}"`,
++      $select: 'id,subject,from,receivedDateTime,bodyPreview,body',
++      $top: String(Math.min(50, maxResults)),
++      $count: 'true',
++    }).toString();
++
++  while (url && allMessages.length < maxResults) {
++    const res: Response = await fetch(url, {
++      headers: {
++        Authorization: `Bearer ${accessToken}`,
++        ConsistencyLevel: 'eventual',
++      },
++    });
++    if (!res.ok) {
++      const errText = await res.text();
++      console.error(`[outlook] Graph search failed (${res.status}): ${errText.substring(0, 300)}`);
++      break;
++    }
++    const data: { value?: GraphMessage[]; '@odata.nextLink'?: string } = await res.json();
++    const msgs: GraphMessage[] = data.value || [];
++    allMessages.push(...msgs);
++    url = data['@odata.nextLink'] || null;
++  }
++
++  return allMessages.slice(0, maxResults);
++}
++
++/**
++ * Alternative: fetch messages using $filter (OData) for sender-based queries.
++ * $filter can't be combined with $search, so we use it separately.
++ */
++async function fetchMessagesByFilter(
++  accessToken: string,
++  filter: string,
++  maxResults = 100
++): Promise<GraphMessage[]> {
++  const allMessages: GraphMessage[] = [];
++  // 2-year lookback
++  const twoYearsAgo = new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString();
++  const dateFilter = `receivedDateTime ge ${twoYearsAgo}`;
++  const fullFilter = `${dateFilter} and (${filter})`;
++
++  let url: string | null =
++    `https://graph.microsoft.com/v1.0/me/messages?` +
++    new URLSearchParams({
++      $filter: fullFilter,
++      $select: 'id,subject,from,receivedDateTime,bodyPreview,body',
++      $top: String(Math.min(50, maxResults)),
++      $orderby: 'receivedDateTime desc',
++    }).toString();
++
++  while (url && allMessages.length < maxResults) {
++    const res: Response = await fetch(url, {
++      headers: { Authorization: `Bearer ${accessToken}` },
++    });
++    if (!res.ok) {
++      const errText = await res.text();
++      console.error(`[outlook] Graph filter failed (${res.status}): ${errText.substring(0, 300)}`);
++      break;
++    }
++    const data: { value?: GraphMessage[]; '@odata.nextLink'?: string } = await res.json();
++    const msgs: GraphMessage[] = data.value || [];
++    allMessages.push(...msgs);
++    url = data['@odata.nextLink'] || null;
++  }
++
++  return allMessages.slice(0, maxResults);
++}
++
++/** Extract plain text body from a Graph message, stripping HTML. */
++function extractBody(msg: GraphMessage): string {
++  const raw = msg.body?.content || '';
++  // Strip HTML tags, normalise whitespace, keep up to 1500 chars
++  return raw
++    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
++    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
++    .replace(/<[^>]+>/g, ' ')
++    .replace(/&nbsp;/gi, ' ')
++    .replace(/&amp;/gi, '&')
++    .replace(/&lt;/gi, '<')
++    .replace(/&gt;/gi, '>')
++    .replace(/&#\d+;/g, '')
++    .replace(/\s+/g, ' ')
++    .trim()
++    .slice(0, 1500);
++}
++
++/** Convert a GraphMessage to our normalised EmailData. */
++function toEmailData(msg: GraphMessage): EmailData {
++  return {
++    id: msg.id,
++    subject: msg.subject || '',
++    from: msg.from?.emailAddress?.address || msg.from?.emailAddress?.name || '',
++    date: msg.receivedDateTime || '',
++    snippet: msg.bodyPreview || '',
++    body: extractBody(msg),
++  };
++}
++
++// ---------- Search queries (mirrors Gmail's 7 parallel queries) ----------
++
++// Query A: subject/keyword based — catches billing emails from any provider
++const KQL_SUBJECT =
++  'subject:bill OR subject:invoice OR subject:statement OR subject:renewal OR subject:"price increase" OR subject:"price change" OR subject:overdue OR subject:"direct debit" OR subject:subscription OR subject:"payment failed" OR subject:"payment due" OR subject:charge OR subject:receipt OR subject:"action required" OR subject:refund OR subject:overcharge OR subject:"final notice" OR subject:tariff OR subject:"your plan" OR subject:mortgage OR subject:"credit card" OR subject:"contract end" OR subject:cancellation OR subject:compensation OR subject:"council tax"';
++
++// Query B: sender-based — energy, telecoms, streaming (KQL from: syntax)
++const KQL_SENDERS_1 =
++  'from:britishgas OR from:edfenergy OR from:octopusenergy OR from:eon OR from:npower OR from:sse OR from:scottishpower OR from:ovo OR from:sky OR from:virginmedia OR from:bt OR from:talktalk OR from:vodafone OR from:o2 OR from:three OR from:ee OR from:plusnet OR from:giffgaff OR from:netflix OR from:spotify OR from:amazon OR from:disney OR from:apple OR from:adobe OR from:microsoft OR from:google OR from:dropbox OR from:youtube OR from:dazn';
++
++// Query C: sender-based — finance, insurance, government
++const KQL_SENDERS_2 =
++  'from:barclays OR from:lloyds OR from:hsbc OR from:natwest OR from:monzo OR from:starling OR from:revolut OR from:halifax OR from:santander OR from:tsb OR from:nationwide OR from:chase OR from:klarna OR from:council OR from:hmrc OR from:dvla OR from:nhs OR from:admiral OR from:aviva OR from:directline OR from:comparethemarket OR from:moneysupermarket';
++
++// Query D: sender-based — fitness, food, software, transport, airlines
++const KQL_SENDERS_3 =
++  'from:puregym OR from:davidlloyd OR from:nuffield OR from:deliveroo OR from:ubereats OR from:gousto OR from:hellofresh OR from:experian OR from:equifax OR from:openai OR from:anthropic OR from:github OR from:notion OR from:slack OR from:zoom OR from:trainline OR from:uber OR from:ryanair OR from:easyjet OR from:jet2 OR from:wizz OR from:tui OR from:booking OR from:airbnb';
++
++// Query E: deal expirations, contract endings (HIGH PRIORITY)
++const KQL_EXPIRATIONS =
++  'subject:"contract end" OR subject:"deal ending" OR subject:"deal expires" OR subject:"out of contract" OR subject:"minimum term" OR subject:"fixed term" OR subject:"renewal date" OR subject:"auto-renew" OR subject:"will renew" OR subject:"renewing soon" OR subject:"expires on" OR subject:"end date" OR subject:"notice period" OR subject:"switching" OR subject:"leaving us"';
++
++// Query F: upcoming payments and payment reminders
++const KQL_PAYMENTS =
++  'subject:"payment due" OR subject:"payment reminder" OR subject:"upcoming payment" OR subject:"next payment" OR subject:"direct debit" OR subject:"amount due" OR subject:"will be charged" OR subject:"scheduled payment" OR subject:"your bill is ready" OR subject:"new bill" OR subject:"monthly bill"';
++
++// Query G: price increases and tariff changes
++const KQL_PRICE_CHANGES =
++  'subject:"price increase" OR subject:"price change" OR subject:"new prices" OR subject:"tariff change" OR subject:"rate increase" OR subject:"going up" OR subject:"increasing" OR subject:"new rate" OR subject:"cost increase" OR subject:"premium increase" OR subject:"annual increase" OR subject:CPI OR subject:RPI';
++
++export async function scanOutlookForOpportunities(
++  accessToken: string
++): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
++  // Run all queries in parallel (same strategy as Gmail)
++  console.log('[outlook] Starting comprehensive email scan (7 parallel queries)...');
++
++  const [subjectMsgs, senderMsgs1, senderMsgs2, senderMsgs3, expirationMsgs, paymentMsgs, priceChangeMsgs] = await Promise.all([
++    fetchMessagesBySearch(accessToken, KQL_SUBJECT, 200),
++    fetchMessagesBySearch(accessToken, KQL_SENDERS_1, 200),
++    fetchMessagesBySearch(accessToken, KQL_SENDERS_2, 200),
++    fetchMessagesBySearch(accessToken, KQL_SENDERS_3, 200),
++    fetchMessagesBySearch(accessToken, KQL_EXPIRATIONS, 100),
++    fetchMessagesBySearch(accessToken, KQL_PAYMENTS, 100),
++    fetchMessagesBySearch(accessToken, KQL_PRICE_CHANGES, 100),
++  ]);
++
++  // Deduplicate by message ID
++  const seen = new Set<string>();
++  const allMessages = [
++    ...subjectMsgs, ...senderMsgs1, ...senderMsgs2, ...senderMsgs3,
++    ...expirationMsgs, ...paymentMsgs, ...priceChangeMsgs,
++  ].filter((m) => {
++    if (seen.has(m.id)) return false;
++    seen.add(m.id);
++    return true;
+   });
+ 
+-  const res = await fetch(
+-    `https://graph.microsoft.com/v1.0/me/messages?${params}`,
+-    { headers: { Authorization: `Bearer ${accessToken}` } }
+-  );
+-  if (!res.ok) throw new Error('Failed to fetch Outlook messages');
+-  const data = await res.json();
+-  const messages: OutlookMessage[] = data.value || [];
++  console.log(`[outlook] Total unique messages: ${allMessages.length} (subject: ${subjectMsgs.length}, senders1: ${senderMsgs1.length}, senders2: ${senderMsgs2.length}, senders3: ${senderMsgs3.length}, expirations: ${expirationMsgs.length}, payments: ${paymentMsgs.length}, priceChanges: ${priceChangeMsgs.length})`);
++
++  if (!allMessages.length) return { opportunities: [], emailsFound: 0, emailsScanned: 0 };
+ 
+-  if (!messages.length) return [];
++  // Convert to EmailData and extract bodies (Graph already returns body inline)
++  const emails: EmailData[] = allMessages.slice(0, 200).map(toEmailData);
+ 
+-  // Use Claude Haiku to analyse (cost-efficient for categorisation)
++  // Group emails by sender for efficient Claude analysis (matches Gmail approach)
++  const senderMap = new Map<string, {
++    from: string;
++    subjects: string[];
++    snippets: string[];
++    dates: string[];
++    bodies: string[];
++    emailIds: string[];
++  }>();
++
++  for (const e of emails) {
++    const sender = (e.from || '').toLowerCase().trim();
++    const key = sender.substring(0, 50);
++    if (!senderMap.has(key)) {
++      senderMap.set(key, { from: e.from, subjects: [], snippets: [], dates: [], bodies: [], emailIds: [] });
++    }
++    const group = senderMap.get(key)!;
++    group.subjects.push(e.subject);
++    group.snippets.push(e.snippet);
++    group.dates.push(e.date);
++    group.bodies.push((e.body || '').substring(0, 500));
++    group.emailIds.push(e.id);
++  }
++
++  // Build compact summary grouped by sender (same format as Gmail)
++  const senderSummary = Array.from(senderMap.entries())
++    .map(([, group], i) => {
++      const recentSubjects = group.subjects.slice(0, 8).join(' | ');
++      const recentSnippets = group.snippets.slice(0, 3).join('\n  ');
++      const recentBodies = group.bodies.slice(0, 3).join('\n  ');
++      return `--- Provider ${i + 1} (${group.emailIds.length} emails) ---\nFrom: ${group.from}\nRecent subjects: ${recentSubjects}\nSnippets:\n  ${recentSnippets}\nBody excerpts:\n  ${recentBodies}\nDates: ${group.dates.slice(0, 5).join(', ')}\nEmail ID: ${group.emailIds[0]}`;
++    })
++    .join('\n\n');
++
++  console.log(`[outlook] Grouped ${emails.length} emails into ${senderMap.size} unique senders. Summary: ${senderSummary.length} chars`);
++
++  // Truncate if needed to fit within token limits
++  const truncatedSummary = senderSummary.length > 400000 ? senderSummary.substring(0, 400000) : senderSummary;
++
++  // Use Claude Sonnet for comprehensive analysis (same model and prompt as Gmail)
+   const { default: Anthropic } = await import('@anthropic-ai/sdk');
+   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
+   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+ 
+-  const OUTLOOK_MODEL = 'claude-haiku-4-5-20251001';
+-  const emailSummaries = messages
+-    .slice(0, 15)
+-    .map(
+-      (m, i) =>
+-        // Token optimisation: truncated to reduce API costs
+-        `--- Email ${i + 1} (id: ${m.id}) ---\nFrom: ${m.from?.emailAddress?.address}\nSubject: ${m.subject}\nDate: ${m.receivedDateTime}\nPreview: ${m.bodyPreview}\nBody: ${m.body?.content?.replace(/<[^>]+>/g, ' ').slice(0, 300)}`
+-    )
+-    .join('\n\n');
++  const SCAN_MODEL = 'claude-sonnet-4-6';
++  const allOpportunities: Opportunity[] = [];
+ 
+   logClaudeCall({
+     userId: 'outlook-scan',
+     route: '/api/outlook/scan (lib/outlook)',
+-    model: OUTLOOK_MODEL,
+-    estimatedInputTokens: Math.round(emailSummaries.length / 4) + 500,
+-    estimatedOutputTokens: 1500,
++    model: SCAN_MODEL,
++    estimatedInputTokens: Math.round(truncatedSummary.length / 4) + 1000,
++    estimatedOutputTokens: 4000,
+   });
+ 
+-  const message = await anthropic.messages.create({
+-    model: OUTLOOK_MODEL,
+-    max_tokens: 2048,
+-    system: `You are a UK consumer finance assistant. Analyse emails and identify money-saving opportunities. Look closely for ANY email mentioning "flight delayed", "EU261", "UK261", "compensation", or airline names (EasyJet, Ryanair, British Airways) which indicate a flight delay compensation opportunity (£520).
+-Return a JSON array of opportunities. Each must have:
+-- id: unique string
+-- emailId: the email id it came from
+-- type: "overcharge" | "renewal" | "forgotten_subscription" | "price_increase" | "flight_delay" | "insurance" | "loan" | "utility_bill" | "refund_opportunity" | "debt_dispute" | "tax_rebate"
+-- title: short title (max 60 chars)
+-- description: 1-2 sentences explaining the opportunity
+-- amount: estimated GBP amount at risk or saveable (number, 0 if unknown)
+-- confidence: 0-100
+-- provider: company name
+-- detected: today's date ${new Date().toISOString().split('T')[0]}
+-- status: "new"
+-
+-Only include genuine opportunities with confidence >= 50. Return [] if none found.
+-Return ONLY the JSON array, no markdown.`,
+-    messages: [{ role: 'user', content: `Analyse these emails:\n\n${emailSummaries}` }],
+-  });
++  try {
++    const today = new Date().toISOString().split('T')[0];
++    const message = await anthropic.messages.create({
++      model: SCAN_MODEL,
++      max_tokens: 8192,
++      system: `You are a UK consumer finance analyst scanning a user's inbox. Your job is to find EVERY financial opportunity. Today's date: ${today}.
+ 
+-  const content = message.content[0];
+-  if (content.type !== 'text') return [];
++## PRIORITY DETECTION CATEGORIES (extract dates and amounts wherever possible)
+ 
+-  try {
+-    const raw = content.text.trim();
+-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+-    if (!jsonMatch) return [];
+-    return JSON.parse(jsonMatch[0]).map((o: any) => ({ ...o, status: 'new' as const }));
+-  } catch {
+-    return [];
++### 1. DEAL EXPIRATIONS & CONTRACT ENDINGS (highest value)
++Look for: "contract end", "deal ending", "out of contract", "minimum term ending", "fixed rate ending", "renewal date", "expires", "auto-renew", "your deal", "tariff ending"
++- Extract the EXACT END DATE if mentioned (e.g. "your deal ends on 15 March 2026" → contractEndDate: "2026-03-15")
++- If already expired or ending within 30 days → confidence: 95, suggestedAction: "switch_deal"
++- If ending within 90 days → confidence: 85, suggestedAction: "switch_deal"
++- Common patterns: broadband contracts (18/24 month), energy fixed tariffs, mobile contracts, insurance policies
++
++### 2. UPCOMING PAYMENTS & BILLS
++Look for: "payment due", "amount due", "will be charged", "direct debit", "next payment", "your bill", "billing date", amounts like "£XX.XX"
++- Extract EXACT AMOUNT (e.g. "Your next bill is £45.99" → paymentAmount: 45.99)
++- Extract PAYMENT DATE if mentioned (e.g. "due on 1st April" → nextPaymentDate: "2026-04-01")
++- Extract FREQUENCY from context (monthly direct debit → "monthly", annual renewal → "yearly")
++
++### 3. PRICE INCREASES (dispute opportunity)
++Look for: "price increase", "new prices from", "going up", "increasing by", "tariff change", "April price rise", "CPI", "RPI + 3.9%"
++- Extract OLD and NEW amounts if both mentioned (e.g. "from £30 to £34" → previousAmount: 30, paymentAmount: 34)
++- Extract INCREASE DATE (e.g. "from 1 April 2026" → priceChangeDate: "2026-04-01")
++- These are HIGH VALUE — users can often negotiate or switch. UK Consumer Rights Act 2015 s.62 on unfair terms.
++
++### 4. UNKNOWN SUBSCRIPTIONS (not caught by bank scans)
++Look for: recurring emails from services that charge (newsletters with premium tiers, apps, cloud storage, gaming, SaaS tools, meal kits, beauty boxes)
++- If same sender appears regularly with billing/receipt/payment subjects → likely active subscription
++- Extract amount if visible in any email body
++
++### 5. STANDARD DETECTION (as before)
++- Streaming/software/fitness subscriptions → review if still needed
++- Energy/broadband/mobile from known providers → switching opportunity
++- Insurance emails → renewal comparison
++- Airline emails → flight delay compensation (UK261, up to £520)
++- Bank/lender emails → rate monitoring
++- Council/HMRC emails → tax challenge opportunity
++- Debt collector emails → dispute citing Consumer Credit Act 1974
++
++## DATA EXTRACTION RULES
++- ALWAYS try to extract amounts: look for £ signs, "GBP", numbers near "payment", "bill", "charge", "price", "cost", "fee", "premium"
++- ALWAYS try to extract dates: look for DD/MM/YYYY, "1st January", "March 2026", "next month", relative dates
++- For relative dates, calculate from today (${today})
++- If a subject says "Your March 2026 bill - £45.99" → paymentAmount: 45.99, paymentFrequency: "monthly"
++- If body mentions "£9.99/month" → paymentAmount: 9.99, paymentFrequency: "monthly"
++
++## OUTPUT FORMAT
++Return a JSON array. Each entry:
++{
++  "id": "opp_1",
++  "emailId": "the_email_id",
++  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry",
++  "category": "streaming|software|fitness|broadband|mobile|utility|insurance|loan|credit_card|mortgage|council_tax|transport|food|shopping|gambling|other",
++  "title": "short actionable title max 80 chars",
++  "description": "2-3 sentences: what was found, exact dates/amounts, what user should do, UK consumer rights if relevant",
++  "amount": 0,
++  "confidence": 70,
++  "provider": "Clean Company Name",
++  "detected": "${today}",
++  "status": "new",
++  "suggestedAction": "track|cancel|switch_deal|dispute|claim_refund|claim_compensation|monitor",
++  "contractEndDate": "YYYY-MM-DD or null",
++  "nextPaymentDate": "YYYY-MM-DD or null",
++  "paymentAmount": 45.99,
++  "previousAmount": null,
++  "priceChangeDate": "YYYY-MM-DD or null",
++  "paymentFrequency": "monthly|quarterly|yearly|one-time|null",
++  "accountNumber": "reference if found or null",
++  "urgency": "immediate|soon|routine"
++}
++
++urgency values:
++- "immediate": deal expired, payment overdue, price increase imminent (within 14 days)
++- "soon": contract ending within 90 days, payment due within 30 days
++- "routine": ongoing monitoring, subscription review
++
++## RULES
++- ONLY include genuine financial opportunities — subscriptions, bills, recurring payments, overcharges, compensation claims
++- DO NOT include personal emails, legal correspondence, court cases, solicitor letters, charity updates, newsletters, marketing emails, social media notifications, or anything that is NOT a financial product/service the user pays for
++- DO NOT include emails from: courts, tribunals, law firms, solicitors, barristers, police, crime services, dispute resolution services, charities, political organisations, schools, churches, community groups
++- Group by provider: multiple emails from same company = ONE opportunity (use the most recent/relevant email data)
++- Only include items with confidence >= 60. If you are not reasonably confident this is a genuine financial opportunity, exclude it.
++- Quality over quantity — it is far better to return 5 accurate results than 30 results with false positives. Users lose trust when they see personal/irrelevant items.
++- For deal expirations and price increases, ALWAYS include the extracted date even if approximate (e.g. "April 2026" → "2026-04-01")
++- Return ONLY the JSON array, no markdown, no explanation.`,
++      messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],
++    });
++
++    const content = message.content[0];
++    if (content.type === 'text') {
++      let raw = content.text.trim();
++      console.log(`[outlook] Claude response: ${raw.length} chars. First 500: ${raw.substring(0, 500)}`);
++
++      // Strip markdown code fences if present
++      raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
++
++      // Find JSON array
++      const jsonMatch = raw.match(/\[[\s\S]*\]/);
++      if (jsonMatch) {
++        try {
++          const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
++          const parsed: Opportunity[] = JSON.parse(cleaned);
++          console.log(`[outlook] Found ${parsed.length} opportunities`);
++          allOpportunities.push(...parsed.map((o) => ({ ...o, status: 'new' as const })));
++        } catch (e) {
++          console.error(`[outlook] JSON parse error:`, e);
++        }
++      } else {
++        console.error(`[outlook] No JSON array found. Response: ${raw.substring(0, 300)}`);
++      }
++    }
++  } catch (claudeErr: any) {
++    console.error(`[outlook] Claude API error: ${claudeErr.message}`);
+   }
++
++  return { opportunities: allOpportunities, emailsFound: allMessages.length, emailsScanned: emails.length };
+ }
+-- 
+2.34.1
+

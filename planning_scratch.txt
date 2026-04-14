@@ -1,0 +1,10 @@
+Plan:
+1. Add `is_duplicate` BOOLEAN DEFAULT false to `bank_transactions`.
+2. PostgreSQL function `mark_transaction_duplicates(p_user_id UUID)`:
+   Finds duplicate sets using Window functions (PARTITION BY amount, timestamp::DATE, COALESCE(merchant_name, description)).
+   Only marks as duplicate if the set spans MULTIPLE connection_ids OR there's a TrueLayer+Yapily overlap.
+   Wait, if it spans multiple connection_ids, we mark the ones from older connections as `is_duplicate = true`.
+3. Update `src/app/api/money-hub/transactions/route.ts` to filter out `is_duplicate = true`.
+4. Update SQL RPC functions in `20260407000000_fix_money_hub_core.sql` (we will create a new migration to replace them with `AND is_duplicate = false`).
+5. Update `api/bank/sync-now/route.ts` and `api/cron/bank-sync/route.ts` to call `mark_transaction_duplicates` after upserting.
+6. Update `yapily/callback/route.ts` to auto-revoke older identical connections (same institution).
