@@ -3726,7 +3726,7 @@ async function createSupportTicket(
 ): Promise<ToolResult> {
   const { data: profile } = await supabase
     .from('profiles')
-    .select('email')
+    .select('email, full_name')
     .eq('id', userId)
     .single();
 
@@ -3742,7 +3742,7 @@ async function createSupportTicket(
       status: 'open',
       metadata: { channel: 'telegram' },
     })
-    .select('id, created_at')
+    .select('id, ticket_number, created_at')
     .single();
 
   if (error || !ticket) {
@@ -3757,14 +3757,89 @@ async function createSupportTicket(
     message: params.description,
   });
 
-  const ref = ticket.id.substring(0, 8).toUpperCase();
+  const ref = ticket.ticket_number || ticket.id.substring(0, 8).toUpperCase();
+  const userEmail = profile?.email;
+  const userName = profile?.full_name || 'there';
+
+  // Send confirmation email to user
+  if (userEmail) {
+    try {
+      const { Resend } = await import('resend');
+      const resend = new Resend(process.env.RESEND_API_KEY!);
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+        replyTo: 'support@paybacker.co.uk',
+        to: userEmail,
+        subject: `Support ticket received: ${ref}`,
+        html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+    <div style="background:#0f172a;padding:20px 32px;">
+      <table width="100%"><tr>
+        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span></td>
+        <td align="right"><span style="color:#94a3b8;font-size:12px;">${ref}</span></td>
+      </tr></table>
+    </div>
+    <div style="padding:32px;color:#334155;font-size:14px;line-height:1.7;">
+      <p style="margin:0 0 12px;">Hi ${userName},</p>
+      <p style="margin:0 0 12px;">We have received your support request and a member of our team will get back to you shortly.</p>
+      <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin:16px 0;">
+        <p style="margin:0 0 8px;font-weight:600;">Ticket Reference: #${ref}</p>
+        <p style="margin:0 0 4px;"><strong>Subject:</strong> ${params.subject}</p>
+        <p style="margin:0 0 4px;"><strong>Priority:</strong> ${params.priority}</p>
+        <p style="margin:0;"><strong>Category:</strong> ${params.category}</p>
+      </div>
+      <p style="margin:0 0 12px;">You can reply to this email to add further details to your ticket.</p>
+      <p style="margin:0;color:#64748b;">Best,<br/>The Paybacker Support Team</p>
+    </div>
+    <div style="padding:24px 32px;border-top:1px solid #e2e8f0;">
+      <a href="https://paybacker.co.uk/dashboard" style="display:inline-block;background:#f59e0b;color:#0f172a;padding:10px 20px;text-decoration:none;border-radius:8px;font-weight:600;font-size:13px;">View Dashboard</a>
+    </div>
+    <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
+      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+    </div>
+  </div>
+</body></html>`,
+      });
+    } catch (emailErr) {
+      console.error('[createSupportTicket] Failed to send user email:', emailErr);
+    }
+  }
+
+  // Send notification email to support team
+  try {
+    const { Resend } = await import('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY!);
+    await resend.emails.send({
+      from: 'Paybacker System <noreply@paybacker.co.uk>',
+      to: 'support@paybacker.co.uk',
+      subject: `New support ticket: ${ref} — ${params.subject}`,
+      html: `<div style="font-family:sans-serif;padding:20px;max-width:600px;">
+        <h2 style="color:#f59e0b;margin:0 0 16px;">New Support Ticket</h2>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;font-weight:bold;">Ticket:</td><td>${ref}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;">From:</td><td>${userEmail || 'Unknown'} (${userName})</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;">Subject:</td><td>${params.subject}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;">Category:</td><td>${params.category}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;">Priority:</td><td>${params.priority}</td></tr>
+          <tr><td style="padding:8px 0;font-weight:bold;">Source:</td><td>Telegram Bot</td></tr>
+        </table>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0;" />
+        <h3 style="margin:0 0 8px;">Description:</h3>
+        <pre style="white-space:pre-wrap;background:#f3f4f6;padding:15px;border-radius:8px;color:#111827;font-size:13px;">${params.description}</pre>
+        <p style="color:#6b7280;font-size:12px;margin-top:16px;">View in admin: paybacker.co.uk/dashboard/admin</p>
+      </div>`,
+    });
+  } catch (emailErr) {
+    console.error('[createSupportTicket] Failed to send admin email:', emailErr);
+  }
 
   let text = `*Support Ticket Created*\n\n`;
   text += `*Reference:* #${ref}\n`;
   text += `*Subject:* ${params.subject}\n`;
   text += `*Priority:* ${params.priority}\n`;
   text += `*Status:* Open\n\n`;
-  text += `Our team will respond within 24 hours. You'll receive an email at ${profile?.email ?? 'your registered email'} when we reply.\n\n`;
+  text += `Our team will respond within 24 hours. You'll receive an email at ${userEmail ?? 'your registered email'} when we reply.\n\n`;
   text += `_You can also view your ticket at paybacker.co.uk/dashboard/pocket-agent_`;
 
   return { text };

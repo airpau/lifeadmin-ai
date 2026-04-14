@@ -687,7 +687,7 @@ ${userTier === 'pro' ? `
             try {
               await resend.emails.send({
                 from: 'Paybacker Support <noreply@paybacker.co.uk>',
-                replyTo: 'support@mail.paybacker.co.uk',
+                replyTo: 'support@paybacker.co.uk',
                 to: userEmail,
                 subject: `Your support ticket ${ticketNumber} has been created`,
                 html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:32px;border-radius:16px;">
@@ -712,7 +712,7 @@ ${userTier === 'pro' ? `
           try {
             await resend.emails.send({
               from: 'Paybacker Support <noreply@paybacker.co.uk>',
-              to: 'hello@paybacker.co.uk',
+              to: 'support@paybacker.co.uk',
               subject: `New support ticket ${ticketNumber}: ${ticketSubject}`,
               html: `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:32px;border-radius:16px;">
                 <div style="border-bottom:2px solid #f59e0b;padding-bottom:16px;margin-bottom:24px;">
