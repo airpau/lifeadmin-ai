@@ -590,13 +590,13 @@ export default function DashboardPage() {
       <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
         <div className="flex items-center gap-2 mb-2">
           <PiggyBank className="h-5 w-5 text-emerald-400" />
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Total Opportunities Found</h2>
+          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Potential Savings Found</h2>
         </div>
         <p className="text-4xl md:text-5xl font-bold text-emerald-400 font-[family-name:var(--font-heading)] mb-1">
           {formatGBP(potentialSavings)}<span className="text-2xl font-normal text-emerald-400/70">/yr</span>
         </p>
         <p className="text-slate-400 text-sm mb-6">
-          Based on your subscriptions, price increases &amp; better deals
+          Based on cheaper subscription alternatives and price increase alerts we&apos;ve detected
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -644,8 +644,8 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex">
-          <Link href="/dashboard/deals" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-            See Your Savings Plan <ArrowRight className="h-4 w-4" />
+          <Link href="/dashboard/subscriptions" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+            Review Your Subscriptions <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </div>

@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { fmtNum } from '@/lib/format';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
+import { isDealValid } from '@/lib/savings-utils';
 
 import OverviewPanel from './OverviewPanel';
 import SpendingPanel from './SpendingPanel';
@@ -1044,44 +1045,64 @@ export default function MoneyHubPage() {
           </div>
 
           {/* Better Deals Section */}
-          {deals && deals.subscriptions && deals.subscriptions.length > 0 ? (
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
-                  <Zap className="h-3.5 w-3.5 text-green-400" /> Better Deals Found
-                </p>
-                <span className="text-xs text-mint-400 font-medium">Save £{fmtNum(deals.totalAnnualSaving || 0)}/year</span>
-              </div>
-              <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
-                {deals.subscriptions.flatMap((sub: any) =>
-                  (sub.comparisons || [])
-                    .sort((a: any, b: any) => (b.annualSaving || 0) - (a.annualSaving || 0))
-                    .map((deal: any, idx: number) => (
-                      <div key={`${sub.subscriptionName}-${idx}`} className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm text-white font-medium truncate">{sub.subscriptionName}</p>
-                            <p className="text-xs text-slate-400">£{fmtNum(deal.currentPrice)}/mo → £{fmtNum(deal.dealPrice)}/mo via {deal.dealProvider}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-green-400 text-sm font-semibold">Save £{fmtNum(deal.annualSaving)}/yr</p>
-                            {deal.dealUrl ? (
-                              <a href={deal.dealUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-mint-400 hover:text-mint-300 font-medium flex items-center gap-1 justify-end mt-1">
-                                Switch <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : null}
+          {(() => {
+            // Filter deals through isDealValid to exclude mortgages, loans, council tax etc.
+            // This ensures the total here matches the dashboard hero figure
+            const validDeals = (deals?.subscriptions || []).flatMap((sub: any) =>
+              (sub.comparisons || []).map((c: any) => ({
+                subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
+                currentPrice: c.currentPrice,
+                dealProvider: c.dealProvider,
+                dealPrice: c.dealPrice,
+                annualSaving: c.annualSaving,
+                dealUrl: c.dealUrl,
+                category: sub.category || '',
+              }))
+            ).filter((d: any) => d.annualSaving > 0 && isDealValid(d));
+            const filteredTotal = validDeals.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0);
+            
+            if (validDeals.length > 0) {
+              return (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-green-400" /> Cheaper Alternatives Found
+                    </p>
+                    <span className="text-xs text-mint-400 font-medium">Save £{fmtNum(filteredTotal)}/year</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-3">We found cheaper deals for {validDeals.length} of your subscriptions. Click &quot;Switch&quot; to go directly to the provider.</p>
+                  <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
+                    {validDeals
+                      .sort((a: any, b: any) => (b.annualSaving || 0) - (a.annualSaving || 0))
+                      .map((deal: any, idx: number) => (
+                        <div key={`deal-${idx}`} className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm text-white font-medium truncate">{deal.subscriptionName}</p>
+                              <p className="text-xs text-slate-400">£{fmtNum(deal.currentPrice)}/mo → £{fmtNum(deal.dealPrice)}/mo via {deal.dealProvider}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-green-400 text-sm font-semibold">Save £{fmtNum(deal.annualSaving)}/yr</p>
+                              {deal.dealUrl ? (
+                                <a href={deal.dealUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-mint-400 hover:text-mint-300 font-medium flex items-center gap-1 justify-end mt-1">
+                                  Switch <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="mb-4">
-              <p className="text-xs text-slate-500 text-center py-3">No better deals found right now.</p>
-            </div>
-          )}
+                      ))}
+                  </div>
+                </div>
+              );
+            } else {
+              return (
+                <div className="mb-4">
+                  <p className="text-xs text-slate-500 text-center py-3">No cheaper alternatives found for your subscriptions right now.</p>
+                </div>
+              );
+            }
+          })()}
 
           {/* Manage Subscriptions quick link */}
           <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
