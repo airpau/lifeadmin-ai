@@ -621,9 +621,22 @@ export function createUserBot(): Bot<UserBotContext> {
       msgId,
       `✅ *Letter saved!*\n\n` +
         `Your complaint to ${payload.provider} has been saved to your Disputes dashboard.\n\n` +
-        `I'll remind you in 14 days if you haven't had a response — you can then escalate to the relevant regulator or ombudsman.\n\n` +
-        `View it at: paybacker.co.uk/dashboard/disputes`,
+        `I'll remind you in 14 days if you haven't had a response — you can then escalate to the relevant regulator or ombudsman.`,
     );
+    // Send full letter inline so the user can copy and send it directly
+    await bot.api.sendMessage(chatId, `Here's your letter — copy and send it to ${payload.provider}:`);
+    const MAX_CHUNK = 4000;
+    let pos = 0;
+    const txt = payload.letter_text;
+    while (pos < txt.length) {
+      let end = Math.min(pos + MAX_CHUNK, txt.length);
+      if (end < txt.length) {
+        const nl = txt.lastIndexOf('\n', end);
+        if (nl > pos + MAX_CHUNK / 2) end = nl + 1;
+      }
+      await bot.api.sendMessage(chatId, txt.slice(pos, end));
+      pos = end;
+    }
   });
 
   // -------------------------------------------------------
@@ -870,15 +883,23 @@ Rules:
         }),
       ]);
 
-      // Send confirmation + preview
-      const preview = letterText.length > 700 ? letterText.slice(0, 700) + '...' : letterText;
-      const portalUrl = `https://paybacker.co.uk/dashboard/disputes`;
-
+      // Send confirmation then full letter text inline
       await ctx.api.sendMessage(
         chatId!,
-        `✅ *Letter saved to your Disputes*\n\n${preview}\n\n[View full letter in Paybacker →](${portalUrl})`,
+        `✅ *Letter saved to your Disputes*\n\nHere's your letter — copy and send it to ${providerName}:`,
         { parse_mode: 'Markdown' },
       );
+      const MAX_CHUNK = 4000;
+      let pos = 0;
+      while (pos < letterText.length) {
+        let end = Math.min(pos + MAX_CHUNK, letterText.length);
+        if (end < letterText.length) {
+          const nl = letterText.lastIndexOf('\n', end);
+          if (nl > pos + MAX_CHUNK / 2) end = nl + 1;
+        }
+        await ctx.api.sendMessage(chatId!, letterText.slice(pos, end));
+        pos = end;
+      }
     } catch (err) {
       console.error('[UserBot] draft_dispute callback error:', err);
       await ctx.api.sendMessage(
