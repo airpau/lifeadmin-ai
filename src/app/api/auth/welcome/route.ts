@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { sendOnboardingEmail } from '@/lib/email/onboarding-sequence';
 import { resend, FROM_EMAIL } from '@/lib/resend';
 import { notifyAgents } from '@/lib/agent-notify';
@@ -6,8 +7,14 @@ import { trackSignup } from '@/lib/meta-conversions';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, name, userId } = await request.json();
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { name } = await request.json();
+    const email = user.email;
     if (!email) return NextResponse.json({ error: 'Email required' }, { status: 400 });
+    const userId = user.id;
 
     const sent = await sendOnboardingEmail(email, name || 'there', 'welcome');
 
