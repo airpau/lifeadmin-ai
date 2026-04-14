@@ -129,29 +129,15 @@ export async function GET(request: Request) {
     // JS-based computation (used for trends, merchant analysis, and as fallback)
     const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth, internalTransfers);
 
-    // Authoritative income/spending from DB RPCs (correctly excludes transfers and income)
-    // Falls back to JS computation if RPCs return null/error
-    const authSpending = typeof rpcSpendingTotal === 'number' ? rpcSpendingTotal : currentSummary.monthlyOutgoings;
-    const authIncome = typeof rpcIncomeTotal === 'number' ? rpcIncomeTotal : currentSummary.monthlyIncome;
+    // Authoritative income/spending via JS computation (to support AI rule mapping and local recategorisation)
+    const authSpending = currentSummary.monthlyOutgoings;
+    const authIncome = currentSummary.monthlyIncome;
 
-    // Build authoritative category breakdown from RPC (deduped, correctly categorised)
-    const authCategoryBreakdown = (rpcSpendingCategories && Array.isArray(rpcSpendingCategories) && rpcSpendingCategories.length > 0)
-      ? rpcSpendingCategories
-          .map((row: any) => ({ category: normalizeSpendingCategoryKey(row.category), total: parseFloat(String(row.category_total || 0)) }))
-          .filter((c: any) => c.total > 0 && c.category && c.category !== 'transfers' && c.category !== 'income')
-          .sort((a: any, b: any) => b.total - a.total)
-      : currentSummary.categoryBreakdown;
+    // Build authoritative category breakdown via JS learning rules
+    const authCategoryBreakdown = currentSummary.categoryBreakdown;
 
-    // Build authoritative income breakdown from RPC
-    const authIncomeBreakdown: Record<string, number> = {};
-    if (rpcIncomeCategories && Array.isArray(rpcIncomeCategories) && rpcIncomeCategories.length > 0) {
-      for (const row of rpcIncomeCategories) {
-        const key = (row.category || 'other').toLowerCase().trim();
-        authIncomeBreakdown[key] = (authIncomeBreakdown[key] || 0) + parseFloat(String(row.category_total || 0));
-      }
-    } else {
-      Object.assign(authIncomeBreakdown, currentSummary.incomeRows);
-    }
+    // Build authoritative income breakdown
+    const authIncomeBreakdown: Record<string, number> = { ...currentSummary.incomeRows };
 
     // Build authoritative category totals map (for budget matching)
     const authCategoryTotals: Record<string, number> = {};

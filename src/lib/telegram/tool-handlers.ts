@@ -1064,7 +1064,7 @@ async function recategoriseTransactions(
     .from('bank_transactions')
     .update({ user_category: newCategory })
     .eq('user_id', userId)
-    .or(`merchant_name.ilike.*${merchantName}*,description.ilike.*${merchantName}*`)
+    .or(`merchant_name.ilike.%${merchantName}%,description.ilike.%${merchantName}%`)
     .select('id, amount, description, merchant_name');
 
   if (error) {

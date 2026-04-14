@@ -4,7 +4,7 @@ import { fmtNum } from '@/lib/format';
 import { Lock, FileText, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -47,6 +47,8 @@ function getCatMeta(key: string) {
 
 export default function SpendingPanel({ data, isPro, refreshData, selectedMonth }: { data: any, isPro: boolean, refreshData: () => void, selectedMonth: string }) {
   const [drillCategory, setDrillCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
   const [showAll, setShowAll] = useState(false);
 
   const categories = data.spending.categories || [];
@@ -63,6 +65,24 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
         {totalSpent > 0 && (
           <span className="text-slate-400 text-sm">£{fmtNum(totalSpent)} total</span>
         )}
+      </div>
+
+      <div className="mb-6 relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-4 w-4 text-slate-500" />
+        </div>
+        <input
+          type="text"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && searchInput.trim()) {
+              setSearchQuery(searchInput.trim());
+            }
+          }}
+          placeholder="Search transactions..."
+          className="w-full bg-navy-950/50 border border-navy-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all font-medium"
+        />
       </div>
       
       <div className="space-y-4 flex-1">
@@ -141,11 +161,12 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
       </div>
       
       <CategoryDrillDownModal 
-        isOpen={!!drillCategory} 
-        onClose={() => setDrillCategory(null)} 
-        category={drillCategory} 
+        isOpen={!!drillCategory || !!searchQuery} 
+        onClose={() => { setDrillCategory(null); setSearchQuery(null); }} 
+        category={drillCategory}
+        searchQuery={searchQuery}
         selectedMonth={selectedMonth}
-        onRecategorised={() => { setDrillCategory(null); refreshData(); }}
+        onRecategorised={() => { setDrillCategory(null); setSearchQuery(null); refreshData(); }}
       />
     </div>
   );

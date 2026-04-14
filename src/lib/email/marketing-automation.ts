@@ -179,7 +179,12 @@ Return ONLY the raw HTML of the email inside <div> wrapper. Start directly with 
       ]
     });
 
-    const htmlContent = (response.content[0] as any).text.trim();
+    let htmlContent = (response.content[0] as any).text.trim();
+    if (htmlContent.startsWith('```html')) {
+        htmlContent = htmlContent.replace(/^```html\n?/, '').replace(/\n?```$/, '').trim();
+    } else if (htmlContent.startsWith('```')) {
+        htmlContent = htmlContent.replace(/^```\n?/, '').replace(/\n?```$/, '').trim();
+    }
     
     // Ensure we include the logo at top and footer at bottom if the AI missed it
     let finalHtml = htmlContent;

@@ -25,14 +25,14 @@ export async function GET() {
   // Add letter count, last activity date, and latest correspondence snippet
   const enriched = (disputes || []).map((d: any) => {
     const sortedByDate = d.correspondence?.length > 0
-      ? [...d.correspondence].sort((a: any, b: any) => new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime())
+      ? [...d.correspondence].sort((a: any, b: any) => new Date(b.entry_date ?? b.created_at).getTime() - new Date(a.entry_date ?? a.created_at).getTime())
       : [];
     const latestEntry = sortedByDate[0] ?? null;
     return {
       ...d,
       letter_count: d.correspondence?.filter((c: any) => c.entry_type === 'ai_letter').length || 0,
       message_count: d.correspondence?.length || 0,
-      last_activity: latestEntry ? latestEntry.entry_date : d.created_at,
+      last_activity: latestEntry ? (latestEntry.entry_date ?? latestEntry.created_at) : d.created_at,
       latest_snippet: latestEntry ? (latestEntry.summary || latestEntry.title || null) : null,
     };
   });

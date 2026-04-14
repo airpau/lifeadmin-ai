@@ -29,17 +29,23 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category');
   const incomeType = searchParams.get('income_type');
   const selectedMonth = searchParams.get('month'); // e.g. "2026-02"
+  const searchQuery = searchParams.get('searchQuery'); // Optional free-text search
 
   const admin = getAdmin();
   const { start, end } = getMoneyHubMonthBounds(selectedMonth);
 
-  const query = admin.from('bank_transactions')
+  let query = admin.from('bank_transactions')
     .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, account_id')
     .eq('user_id', user.id)
     .gte('timestamp', start.toISOString())
     .lte('timestamp', end.toISOString())
     .order('timestamp', { ascending: false })
     .limit(5000);
+
+  if (searchQuery) {
+    const term = `%${searchQuery.trim()}%`;
+    query = query.or(`merchant_name.ilike.${term},description.ilike.${term}`);
+  }
 
   const [{ data: txns }, { data: overrideRows }] = await Promise.all([
     query,
@@ -103,6 +109,38 @@ export async function GET(request: NextRequest) {
       merchants: sources,
       totalTransactions: filtered.length,
       totalSpent: parseFloat(filtered.reduce((s, t) => s + t.amount, 0).toFixed(2)),
+    });
+  }
+
+  // General Search Mode
+  if (searchQuery) {
+    const merchantTotals: Record<string, { total: number; count: number }> = {};
+    for (const t of resolvedTransactions) {
+      if (t.amount >= 0) continue;
+      const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
+      if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
+      merchantTotals[merchant].total += Math.abs(t.amount);
+      merchantTotals[merchant].count++;
+    }
+
+    const merchantsArray = Object.entries(merchantTotals)
+      .map(([name, data]) => ({ merchant: name, total: parseFloat(data.total.toFixed(2)), count: data.count }))
+      .sort((a, b) => b.total - a.total);
+      
+    return NextResponse.json({
+      transactions: resolvedTransactions.slice(0, 150).map(t => ({
+        id: t.id,
+        description: t.description,
+        merchant_name: t.merchant_name,
+        amount: t.amount,
+        category: normalizeSpendingCategoryKey(t.resolved.spendingCategory) || normalizeIncomeTypeKey(t.resolved.incomeType),
+        timestamp: t.timestamp,
+        account_id: t.account_id,
+        kind: t.resolved.kind,
+      })),
+      merchants: merchantsArray,
+      totalTransactions: resolvedTransactions.length,
+      totalSpent: parseFloat(resolvedTransactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0).toFixed(2)),
     });
   }
 

@@ -8,6 +8,7 @@ interface CategoryDrillDownModalProps {
   onClose: () => void;
   category?: string | null;
   incomeType?: string | null;
+  searchQuery?: string | null;
   selectedMonth: string;
   onRecategorised: () => void;
 }
@@ -18,7 +19,7 @@ const ALL_CATEGORIES = [
   'transfers', 'income', 'parking', 'fees', 'insurance', 'other'
 ].sort();
 
-export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
+export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, searchQuery, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
   const [data, setData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
@@ -26,20 +27,22 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   const [recatLoading, setRecatLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen && (category || incomeType)) {
+    if (isOpen && (category || incomeType || searchQuery)) {
       loadData();
     } else {
       setData(null);
     }
-  }, [isOpen, category, incomeType, selectedMonth]);
+  }, [isOpen, category, incomeType, searchQuery, selectedMonth]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const monthParam = selectedMonth ? `&month=${selectedMonth}` : '';
-      const typeParam = incomeType 
-        ? `income_type=${encodeURIComponent(incomeType)}` 
-        : `category=${encodeURIComponent(category!)}`;
+      let typeParam = '';
+      if (searchQuery) typeParam = `searchQuery=${encodeURIComponent(searchQuery)}`;
+      else if (incomeType) typeParam = `income_type=${encodeURIComponent(incomeType)}`;
+      else typeParam = `category=${encodeURIComponent(category!)}`;
+
       const res = await fetch(`/api/money-hub/transactions?${typeParam}${monthParam}`);
       const d = await res.json();
       setData(d);
@@ -72,9 +75,11 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     setRecatLoading(false);
   };
 
-  if (!isOpen || !(category || incomeType)) return null;
+  if (!isOpen || !(category || incomeType || searchQuery)) return null;
 
-  const displayTitle = (incomeType || category!).replace(/_/g, ' ');
+  let displayTitle = '';
+  if (searchQuery) displayTitle = `Search: "${searchQuery}"`;
+  else displayTitle = (incomeType || category!).replace(/_/g, ' ');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

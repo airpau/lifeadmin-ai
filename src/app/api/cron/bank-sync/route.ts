@@ -495,6 +495,7 @@ export async function GET(request: NextRequest) {
       // Post-sync enrichment: fix merchant names, auto-categorise, detect recurring
       // These DB functions must run for every user after every sync (they are idempotent)
       const enrichmentFunctions = [
+        { name: 'deduplicate_bank_transactions', args: { p_user_id: connection.user_id } },
         { name: 'fix_ee_card_merchant_names', args: { p_user_id: connection.user_id } },
         { name: 'auto_categorise_transactions', args: { p_user_id: connection.user_id } },
         { name: 'detect_and_sync_recurring_transactions', args: { p_user_id: connection.user_id } },

@@ -477,6 +477,7 @@ export async function POST(request: NextRequest) {
 
   // Post-sync DB processing: fix merchant names, auto-categorise, detect recurring
   const adminClient = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  await adminClient.rpc('deduplicate_bank_transactions', { p_user_id: user.id });
   await adminClient.rpc('fix_ee_card_merchant_names', { p_user_id: user.id });
   await adminClient.rpc('auto_categorise_transactions', { p_user_id: user.id });
   await adminClient.rpc('detect_and_sync_recurring_transactions', { p_user_id: user.id });

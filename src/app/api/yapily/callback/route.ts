@@ -101,6 +101,15 @@ export async function GET(request: NextRequest) {
   // Use institution ID as provider_id
   const providerId = `yapily_${institutionId}_${Date.now()}`;
 
+  // ── Prevent Duplicate Active Connections ──
+  // Revoke any existing active connections for this exact bank to prevent double-counting
+  await supabase
+    .from('bank_connections')
+    .update({ status: 'revoked_duplicate', updated_at: new Date().toISOString() })
+    .eq('user_id', user.id)
+    .eq('institution_id', institutionId)
+    .in('status', ['active']);
+
   // ── Store connection in DB ──
   const { data: connection, error: upsertError } = await supabase
     .from('bank_connections')

@@ -433,7 +433,7 @@ export const telegramTools: Tool[] = [
             'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
             'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
             'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
+            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management', 'transfers',
           ],
           description: 'The category to assign to matching transactions.',
         },
