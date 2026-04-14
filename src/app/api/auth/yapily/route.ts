@@ -88,9 +88,10 @@ export async function GET(request: NextRequest) {
 
   // ── Create authorisation request ──
   try {
-    // Encode user ID + institution ID as state for CSRF protection
+    // Encode user ID + institution ID + returnTo as state for CSRF protection + post-callback redirect
+    const returnTo = searchParams.get('returnTo') || '/dashboard/money-hub';
     const state = Buffer.from(
-      JSON.stringify({ userId: user.id, institutionId })
+      JSON.stringify({ userId: user.id, institutionId, returnTo })
     ).toString('base64');
 
     const authData = await createAccountAuthorisation(

@@ -20,11 +20,33 @@ const INCOME_LABELS: Record<string, { label: string; icon: string; color: string
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
+const SPEND_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  mortgage: { label: 'Mortgage', icon: '🏠', color: '#8b5cf6' },
+  loans: { label: 'Loans', icon: '🏦', color: '#ef4444' },
+  council_tax: { label: 'Council Tax', icon: '🏛️', color: '#6366f1' },
+  energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
+  water: { label: 'Water', icon: '💧', color: '#06b6d4' },
+  broadband: { label: 'Broadband', icon: '📡', color: '#3b82f6' },
+  mobile: { label: 'Mobile', icon: '📱', color: '#8b5cf6' },
+  streaming: { label: 'Streaming', icon: '📺', color: '#ec4899' },
+  fitness: { label: 'Fitness', icon: '💪', color: '#10b981' },
+  groceries: { label: 'Groceries', icon: '🛒', color: '#22c55e' },
+  shopping: { label: 'Shopping', icon: '🛍️', color: '#a855f7' },
+  eating_out: { label: 'Eating Out', icon: '🍽️', color: '#f97316' },
+  transport: { label: 'Transport', icon: '🚗', color: '#0ea5e9' },
+  other: { label: 'Other', icon: '📋', color: '#475569' },
+};
+
+function getSpendMeta(key: string) {
+  return SPEND_LABELS[key] || { label: key.replace(/_/g, ' '), icon: '📋', color: '#475569' };
+}
+
 export default function OverviewPanel({ data, refreshData, selectedMonth }: { data: any, refreshData?: () => void, selectedMonth?: string }) {
-  const [showIncome, setShowIncome] = useState(false);
-  const [showSpending, setShowSpending] = useState(false);
   const [drillIncomeType, setDrillIncomeType] = useState<string | null>(null);
   const [drillSpendingCategory, setDrillSpendingCategory] = useState<string | null>(null);
+  const [showAllIncome, setShowAllIncome] = useState(false);
+  const [showAllSpending, setShowAllSpending] = useState(false);
+
   const { overview, healthScore, spending } = data;
   const { monthlyIncome, monthlyOutgoings, savingsRate, incomeBreakdown } = overview;
   const monthlyTrends = spending?.monthlyTrends || [];
@@ -41,32 +63,17 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
 
   const totalIncomeFromBreakdown = incomeEntries.reduce((s, e) => s + e.amount, 0);
 
-  // Monthly trends max for bar scaling
-  const trendsMax = monthlyTrends.length > 0 
-    ? Math.max(...monthlyTrends.flatMap((t: any) => [t.income, t.outgoings]), 1) 
-    : 1;
-
   const spendingCategories = spending?.categories || [];
   const totalSpentFromBreakdown = spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
 
-  // Constants mapping helper
-  const SPEND_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-    mortgage: { label: 'Mortgage', icon: '🏠', color: '#8b5cf6' },
-    loans: { label: 'Loans', icon: '🏦', color: '#ef4444' },
-    council_tax: { label: 'Council Tax', icon: '🏛️', color: '#6366f1' },
-    energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
-    water: { label: 'Water', icon: '💧', color: '#06b6d4' },
-    broadband: { label: 'Broadband', icon: '📡', color: '#3b82f6' },
-    mobile: { label: 'Mobile', icon: '📱', color: '#8b5cf6' },
-    streaming: { label: 'Streaming', icon: '📺', color: '#ec4899' },
-    fitness: { label: 'Fitness', icon: '💪', color: '#10b981' },
-    groceries: { label: 'Groceries', icon: '🛒', color: '#22c55e' },
-    shopping: { label: 'Shopping', icon: '🛍️', color: '#a855f7' },
-    eating_out: { label: 'Eating Out', icon: '🍽️', color: '#f97316' },
-    transport: { label: 'Transport', icon: '🚗', color: '#0ea5e9' },
-    other: { label: 'Other', icon: '📋', color: '#475569' },
-  };
-  function getSpendMeta(key: string) { return SPEND_LABELS[key] || { label: key.replace(/_/g, ' '), icon: '📋', color: '#475569' }; }
+  const VISIBLE_ROWS = 6;
+  const visibleIncomeEntries = showAllIncome ? incomeEntries : incomeEntries.slice(0, VISIBLE_ROWS);
+  const visibleSpendingCategories = showAllSpending ? spendingCategories : spendingCategories.slice(0, VISIBLE_ROWS);
+
+  // Monthly trends max for bar scaling
+  const trendsMax = monthlyTrends.length > 0
+    ? Math.max(...monthlyTrends.flatMap((t: any) => [t.income, t.outgoings]), 1)
+    : 1;
 
   return (
     <div className="space-y-4">
@@ -78,14 +85,6 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
             <span className="text-slate-400 text-xs">Income this month</span>
           </div>
           <p className="text-2xl md:text-3xl font-bold text-green-400">£{fmtNum(monthlyIncome)}</p>
-          {incomeEntries.length > 1 && (
-            <button 
-              onClick={() => setShowIncome(!showIncome)}
-              className="text-xs text-mint-400 hover:text-mint-300 mt-1 transition-colors"
-            >
-              {showIncome ? 'Hide' : 'Show'} breakdown →
-            </button>
-          )}
         </div>
 
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
@@ -94,14 +93,6 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
             <span className="text-slate-400 text-xs">Spent this month</span>
           </div>
           <p className="text-2xl md:text-3xl font-bold text-amber-400">£{fmtNum(monthlyOutgoings)}</p>
-          {spendingCategories.length > 0 && (
-            <button 
-              onClick={() => setShowSpending(!showSpending)}
-              className="text-xs text-amber-400 hover:text-amber-300 mt-1 transition-colors"
-            >
-              {showSpending ? 'Hide' : 'Show'} breakdown →
-            </button>
-          )}
         </div>
 
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
@@ -132,81 +123,118 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
         </div>
       </div>
 
-      {/* Income Breakdown (expandable) */}
-      {showIncome && incomeEntries.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-green-400" />
-            Income Breakdown
-            <span className="text-slate-400 text-sm font-normal ml-auto">Click a category to see details</span>
-          </h3>
-          <div className="space-y-2">
-            {incomeEntries.map((entry) => {
-              const pct = totalIncomeFromBreakdown > 0 ? (entry.amount / totalIncomeFromBreakdown) * 100 : 0;
-              return (
-                <div 
-                  key={entry.type} 
-                  className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
-                  onClick={() => setDrillIncomeType(entry.type)}
-                >
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-slate-300 flex items-center gap-2 group-hover:text-mint-400 transition-colors">
-                      <span>{entry.icon}</span>
-                      {entry.label}
-                      <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
-                    </span>
-                    <span className="text-green-400 font-semibold">£{fmtNum(entry.amount)}</span>
-                  </div>
-                  <div className="w-full bg-navy-800 rounded-full h-1.5">
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: entry.color }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-            <span className="text-slate-400">Total Recorded Income</span>
-            <span className="text-green-400 font-bold">£{fmtNum(totalIncomeFromBreakdown)}</span>
-          </div>
-        </div>
-      )}
+      {/* Side-by-side Income + Spending Breakdowns */}
+      {(incomeEntries.length > 0 || spendingCategories.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Income Breakdown */}
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-400" />
+                Income
+              </h3>
+              <span className="text-slate-500 text-xs">Tap to see transactions</span>
+            </div>
 
-      {/* Spending Breakdown (expandable) */}
-      {showSpending && spendingCategories.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
-            <TrendingDown className="h-5 w-5 text-amber-400" />
-            Spending Breakdown
-            <span className="text-slate-400 text-sm font-normal ml-auto">Click a category to see details</span>
-          </h3>
-          <div className="space-y-2">
-            {spendingCategories.map((c: any) => {
-              const meta = getSpendMeta(c.category);
-              const pct = totalSpentFromBreakdown > 0 ? (c.total / totalSpentFromBreakdown) * 100 : 0;
-              return (
-                <div 
-                  key={c.category} 
-                  className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
-                  onClick={() => setDrillSpendingCategory(c.category)}
-                >
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-slate-300 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
-                      <span>{meta.icon}</span>
-                      {meta.label}
-                      <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
-                    </span>
-                    <span className="text-amber-400 font-semibold">£{fmtNum(c.total)}</span>
-                  </div>
-                  <div className="w-full bg-navy-800 rounded-full h-1.5">
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
-                  </div>
-                </div>
-              );
-            })}
+            {incomeEntries.length > 0 ? (
+              <div className="space-y-2">
+                {visibleIncomeEntries.map((entry) => {
+                  const pct = totalIncomeFromBreakdown > 0 ? (entry.amount / totalIncomeFromBreakdown) * 100 : 0;
+                  return (
+                    <div
+                      key={entry.type}
+                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
+                      onClick={() => setDrillIncomeType(entry.type)}
+                    >
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-green-400 transition-colors">
+                          <span>{entry.icon}</span>
+                          {entry.label}
+                          <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
+                        </span>
+                        <span className="text-green-400 font-semibold">£{fmtNum(entry.amount)}</span>
+                      </div>
+                      <div className="w-full bg-navy-800 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: entry.color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                {incomeEntries.length > VISIBLE_ROWS && (
+                  <button
+                    onClick={() => setShowAllIncome(!showAllIncome)}
+                    className="text-xs text-slate-500 hover:text-mint-400 transition-colors mt-1 w-full text-left"
+                  >
+                    {showAllIncome ? 'Show less' : `+${incomeEntries.length - VISIBLE_ROWS} more`}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-slate-500 text-sm">No income recorded this month</p>
+            )}
+
+            {totalIncomeFromBreakdown > 0 && (
+              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
+                <span className="text-slate-400">Total</span>
+                <span className="text-green-400 font-bold">£{fmtNum(totalIncomeFromBreakdown)}</span>
+              </div>
+            )}
           </div>
-          <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-            <span className="text-slate-400">Total Recorded Spend</span>
-            <span className="text-amber-400 font-bold">£{fmtNum(totalSpentFromBreakdown)}</span>
+
+          {/* Spending Breakdown */}
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-amber-400" />
+                Spending
+              </h3>
+              <span className="text-slate-500 text-xs">Tap to recategorise</span>
+            </div>
+
+            {spendingCategories.length > 0 ? (
+              <div className="space-y-2">
+                {visibleSpendingCategories.map((c: any) => {
+                  const meta = getSpendMeta(c.category);
+                  const pct = totalSpentFromBreakdown > 0 ? (c.total / totalSpentFromBreakdown) * 100 : 0;
+                  return (
+                    <div
+                      key={c.category}
+                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
+                      onClick={() => setDrillSpendingCategory(c.category)}
+                    >
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
+                          <span>{meta.icon}</span>
+                          {meta.label}
+                          <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
+                        </span>
+                        <span className="text-amber-400 font-semibold">£{fmtNum(c.total)}</span>
+                      </div>
+                      <div className="w-full bg-navy-800 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                {spendingCategories.length > VISIBLE_ROWS && (
+                  <button
+                    onClick={() => setShowAllSpending(!showAllSpending)}
+                    className="text-xs text-slate-500 hover:text-amber-400 transition-colors mt-1 w-full text-left"
+                  >
+                    {showAllSpending ? 'Show less' : `+${spendingCategories.length - VISIBLE_ROWS} more`}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-slate-500 text-sm">No spending recorded this month</p>
+            )}
+
+            {totalSpentFromBreakdown > 0 && (
+              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
+                <span className="text-slate-400">Total</span>
+                <span className="text-amber-400 font-bold">£{fmtNum(totalSpentFromBreakdown)}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -248,21 +276,21 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
       )}
 
       {drillIncomeType && (
-        <CategoryDrillDownModal 
-          isOpen={!!drillIncomeType} 
-          onClose={() => setDrillIncomeType(null)} 
+        <CategoryDrillDownModal
+          isOpen={!!drillIncomeType}
+          onClose={() => setDrillIncomeType(null)}
           category={null}
-          incomeType={drillIncomeType} 
+          incomeType={drillIncomeType}
           selectedMonth={selectedMonth || ''}
           onRecategorised={() => { setDrillIncomeType(null); refreshData?.(); }}
         />
       )}
 
       {drillSpendingCategory && (
-        <CategoryDrillDownModal 
-          isOpen={!!drillSpendingCategory} 
-          onClose={() => setDrillSpendingCategory(null)} 
-          category={drillSpendingCategory} 
+        <CategoryDrillDownModal
+          isOpen={!!drillSpendingCategory}
+          onClose={() => setDrillSpendingCategory(null)}
+          category={drillSpendingCategory}
           selectedMonth={selectedMonth || ''}
           onRecategorised={() => { setDrillSpendingCategory(null); refreshData?.(); }}
         />

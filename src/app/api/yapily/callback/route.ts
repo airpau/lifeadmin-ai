@@ -26,13 +26,13 @@ export async function GET(request: NextRequest) {
   if (errorParam) {
     console.error('Yapily callback error:', errorParam);
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=bank_auth_failed', request.url)
+      new URL('/dashboard/money-hub?error=bank_auth_failed', request.url)
     );
   }
 
   if (!consentToken || !state) {
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=invalid_callback', request.url)
+      new URL('/dashboard/money-hub?error=invalid_callback', request.url)
     );
   }
 
@@ -48,22 +48,23 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Verify state (CSRF check) ──
-  let stateData: { userId: string; institutionId: string };
+  let stateData: { userId: string; institutionId: string; returnTo?: string };
   try {
     stateData = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
   } catch {
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=state_mismatch', request.url)
+      new URL('/dashboard/money-hub?error=state_mismatch', request.url)
     );
   }
 
   if (stateData.userId !== user.id) {
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=state_mismatch', request.url)
+      new URL('/dashboard/money-hub?error=state_mismatch', request.url)
     );
   }
 
   const institutionId = stateData.institutionId;
+  const returnTo = stateData.returnTo || '/dashboard/money-hub';
 
   // ── Fetch linked accounts ──
   let accountIds: string[] = [];
@@ -87,10 +88,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('Failed to fetch Yapily accounts:', err);
     return NextResponse.redirect(
-      new URL(
-        '/dashboard/subscriptions?error=account_fetch_failed',
-        request.url
-      )
+      new URL('/dashboard/money-hub?error=account_fetch_failed', request.url)
     );
   }
 
@@ -129,7 +127,7 @@ export async function GET(request: NextRequest) {
   if (upsertError || !connection) {
     console.error('Failed to save Yapily bank connection:', upsertError);
     return NextResponse.redirect(
-      new URL('/dashboard/subscriptions?error=save_failed', request.url)
+      new URL('/dashboard/money-hub?error=save_failed', request.url)
     );
   }
 
@@ -159,6 +157,6 @@ export async function GET(request: NextRequest) {
   }).catch(err => console.error('Failed to trigger initial sync:', err));
 
   return NextResponse.redirect(
-    new URL('/dashboard/subscriptions?connected=true', request.url)
+    new URL(`${returnTo}?connected=true`, request.url)
   );
 }
