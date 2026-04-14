@@ -22,15 +22,20 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch disputes' }, { status: 500 });
   }
 
-  // Add letter count and last activity date
-  const enriched = (disputes || []).map((d: any) => ({
-    ...d,
-    letter_count: d.correspondence?.filter((c: any) => c.entry_type === 'ai_letter').length || 0,
-    message_count: d.correspondence?.length || 0,
-    last_activity: d.correspondence?.length > 0
-      ? d.correspondence.sort((a: any, b: any) => new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime())[0].entry_date
-      : d.created_at,
-  }));
+  // Add letter count, last activity date, and latest correspondence snippet
+  const enriched = (disputes || []).map((d: any) => {
+    const sortedByDate = d.correspondence?.length > 0
+      ? [...d.correspondence].sort((a: any, b: any) => new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime())
+      : [];
+    const latestEntry = sortedByDate[0] ?? null;
+    return {
+      ...d,
+      letter_count: d.correspondence?.filter((c: any) => c.entry_type === 'ai_letter').length || 0,
+      message_count: d.correspondence?.length || 0,
+      last_activity: latestEntry ? latestEntry.entry_date : d.created_at,
+      latest_snippet: latestEntry ? (latestEntry.summary || latestEntry.title || null) : null,
+    };
+  });
 
   return NextResponse.json(enriched);
 }

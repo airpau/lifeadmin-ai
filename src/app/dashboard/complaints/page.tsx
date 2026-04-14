@@ -36,6 +36,7 @@ interface Dispute {
   letter_count: number;
   message_count: number;
   last_activity: string;
+  latest_snippet?: string | null;
   correspondence?: Correspondence[];
   contract_extractions?: ContractExtraction[];
 }
@@ -1299,7 +1300,21 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                              'Worth trying'} ({entry.estimated_success}%)
                           </span>
                         )}
-                        <span className="text-xs text-mint-400 ml-auto">Click to view full letter</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLetterModal({
+                              content: entry.content,
+                              title: entry.title || 'Your letter',
+                              refs: entry.legal_references || [],
+                              pills: entry.rights_pills || [],
+                            });
+                          }}
+                          className="text-xs text-mint-400 ml-auto hover:text-mint-300 transition-colors"
+                        >
+                          Click to view full letter
+                        </button>
                       </div>
                       {/* Your rights pills — use URL-linked pills when available */}
                       {((entry.rights_pills && entry.rights_pills.length > 0) || (entry.legal_references && entry.legal_references.length > 0)) && (
@@ -2252,7 +2267,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <h3 className="text-white font-semibold mb-1 truncate">{d.provider_name}</h3>
-                    <p className="text-slate-400 text-sm truncate">{d.issue_summary}</p>
+                    <p className="text-slate-400 text-sm truncate">{d.latest_snippet || d.issue_summary}</p>
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       <span className="text-slate-500 text-xs">{ISSUE_TYPE_LABELS[d.issue_type] || d.issue_type}</span>
                       <span className="text-slate-600 text-xs flex items-center gap-1">
