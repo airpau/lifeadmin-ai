@@ -131,9 +131,6 @@ export async function GET(request: NextRequest) {
 
   // Trigger initial transaction sync via internal API call
   try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    // We call the sync endpoint server-to-server; pass user cookies via auth
-    // For simplicity in MVP, we inline the sync logic here
     await syncTransactionsForConnection(connection, user.id, supabase, tokens.access_token);
 
     // Also fetch and store initial balance
@@ -148,23 +145,58 @@ export async function GET(request: NextRequest) {
 }
 
 async function syncTransactionsForConnection(
-  connection: { id: string; account_ids: string[] | null },
+  connection: { id: string; account_ids: string[] | null; connected_at: string },
   userId: string,
   supabase: ReturnType<typeof createClient> extends Promise<infer T> ? T : never,
   accessToken: string
 ) {
   const { fetchTransactions } = await import('@/lib/truelayer');
 
-  const twelveMonthsAgo = new Date();
-  twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+  // Many UK banks (e.g. NatWest via TrueLayer) only serve transactions on or after the
+  // consent / reconnection date. Requesting dates before that returns HTTP 400.
+  // We therefore never go further back than the connected_at date for this authorization.
+  const connectedAtDate = new Date(connection.connected_at);
+  connectedAtDate.setHours(0, 0, 0, 0); // start of that day
+
+  // Also enforce a hard 90-day cap so we never exceed TrueLayer's date range limits.
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+  // The earliest date we are allowed to query (whichever is more recent).
+  const earliestAllowed = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
+
+  let fromDate: Date;
+  const { data: lastTx } = await supabase
+    .from('bank_transactions')
+    .select('timestamp')
+    .eq('user_id', userId)
+    .in('account_id', connection.account_ids || [])
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (lastTx?.timestamp) {
+    // Start from the day of the last known transaction to pick up any new ones.
+    fromDate = new Date(lastTx.timestamp);
+    fromDate.setHours(0, 0, 0, 0);
+    // Never go before the authorization floor — that would cause TrueLayer 400.
+    if (fromDate < earliestAllowed) {
+      fromDate = earliestAllowed;
+    }
+    console.log(`TrueLayer callback: syncing from ${fromDate.toISOString()} (last tx or connected_at floor)`);
+  } else {
+    fromDate = earliestAllowed;
+    console.log(`TrueLayer callback: no prior transactions, syncing from ${fromDate.toISOString()}`);
+  }
 
   const accountIds = connection.account_ids || [];
   let totalSynced = 0;
   let apiCallsMade = 0;
+  const syncErrors: string[] = [];
 
   for (const accountId of accountIds) {
     try {
-      const transactions = await fetchTransactions(accessToken, accountId, twelveMonthsAgo);
+      const transactions = await fetchTransactions(accessToken, accountId, fromDate);
       apiCallsMade++;
 
       if (transactions.length === 0) continue;
@@ -188,8 +220,10 @@ async function syncTransactionsForConnection(
 
       if (error) console.error('Error upserting transactions:', error);
       else totalSynced += rows.length;
-    } catch (err) {
-      console.error(`Error syncing account ${accountId}:`, err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Error syncing account ${accountId}:`, msg);
+      syncErrors.push(`${accountId}: ${msg}`);
     }
   }
 
@@ -201,13 +235,19 @@ async function syncTransactionsForConnection(
     .update({ last_synced_at: now, updated_at: now })
     .eq('id', connection.id);
 
-  // Log initial sync to bank_sync_log for cost tracking
+  // Log as failed if no API calls succeeded (silent failure guard)
+  const syncStatus = apiCallsMade > 0 ? 'success' : 'failed';
+  const errorMessage = syncStatus === 'failed'
+    ? `All account fetch attempts failed: ${syncErrors.join('; ') || 'unknown error'}`
+    : null;
+
   await supabase.from('bank_sync_log').insert({
     user_id: userId,
     connection_id: connection.id,
     trigger_type: 'initial',
-    status: 'success',
+    status: syncStatus,
     api_calls_made: apiCallsMade,
+    error_message: errorMessage,
   }).then(({ error }) => {
     if (error) console.error('Failed to log initial sync:', error);
   });

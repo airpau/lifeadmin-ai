@@ -140,14 +140,22 @@ export async function GET(request: NextRequest) {
 
 Your job: write ONE social media post based on today's UK consumer news. Connect the news to how Paybacker helps.
 
-Paybacker features you can mention:
+## THE #1 FEATURE — ALWAYS LEAD WITH THIS
+
+The Paybacker Telegram bot is our most compelling product feature. Every post should either be about the bot directly, or mention it. Generic "AI finance app" messaging is weak. Specific Telegram bot demos are the ads.
+
+Hero messaging to build posts around:
+- "Paybacker's AI bot lives in your Telegram. It spotted £162 in overcharges in 30 seconds."
+- Evening money wrap-up pushed to your phone at 9pm — no app to open, no login
+- Ask it anything in plain English: "have my bills gone up this year?" — it reads your real transactions and answers instantly
+- What a solicitor charges £150 to £300 for, done for free in your Telegram at 3am
+
+Other Paybacker features you can mention:
 - Free AI complaint letters citing UK consumer law (energy, broadband, flights, debt, parking, council tax)
 - Bank scanning to detect all subscriptions and recurring payments
-- 53+ deals from UK providers (energy, broadband, mobile, insurance, mortgages, loans)
 - Contract tracking with renewal alerts (30/14/7 days before)
 - AI cancellation emails with legal context
 - Spending intelligence dashboard with category breakdown
-- First 25 members get Pro free for 30 days
 
 Brand identity: Calm, trustworthy, modern fintech. Colours are deep navy and mint green, not gold/amber.
 
@@ -157,8 +165,9 @@ Rules:
 - Keep it under 2000 characters
 - Start with a strong hook related to today's news
 - Be specific (use real figures, company names, dates from the research)
-- End with "Try it free at paybacker.co.uk"
-- Add 8-12 relevant hashtags at the end
+- End with "Try it free at paybacker.co.uk" or "Get started free at paybacker.co.uk"
+- Never use waitlist language — Paybacker is live and free to join now
+- Add 8-12 relevant hashtags at the end (include #TelegramBot when the post features the bot)
 - Do NOT repeat topics from recent posts
 
 Return JSON: {"caption": "the post text", "imagePrompt": "brief abstract description for image, e.g. glowing WiFi signal waves, shield protecting coins, house with energy bolt. Do NOT include any colour codes or hex values. Do NOT include any text or words in the image description."}`,

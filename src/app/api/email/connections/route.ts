@@ -13,7 +13,7 @@ export async function GET() {
       .from('email_connections')
       .select('id, email_address, provider_type, auth_method, status, last_scanned_at, created_at')
       .eq('user_id', user.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'needs_reauth', 'expired'])
       .order('created_at', { ascending: false });
 
     if (error) {

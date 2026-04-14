@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) {
     return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
   }
@@ -205,19 +205,24 @@ export async function GET(request: NextRequest) {
       sections.push('*Good morning! Here\'s your daily money briefing:*');
 
       // ------ 1. Yesterday's spending ------
-      const { data: yesterdayTx } = await supabase
+      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      const { data: yesterdayTxRaw } = await supabase
         .from('bank_transactions')
-        .select('category, amount')
+        .select('user_category, amount')
         .eq('user_id', userId)
         .lt('amount', 0)
         .gte('timestamp', yesterdayStart.toISOString())
         .lt('timestamp', todayStart.toISOString());
 
-      if (yesterdayTx && yesterdayTx.length > 0) {
+      const yesterdayTx = (yesterdayTxRaw ?? []).filter(
+        t => !EXCLUDE_CATS.has(t.user_category ?? ''),
+      );
+
+      if (yesterdayTx.length > 0) {
         const total = yesterdayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
         const byCategory: Record<string, number> = {};
         for (const t of yesterdayTx) {
-          const cat = t.category ?? 'Other';
+          const cat = t.user_category ?? 'Other';
           byCategory[cat] = (byCategory[cat] ?? 0) + Math.abs(Number(t.amount));
         }
 
@@ -274,29 +279,26 @@ export async function GET(request: NextRequest) {
       }
 
       // ------ 4. Budget status (categories over 80%) ------
-      const [budgets, monthTx] = await Promise.all([
+      const [budgetsResult, monthSpendingResult] = await Promise.all([
         supabase
           .from('money_hub_budgets')
           .select('category, monthly_limit')
           .eq('user_id', userId),
-        supabase
-          .from('bank_transactions')
-          .select('category, amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', monthStart)
-          .lt('timestamp', monthEnd),
+        supabase.rpc('get_monthly_spending', {
+          p_user_id: userId,
+          p_year: now.getFullYear(),
+          p_month: now.getMonth() + 1,
+        }),
       ]);
 
       const spentByCategory: Record<string, number> = {};
-      for (const t of monthTx.data ?? []) {
-        const cat = t.category ?? 'Other';
-        spentByCategory[cat] = (spentByCategory[cat] ?? 0) + Math.abs(Number(t.amount));
+      for (const row of monthSpendingResult.data ?? []) {
+        spentByCategory[row.category] = Number(row.category_total);
       }
 
       const budgetWarnings: Array<{ category: string; spent: number; limit: number; pct: number }> =
         [];
-      for (const b of budgets.data ?? []) {
+      for (const b of budgetsResult.data ?? []) {
         const limit = Number(b.monthly_limit);
         const spentAmt = spentByCategory[b.category] ?? 0;
         const pct = limit > 0 ? (spentAmt / limit) * 100 : 0;
@@ -320,7 +322,7 @@ export async function GET(request: NextRequest) {
         .from('disputes')
         .select('id, provider_name, issue_type, status')
         .eq('user_id', userId)
-        .not('status', 'in', '("resolved","dismissed")');
+        .not('status', 'in', '(resolved,dismissed)');
 
       if (openDisputes && openDisputes.length > 0) {
         let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
@@ -355,6 +357,19 @@ export async function GET(request: NextRequest) {
   console.log(
     `[telegram-morning-summary] Processed ${proSessions.length} users, sent ${sent}, skipped ${skipped}, errors ${errors.length}`,
   );
+
+  // Alert founder if the cron ran with eligible users but sent nothing
+  const founderChatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+  if (founderChatId && eligibleSessions.length > 0 && sent === 0 && errors.length > 0) {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: Number(founderChatId),
+        text: `Morning summary failed: ${errors.slice(0, 3).join('; ')}`,
+      }),
+    }).catch(() => {});
+  }
 
   return NextResponse.json({
     ok: true,

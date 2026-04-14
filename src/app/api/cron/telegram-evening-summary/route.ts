@@ -1,10 +1,13 @@
 /**
  * Telegram Evening Summary Cron
  *
- * Runs at 8pm UK time daily. Sends each linked Pro user an evening
- * wrap-up covering today's spending vs daily average, remaining budget,
- * price increase alerts, savings progress, tomorrow's payments,
- * and a motivational close.
+ * Runs at 8pm UTC (9pm BST) daily. Sends each linked Pro user an evening
+ * wrap-up covering month-to-date spending and income, budget progress,
+ * upcoming payments, and recent notable transactions.
+ *
+ * Redesigned to use month-to-date figures rather than "today's spending"
+ * because Open Banking syncs can lag by hours or even days — showing a
+ * running monthly total is always accurate regardless of sync timing.
  *
  * Uses the Telegram Bot API directly (fetch to api.telegram.org) with
  * the TELEGRAM_USER_BOT_TOKEN.
@@ -16,6 +19,23 @@ import { createClient } from '@supabase/supabase-js';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
+// Map transaction user_category values → budget category names.
+// Required because auto_categorise may use different names than the budget UI.
+const CATEGORY_ALIASES: Record<string, string> = {
+  utility: 'energy',
+  utilities: 'energy',
+  electric: 'energy',
+  gas: 'energy',
+  supermarket: 'groceries',
+  food: 'groceries',
+  dining: 'eating_out',
+  restaurant: 'eating_out',
+  transport: 'travel',
+  commute: 'travel',
+  fuel: 'travel',
+  petrol: 'travel',
+};
+
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,14 +45,6 @@ function getAdmin() {
 
 function fmt(amount: number): string {
   return `£${Math.abs(amount).toFixed(2)}`;
-}
-
-function fmtDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
 }
 
 function splitMessage(text: string, limit = 4000): string[] {
@@ -79,7 +91,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) {
     return NextResponse.json({ error: 'TELEGRAM_USER_BOT_TOKEN not set' }, { status: 500 });
   }
@@ -139,23 +151,19 @@ export async function GET(request: NextRequest) {
   // Date helpers
   // -------------------------------------------------------
   const now = new Date();
-
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-
-  const tomorrowStr = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split('T')[0];
-
-  // Current month boundaries
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
   const dayOfMonth = now.getDate();
+  const daysInMonth = new Date(year, month, 0).getDate();
   const daysRemaining = daysInMonth - dayOfMonth;
+  const monthName = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  // For 30-day average calculation
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const todayStr = now.toISOString().split('T')[0];
+  const sevenDaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString().split('T')[0];
+
+  // For recent activity: look back 7 days to handle sync lag
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // -------------------------------------------------------
   // Process each Pro user
@@ -164,7 +172,7 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
-      // Check if user has any bank transaction data at all
+      // Quick check: does this user have any bank data at all?
       const { count: txCount } = await supabase
         .from('bank_transactions')
         .select('id', { count: 'exact', head: true })
@@ -178,152 +186,177 @@ export async function GET(request: NextRequest) {
       const sections: string[] = [];
       sections.push('*Here\'s your evening money wrap-up:*');
 
-      // ------ 1. Today's spending vs daily average ------
-      const [todayTxResult, last30TxResult] = await Promise.all([
-        supabase
-          .from('bank_transactions')
-          .select('category, amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', todayStart.toISOString())
-          .lt('timestamp', now.toISOString()),
-        supabase
-          .from('bank_transactions')
-          .select('amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', thirtyDaysAgo.toISOString())
-          .lt('timestamp', todayStart.toISOString()),
-      ]);
+      // ------ 1. Month-to-date spending and income ------
+      const [spendingTotalResult, incomeTotalResult, spendingBreakdownResult] =
+        await Promise.all([
+          supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: year, p_month: month }),
+          supabase.rpc('get_monthly_income_total',   { p_user_id: userId, p_year: year, p_month: month }),
+          supabase.rpc('get_monthly_spending',        { p_user_id: userId, p_year: year, p_month: month }),
+        ]);
 
-      const todayTx = todayTxResult.data ?? [];
-      const last30Tx = last30TxResult.data ?? [];
+      const monthlySpending = Number(spendingTotalResult.data ?? 0);
+      const monthlyIncome   = Number(incomeTotalResult.data   ?? 0);
+      const net = monthlyIncome - monthlySpending;
 
-      const todayTotal = todayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
-      const last30Total = last30Tx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
-      const dailyAvg = last30Tx.length > 0 ? last30Total / 30 : 0;
+      let monthSection = `\n\n*${monthName} so far* (${dayOfMonth} of ${daysInMonth} days)`;
+      if (monthlyIncome > 0) {
+        monthSection += `\nIncome:   *${fmt(monthlyIncome)}*`;
+      }
+      if (monthlySpending > 0) {
+        monthSection += `\nSpending: *${fmt(monthlySpending)}*`;
+        if (monthlyIncome > 0) {
+          const netEmoji = net >= 0 ? '\u2705' : '\u26a0\ufe0f';
+          monthSection += `\nNet: ${netEmoji} *${net >= 0 ? '+' : ''}${net < 0 ? '-' : ''}${fmt(Math.abs(net))}*`;
+        }
+      } else {
+        monthSection += '\n_No spending data yet this month_';
+      }
+      sections.push(monthSection);
 
-      let spendingSection = `\n\n*Today's Spending*\nTotal: *${fmt(todayTotal)}*`;
-      if (dailyAvg > 0) {
-        const diff = todayTotal - dailyAvg;
-        if (diff > 0) {
-          spendingSection += `\n\u26a0\ufe0f That's *${fmt(diff)} above* your daily average of ${fmt(dailyAvg)}`;
-        } else if (diff < 0) {
-          spendingSection += `\n\u2705 That's *${fmt(Math.abs(diff)) } below* your daily average of ${fmt(dailyAvg)}`;
-        } else {
-          spendingSection += `\nRight on your daily average of ${fmt(dailyAvg)}`;
+      // ------ 2. Budget progress ------
+      // Build spentByCategory from RPC results, applying category aliases
+      // so budget categories like 'energy' match transaction categories like 'utility'.
+      const spentByCategory: Record<string, number> = {};
+      for (const row of (spendingBreakdownResult.data ?? [])) {
+        const cat   = String(row.category);
+        const total = Number(row.category_total);
+        // Store under original name
+        spentByCategory[cat] = (spentByCategory[cat] ?? 0) + total;
+        // Also store under alias (e.g. 'utility' → 'energy')
+        const alias = CATEGORY_ALIASES[cat];
+        if (alias) {
+          spentByCategory[alias] = (spentByCategory[alias] ?? 0) + total;
         }
       }
-      sections.push(spendingSection);
 
-      // ------ 2. Remaining budget for top categories ------
-      const [budgets, monthTxResult] = await Promise.all([
-        supabase
-          .from('money_hub_budgets')
-          .select('category, monthly_limit')
-          .eq('user_id', userId),
-        supabase
-          .from('bank_transactions')
-          .select('category, amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', monthStart.toISOString())
-          .lt('timestamp', monthEnd.toISOString()),
-      ]);
+      const { data: budgetsData } = await supabase
+        .from('money_hub_budgets')
+        .select('category, monthly_limit')
+        .eq('user_id', userId);
 
-      const spentByCategory: Record<string, number> = {};
-      for (const t of monthTxResult.data ?? []) {
-        const cat = t.category ?? 'Other';
-        spentByCategory[cat] = (spentByCategory[cat] ?? 0) + Math.abs(Number(t.amount));
-      }
+      if (budgetsData && budgetsData.length > 0) {
+        const budgetStatus = budgetsData.map(b => {
+          const limit   = Number(b.monthly_limit);
+          const spent   = spentByCategory[b.category] ?? 0;
+          const remaining = limit - spent;
+          const pct     = limit > 0 ? (spent / limit) * 100 : 0;
+          return { category: b.category, spent, limit, remaining, pct };
+        }).sort((a, b) => b.pct - a.pct);
 
-      const budgetStatus: Array<{
-        category: string;
-        spent: number;
-        limit: number;
-        remaining: number;
-        pct: number;
-      }> = [];
-      for (const b of budgets.data ?? []) {
-        const limit = Number(b.monthly_limit);
-        const spentAmt = spentByCategory[b.category] ?? 0;
-        const remaining = limit - spentAmt;
-        const pct = limit > 0 ? (spentAmt / limit) * 100 : 0;
-        budgetStatus.push({ category: b.category, spent: spentAmt, limit, remaining, pct });
-      }
-
-      if (budgetStatus.length > 0) {
-        budgetStatus.sort((a, b) => b.pct - a.pct);
-        let budgetSection = `\n\n*Budget Remaining (${daysRemaining} days left this month)*`;
-        for (const b of budgetStatus.slice(0, 5)) {
+        let budgetSection = `\n\n*Budget Progress (${daysRemaining} days left)*`;
+        for (const b of budgetStatus.slice(0, 6)) {
           const emoji = b.pct >= 100 ? '\u274c' : b.pct >= 80 ? '\u26a0\ufe0f' : '\u2705';
-          const remainStr =
-            b.remaining >= 0 ? `${fmt(b.remaining)} left` : `${fmt(Math.abs(b.remaining))} over`;
-          budgetSection += `\n  ${emoji} ${b.category}: ${remainStr} (${Math.round(b.pct)}% used)`;
+          const spentStr = b.spent > 0
+            ? `${fmt(b.spent)} of ${fmt(b.limit)} (${Math.round(b.pct)}%)`
+            : `${fmt(b.limit)} unspent`;
+          budgetSection += `\n  ${emoji} ${b.category}: ${spentStr}`;
         }
         sections.push(budgetSection);
       }
 
-      // ------ 3. Price increase alerts detected today ------
-      const { data: priceAlerts } = await supabase
-        .from('price_increase_alerts')
-        .select('merchant_name, old_amount, new_amount, annual_impact')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .gte('detected_at', todayStart.toISOString());
+      // ------ 3. Top spending categories this month ------
+      // Show the actual breakdown so Paul can see where money is going,
+      // even when categories don't align with predefined budgets.
+      const topSpend = ((spendingBreakdownResult.data ?? []) as Array<{category: string; category_total: number}>)
+        .filter(r => !['transfers', 'income'].includes(r.category))
+        .sort((a, b) => Number(b.category_total) - Number(a.category_total))
+        .slice(0, 5);
 
-      if (priceAlerts && priceAlerts.length > 0) {
-        let alertSection = '\n\n*Price Increase Alerts Today*';
-        for (const a of priceAlerts) {
-          const increase = Number(a.new_amount) - Number(a.old_amount);
-          alertSection += `\n  \ud83d\udcc8 ${a.merchant_name}: up ${fmt(increase)}/month (${fmt(Number(a.annual_impact))}/year)`;
+      if (topSpend.length > 0) {
+        let breakdownSection = '\n\n*Top Spending This Month*';
+        for (const r of topSpend) {
+          breakdownSection += `\n  \ud83d\udcca ${r.category}: *${fmt(Number(r.category_total))}*`;
         }
-        sections.push(alertSection);
+        sections.push(breakdownSection);
       }
 
-      // ------ 4. Savings progress ------
-      const { data: savings } = await supabase
-        .from('verified_savings')
-        .select('amount_saved')
-        .eq('user_id', userId);
+      // ------ 4. Bank data freshness check ------
+      // If the most recent transaction is more than 2 days old, warn the user.
+      const { data: latestTxRow } = await supabase
+        .from('bank_transactions')
+        .select('timestamp')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .single();
 
-      const totalSaved = (savings ?? []).reduce(
-        (sum, s) => sum + Math.abs(Number(s.amount_saved ?? 0)),
-        0,
-      );
-
-      if (totalSaved > 0) {
-        sections.push(`\n\n*Savings Progress*\n\ud83c\udfe6 Verified savings total: *${fmt(totalSaved)}*`);
+      let syncNote: string | null = null;
+      if (latestTxRow?.timestamp) {
+        const latestDate = new Date(latestTxRow.timestamp);
+        const daysBehind = Math.floor((now.getTime() - latestDate.getTime()) / (24 * 60 * 60 * 1000));
+        if (daysBehind >= 2) {
+          const latestStr = latestDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          syncNote = `\n\n\u26a0\ufe0f *Bank sync issue* — data last updated *${latestStr}* (${daysBehind} days ago). Please reconnect your bank account in the app.`;
+        }
       }
 
-      // ------ 5. Tomorrow's upcoming payments ------
-      const { data: tomorrowPayments } = await supabase
+      // ------ 5. Recent notable transactions (last 7 days) ------
+      // 7-day window handles sync lag gracefully — shows real transactions
+      // even when today's data hasn't synced yet.
+      const { data: recentTxData } = await supabase
+        .from('bank_transactions')
+        .select('description, merchant_name, amount, user_category, timestamp')
+        .eq('user_id', userId)
+        .lt('amount', 0)
+        .gte('timestamp', sevenDaysAgo.toISOString())
+        .order('amount', { ascending: true }) // most negative first = biggest spend
+        .limit(8);
+
+      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      const notableTx = (recentTxData ?? []).filter(
+        tx => !EXCLUDE_CATS.has(tx.user_category ?? '') && Math.abs(Number(tx.amount)) >= 10,
+      ).slice(0, 5);
+
+      if (notableTx.length > 0) {
+        let recentSection = '\n\n*Recent Transactions*';
+        for (const tx of notableTx) {
+          const merchant = tx.merchant_name || tx.description?.split(' ').slice(0, 4).join(' ') || 'Unknown';
+          const date = new Date(tx.timestamp).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'short',
+          });
+          recentSection += `\n  \ud83d\udcb3 ${merchant} (${date}): *${fmt(Math.abs(Number(tx.amount)))}*`;
+        }
+        sections.push(recentSection);
+      }
+
+      // ------ 6. Sync warning (after recent activity section) ------
+      if (syncNote) {
+        sections.push(syncNote);
+      }
+
+      // ------ 7. Upcoming payments — next 7 days ------
+      const { data: upcomingPayments } = await supabase
         .from('subscriptions')
-        .select('provider_name, amount, billing_cycle')
+        .select('provider_name, amount, next_billing_date')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .eq('next_billing_date', tomorrowStr);
+        .gt('next_billing_date', todayStr)
+        .lte('next_billing_date', sevenDaysStr)
+        .order('next_billing_date', { ascending: true });
 
-      if (tomorrowPayments && tomorrowPayments.length > 0) {
-        const totalDue = tomorrowPayments.reduce(
-          (sum, p) => sum + Math.abs(Number(p.amount)),
-          0,
+      if (upcomingPayments && upcomingPayments.length > 0) {
+        const totalDue = upcomingPayments.reduce(
+          (sum, p) => sum + Math.abs(Number(p.amount)), 0,
         );
-        let paymentSection = `\n\n*Tomorrow's Payments*\n${tomorrowPayments.length} payment${tomorrowPayments.length !== 1 ? 's' : ''} due (${fmt(totalDue)} total):`;
-        for (const p of tomorrowPayments) {
-          paymentSection += `\n  - ${p.provider_name}: ${fmt(Number(p.amount))}`;
+        let paymentSection = `\n\n*Upcoming Payments (next 7 days)*\n${upcomingPayments.length} payment${upcomingPayments.length !== 1 ? 's' : ''} due (${fmt(totalDue)} total):`;
+        for (const p of upcomingPayments) {
+          const dateStr = new Date(p.next_billing_date + 'T00:00:00Z').toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'short',
+          });
+          paymentSection += `\n  - ${p.provider_name}: ${fmt(Number(p.amount))} (${dateStr})`;
         }
         sections.push(paymentSection);
       }
 
-      // ------ 6. Motivational close ------
-      if (totalSaved > 0) {
+      // ------ 8. Motivational close ------
+      const daysProjection = dayOfMonth > 0 ? Math.round((monthlySpending / dayOfMonth) * daysInMonth) : 0;
+      if (monthlySpending > 0 && daysProjection > 0) {
         sections.push(
-          `\n\n\u2728 *You've saved ${fmt(totalSaved)} with Paybacker so far.* Keep it up!`,
+          `\n\n\u2728 At this rate you're on track to spend *${fmt(daysProjection)}* this month.`,
         );
       } else {
         sections.push(
-          '\n\n\u2728 *Start saving by letting Paybacker handle your bill complaints and cancellations.*',
+          '\n\n\u2728 *Paybacker is working hard to find savings and dispute unfair charges for you.*',
         );
       }
 

@@ -11,7 +11,9 @@ export async function GET() {
       return NextResponse.redirect(new URL('/auth/login?redirect=/dashboard/scanner', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));
     }
 
-    const authUrl = getGoogleAuthUrl(user.id);
+    // State must be base64(userId:timestamp) — matches what the callback expects
+    const state = Buffer.from(`${user.id}:${Date.now()}`).toString('base64');
+    const authUrl = getGoogleAuthUrl(state);
     return NextResponse.redirect(authUrl);
   } catch {
     return NextResponse.redirect(new URL('/dashboard/scanner?error=gmail_auth_failed', process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'));

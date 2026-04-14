@@ -48,7 +48,7 @@ export const AGENTS: Record<string, AgentConfig> = {
   'support-triager': {
     id: 'agent_011CZw4ZHwE6ikLkk3yu2aJ1',
     name: 'Support Triager',
-    schedule: '*/30 * * * *', // every 30 minutes
+    schedule: '0 */6 * * *', // every 6 hours
     taskPrompt:
       'Run your scheduled support triage. Read /CLAUDE.md first, then check for new support tickets, categorise them by severity and type, assign priorities, and update the task queue via MCP. Escalate critical issues immediately.',
   },
@@ -76,14 +76,14 @@ export const AGENTS: Record<string, AgentConfig> = {
   'bug-triager': {
     id: 'agent_011CZw46PZ4nvYmgynHJtnGF',
     name: 'Bug Triager',
-    schedule: '0 */4 * * *', // every 4 hours
+    schedule: '0 */12 * * *', // twice daily
     taskPrompt:
       'Run your scheduled bug triage. Read /CLAUDE.md first, then check for new GitHub issues and error logs, categorise bugs by severity and component, recommend fixes, and update the task queue via MCP.',
   },
   'reviewer': {
     id: 'agent_011CZw3yRD5e4tuRNCCajHXy',
     name: 'Reviewer',
-    schedule: '0 */3 * * *', // every 3 hours
+    schedule: '0 */12 * * *', // twice daily
     taskPrompt:
       'Run your scheduled PR review check. Read /CLAUDE.md first, then check for open pull requests that need review, verify they comply with CLAUDE.md rules (no DROP TABLE, additive migrations only, no existing agent modifications), and log your findings via MCP.',
   },

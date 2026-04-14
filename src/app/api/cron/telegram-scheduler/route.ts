@@ -31,9 +31,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
+  // Use stable production URL for self-calls.
+  // NEXT_PUBLIC_APP_URL = https://paybacker.co.uk (always correct in prod + local).
+  // VERCEL_PROJECT_PRODUCTION_URL = stable Vercel hostname (no https:// prefix).
+  // VERCEL_URL changes per deployment — last resort only.
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null)
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    || 'http://localhost:3000';
 
   const now = new Date();
   const hour = now.getUTCHours();

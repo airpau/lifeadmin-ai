@@ -226,6 +226,24 @@ export async function executeToolCall(
       return getDisputeStatus(supabase, userId);
     case 'get_savings_total':
       return getSavingsTotal(supabase, userId);
+    case 'update_subscription':
+      return updateSubscription(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        billing_cycle: toolInput.billing_cycle as string | undefined,
+        amount: toolInput.amount as number | undefined,
+        next_billing_date: toolInput.next_billing_date as string | undefined,
+      });
+    case 'dismiss_action_item':
+      return dismissActionItem(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        item_type: (toolInput.item_type as string | undefined) ?? 'any',
+      });
+    case 'mark_bill_paid':
+      return markBillPaid(supabase, userId, {
+        provider_name: toolInput.provider_name as string,
+        amount: toolInput.amount as number | undefined,
+        paid_date: toolInput.paid_date as string | undefined,
+      });
     case 'get_loyalty_status':
       return getLoyaltyStatus(supabase, userId);
     case 'get_referral_link':
@@ -684,21 +702,17 @@ async function getBudgetStatus(
   userId: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const startDate = new Date(year, month - 1, 1).toISOString();
+  const endDate = new Date(year, month, 1).toISOString();
 
-  const [budgets, transactions] = await Promise.all([
+  const [budgets, spendingRpc] = await Promise.all([
     supabase
       .from('money_hub_budgets')
       .select('category, monthly_limit')
       .eq('user_id', userId),
-    supabase
-      .from('bank_transactions')
-      .select('category, amount')
-      .eq('user_id', userId)
-      .lt('amount', 0)
-      .gte('timestamp', startDate)
-      .lt('timestamp', endDate),
+    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
   ]);
 
   if (!budgets.data || budgets.data.length === 0) {
@@ -707,10 +721,105 @@ async function getBudgetStatus(
     };
   }
 
-  const spent: Record<string, number> = {};
-  for (const t of transactions.data ?? []) {
-    const cat = t.category ?? 'Other';
-    spent[cat] = (spent[cat] ?? 0) + (-Number(t.amount));
+  // Build spending map from RPC (uses user_category, excludes transfers/income)
+  const spentByCategory: Record<string, number> = {};
+  for (const row of spendingRpc.data ?? []) {
+    spentByCategory[row.category] = Number(row.category_total);
+  }
+
+  const budgetCategories = budgets.data.map(b => b.category);
+
+  // Check if any budget category has no matched spending but there IS 'other' spending
+  const otherSpend = spentByCategory['other'] ?? 0;
+  const unmatchedBudgets = budgetCategories.filter(cat => !(spentByCategory[cat] > 0));
+
+  if (otherSpend > 0 && unmatchedBudgets.length > 0) {
+    // Fetch this month's 'other' transactions for AI categorization
+    const { data: otherTxns } = await supabase
+      .from('bank_transactions')
+      .select('id, merchant_name, description, amount, user_category')
+      .eq('user_id', userId)
+      .lt('amount', 0)
+      .gte('timestamp', startDate)
+      .lt('timestamp', endDate)
+      .in('user_category', ['other'])
+      .limit(200);
+
+    if (otherTxns && otherTxns.length > 0) {
+      // Group by merchant name to batch the AI call
+      const merchantTotals: Record<string, number> = {};
+      for (const t of otherTxns) {
+        const merchant = t.merchant_name || t.description || 'Unknown';
+        merchantTotals[merchant] = (merchantTotals[merchant] ?? 0) + Math.abs(Number(t.amount));
+      }
+
+      try {
+        const anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_AGENTS_API_KEY || process.env.ANTHROPIC_API_KEY,
+        });
+
+        const merchantList = Object.entries(merchantTotals)
+          .map(([m, amt]) => `${m}: £${amt.toFixed(2)}`)
+          .join('\n');
+
+        const msg = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          messages: [{
+            role: 'user',
+            content: `Classify these UK bank transactions into one of the user's budget categories.
+
+Budget categories: ${budgetCategories.join(', ')}
+
+Transactions (merchant: total spent this month):
+${merchantList}
+
+Return ONLY a JSON object mapping each merchant name exactly as given to the best matching category name from the list. Use "other" if none fit.
+Example: {"Tesco": "groceries", "National Rail": "travel"}`,
+          }],
+        });
+
+        const raw = msg.content[0].type === 'text' ? msg.content[0].text : '';
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const categoryMap = JSON.parse(jsonMatch[0]) as Record<string, string>;
+
+          // Redistribute spending from 'other' into matched budget categories
+          for (const t of otherTxns) {
+            const merchant = t.merchant_name || t.description || 'Unknown';
+            const assignedCat = categoryMap[merchant];
+            if (assignedCat && assignedCat !== 'other' && budgetCategories.includes(assignedCat)) {
+              const amt = Math.abs(Number(t.amount));
+              spentByCategory['other'] = Math.max(0, (spentByCategory['other'] ?? 0) - amt);
+              spentByCategory[assignedCat] = (spentByCategory[assignedCat] ?? 0) + amt;
+            }
+          }
+
+          // Persist merchant→category mappings so future syncs use them
+          for (const [merchant, cat] of Object.entries(categoryMap)) {
+            if (cat !== 'other' && budgetCategories.includes(cat) && merchant !== 'Unknown') {
+              const pattern = merchant.toLowerCase().slice(0, 50);
+              // Delete any existing pattern to avoid duplicates then insert fresh
+              await supabase
+                .from('money_hub_category_overrides')
+                .delete()
+                .eq('user_id', userId)
+                .eq('merchant_pattern', pattern);
+              await supabase.from('money_hub_category_overrides').insert({
+                user_id: userId,
+                merchant_pattern: pattern,
+                user_category: cat,
+              });
+            }
+          }
+
+          // Re-run auto_categorise so new overrides apply immediately
+          await supabase.rpc('auto_categorise_transactions', { p_user_id: userId });
+        }
+      } catch {
+        // AI categorization is best-effort — continue with whatever we have
+      }
+    }
   }
 
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -718,13 +827,18 @@ async function getBudgetStatus(
 
   for (const b of budgets.data) {
     const limit = Number(b.monthly_limit);
-    const spentAmt = spent[b.category] ?? 0;
+    const spentAmt = spentByCategory[b.category] ?? 0;
     const over = spentAmt > limit;
     const emoji = over ? '🔴' : spentAmt / limit > 0.8 ? '🟡' : '🟢';
     text += `${emoji} *${b.category}*\n`;
     text += `   ${blockBar(spentAmt, limit)} ${fmt(spentAmt)} / ${fmt(limit)}`;
     if (over) text += ` _(over by ${fmt(spentAmt - limit)})_`;
     text += '\n';
+  }
+
+  const remainingOther = spentByCategory['other'] ?? 0;
+  if (remainingOther > 0) {
+    text += `\n_${fmt(remainingOther)} in uncategorised spending not yet assigned to a budget._`;
   }
 
   return { text };
@@ -798,13 +912,12 @@ async function getPriceAlerts(
   const totalImpact = data.reduce((sum, a) => sum + Number(a.annual_impact), 0);
 
   let text = `*Price Increase Alerts (${data.length})*\n`;
-  text += `Total annual impact: *${fmt(totalImpact)}*\n\n`;
+  text += `Total extra cost: *+${fmt(totalImpact)}/year*\n\n`;
 
   for (const a of data) {
-    text += `🔺 *${a.merchant_name ?? 'Unknown'}*\n`;
-    text += `   ${fmt(a.old_amount)}/mo → ${fmt(a.new_amount)}/mo`;
-    text += ` (+${Number(a.increase_pct).toFixed(0)}%) · ${fmt(a.annual_impact)}/year extra\n`;
-    text += `   Detected: ${fmtDate(a.new_date)}\n`;
+    const pct = Number(a.increase_pct);
+    const emoji = pct >= 10 ? '🔴' : '🟡';
+    text += `${emoji} *${a.merchant_name ?? 'Unknown'}*: ${fmt(a.old_amount)} → ${fmt(a.new_amount)}/mo (+${pct.toFixed(0)}%) = +${fmt(a.annual_impact)}/yr\n`;
   }
 
   return { text };
@@ -2762,7 +2875,7 @@ async function getExpectedBills(
   const startOfMonth = new Date(year, month - 1, 1).toISOString();
   const endOfMonth = new Date(year, month, 1).toISOString();
 
-  const [billsRes, txnRes, subsRes] = await Promise.all([
+  const [billsRes, txnRes, subsRes, manualRes] = await Promise.all([
     supabase.rpc('get_expected_bills', {
       p_user_id: userId,
       p_year: year,
@@ -2781,6 +2894,12 @@ async function getExpectedBills(
       .select('provider_name, amount, next_billing_date, status')
       .eq('user_id', userId)
       .eq('status', 'active'),
+    supabase
+      .from('manual_bill_payments')
+      .select('provider_name, amount, paid_date')
+      .eq('user_id', userId)
+      .eq('year', year)
+      .eq('month', month),
   ]);
 
   if (billsRes.error) {
@@ -2809,6 +2928,13 @@ async function getExpectedBills(
       date: new Date(t.timestamp),
     };
   });
+
+  // Manual payment overrides (user said "mark X as paid" via Telegram)
+  const manualPayments = new Map<string, { amount: number | null; date: string }>();
+  for (const mp of (manualRes.data ?? [])) {
+    const key = (mp.provider_name ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    manualPayments.set(key, { amount: mp.amount ? Number(mp.amount) : null, date: mp.paid_date });
+  }
 
   // Intelligent matching: a bill is "paid" if we find a transaction this month where:
   //  1. The normalised names share significant overlap (token-based), AND
@@ -2876,7 +3002,21 @@ async function getExpectedBills(
   for (const bill of sorted) {
     const expectedAmount = parseFloat(bill.expected_amount) || 0;
     totalExpected += expectedAmount;
-    const match = matchBillToTransaction(bill.provider_name, expectedAmount);
+
+    // Check manual payment override first (user said "mark X as paid" via Telegram)
+    const normBillKey = (bill.provider_name ?? '').toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const manualMatch = (() => {
+      for (const [key, mp] of manualPayments) {
+        if (normBillKey.includes(key) || key.includes(normBillKey.substring(0, Math.min(normBillKey.length, 8)))) {
+          return mp;
+        }
+      }
+      return null;
+    })();
+
+    const match = manualMatch
+      ? { amount: manualMatch.amount ?? expectedAmount, date: new Date(manualMatch.date) }
+      : matchBillToTransaction(bill.provider_name, expectedAmount);
     const billingDay = bill.billing_day || 0;
     const isDue = billingDay <= todayDay;
 
@@ -2888,12 +3028,12 @@ async function getExpectedBills(
       paidCount++;
       totalPaid += match.amount;
       const diff = match.amount - expectedAmount;
-      if (Math.abs(diff) > 1) {
-        // Amount differs — flag it
+      if (Math.abs(diff) > 1 && !manualMatch) {
+        // Amount differs (only flag for bank-matched payments, not manual overrides)
         const direction = diff > 0 ? '⬆️' : '⬇️';
         detail = ` — paid ${fmt(match.amount)} (${direction} ${fmt(Math.abs(diff))} vs expected)`;
       } else {
-        detail = ` — paid ${fmt(match.amount)}`;
+        detail = manualMatch ? ` — marked as paid manually` : ` — paid ${fmt(match.amount)}`;
       }
       status = '✅';
     } else if (isDue) {
@@ -3025,7 +3165,7 @@ async function getProfile(
   text += `*Member since:* ${memberSince}\n`;
 
   if (tier === 'free') {
-    text += `\n_Upgrade to Essential or Pro for unlimited letters, bank sync, and full Money Hub access. Upgrade at paybacker.co.uk/dashboard/upgrade_`;
+    text += `\n\n💡 _To unlock bank sync, full monthly spending breakdowns, budget tracking, and smart alerts — upgrade to Essentials (£4.99/mo) or Pro (£9.99/mo) at paybacker.co.uk/dashboard/upgrade_`;
   }
 
   return { text };
@@ -3085,53 +3225,197 @@ async function getScannerResults(
 ): Promise<ToolResult> {
   const targetStatus = status && status !== 'all' ? status : 'pending_review';
 
+  // Query both task types for opportunity scanner results
+  // 'suggested' is used for low-confidence items; both are shown here
+  const statusFilter =
+    targetStatus === 'pending_review'
+      ? ['pending_review', 'suggested']
+      : [targetStatus];
+
   const { data, error } = await supabase
     .from('tasks')
-    .select('id, title, description, priority, status, created_at, provider_name, source')
+    .select('id, title, description, priority, status, created_at, provider_name')
     .eq('user_id', userId)
     .eq('type', 'opportunity')
-    .eq('status', targetStatus)
+    .in('status', statusFilter)
     .order('created_at', { ascending: false })
     .limit(25);
 
   if (error) {
-    return { text: `Unable to load scanner results: ${error.message}` };
-  }
+    // Fallback: try money_hub_alerts which the scanner also populates
+    const { data: alerts, error: alertErr } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title, description, type, value_gbp, created_at, metadata')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(25);
 
-  if (!data || data.length === 0) {
-    if (targetStatus === 'pending_review') {
+    if (alertErr || !alerts || alerts.length === 0) {
       return {
-        text: `No new scanner findings. Connect your Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, forgotten subscriptions, and refund opportunities.`,
+        text: `No email scanner findings yet. Run a scan from paybacker.co.uk/dashboard/scanner to detect overcharges, price increases, and refund opportunities.`,
       };
     }
-    return { text: `No scanner results found with status "${targetStatus}".` };
+
+    const priorityEmoji: Record<string, string> = {
+      flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+      overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
+    };
+
+    let fallbackText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+    for (const item of alerts) {
+      const emoji = priorityEmoji[item.type] ?? '🟡';
+      fallbackText += `${emoji} *${item.title}*\n`;
+      if (item.description) fallbackText += `   ${item.description}\n`;
+      if (item.value_gbp && Number(item.value_gbp) > 0) {
+        fallbackText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+      }
+      fallbackText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+    }
+    fallbackText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+    return { text: fallbackText };
+  }
+
+  // Also query email_scan_findings for the expanded scanner results
+  const { data: extFindings } = await supabase
+    .from('email_scan_findings')
+    .select('id, finding_type, provider, title, description, amount, due_date, previous_amount, urgency, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  // Dispute correspondence (supplier responses)
+  const { data: dispCorr } = await supabase
+    .from('dispute_correspondence')
+    .select('id, provider, subject, correspondence_type, summary, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'new')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  // Pending cancellations
+  const { data: cancelPending } = await supabase
+    .from('cancellation_tracking')
+    .select('id, provider, effective_date, status, created_at')
+    .eq('user_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const hasExtended = (extFindings && extFindings.length > 0) || (dispCorr && dispCorr.length > 0);
+
+  if (!data || data.length === 0) {
+    if (!hasExtended) {
+      // Also check money_hub_alerts before giving up
+      const { data: alerts } = await supabase
+        .from('money_hub_alerts')
+        .select('id, title, description, type, value_gbp, created_at')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (alerts && alerts.length > 0) {
+        const priorityEmoji: Record<string, string> = {
+          flight_delay: '✈️', price_increase: '🔴', refund: '💰',
+          overcharge: '🔴', forgotten_subscription: '💸', other: '🟡',
+        };
+        let altText = `*Email Scanner Findings (${alerts.length})*\n\n`;
+        for (const item of alerts) {
+          const emoji = priorityEmoji[item.type] ?? '🟡';
+          altText += `${emoji} *${item.title}*\n`;
+          if (item.description) altText += `   ${item.description}\n`;
+          if (item.value_gbp && Number(item.value_gbp) > 0) {
+            altText += `   Potential saving: *${fmt(item.value_gbp)}/year*\n`;
+          }
+          altText += `   Found: ${fmtDate(item.created_at)}\n\n`;
+        }
+        altText += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
+        return { text: altText };
+      }
+
+      return {
+        text: `No email scanner findings yet. Connect Gmail or Outlook on the Scanner page (paybacker.co.uk/dashboard/scanner) to scan for overcharges, price increases, and refund opportunities.`,
+      };
+    }
   }
 
   const priorityEmoji: Record<string, string> = { high: '🔴', medium: '🟠', low: '🟡' };
+  const typeEmoji: Record<string, string> = {
+    bill: '📄', contract: '📋', dispute_response: '📩', cancellation_confirmation: '✅',
+    bank_gap: '💸', price_increase: '🔴', flight_delay: '✈️', refund_opportunity: '💰',
+    overcharge: '🔴', forgotten_subscription: '💸', renewal: '📅', deal_expiry: '⏰',
+  };
 
-  let text = `*Email Scanner Findings (${data.length})*\n\n`;
+  let text = '';
+  const totalCount = (data?.length || 0) + (extFindings?.length || 0) + (dispCorr?.length || 0);
+  text = `*Email Scanner Findings (${totalCount})*\n\n`;
 
-  for (const item of data) {
+  // Standard opportunity findings (tasks table)
+  for (const item of data || []) {
     const p = priorityEmoji[item.priority ?? 'medium'] ?? '🟡';
     const provider = item.provider_name ? ` — ${item.provider_name}` : '';
     text += `${p} *${item.title}*${provider}\n`;
-
-    // The description is stored as JSON from the scan
     try {
       const parsed = JSON.parse(item.description ?? '{}');
-      if (parsed.description) {
-        text += `   ${parsed.description}\n`;
-      }
-      if (parsed.amount && parsed.amount > 0) {
-        text += `   Potential saving: *${fmt(parsed.amount)}/year*\n`;
-      }
+      if (parsed.description) text += `   ${parsed.description}\n`;
+      if (parsed.amount && parsed.amount > 0) text += `   Potential saving: *${fmt(parsed.amount)}/year*\n`;
     } catch {
-      if (item.description && item.description.length < 200) {
-        text += `   ${item.description}\n`;
-      }
+      if (item.description && item.description.length < 200) text += `   ${item.description}\n`;
+    }
+    text += `   Found: ${fmtDate(item.created_at)}\n\n`;
+  }
+
+  // Extended findings (bills, contracts, price increases, bank gaps)
+  if (extFindings && extFindings.length > 0) {
+    // Group by type for cleaner output
+    const byType: Record<string, typeof extFindings> = {};
+    for (const f of extFindings) {
+      if (!byType[f.finding_type]) byType[f.finding_type] = [];
+      byType[f.finding_type].push(f);
     }
 
-    text += `   Found: ${fmtDate(item.created_at)}\n\n`;
+    const typeLabels: Record<string, string> = {
+      bill: 'Bills received', price_increase: 'Price increases', contract: 'Contracts detected',
+      bank_gap: 'Not in your bank', cancellation_confirmation: 'Cancellations confirmed',
+    };
+
+    for (const [type, items] of Object.entries(byType)) {
+      const emoji = typeEmoji[type] ?? '🟡';
+      const label = typeLabels[type] ?? type.replace(/_/g, ' ');
+      text += `*${label} (${items.length})*\n`;
+      for (const f of items.slice(0, 3)) {
+        const urgency = f.urgency === 'immediate' ? '🔴 ' : f.urgency === 'soon' ? '🟡 ' : '';
+        let line = `${urgency}${emoji} *${f.provider}*`;
+        if (f.amount) line += `: ${fmt(f.amount)}`;
+        if (f.due_date) line += ` — due ${fmtDate(f.due_date)}`;
+        text += `${line}\n`;
+        if (f.description) text += `   ${f.description.substring(0, 120)}\n`;
+      }
+      text += '\n';
+    }
+  }
+
+  // Dispute correspondence
+  if (dispCorr && dispCorr.length > 0) {
+    text += `*Supplier responses to disputes (${dispCorr.length})*\n`;
+    for (const d of dispCorr) {
+      const typeIcon = d.correspondence_type === 'rejection' ? '❌' : d.correspondence_type === 'resolution' ? '✅' : d.correspondence_type === 'escalation' ? '⚠️' : '📩';
+      text += `${typeIcon} *${d.provider}*: ${d.subject || 'No subject'}\n`;
+      if (d.summary) text += `   ${d.summary.substring(0, 120)}\n`;
+    }
+    text += '\nAsk me to help draft a follow-up response to any of these.\n\n';
+  }
+
+  // Pending cancellation verifications
+  if (cancelPending && cancelPending.length > 0) {
+    text += `*Pending cancellation verification (${cancelPending.length})*\n`;
+    for (const c of cancelPending) {
+      const eff = c.effective_date ? ` — effective ${fmtDate(c.effective_date)}` : '';
+      text += `⏳ *${c.provider}*${eff}\n`;
+    }
+    text += '\nI\'m watching your bank statements to confirm these charges stopped.\n\n';
   }
 
   text += `_Visit paybacker.co.uk/dashboard/scanner to action these findings._`;
@@ -3250,6 +3534,184 @@ Return as JSON: { "subject": "...", "body": "..." }`;
   text += `_Copy and send this to ${params.provider_name}'s customer services. Keep a record of when you send it._`;
 
   return { text };
+}
+
+// ============================================================
+// MONEY HUB WRITE HANDLERS — subscription updates, FAC management
+// ============================================================
+
+async function updateSubscription(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: {
+    provider_name: string;
+    billing_cycle?: string;
+    amount?: number;
+    next_billing_date?: string;
+  },
+): Promise<ToolResult> {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('subscriptions')
+    .select('id, provider_name, billing_cycle, amount, next_billing_date')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('provider_name', `%${params.provider_name}%`)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (fetchErr) return { text: `Failed to look up subscription: ${fetchErr.message}` };
+  if (!existing) {
+    return { text: `No active subscription found matching "${params.provider_name}". Use get_subscriptions to see what's tracked.` };
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (params.billing_cycle) updates.billing_cycle = params.billing_cycle;
+  if (params.amount !== undefined) updates.amount = params.amount;
+  if (params.next_billing_date) updates.next_billing_date = params.next_billing_date;
+
+  if (Object.keys(updates).length === 1) {
+    return { text: 'Nothing to update — please specify a billing cycle, amount, or next billing date.' };
+  }
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update(updates)
+    .eq('id', existing.id)
+    .eq('user_id', userId);
+
+  if (error) return { text: `Failed to update subscription: ${error.message}` };
+
+  const changes: string[] = [];
+  if (params.billing_cycle) {
+    changes.push(`billing cycle: *${existing.billing_cycle ?? 'monthly'}* → *${params.billing_cycle}*`);
+  }
+  if (params.amount !== undefined) {
+    changes.push(`amount: *${fmt(existing.amount)}* → *${fmt(params.amount)}*`);
+  }
+  if (params.next_billing_date) {
+    changes.push(`next billing date: *${fmtDate(params.next_billing_date)}*`);
+  }
+
+  return { text: `Updated *${existing.provider_name}*:\n${changes.map(c => `• ${c}`).join('\n')}` };
+}
+
+async function dismissActionItem(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider_name: string; item_type: string },
+): Promise<ToolResult> {
+  const kw = params.provider_name.toLowerCase();
+  const dismissed: string[] = [];
+  const tryAll = params.item_type === 'any';
+
+  // 1. Tasks (opportunity type)
+  if (tryAll || params.item_type === 'task') {
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('id, title, provider_name')
+      .eq('user_id', userId)
+      .eq('type', 'opportunity')
+      .in('status', ['pending_review', 'suggested', 'pending']);
+
+    const matches = (tasks ?? []).filter(t =>
+      (t.provider_name ?? '').toLowerCase().includes(kw) ||
+      (t.title ?? '').toLowerCase().includes(kw),
+    );
+    if (matches.length > 0) {
+      await supabase
+        .from('tasks')
+        .update({ status: 'dismissed' })
+        .in('id', matches.map(t => t.id));
+      dismissed.push(`${matches.length} action item${matches.length > 1 ? 's' : ''}`);
+    }
+  }
+
+  // 2. Email scan findings
+  if (tryAll || params.item_type === 'finding') {
+    const { data: findings } = await supabase
+      .from('email_scan_findings')
+      .select('id, provider, title')
+      .eq('user_id', userId)
+      .in('status', ['new', 'pending_review']);
+
+    const matches = (findings ?? []).filter(f =>
+      (f.provider ?? '').toLowerCase().includes(kw) ||
+      (f.title ?? '').toLowerCase().includes(kw),
+    );
+    if (matches.length > 0) {
+      await supabase
+        .from('email_scan_findings')
+        .update({ status: 'dismissed' })
+        .in('id', matches.map(f => f.id));
+      dismissed.push(`${matches.length} email finding${matches.length > 1 ? 's' : ''}`);
+    }
+  }
+
+  // 3. Money Hub alerts
+  if (tryAll || params.item_type === 'alert') {
+    const { data: alerts } = await supabase
+      .from('money_hub_alerts')
+      .select('id, title')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .ilike('title', `%${params.provider_name}%`);
+
+    if (alerts && alerts.length > 0) {
+      await supabase
+        .from('money_hub_alerts')
+        .update({ status: 'dismissed' })
+        .in('id', alerts.map(a => a.id));
+      dismissed.push(`${alerts.length} alert${alerts.length > 1 ? 's' : ''}`);
+    }
+  }
+
+  if (dismissed.length === 0) {
+    return {
+      text: `No action centre items found matching "${params.provider_name}". Use get_scanner_results to see what's in your action centre.`,
+    };
+  }
+
+  return {
+    text: `Dismissed ${dismissed.join(' and ')} for *${params.provider_name}* from your action centre. ✅`,
+  };
+}
+
+async function markBillPaid(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { provider_name: string; amount?: number; paid_date?: string },
+): Promise<ToolResult> {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const paidDate = params.paid_date ?? now.toISOString().split('T')[0];
+
+  const { error } = await supabase
+    .from('manual_bill_payments')
+    .upsert(
+      {
+        user_id: userId,
+        provider_name: params.provider_name,
+        year,
+        month,
+        amount: params.amount ?? null,
+        paid_date: paidDate,
+      },
+      { onConflict: 'user_id,provider_name,year,month' },
+    );
+
+  if (error) return { text: `Failed to mark bill as paid: ${error.message}` };
+
+  const amtStr = params.amount ? ` (${fmt(params.amount)})` : '';
+  const monthLabel = new Date(year, month - 1).toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return {
+    text: `Marked *${params.provider_name}*${amtStr} as paid for ${monthLabel}. ✅\nIt will now show as paid in your expected bills.`,
+  };
 }
 
 async function createSupportTicket(

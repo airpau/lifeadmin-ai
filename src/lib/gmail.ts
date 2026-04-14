@@ -80,7 +80,16 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     }),
   });
 
-  if (!res.ok) throw new Error('Failed to refresh token');
+  if (!res.ok) {
+    let body: Record<string, string> = {};
+    try { body = await res.json(); } catch { /* ignore */ }
+    // access_denied / invalid_grant = token revoked or app was unverified
+    const code = body.error ?? '';
+    if (code === 'invalid_grant' || code === 'access_denied') {
+      throw new Error('Gmail access revoked — please reconnect Gmail in the Scanner settings. This can happen if our app verification recently changed.');
+    }
+    throw new Error(`Failed to refresh Gmail token (${res.status}): ${body.error_description ?? body.error ?? 'unknown error'}`);
+  }
   return res.json();
 }
 
@@ -114,7 +123,12 @@ async function fetchEmailList(accessToken: string, query: string, maxResults = 1
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    if (!res.ok) throw new Error('Failed to fetch email list');
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`Gmail access denied (${res.status}) — token may be expired or revoked. Please reconnect Gmail.`);
+      }
+      throw new Error(`Failed to fetch email list (${res.status})`);
+    }
     const data = await res.json();
 
     if (data.messages) allMessages.push(...data.messages);
@@ -166,7 +180,7 @@ async function fetchEmailDetail(accessToken: string, messageId: string): Promise
 export interface Opportunity {
   id: string;
   emailId: string;
-  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card';
+  type: 'subscription' | 'utility_bill' | 'renewal' | 'insurance' | 'loan' | 'overcharge' | 'refund_opportunity' | 'flight_delay' | 'debt_dispute' | 'tax_rebate' | 'price_increase' | 'forgotten_subscription' | 'upcoming_payment' | 'deal_expiry' | 'credit_card' | 'bill' | 'contract' | 'dispute_response' | 'cancellation_confirmation' | 'bank_gap' | 'trial_expiry' | 'insurance_renewal' | 'dd_advance_notice' | 'government';
   category: 'streaming' | 'software' | 'fitness' | 'broadband' | 'mobile' | 'utility' | 'insurance' | 'loan' | 'credit_card' | 'mortgage' | 'council_tax' | 'transport' | 'food' | 'shopping' | 'gambling' | 'other';
   title: string;
   description: string;
@@ -227,12 +241,50 @@ const SCAN_QUERY_PAYMENTS =
 const SCAN_QUERY_PRICE_CHANGES =
   'subject:("price increase" OR "price change" OR "new prices" OR "price update" OR "tariff change" OR "rate increase" OR "going up" OR "increasing" OR "new rate" OR "updated price" OR "cost increase" OR "premium increase" OR "fee increase" OR "charges changing" OR "April price" OR "annual increase" OR "CPI" OR "RPI" OR "inflation") newer_than:365d';
 
+// Query H: bills received as email notifications (energy, broadband, council tax, water)
+const SCAN_QUERY_BILLS =
+  '(subject:("your bill" OR "bill is ready" OR "new bill" OR "your statement" OR "account statement" OR "monthly bill" OR "quarterly bill" OR "annual bill" OR "council tax bill" OR "water bill" OR "your invoice" OR "invoice enclosed" OR "payment notice" OR "amount due" OR "balance due" OR "overdue notice" OR "final demand") OR from:(gov.uk OR counciltax OR "thames water" OR "anglian water" OR "severn trent" OR "yorkshire water" OR "united utilities" OR "wessex water" OR "southern water" OR "north west water" OR "council" OR "billing")) newer_than:365d';
+
+// Query I: dispute responses — emails from suppliers acknowledging or responding to complaints
+const SCAN_QUERY_DISPUTE_RESPONSES =
+  'subject:("your complaint" OR "your query" OR "your concern" OR "regarding your complaint" OR "in response to" OR "we have reviewed" OR "we\'ve reviewed" OR "we are looking into" OR "we\'re looking into" OR "your case" OR "your issue" OR "complaint reference" OR "case number" OR "your feedback" OR "resolution" OR "we apologise" OR "we apologize" OR "deadlock letter" OR "final response" OR "ombudsman") newer_than:180d';
+
+// Query J: cancellation confirmations
+const SCAN_QUERY_CANCELLATIONS =
+  'subject:("cancellation confirmed" OR "cancelled successfully" OR "subscription cancelled" OR "membership cancelled" OR "account closed" OR "account cancelled" OR "your cancellation" OR "we\'ve cancelled" OR "we have cancelled" OR "service ended" OR "direct debit cancelled" OR "direct debit removed" OR "last payment" OR "sad to see you go" OR "you\'ve left" OR "you have left") newer_than:365d';
+
+// Query K: free trial expiry detection (highest priority — auto-converts to paid)
+const SCAN_QUERY_TRIALS =
+  'subject:("trial ends" OR "trial ending" OR "trial expires" OR "free trial" OR "you\'ll be charged" OR "will be charged on" OR "trial period ends" OR "after your trial" OR "subscription begins" OR "your trial" OR "upgrade required" OR "premium starts") newer_than:90d';
+
+// Query L: insurance renewal notices
+const SCAN_QUERY_INSURANCE_RENEWALS =
+  '(subject:("renewal notice" OR "policy renewal" OR "your renewal" OR "cover renewal" OR "new premium" OR "renews on" OR "your policy is due") OR (subject:(insurance OR premium) from:(admiral aviva directline axa hastings esure zurich ageas nfu lv swiftcover))) newer_than:365d';
+
+// Query M: direct debit advance notices (Bacs)
+const SCAN_QUERY_DD_NOTICES =
+  'subject:("advance notice" OR "direct debit" OR "DD advance" OR "payment change" OR "new direct debit" OR "direct debit instruction" OR "mandate received") newer_than:180d';
+
+// Query N: energy and broadband bills from UK providers
+const SCAN_QUERY_ENERGY_BROADBAND =
+  'from:(octopusenergy britishgas edfenergy eonnext scottishpower sse ovoenergy utilita goodenergy ecotricity sky.com virginmedia bt.com talktalk plusnet hyperoptic zen.co.uk) newer_than:365d';
+
+// Query O: HMRC and government correspondence
+const SCAN_QUERY_GOVERNMENT =
+  '(from:(hmrc.gov.uk gov.uk dvla.gov.uk nhs.uk dwp.gov.uk studentfinance pension) OR subject:("self assessment" OR "tax return" OR "tax code" OR "P60" OR "P45" OR "P800" OR "council tax" OR "MOT reminder" OR "vehicle tax" OR "HMRC" OR "DVLA" OR "student loan" OR "national insurance" OR "tax rebate" OR "overpayment")) newer_than:730d';
+
 export async function scanEmailsForOpportunities(
   accessToken: string
 ): Promise<{ opportunities: Opportunity[]; emailsFound: number; emailsScanned: number }> {
   // Run all queries in parallel for comprehensive scanning
   // Scan up to 250 emails per query for thorough coverage (2 years of history)
-  const [subjectMessages, senderMessages1, senderMessages2, senderMessages3, expirationMessages, paymentMessages, priceChangeMessages] = await Promise.all([
+  const [
+    subjectMessages, senderMessages1, senderMessages2, senderMessages3,
+    expirationMessages, paymentMessages, priceChangeMessages,
+    billMessages, disputeResponseMessages, cancellationMessages,
+    trialMessages, insuranceRenewalMessages, ddMessages,
+    energyBroadbandMessages, governmentMessages,
+  ] = await Promise.all([
     fetchEmailList(accessToken, SCAN_QUERY_SUBJECT, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_1, 250),
     fetchEmailList(accessToken, SCAN_QUERY_SENDERS_2, 250),
@@ -240,10 +292,24 @@ export async function scanEmailsForOpportunities(
     fetchEmailList(accessToken, SCAN_QUERY_EXPIRATIONS, 100),
     fetchEmailList(accessToken, SCAN_QUERY_PAYMENTS, 100),
     fetchEmailList(accessToken, SCAN_QUERY_PRICE_CHANGES, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_BILLS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_DISPUTE_RESPONSES, 50),
+    fetchEmailList(accessToken, SCAN_QUERY_CANCELLATIONS, 50),
+    fetchEmailList(accessToken, SCAN_QUERY_TRIALS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_INSURANCE_RENEWALS, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_DD_NOTICES, 100),
+    fetchEmailList(accessToken, SCAN_QUERY_ENERGY_BROADBAND, 150),
+    fetchEmailList(accessToken, SCAN_QUERY_GOVERNMENT, 100),
   ]);
 
   const seen = new Set<string>();
-  const allMessages = [...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3, ...expirationMessages, ...paymentMessages, ...priceChangeMessages].filter((m) => {
+  const allMessages = [
+    ...subjectMessages, ...senderMessages1, ...senderMessages2, ...senderMessages3,
+    ...expirationMessages, ...paymentMessages, ...priceChangeMessages,
+    ...billMessages, ...disputeResponseMessages, ...cancellationMessages,
+    ...trialMessages, ...insuranceRenewalMessages, ...ddMessages,
+    ...energyBroadbandMessages, ...governmentMessages,
+  ].filter((m) => {
     if (seen.has(m.id)) return false;
     seen.add(m.id);
     return true;
@@ -372,7 +438,7 @@ Return a JSON array. Each entry:
 {
   "id": "opp_1",
   "emailId": "the_email_id",
-  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry",
+  "type": "subscription|utility_bill|renewal|insurance|loan|overcharge|refund_opportunity|flight_delay|debt_dispute|tax_rebate|price_increase|forgotten_subscription|upcoming_payment|deal_expiry|bill|contract|dispute_response|cancellation_confirmation|trial_expiry|insurance_renewal|dd_advance_notice|government",
   "category": "streaming|software|fitness|broadband|mobile|utility|insurance|loan|credit_card|mortgage|council_tax|transport|food|shopping|gambling|other",
   "title": "short actionable title max 80 chars",
   "description": "2-3 sentences: what was found, exact dates/amounts, what user should do, UK consumer rights if relevant",
@@ -389,7 +455,8 @@ Return a JSON array. Each entry:
   "priceChangeDate": "YYYY-MM-DD or null",
   "paymentFrequency": "monthly|quarterly|yearly|one-time|null",
   "accountNumber": "reference if found or null",
-  "urgency": "immediate|soon|routine"
+  "urgency": "immediate|soon|routine",
+  "correspondenceType": "acknowledgement|rejection|resolution|escalation|holding_reply|null"
 }
 
 urgency values:
@@ -397,13 +464,80 @@ urgency values:
 - "soon": contract ending within 90 days, payment due within 30 days
 - "routine": ongoing monitoring, subscription review
 
+### 6. BILLS RECEIVED BY EMAIL
+Look for: energy bills, broadband bills, water bills, council tax bills, mobile bills, insurance premium notices sent as email notifications.
+- Extract AMOUNT DUE, DUE DATE, SUPPLIER, ACCOUNT NUMBER if present
+- type: "bill", category: "utility" / "broadband" / "council_tax" / "mobile" / "insurance" as appropriate
+- paymentAmount: the amount due, nextPaymentDate: due date
+- Note in description if amount seems unusually high vs typical rates (e.g. energy bill > £200 in summer)
+- urgency: "immediate" if overdue, "soon" if due within 14 days, "routine" otherwise
+
+### 7. CONTRACTS AND AGREEMENTS
+Look for: emails containing contract terms, welcome/activation emails that reference a contract length, T&C acceptance emails, service agreements, "your agreement", "terms and conditions", "contract start date", "minimum term"
+- type: "contract"
+- Extract: CONTRACT START DATE, CONTRACT END DATE / MINIMUM TERM, MONTHLY COST if mentioned
+- contractEndDate: exact end date if found, or calculated from start + term
+- suggestedAction: "monitor" (save to vault)
+- description: include key terms found (auto-renewal clause, exit fee, notice period)
+- Only include if a financial product/service with a binding commitment
+
+### 8. DISPUTE RESPONSES FROM SUPPLIERS
+Look for: emails that appear to be a supplier responding to a complaint or query — "regarding your complaint", "in response to your email", "we've reviewed your case", "complaint reference", "case number", "our final response", "deadlock letter", "we apologise for"
+- type: "dispute_response"
+- Extract: SUPPLIER NAME, complaint type if mentioned, outcome (resolved/rejected/holding/escalation)
+- correspondence_type field (add to metadata): one of "acknowledgement", "rejection", "resolution", "escalation", "holding_reply"
+- suggestedAction: "dispute" (help draft follow-up response)
+- description: summarise what the supplier said and what next step is recommended
+- urgency: "soon" if it looks like a final response or rejection (user needs to escalate)
+
+### 9. CANCELLATION CONFIRMATIONS
+Look for: "your cancellation has been confirmed", "subscription cancelled", "membership cancelled", "account closed", "we're sorry to see you go", "direct debit removed", "your last payment"
+- type: "cancellation_confirmation"
+- Extract: PROVIDER, EFFECTIVE DATE, FINAL CHARGE if mentioned
+- nextPaymentDate: effective cancellation date (when service ends)
+- suggestedAction: "monitor" (verify in bank statements that charges stopped)
+- description: confirm what was cancelled and effective date
+
+### 10. FREE TRIAL EXPIRY (critical — auto-converts to paid)
+Look for: "trial ends", "trial ending", "you'll be charged", "will be charged on", "trial expires", "trial period ends", "after your trial", "subscription begins", "upgrade required"
+- Extract the EXACT TRIAL END DATE
+- Extract the AMOUNT that will be charged after the trial
+- type: "trial_expiry", suggestedAction: "cancel" if expiring within 30 days, urgency: "immediate" if within 7 days
+- These are critical — users often forget free trials convert automatically
+
+### 11. INSURANCE RENEWALS
+Look for: "renewal notice", "policy renewal", "your premium", "your cover renews", "new premium from [date]", "your insurance is due for renewal"
+- Extract OLD premium, NEW premium (if increased), RENEWAL DATE
+- Providers: Admiral, Aviva, Direct Line, AXA, Hastings Direct, LV=, NFU, Zurich, Ageas, esure
+- type: "insurance_renewal", suggestedAction: "switch_deal"
+- UK tip: always compare before auto-renewing — insurers often raise premiums 20-40% at renewal
+
+### 12. DIRECT DEBIT ADVANCE NOTICES (Bacs)
+Look for: "advance notice", "direct debit change", "new direct debit instruction", Bacs advance notice
+- Extract PAYEE NAME, OLD AMOUNT, NEW AMOUNT, EFFECTIVE DATE
+- type: "dd_advance_notice", urgency: "soon" if effective within 30 days
+- Users have the right to cancel a DD before the payment date
+
+### 13. ENERGY AND BROADBAND BILLS
+Look for: energy/broadband provider bills (Octopus Energy, British Gas, EDF, E.ON, Sky, BT, Virgin Media, etc.)
+- Extract CURRENT BILL AMOUNT, DUE DATE, and USAGE DATA if present
+- type: "bill", suggestedAction: "switch_deal" if user appears on same tariff for many months
+- UK tip: switching energy tariff or provider can save £200-500/year
+
+### 14. HMRC AND GOVERNMENT CORRESPONDENCE
+Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance, council
+- Tax rebate: P800 overpayment letter → type: "tax_rebate", urgency: "immediate"
+- Self Assessment deadlines → type: "government", urgency based on deadline proximity
+- DVLA renewals → type: "government", suggestedAction: "monitor"
+- UK tip: P800 letters mean HMRC calculated an overpayment — user can claim online at gov.uk
+
 ## RULES
-- ONLY include genuine financial opportunities — subscriptions, bills, recurring payments, overcharges, compensation claims
-- DO NOT include personal emails, legal correspondence, court cases, solicitor letters, charity updates, newsletters, marketing emails, social media notifications, or anything that is NOT a financial product/service the user pays for
-- DO NOT include emails from: courts, tribunals, law firms, solicitors, barristers, police, crime services, dispute resolution services, charities, political organisations, schools, churches, community groups
-- Group by provider: multiple emails from same company = ONE opportunity (use the most recent/relevant email data)
+- ONLY include genuine financial opportunities — subscriptions, bills, recurring payments, overcharges, compensation claims, contracts, dispute responses, cancellation confirmations
+- DO NOT include personal emails, charity updates, newsletters, marketing emails, social media notifications, or anything NOT a financial product/service the user pays for or has a dispute with
+- DO NOT include emails from: courts, tribunals, law firms, solicitors, barristers, police, charities, political organisations, schools, churches, community groups
+- Group by provider: multiple emails from same company = ONE opportunity (use the most recent/relevant email data). Exception: dispute responses — each distinct response gets its own entry.
 - Only include items with confidence >= 60. If you are not reasonably confident this is a genuine financial opportunity, exclude it.
-- Quality over quantity — it is far better to return 5 accurate results than 30 results with false positives. Users lose trust when they see personal/irrelevant items.
+- Quality over quantity — it is far better to return 5 accurate results than 30 with false positives. Users lose trust when they see personal/irrelevant items.
 - For deal expirations and price increases, ALWAYS include the extracted date even if approximate (e.g. "April 2026" → "2026-04-01")
 - Return ONLY the JSON array, no markdown, no explanation.`,
     messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],

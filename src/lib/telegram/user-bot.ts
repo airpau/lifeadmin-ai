@@ -145,12 +145,15 @@ WRITE TOOLS:
 - recategorise_subscription — Change a subscription's category
 - add_subscription — Add a new subscription or recurring payment to track
 - cancel_subscription — Mark a subscription as cancelled in the tracker
+- update_subscription — Update an existing subscription's billing cycle, amount, or next billing date (e.g. "change Netflix to yearly", "update Spotify amount to £11.99")
 - add_contract — Add a contract manually (mortgage, broadband, loan, energy, etc.)
 - create_savings_goal — Create a new savings goal in Money Hub
 - update_savings_goal — Update progress on a savings goal
 - create_task — Create a financial task or reminder
 - update_dispute_status — Update a dispute: mark won/lost, add notes, record money recovered
 - update_alert_preferences — Change notification preferences (on/off, quiet hours)
+- dismiss_action_item — Dismiss an item from the Financial Action Centre by provider name (searches tasks, email findings, and alerts)
+- mark_bill_paid — Manually mark an expected bill as paid for the current month (for payments made outside connected bank accounts)
 - draft_dispute_letter — Draft a complaint letter citing exact UK consumer law (TERMINAL — call once, nothing before or after)
 - generate_cancellation_email — Generate a formal cancellation letter with correct UK legal references for the service type
 - create_support_ticket — Create a help ticket when the user needs the Paybacker support team
@@ -167,6 +170,9 @@ RULES:
 - Be specific about financial impact: "that's £276/year" not "your bill went up".
 - You have conversation history — reference previous messages naturally.
 - When recategorising, suggest related actions (e.g. "shall I set a budget for this category too?").
+- When a user asks to "add [provider] to subscriptions" from the action centre, call add_subscription AND dismiss_action_item so it's removed from the FAC.
+- When a user asks to change subscription frequency (e.g. "change to yearly"), call update_subscription.
+- mark_bill_paid stores a manual override — it shows as ✅ in expected bills for the current month only.
 - For dispute follow-ups: always mention the FCA 8-week deadline — it's the most powerful lever for UK consumers.
 
 FINANCIAL INTELLIGENCE — CRITICAL:
@@ -360,7 +366,7 @@ async function callClaudeWithTools(
 // Bot factory — called by webhook route
 // ============================================================
 export function createUserBot(): Bot<UserBotContext> {
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) throw new Error('TELEGRAM_USER_BOT_TOKEN is not set');
 
   const bot = new Bot<UserBotContext>(token);
@@ -369,6 +375,7 @@ export function createUserBot(): Bot<UserBotContext> {
   // /start
   // -------------------------------------------------------
   bot.command('start', async (ctx) => {
+    const startKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
     await ctx.reply(
       `Welcome to *Paybacker* 👋\n\n` +
         `I'm your personal financial assistant. I can:\n\n` +
@@ -382,8 +389,8 @@ export function createUserBot(): Bot<UserBotContext> {
         `1. Go to paybacker.co.uk/dashboard/settings/telegram\n` +
         `2. Click "Generate Link Code"\n` +
         `3. Send: \`/link YOUR_CODE\`\n\n` +
-        `This bot is available to Pro subscribers only.`,
-      { parse_mode: 'Markdown' },
+        `*Pocket Agent is a Pro plan feature* — full spending insights, smart budget alerts, AI-drafted complaint letters, and proactive bill monitoring for *£9.99/month*.`,
+      { parse_mode: 'Markdown', reply_markup: startKeyboard },
     );
   });
 
@@ -437,8 +444,12 @@ export function createUserBot(): Bot<UserBotContext> {
       (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
 
     if (!isPro) {
+      const linkUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
       return ctx.reply(
-        `This bot is for Pro subscribers only.\n\nUpgrade at paybacker.co.uk/dashboard/upgrade`,
+        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
+          `Pro gives you real-time spending insights, smart budget alerts, AI-drafted complaint letters citing UK consumer law, and proactive bill-increase detection — all for *£9.99/month*.\n\n` +
+          `Once upgraded, generate a fresh link code from your dashboard and come back here.`,
+        { parse_mode: 'Markdown', reply_markup: linkUpgradeKeyboard },
       );
     }
 
@@ -1256,8 +1267,11 @@ Return JSON: { "subject": "...", "body": "..." }`;
       (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
 
     if (!isPro) {
+      const chatUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
       return ctx.reply(
-        `This feature requires a Pro subscription.\n\nUpgrade at paybacker.co.uk/dashboard/upgrade`,
+        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
+          `Pro gives you real-time access to your spending, budgets, subscriptions, and disputes — plus AI-drafted complaint letters and proactive bill alerts — all for *£9.99/month*.`,
+        { parse_mode: 'Markdown', reply_markup: chatUpgradeKeyboard },
       );
     }
 
@@ -1404,7 +1418,7 @@ export async function sendProactiveAlert(params: {
   };
   showFollowUpButtons?: boolean;
 }): Promise<{ messageId?: number; ok: boolean }> {
-  const token = process.env.TELEGRAM_USER_BOT_TOKEN;
+  const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) return { ok: false };
 
   const { chatId, issue, showFollowUpButtons } = params;

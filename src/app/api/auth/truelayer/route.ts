@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 const TRUELAYER_AUTH_URL = process.env.TRUELAYER_AUTH_URL || 'https://auth.truelayer.com';
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
 
@@ -51,8 +51,11 @@ export async function GET() {
     );
   }
 
-  // Encode user ID as state for CSRF protection
-  const state = Buffer.from(user.id).toString('base64');
+  // Encode user ID + return path in state for CSRF protection + redirect
+  const url = new URL(request.url);
+  const returnTo = url.searchParams.get('returnTo') || '/dashboard/subscriptions';
+  const statePayload = JSON.stringify({ userId: user.id, returnTo });
+  const state = Buffer.from(statePayload).toString('base64');
 
   // Build auth URL — TrueLayer expects specific parameter format
   // Use only scopes that are enabled by default on new sandbox apps

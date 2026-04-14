@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   CreditCard, FileText, Building2, BarChart3, CheckCircle, CheckCircle2,
   ArrowRight, Loader2, AlertTriangle, Clock, Sparkles, PiggyBank, TrendingUp, Tag,
-  Mail, ScanSearch, RefreshCw, ChevronDown, ChevronUp,
+  Mail, ScanSearch, RefreshCw, ChevronDown, ChevronUp, Trash2,
 } from 'lucide-react';
 import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
@@ -58,10 +58,36 @@ export default function DashboardPage() {
   const [bankAccounts, setBankAccounts] = useState<Array<{ id: string; bank_name: string | null; account_display_names: string[] | null; status: string }>>([]);
   const [emailAccounts, setEmailAccounts] = useState<Array<{ id: string; email_address: string; provider_type: string }>>([]);
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
   const potentialSavings = calculateTotalSavings(comparisonDeals, priceAlerts);
+
+  // Disconnect bank function
+  const disconnectBank = async (connectionId: string, bankName: string) => {
+    if (!confirm(`Disconnect ${bankName || 'this bank'}? This will stop syncing transactions.`)) return;
+    try {
+      setDisconnectingId(connectionId);
+      const res = await fetch('/api/bank/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
+      if (res.ok) {
+        // Remove from local state optimistically
+        setBankAccounts(bankAccounts.filter(b => b.id !== connectionId));
+        setToast({ message: `${bankName || 'Bank'} disconnected`, type: 'success' });
+      } else {
+        setToast({ message: 'Failed to disconnect bank', type: 'error' });
+      }
+    } catch {
+      setToast({ message: 'Failed to disconnect bank', type: 'error' });
+    } finally {
+      setDisconnectingId(null);
+    }
+  };
 
   // Meta Pixel + Awin tracking for free signups
   useEffect(() => {
@@ -674,7 +700,7 @@ export default function DashboardPage() {
                   onClick={async () => {
                     setBankSyncing(true);
                     try {
-                      await fetch('/api/bank/sync', { method: 'POST' });
+                      await fetch('/api/bank/sync-now', { method: 'POST' });
                     } catch {}
                     setBankSyncing(false);
                   }}
@@ -798,6 +824,9 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Reconnect</button>}
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
+                      <button onClick={() => disconnectBank(b.id, b.bank_name || 'Bank')} disabled={disconnectingId === b.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1" title="Disconnect this bank">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 ))
@@ -815,6 +844,9 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Reconnect</button>}
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
+                      <button onClick={() => disconnectBank(b.id, b.bank_name || 'Bank')} disabled={disconnectingId === b.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1" title="Disconnect this bank">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 )
