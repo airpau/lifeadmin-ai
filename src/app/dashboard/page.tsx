@@ -286,34 +286,66 @@ export default function DashboardPage() {
           }
         }
 
-        // Load saved email scan opportunities from tasks table
-        const { data: savedOpps } = await supabase
-          .from('tasks')
-          .select('id, title, description, type, provider_name, status, priority, created_at')
+        // Load saved email scan opportunities from the centralised email_scan_findings table
+        const { data: scanFindings } = await supabase
+          .from('email_scan_findings')
+          .select('*')
           .eq('user_id', user.id)
-          .eq('type', 'opportunity')
-          .in('status', ['pending_review', 'suggested'])
+          .in('status', ['new', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(30);
-        if (savedOpps && savedOpps.length > 0) {
-          const mapped = savedOpps.map((t: any) => {
-            const parsed = (() => { try { return JSON.parse(t.description || '{}'); } catch { return {}; } })();
+
+        if (scanFindings && scanFindings.length > 0) {
+          const mapped = scanFindings.map((f: any) => {
+            const meta = f.metadata || {};
             return {
-              id: parsed.id || t.id,
-              type: parsed.type || 'opportunity',
-              category: parsed.category || 'other',
-              title: t.title || parsed.title || 'Opportunity',
-              description: parsed.description || t.description || '',
-              amount: parsed.amount || 0,
-              confidence: parsed.confidence || 60,
-              provider: t.provider_name || parsed.provider || 'Unknown',
-              suggestedAction: parsed.suggestedAction || 'track',
-              paymentFrequency: parsed.paymentFrequency || null,
-              status: t.status,
+              id: f.id,
+              type: f.finding_type || meta.type || 'opportunity',
+              category: meta.category || 'other',
+              title: f.title || meta.title || 'Opportunity',
+              description: f.description || meta.description || '',
+              amount: f.amount || meta.amount || 0,
+              confidence: f.confidence || meta.confidence || 60,
+              provider: f.provider || meta.provider || 'Unknown',
+              suggestedAction: meta.suggestedAction || 'track',
+              paymentFrequency: f.payment_frequency || meta.paymentFrequency || null,
+              contractEndDate: f.contract_end_date || meta.contractEndDate || null,
+              paymentAmount: f.amount || meta.paymentAmount || null,
+              status: f.status,
             };
           });
           setEmailOpportunities(mapped);
           setEmailScanResults(mapped.length);
+        } else {
+          // Fallback: try legacy tasks table for older scan results
+          const { data: savedOpps } = await supabase
+            .from('tasks')
+            .select('id, title, description, type, provider_name, status, priority, created_at')
+            .eq('user_id', user.id)
+            .eq('type', 'opportunity')
+            .in('status', ['pending_review', 'suggested'])
+            .order('created_at', { ascending: false })
+            .limit(30);
+          if (savedOpps && savedOpps.length > 0) {
+            const mapped = savedOpps.map((t: any) => {
+              const parsed = (() => { try { return JSON.parse(t.description || '{}'); } catch { return {}; } })();
+              return {
+                id: parsed.id || t.id,
+                type: parsed.type || 'opportunity',
+                category: parsed.category || 'other',
+                title: t.title || parsed.title || 'Opportunity',
+                description: parsed.description || t.description || '',
+                amount: parsed.amount || 0,
+                confidence: parsed.confidence || 60,
+                provider: t.provider_name || parsed.provider || 'Unknown',
+                suggestedAction: parsed.suggestedAction || 'track',
+                paymentFrequency: parsed.paymentFrequency || null,
+                status: t.status,
+              };
+            });
+            setEmailOpportunities(mapped);
+            setEmailScanResults(mapped.length);
+          }
         }
 
         // Check trial status
@@ -449,18 +481,41 @@ export default function DashboardPage() {
     try {
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const data = await res.json();
-      if (data.opportunities && data.opportunities.length > 0) {
-        // Merge new opportunities with existing, dedup by title
-        setEmailOpportunities(prev => {
-          const existingTitles = new Set(prev.map((o: any) => o.title));
-          const newOpps = data.opportunities.filter((o: any) => !existingTitles.has(o.title));
-          const merged = [...newOpps, ...prev];
-          setEmailScanResults(merged.length);
-          return merged;
-        });
-      } else if (data.error) {
+      if (data.error) {
         // Don't clear existing results on error
         if (emailOpportunities.length === 0) setEmailScanResults(0);
+      } else if (data.opportunities && data.opportunities.length > 0) {
+        // Reload from centralised email_scan_findings table so we stay in sync with scanner page
+        const { data: scanFindings } = await supabase
+          .from('email_scan_findings')
+          .select('*')
+          .eq('user_id', (await supabase.auth.getUser()).data.user!.id)
+          .in('status', ['new', 'reviewing'])
+          .order('created_at', { ascending: false })
+          .limit(30);
+
+        if (scanFindings && scanFindings.length > 0) {
+          const mapped = scanFindings.map((f: any) => {
+            const meta = f.metadata || {};
+            return {
+              id: f.id,
+              type: f.finding_type || meta.type || 'opportunity',
+              category: meta.category || 'other',
+              title: f.title || meta.title || 'Opportunity',
+              description: f.description || meta.description || '',
+              amount: f.amount || meta.amount || 0,
+              confidence: f.confidence || meta.confidence || 60,
+              provider: f.provider || meta.provider || 'Unknown',
+              suggestedAction: meta.suggestedAction || 'track',
+              paymentFrequency: f.payment_frequency || meta.paymentFrequency || null,
+              contractEndDate: f.contract_end_date || meta.contractEndDate || null,
+              paymentAmount: f.amount || meta.paymentAmount || null,
+              status: f.status,
+            };
+          });
+          setEmailOpportunities(mapped);
+          setEmailScanResults(mapped.length);
+        }
       } else {
         if (emailOpportunities.length === 0) setEmailScanResults(0);
       }
@@ -974,17 +1029,42 @@ export default function DashboardPage() {
                   monitor: { text: 'Monitor', color: 'bg-navy-700 hover:bg-navy-600' },
                 };
                 const action = actionLabel[opp.suggestedAction] || actionLabel.track;
+                // Determine action based on opportunity type for better routing
+                const effectiveAction = (() => {
+                  if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
+                    return { text: 'Find Deal', color: 'bg-mint-400 hover:bg-mint-500 text-navy-950' };
+                  }
+                  if (['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) || opp.suggestedAction === 'dispute') {
+                    return { text: 'Dispute', color: 'bg-red-500 hover:bg-red-600' };
+                  }
+                  if (opp.type === 'flight_delay' || opp.suggestedAction === 'claim_compensation') {
+                    return { text: 'Claim £520', color: 'bg-sky-500 hover:bg-sky-600' };
+                  }
+                  if (opp.type === 'refund_opportunity' || opp.suggestedAction === 'claim_refund') {
+                    return { text: 'Claim Refund', color: 'bg-green-600 hover:bg-green-700' };
+                  }
+                  if (['subscription', 'forgotten_subscription'].includes(opp.type)) {
+                    return { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' };
+                  }
+                  return action;
+                })();
                 const typeColors: Record<string, string> = {
                   subscription: 'text-blue-400 bg-blue-500/10',
                   renewal: 'text-amber-400 bg-amber-500/10',
                   price_increase: 'text-orange-400 bg-orange-500/10',
                   overcharge: 'text-red-400 bg-red-500/10',
                   utility_bill: 'text-cyan-400 bg-cyan-500/10',
+                  bill: 'text-cyan-400 bg-cyan-500/10',
                   flight_delay: 'text-sky-400 bg-sky-500/10',
                   forgotten_subscription: 'text-purple-400 bg-purple-500/10',
                   insurance: 'text-emerald-400 bg-emerald-500/10',
+                  insurance_renewal: 'text-emerald-400 bg-emerald-500/10',
                   refund_opportunity: 'text-green-400 bg-green-500/10',
                   loan: 'text-violet-400 bg-violet-500/10',
+                  deal_expiry: 'text-amber-400 bg-amber-500/10',
+                  dd_advance_notice: 'text-blue-400 bg-blue-500/10',
+                  tax_rebate: 'text-purple-400 bg-purple-500/10',
+                  government: 'text-purple-400 bg-purple-500/10',
                 };
                 const typeColor = typeColors[opp.type] || 'text-slate-400 bg-slate-500/10';
                 return (
@@ -1000,20 +1080,54 @@ export default function DashboardPage() {
                         <p className="text-slate-500 text-xs">{opp.provider}{opp.category ? ` · ${opp.category}` : ''}{opp.paymentFrequency ? ` · ${opp.paymentFrequency}` : ''}</p>
                         <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description}</p>
                       </div>
-                      <button
-                        className={`${action.color} text-white text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap transition-all flex-shrink-0`}
-                        onClick={() => {
-                          if (opp.suggestedAction === 'switch_deal') {
-                            window.location.href = '/dashboard/deals';
-                          } else if (opp.suggestedAction === 'dispute' || opp.suggestedAction === 'claim_compensation' || opp.suggestedAction === 'claim_refund') {
-                            window.location.href = '/dashboard/disputes';
-                          } else {
-                            window.location.href = '/dashboard/subscriptions';
-                          }
-                        }}
-                      >
-                        {action.text}
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          className={`${effectiveAction.color} text-white text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap transition-all`}
+                          onClick={() => {
+                            if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
+                              const params = new URLSearchParams();
+                              if (opp.category) params.set('category', opp.category);
+                              if (opp.provider) params.set('provider', opp.provider);
+                              window.location.href = `/dashboard/deals?${params}`;
+                            } else if (['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) || opp.suggestedAction === 'dispute' || opp.suggestedAction === 'claim_compensation' || opp.suggestedAction === 'claim_refund') {
+                              const params = new URLSearchParams({
+                                company: opp.provider || '',
+                                issue: opp.description || '',
+                                amount: opp.amount > 0 ? String(opp.amount) : '',
+                                new: '1',
+                              });
+                              window.location.href = `/dashboard/complaints?${params}`;
+                            } else if (opp.type === 'flight_delay') {
+                              const params = new URLSearchParams({
+                                company: opp.provider || '',
+                                issue: opp.description || '',
+                                amount: '520',
+                                type: 'flight_compensation',
+                                new: '1',
+                              });
+                              window.location.href = `/dashboard/complaints?${params}`;
+                            } else {
+                              window.location.href = '/dashboard/subscriptions';
+                            }
+                          }}
+                        >
+                          {effectiveAction.text}
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setEmailOpportunities(prev => prev.filter((o: any) => o.id !== opp.id));
+                            setEmailScanResults(prev => prev !== null ? prev - 1 : null);
+                            try {
+                              await supabase.from('email_scan_findings').update({ status: 'dismissed' }).eq('id', opp.id);
+                              await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
+                            } catch {}
+                          }}
+                          className="text-slate-500 hover:text-slate-300 text-xs transition-all px-1.5 py-1.5"
+                          title="Dismiss"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

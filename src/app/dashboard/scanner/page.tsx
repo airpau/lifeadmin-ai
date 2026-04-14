@@ -107,7 +107,6 @@ export default function ScannerPage() {
   const [imapMode, setImapMode] = useState(false);
   const [scanningEmailId, setScanningEmailId] = useState<string | null>(null);
   const [emailScanResults, setEmailScanResults] = useState<Record<string, number>>({});
-  const [scanResults, setScanResults] = useState<any[]>([]);
   const [userTier, setUserTier] = useState('free');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
@@ -206,9 +205,47 @@ export default function ScannerPage() {
     } catch {}
   };
 
+  // Reload opportunities from the centralised email_scan_findings table
+  const loadScanFindings = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: findings } = await supabase
+      .from('email_scan_findings')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('status', ['new', 'reviewing'])
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (findings && findings.length > 0) {
+      const loaded: Opportunity[] = findings.map((f: any) => {
+        const meta = f.metadata || {};
+        return {
+          id: f.id,
+          type: f.finding_type || meta.type || 'other',
+          category: meta.category || 'other',
+          title: f.title || 'Opportunity',
+          description: f.description || meta.description || '',
+          amount: f.amount || meta.amount || 0,
+          confidence: f.confidence || meta.confidence || 60,
+          provider: f.provider || meta.provider || 'Unknown',
+          detected: (f.created_at || '').substring(0, 10),
+          status: 'new' as const,
+          suggestedAction: meta.suggestedAction || 'track',
+          contractEndDate: f.contract_end_date || meta.contractEndDate || null,
+          paymentAmount: f.amount || meta.paymentAmount || null,
+          paymentFrequency: f.payment_frequency || meta.paymentFrequency || null,
+          accountNumber: meta.accountNumber || null,
+        };
+      });
+      setOpportunities(loaded);
+      setScannedAt(findings[0]?.created_at || null);
+    }
+  };
+
   const handleScanEmail = async (connectionId: string) => {
     setScanningEmailId(connectionId);
-    setScanResults([]);
     try {
       const conn = emailConns.find((c: any) => c.id === connectionId);
       let endpoint = '/api/email/scan';
@@ -234,28 +271,13 @@ export default function ScannerPage() {
       } else if (res.ok) {
         const opps = data.opportunities || [];
         setEmailScanResults((prev) => ({ ...prev, [connectionId]: opps.length }));
-        setScanResults(opps);
 
         if (opps.length > 0) {
-          const today = new Date().toISOString().split('T')[0];
-          setOpportunities(opps.map((o: any, i: number) => ({
-            id: o.id || `scan_${Date.now()}_${i}`,
-            type: o.type || 'overcharge',
-            category: o.category || 'other',
-            title: o.title || 'Opportunity',
-            description: o.description || '',
-            amount: typeof o.amount === 'number' ? o.amount : 0,
-            confidence: typeof o.confidence === 'number' ? o.confidence : 60,
-            provider: o.provider || 'Unknown',
-            detected: today,
-            status: 'new' as const,
-            suggestedAction: o.suggestedAction || 'track',
-            paymentAmount: o.paymentAmount ?? null,
-            paymentFrequency: o.paymentFrequency ?? null,
-          })));
           setScanDebug({ emailsFound: data.emailsFound || 0, emailsScanned: data.emailsScanned || 0 });
           setScannedAt(new Date().toISOString());
         }
+        // Reload from the centralised table so scanner + overview stay in sync
+        await loadScanFindings();
         loadEmailConnections();
       }
     } catch (err: any) {
@@ -410,69 +432,7 @@ export default function ScannerPage() {
           </div>
         )}
 
-        {/* Scan results — rendered immediately after scan completes */}
-        {scanResults.length > 0 && (
-          <div className="space-y-3 mt-4">
-            <h3 className="text-white font-semibold text-sm">{scanResults.length} opportunities found from email scan</h3>
-            {scanResults.map((opp: any, i: number) => {
-              const urgencyColors: Record<string, string> = {
-                immediate: 'bg-red-500/10 text-red-400 border-red-500/20',
-                soon: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-                routine: 'bg-mint-400/10 text-mint-400 border-mint-400/20',
-              };
-              const urgencyClass = urgencyColors[opp.urgency] || urgencyColors.routine;
-              return (
-                <div key={opp.id || i} className={`bg-navy-950/50 border rounded-xl p-4 ${opp.urgency === 'immediate' ? 'border-red-500/30' : opp.urgency === 'soon' ? 'border-amber-500/30' : 'border-navy-700/50'}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-white font-medium text-sm">{opp.title}</p>
-                        {opp.urgency && opp.urgency !== 'routine' && (
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${urgencyClass} uppercase font-semibold`}>
-                            {opp.urgency}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-slate-500 text-xs">{opp.provider} · {opp.category}</p>
-                      <p className="text-slate-400 text-xs mt-1">{opp.description}</p>
-                      {/* Extracted financial details */}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {opp.paymentAmount != null && opp.paymentAmount > 0 && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-navy-800 text-white font-medium">
-                            £{Number(opp.paymentAmount).toFixed(2)}{opp.paymentFrequency ? `/${opp.paymentFrequency === 'monthly' ? 'mo' : opp.paymentFrequency === 'yearly' ? 'yr' : opp.paymentFrequency === 'quarterly' ? 'qtr' : ''}` : ''}
-                          </span>
-                        )}
-                        {opp.previousAmount != null && opp.paymentAmount != null && opp.previousAmount > 0 && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
-                            was £{Number(opp.previousAmount).toFixed(2)} → £{Number(opp.paymentAmount).toFixed(2)}
-                          </span>
-                        )}
-                        {opp.contractEndDate && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
-                            ends {new Date(opp.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        )}
-                        {opp.nextPaymentDate && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                            due {new Date(opp.nextPaymentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        )}
-                        {opp.priceChangeDate && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
-                            increase from {new Date(opp.priceChangeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`text-[10px] px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${urgencyClass}`}>
-                      {(opp.suggestedAction || 'track').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* Scan results are now shown in the unified Opportunity Scanner section below */}
 
         {!emailLoading && emailConns.length === 0 && (
           <div className="text-center py-6 bg-navy-950/30 rounded-xl border border-navy-700/30">
@@ -818,37 +778,71 @@ export default function ScannerPage() {
     }
     setConnectedAccounts(accounts);
 
-    // Load saved opportunities from database
-    const { data: savedOpps } = await supabase
-      .from('tasks')
-      .select('id, title, description, provider_name, priority, created_at')
+    // Load saved opportunities from centralised email_scan_findings table
+    const { data: findings } = await supabase
+      .from('email_scan_findings')
+      .select('*')
       .eq('user_id', user.id)
-      .eq('type', 'opportunity')
-      .in('status', ['pending_review', 'in_progress'])
-      .order('created_at', { ascending: false });
+      .in('status', ['new', 'reviewing'])
+      .order('created_at', { ascending: false })
+      .limit(50);
 
-    if (savedOpps && savedOpps.length > 0) {
-      const loaded: Opportunity[] = savedOpps.map((t: any) => {
-        try {
-          const parsed = JSON.parse(t.description);
-          return { ...parsed, id: t.id, status: 'new' };
-        } catch {
-          return {
-            id: t.id,
-            type: 'other',
-            title: t.title,
-            description: t.description,
-            amount: 0,
-            confidence: 50,
-            provider: t.provider_name || 'Unknown',
-            detected: t.created_at?.substring(0, 10),
-            status: 'new',
-            emailId: '',
-          };
-        }
+    if (findings && findings.length > 0) {
+      const loaded: Opportunity[] = findings.map((f: any) => {
+        const meta = f.metadata || {};
+        return {
+          id: f.id,
+          type: f.finding_type || meta.type || 'other',
+          category: meta.category || 'other',
+          title: f.title || 'Opportunity',
+          description: f.description || meta.description || '',
+          amount: f.amount || meta.amount || 0,
+          confidence: f.confidence || meta.confidence || 60,
+          provider: f.provider || meta.provider || 'Unknown',
+          detected: (f.created_at || '').substring(0, 10),
+          status: 'new' as const,
+          suggestedAction: meta.suggestedAction || 'track',
+          contractEndDate: f.contract_end_date || meta.contractEndDate || null,
+          paymentAmount: f.amount || meta.paymentAmount || null,
+          paymentFrequency: f.payment_frequency || meta.paymentFrequency || null,
+          accountNumber: meta.accountNumber || null,
+        };
       });
       setOpportunities(loaded);
-      setScannedAt(savedOpps[0]?.created_at || null);
+      setScannedAt(findings[0]?.created_at || null);
+    } else {
+      // Fallback: try legacy tasks table
+      const { data: savedOpps } = await supabase
+        .from('tasks')
+        .select('id, title, description, provider_name, priority, created_at')
+        .eq('user_id', user.id)
+        .eq('type', 'opportunity')
+        .in('status', ['pending_review', 'in_progress'])
+        .order('created_at', { ascending: false });
+
+      if (savedOpps && savedOpps.length > 0) {
+        const loaded: Opportunity[] = savedOpps.map((t: any) => {
+          try {
+            const parsed = JSON.parse(t.description);
+            return { ...parsed, id: t.id, status: 'new' };
+          } catch {
+            return {
+              id: t.id,
+              type: 'other',
+              title: t.title,
+              description: t.description,
+              amount: 0,
+              confidence: 50,
+              provider: t.provider_name || 'Unknown',
+              detected: t.created_at?.substring(0, 10),
+              status: 'new',
+              emailId: '',
+            };
+          }
+        });
+        setOpportunities(loaded);
+        setScannedAt(savedOpps[0]?.created_at || null);
+      }
     }
 
     setLoading(false);
@@ -1200,8 +1194,23 @@ export default function ScannerPage() {
                           <span className="text-sm font-semibold text-white">{opp.confidence}%</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {/* Add to subscriptions - for subscriptions, bills, utilities, or when suggestedAction is monitor/track */}
-                          {(['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance'].includes(opp.type) || ['monitor', 'track'].includes(opp.suggestedAction ?? '')) && (
+                          {/* Switch deal - for bills, utilities, renewals, insurance where user can find a better deal */}
+                          {(opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) && (
+                            <button
+                              onClick={() => {
+                                const params = new URLSearchParams();
+                                if (opp.category) params.set('category', opp.category);
+                                if (opp.provider) params.set('provider', opp.provider);
+                                router.push(`/dashboard/deals?${params}`);
+                              }}
+                              className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Find Better Deal
+                            </button>
+                          )}
+
+                          {/* Add to subscriptions - for subscriptions or when suggestedAction is monitor/track */}
+                          {(['subscription', 'forgotten_subscription'].includes(opp.type) || (['monitor', 'track'].includes(opp.suggestedAction ?? '') && !['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type))) && (
                             <button
                               disabled={actionLoading === opp.id}
                               onClick={async () => {
@@ -1219,6 +1228,8 @@ export default function ScannerPage() {
                                     }),
                                   });
                                   setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
+                                  // Mark as actioned in centralised table
+                                  try { await supabase.from('email_scan_findings').update({ status: 'actioned' }).eq('id', opp.id); } catch {}
                                 } catch (err: any) {
                                   setError(`Failed to add: ${err.message}`);
                                 } finally {
@@ -1232,13 +1243,14 @@ export default function ScannerPage() {
                           )}
 
                           {/* Write complaint letter - for overcharges, disputes, price increases */}
-                          {['overcharge', 'price_increase', 'debt_dispute'].includes(opp.type) && (
+                          {['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) && (
                             <button
                               onClick={() => {
                                 const params = new URLSearchParams({
                                   company: opp.provider,
                                   issue: opp.description,
                                   amount: opp.amount > 0 ? String(opp.amount) : '',
+                                  new: '1',
                                 });
                                 router.push(`/dashboard/complaints?${params}`);
                               }}
@@ -1256,6 +1268,8 @@ export default function ScannerPage() {
                                   company: opp.provider,
                                   issue: opp.description,
                                   amount: opp.amount > 0 ? String(opp.amount) : '520',
+                                  type: 'flight_compensation',
+                                  new: '1',
                                 });
                                 router.push(`/dashboard/complaints?${params}`);
                               }}
@@ -1265,24 +1279,43 @@ export default function ScannerPage() {
                             </button>
                           )}
 
-                          {/* Tax rebate - for HMRC related */}
-                          {opp.type === 'tax_rebate' && (
-                            <button
-                              onClick={() => router.push('/dashboard/complaints?type=hmrc_tax_rebate&new=1')}
-                              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
-                            >
-                              Generate HMRC Letter
-                            </button>
-                          )}
-
-                          {/* Generic track button for anything else */}
-                          {!['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance', 'overcharge', 'price_increase', 'debt_dispute', 'flight_delay', 'tax_rebate'].includes(opp.type) && (
+                          {/* Claim refund */}
+                          {(opp.type === 'refund_opportunity' || opp.suggestedAction === 'claim_refund') && (
                             <button
                               onClick={() => {
                                 const params = new URLSearchParams({
                                   company: opp.provider,
                                   issue: opp.description,
                                   amount: opp.amount > 0 ? String(opp.amount) : '',
+                                  new: '1',
+                                });
+                                router.push(`/dashboard/complaints?${params}`);
+                              }}
+                              className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                            >
+                              Claim Refund
+                            </button>
+                          )}
+
+                          {/* Tax rebate - for HMRC related */}
+                          {(opp.type === 'tax_rebate' || opp.type === 'government') && (
+                            <button
+                              onClick={() => router.push('/dashboard/complaints?type=hmrc_tax_rebate&new=1')}
+                              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                            >
+                              {opp.type === 'tax_rebate' ? 'Claim Tax Rebate' : 'Take Action'}
+                            </button>
+                          )}
+
+                          {/* Track as subscription for types that don't have a specific action above */}
+                          {!['subscription', 'forgotten_subscription', 'utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill', 'overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice', 'flight_delay', 'refund_opportunity', 'tax_rebate', 'government'].includes(opp.type) && opp.suggestedAction !== 'switch_deal' && opp.suggestedAction !== 'claim_refund' && (
+                            <button
+                              onClick={() => {
+                                const params = new URLSearchParams({
+                                  company: opp.provider,
+                                  issue: opp.description,
+                                  amount: opp.amount > 0 ? String(opp.amount) : '',
+                                  new: '1',
                                 });
                                 router.push(`/dashboard/complaints?${params}`);
                               }}
@@ -1292,31 +1325,15 @@ export default function ScannerPage() {
                             </button>
                           )}
 
-                          {/* Create Task - always available */}
-                          <button
-                            onClick={async () => {
-                              const taskTitle = prompt('Task name:', opp.title);
-                              if (!taskTitle) return;
-                              try {
-                                await supabase.from('tasks').update({
-                                  title: taskTitle,
-                                  type: 'other',
-                                  status: 'pending_review',
-                                }).eq('id', opp.id);
-                                setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
-                              } catch {}
-                            }}
-                            className="bg-navy-700 hover:bg-navy-600 text-white px-4 py-2 rounded-lg transition-all text-sm"
-                          >
-                            Create Task
-                          </button>
-
                           {/* Dismiss - always available */}
                           <button
                             onClick={async () => {
                               setOpportunities((prev) => prev.filter((o) => o.id !== opp.id));
-                              // Mark as dismissed in DB
-                              try { await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id); } catch {};
+                              // Mark as dismissed in both centralised table and legacy tasks table
+                              try {
+                                await supabase.from('email_scan_findings').update({ status: 'dismissed' }).eq('id', opp.id);
+                                await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
+                              } catch {}
                             }}
                             className="bg-navy-800 hover:bg-navy-700 text-slate-400 px-4 py-2 rounded-lg transition-all text-sm"
                           >
