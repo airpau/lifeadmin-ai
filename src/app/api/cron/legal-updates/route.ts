@@ -296,7 +296,7 @@ async function processStatuteChange(
         : 'No matching stored references found.';
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [
         {
@@ -454,7 +454,7 @@ async function processRegulatorPage(
       .join('\n\n');
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [
         {
@@ -575,7 +575,7 @@ async function scanNewLegislation(
     const existingLawNames = existingRefs.map(r => r.law_name).join(', ');
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       messages: [
         {

@@ -171,7 +171,7 @@ Return ONLY the raw HTML of the email inside <div> wrapper. Start directly with 
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-latest",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 1500,
       system: "You are an expert marketing copywriter and email designer for a UK legal tech startup.",
       messages: [

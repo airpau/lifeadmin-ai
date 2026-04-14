@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
   let response;
   try {
     response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
       system: `You are a UK consumer rights expert writing SEO blog posts for Paybacker (paybacker.co.uk) - an AI platform that generates formal complaint letters citing exact UK law in 30 seconds.
 

@@ -371,7 +371,7 @@ export async function scanOutlookForOpportunities(
   const { logClaudeCall } = await import('@/lib/claude-rate-limit');
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const SCAN_MODEL = 'claude-sonnet-4-6';
+  const SCAN_MODEL = 'claude-haiku-4-5-20251001';
   const allOpportunities: Opportunity[] = [];
 
   logClaudeCall({
