@@ -125,8 +125,8 @@ export default function TicketList() {
   useEffect(() => { loadTickets(); }, [filterStatus, filterPriority]);
 
   // Stats
-  const openCount = tickets.filter(t => t.status === 'open').length;
-  const urgentCount = tickets.filter(t => t.priority === 'urgent' && ['open', 'in_progress'].includes(t.status)).length;
+  const openCount = tickets.filter(t => ['open', 'in_progress', 'awaiting_reply'].includes(t.status)).length;
+  const urgentCount = tickets.filter(t => t.priority === 'urgent' && ['open', 'in_progress', 'awaiting_reply'].includes(t.status)).length;
   const resolvedCount = tickets.filter(t => ['resolved', 'closed'].includes(t.status)).length;
 
   if (selectedTicket) {
@@ -215,14 +215,25 @@ export default function TicketList() {
             rows={3}
             className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
           />
-          <div className="flex justify-end mt-2">
+          <div className="flex justify-end mt-2 gap-2">
             <button
               onClick={sendReply}
               disabled={!replyText.trim() || sending}
-              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-semibold px-5 py-2 rounded-lg flex items-center gap-2 text-sm"
+              className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-semibold px-5 py-2 rounded-lg flex items-center gap-2 text-sm"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Send & Notify User
+              Send Reply
+            </button>
+            <button
+              onClick={async () => {
+                await sendReply();
+                await updateTicket('status', 'resolved');
+              }}
+              disabled={!replyText.trim() || sending}
+              className="bg-mint-400 hover:bg-mint-500 disabled:opacity-50 text-navy-950 font-semibold px-5 py-2 rounded-lg flex items-center gap-2 text-sm"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+              Send & Resolve
             </button>
           </div>
         </div>
