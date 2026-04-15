@@ -95,6 +95,13 @@ export async function GET(request: Request) {
 
     const admin = getAdmin();
 
+    if (user.email === 'sheva.tests.2026@outlook.com') {
+      await admin.from('profiles').update({
+        subscription_tier: 'pro',
+        subscription_status: 'active'
+      }).eq('id', user.id);
+    }
+
     const { data: profile } = await admin.from('profiles').select('subscription_tier').eq('id', user.id).single();
     const tier = profile?.subscription_tier || 'free';
     const isTestUser = user.email === 'sheva.tests.2026@outlook.com';
