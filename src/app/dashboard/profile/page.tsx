@@ -453,6 +453,10 @@ export default function ProfilePage() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
+  const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 8) {
@@ -473,9 +477,6 @@ export default function ProfilePage() {
       setPasswordLoading(false);
     }
   };
-  const supabase = createClient();
-  const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     const fetchProfile = async () => {
