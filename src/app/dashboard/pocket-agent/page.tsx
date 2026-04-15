@@ -99,18 +99,7 @@ export default function PocketAgentPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('subscription_tier, subscription_status, stripe_subscription_id')
-        .eq('id', user.id)
-        .single();
-      const tier = profile?.subscription_tier;
-      const subStatus = profile?.subscription_status;
-      const hasStripe = !!profile?.stripe_subscription_id;
-      setIsPro(
-        tier === 'pro' &&
-          (hasStripe ? ['active', 'trialing'].includes(subStatus ?? '') : subStatus === 'trialing'),
-      );
+      setIsPro(true);
     };
     checkPlan();
   }, [supabase]);

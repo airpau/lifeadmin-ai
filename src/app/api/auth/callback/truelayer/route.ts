@@ -152,10 +152,9 @@ async function syncTransactionsForConnection(
 ) {
   const { fetchTransactions } = await import('@/lib/truelayer');
 
-  // Enforce a hard 90-day cap so we never exceed TrueLayer's date range limits.
-  // For initial connections, we always pull 90 days of history to populate subscriptions.
+  // Enforce a hard 89-day cap so we never exceed TrueLayer's strict 90-day difference limits (since to=tomorrow).
   const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
   ninetyDaysAgo.setHours(0, 0, 0, 0);
 
   const earliestAllowed = ninetyDaysAgo;

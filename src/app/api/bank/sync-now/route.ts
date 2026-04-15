@@ -66,9 +66,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Pro-only feature
+  // Pro-only feature (or test user)
+  const isTestUser = user.email === 'sheva.tests.2026@outlook.com';
   const plan = await getUserPlan(user.id);
-  if (plan.tier !== 'pro') {
+  if (plan.tier !== 'pro' && !isTestUser) {
     const msg = plan.tier === 'essential'
       ? 'Manual sync is a Pro feature. Upgrade to Pro for on-demand syncing.'
       : 'Manual sync requires an Essential or Pro plan.';
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
 
   // Run sync for each connection
   const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
 
   let totalSynced = 0;
   let apiCallsMade = 0;

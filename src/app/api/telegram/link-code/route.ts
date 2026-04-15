@@ -69,26 +69,8 @@ export async function POST() {
 
   const admin = getAdmin();
 
-  // Check user is on Pro plan
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
-    .eq('id', user.id)
-    .single();
+  // Pocket Agent is now open to all users
 
-  const tier = profile?.subscription_tier;
-  const status = profile?.subscription_status;
-  const hasStripe = !!profile?.stripe_subscription_id;
-  const isPro =
-    tier === 'pro' &&
-    (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
-
-  if (!isPro) {
-    return NextResponse.json(
-      { error: 'Pro subscription required to use the Telegram bot' },
-      { status: 403 },
-    );
-  }
 
   // Invalidate any unused, unexpired codes for this user
   await admin
