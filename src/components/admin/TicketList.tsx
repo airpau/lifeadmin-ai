@@ -56,7 +56,7 @@ export default function TicketList() {
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStatus, setFilterStatus] = useState('active');
   const [filterPriority, setFilterPriority] = useState('');
 
   const loadTickets = async () => {
@@ -158,9 +158,11 @@ export default function TicketList() {
               onChange={(e) => updateTicket('status', e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
             >
-              {['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              <option value="open">New & Unassigned (open)</option>
+              <option value="in_progress">Escalated / In Progress (in_progress)</option>
+              <option value="awaiting_reply">Awaiting User Reply (awaiting_reply)</option>
+              <option value="resolved">Resolved (resolved)</option>
+              <option value="closed">Closed (closed)</option>
             </select>
             <select
               value={selectedTicket.priority}
@@ -270,10 +272,13 @@ export default function TicketList() {
           onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
         >
-          <option value="">All statuses</option>
-          {['open', 'in_progress', 'awaiting_reply', 'resolved', 'closed'].map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+          <option value="">All tickets</option>
+          <option value="active">Needs Action (Open/Escalated)</option>
+          <option value="open">New & Unassigned</option>
+          <option value="in_progress">Escalated to Human</option>
+          <option value="awaiting_reply">Awaiting User Reply</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
         </select>
         <select
           value={filterPriority}

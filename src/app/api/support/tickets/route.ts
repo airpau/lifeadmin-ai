@@ -119,7 +119,13 @@ export async function GET(request: NextRequest) {
     .from('support_tickets')
     .select('*', { count: 'exact' });
 
-  if (status) query = query.eq('status', status);
+  if (status) {
+    if (status === 'active') {
+      query = query.in('status', ['open', 'in_progress']);
+    } else {
+      query = query.eq('status', status);
+    }
+  }
   if (priority) query = query.eq('priority', priority);
   if (category) query = query.eq('category', category);
   if (assignedTo) query = query.eq('assigned_to', assignedTo);
