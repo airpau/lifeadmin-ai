@@ -1207,7 +1207,9 @@ export default function SubscriptionsPage() {
               </button>
               <button
                 onClick={() => {
-                  handleDeleteSubscription(deleteConfirm);
+                  if (deleteConfirm) {
+                    handleDeleteSubscription(deleteConfirm);
+                  }
                   setDeleteConfirm(null);
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all text-sm"
