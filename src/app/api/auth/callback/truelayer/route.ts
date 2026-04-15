@@ -161,28 +161,9 @@ async function syncTransactionsForConnection(
   const earliestAllowed = ninetyDaysAgo;
 
   let fromDate: Date;
-  const { data: lastTx } = await supabase
-    .from('bank_transactions')
-    .select('timestamp')
-    .eq('user_id', userId)
-    .in('account_id', connection.account_ids || [])
-    .order('timestamp', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (lastTx?.timestamp) {
-    // Start from the day of the last known transaction to pick up any new ones.
-    fromDate = new Date(lastTx.timestamp);
-    fromDate.setHours(0, 0, 0, 0);
-    // Never go before the authorization floor — that would cause TrueLayer 400.
-    if (fromDate < earliestAllowed) {
-      fromDate = earliestAllowed;
-    }
-    console.log(`TrueLayer callback: syncing from ${fromDate.toISOString()} (last tx or connected_at floor)`);
-  } else {
-    fromDate = earliestAllowed;
-    console.log(`TrueLayer callback: no prior transactions, syncing from ${fromDate.toISOString()}`);
-  }
+  // FORCE 90-day backfill for this re-connection (overriding any existing lastTx constraints)
+  fromDate = earliestAllowed;
+  console.log(`TrueLayer callback: forcing 90 day backfill, syncing from ${fromDate.toISOString()}`);
 
   const accountIds = connection.account_ids || [];
   let totalSynced = 0;
