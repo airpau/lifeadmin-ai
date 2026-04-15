@@ -464,6 +464,7 @@ export default function ProfilePage() {
             .eq('id', user.id)
             .single();
 
+          if (data) {
             const isTestUser = user.email?.toLowerCase() === 'sheva.tests.2026@outlook.com';
             
             setProfile({
