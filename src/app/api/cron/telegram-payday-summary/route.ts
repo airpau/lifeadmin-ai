@@ -152,15 +152,9 @@ export async function GET(request: NextRequest) {
 
       if (existing) continue;
 
-      // Get total monthly income via RPC (same source as dashboard)
-      const { data: incomeTotal } = await supabase.rpc('get_monthly_income_total', {
-        p_user_id: userId,
-        p_year: year,
-        p_month: month,
-      });
-
-      const monthlyIncome = parseFloat(incomeTotal) || 0;
-      if (monthlyIncome === 0) continue;
+      // Use the actual detected salary amount rather than the monthly total
+      const salaryAmount = salaryTxns.reduce((sum, t) => sum + Number(t.amount), 0);
+      if (salaryAmount < MIN_SALARY_AMOUNT) continue;
 
       // Get expected bills for this month via RPC
       const { data: rawBills } = await supabase.rpc('get_expected_bills', {
@@ -173,42 +167,161 @@ export async function GET(request: NextRequest) {
         (b: { occurrence_count: number }) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
       );
 
-      const totalBills = bills.reduce(
+      // Fetch actual transactions this month to check for already-paid bills
+      const startOfMonth = new Date(year, month - 1, 1).toISOString();
+      const endOfMonth = new Date(year, month, 1).toISOString();
+
+      const [txnRes, manualRes] = await Promise.all([
+        supabase
+          .from('bank_transactions')
+          .select('id, merchant_name, description, amount, timestamp')
+          .eq('user_id', userId)
+          .lt('amount', 0)
+          .gte('timestamp', startOfMonth)
+          .lt('timestamp', endOfMonth),
+        supabase
+          .from('manual_bill_payments')
+          .select('provider_name, amount, paid_date')
+          .eq('user_id', userId)
+          .eq('year', year)
+          .eq('month', month),
+      ]);
+
+      const actualDebits = (txnRes.data ?? []).map(t => {
+        const raw = (t.merchant_name || t.description || '').toLowerCase().replace(/[^a-z0-9\\s]/g, '').trim();
+        const cleaned = raw.replace(/\\s+\\d{6,}.*$/, '').replace(/\\s+(dd|ref|mandate)\\b.*$/i, '').trim();
+        return {
+          name: cleaned,
+          nameTokens: cleaned.split(/\\s+/).filter(Boolean),
+          amount: Math.abs(Number(t.amount)),
+          date: new Date(t.timestamp),
+        };
+      });
+
+      const manualPayments = new Map<string, { amount: number | null; date: string }>();
+      for (const mp of (manualRes.data ?? [])) {
+        const key = (mp.provider_name ?? '').toLowerCase().replace(/[^a-z0-9\\s]/g, '').trim();
+        manualPayments.set(key, { amount: mp.amount ? Number(mp.amount) : null, date: mp.paid_date });
+      }
+
+      const matchBillToTransaction = (billName: string, expectedAmount: number) => {
+        const normBill = billName.toLowerCase().replace(/[^a-z0-9\\s]/g, '').trim();
+        const billTokens = normBill.split(/\\s+/).filter(Boolean);
+        const COMMON_WORDS = new Set(['ltd', 'limited', 'uk', 'plc', 'the', 'direct', 'debit', 'payment', 'to', 'from', 'card']);
+        const significantBillTokens = billTokens.filter(t => t.length >= 3 && !COMMON_WORDS.has(t));
+
+        let bestMatch: { amount: number; date: Date } | null = null;
+        let bestScore = 0;
+
+        for (const debit of actualDebits) {
+          let tokenMatches = 0;
+          for (const bt of significantBillTokens) {
+            if (debit.name.includes(bt) || debit.nameTokens.some((dt: string) => dt.includes(bt) || bt.includes(dt))) {
+              tokenMatches++;
+            }
+          }
+          const tokenScore = significantBillTokens.length > 0 ? tokenMatches / significantBillTokens.length : 0;
+          const amountDiff = Math.abs(debit.amount - expectedAmount);
+          const amountTolerance = expectedAmount * 0.20;
+          const amountScore = amountDiff <= amountTolerance ? 1 : amountDiff <= expectedAmount * 0.5 ? 0.5 : 0;
+          const combined = tokenScore * 0.6 + amountScore * 0.4;
+          if (tokenScore >= 0.5 && combined > bestScore) {
+            bestScore = combined;
+            bestMatch = { amount: debit.amount, date: debit.date };
+          }
+        }
+        if (!bestMatch && normBill.length >= 4) {
+          const prefix = normBill.substring(0, Math.min(normBill.length, 8));
+          for (const debit of actualDebits) {
+            if (debit.name.startsWith(prefix) || debit.name.includes(prefix)) {
+              if (Math.abs(debit.amount - expectedAmount) <= expectedAmount * 0.25) {
+                return { amount: debit.amount, date: debit.date };
+              }
+            }
+          }
+        }
+        return bestMatch;
+      };
+
+      const unpaidBills = bills.filter((bill: any) => {
+        const expectedAmount = parseFloat(bill.expected_amount) || 0;
+        const normBillKey = (bill.provider_name ?? '').toLowerCase().replace(/[^a-z0-9\\s]/g, '').trim();
+        for (const [key, mp] of manualPayments) {
+          if (normBillKey.includes(key) || key.includes(normBillKey.substring(0, Math.min(normBillKey.length, 8)))) {
+            return false; // Paid manually
+          }
+        }
+        const match = matchBillToTransaction(bill.provider_name, expectedAmount);
+        return !match;
+      });
+
+      const totalUnpaidBills = unpaidBills.reduce(
         (sum: number, b: { expected_amount: string | number }) => sum + (parseFloat(String(b.expected_amount)) || 0),
         0,
       );
 
-      const discretionary = Math.max(0, monthlyIncome - totalBills);
-      const savingsTarget = monthlyIncome * 0.2;
-      const savingsAfterBills = Math.max(0, discretionary - (discretionary * 0.8)); // 20% of discretionary
+      const discretionary = Math.max(0, salaryAmount - totalUnpaidBills);
 
-      const savingsRateEmoji = discretionary >= savingsTarget ? '🎯' : '💡';
+      // Evaluate actual affiliate deals / potential savings instead of generic 20% rule
+      const { data: activeSubs } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .is('dismissed_at', null);
+
+      let potentialSavings = 0;
+      let matchedDealsCount = 0;
+
+      if (activeSubs && activeSubs.length > 0) {
+        const subIds = activeSubs.map((s: any) => s.id);
+        const { data: comps } = await supabase
+          .from('subscription_comparisons')
+          .select('subscription_id, annual_saving, current_price')
+          .in('subscription_id', subIds)
+          .eq('dismissed', false)
+          .order('annual_saving', { ascending: false });
+
+        const grouped: Record<string, boolean> = {};
+        for (const c of (comps || [])) {
+          const currentPrice = parseFloat(String(c.current_price));
+          const annualSaving = parseFloat(String(c.annual_saving));
+          if (currentPrice > 0 && annualSaving > currentPrice * 12 * 0.8) continue;
+          if (!grouped[c.subscription_id]) {
+            grouped[c.subscription_id] = true;
+            matchedDealsCount++;
+            potentialSavings += annualSaving;
+          }
+        }
+      }
 
       let message =
         `💰 *Payday! Here's your money plan:*\n\n` +
-        `Salary received: *${fmt(monthlyIncome)}*\n\n` +
-        `📋 Expected bills this month: *${fmt(totalBills)}*\n`;
-
-      if (bills.length > 0) {
-        const topBills = bills
+        `Salary received: *${fmt(salaryAmount)}*\n\n`;
+        
+      if (unpaidBills.length > 0) {
+        message += `📋 Remaining bills to pay this month: *${fmt(totalUnpaidBills)}*\n`;
+        const topBills = unpaidBills
           .sort((a: { expected_amount: string }, b: { expected_amount: string }) =>
             parseFloat(b.expected_amount) - parseFloat(a.expected_amount))
           .slice(0, 4);
         for (const bill of topBills) {
           message += `  • ${bill.provider_name}: ${fmt(parseFloat(String(bill.expected_amount)))}\n`;
         }
-        if (bills.length > 4) message += `  _...and ${bills.length - 4} more_\n`;
-      }
-
-      message +=
-        `\n✅ *Discretionary remaining: ${fmt(discretionary)}*\n\n` +
-        `${savingsRateEmoji} *Savings suggestion (20%): ${fmt(savingsTarget)}*\n`;
-
-      if (discretionary < totalBills * 0.1) {
-        message += `\n⚠️ _Your bills are taking up most of your income this month. Ask me to find savings opportunities._`;
+        if (unpaidBills.length > 4) message += `  _...and ${unpaidBills.length - 4} more_\n`;
       } else {
-        message += `\n_Ask me "show my subscriptions" or "find savings opportunities" to make the most of this month_`;
+        message += `📋 Remaining bills: *£0.00* (All your expected bills are paid!)\n`;
       }
+
+      message += `\n✅ *Discretionary remaining: ${fmt(discretionary)}*\n\n`;
+
+      if (potentialSavings > 0) {
+        message += `🔥 *We found ${fmt(potentialSavings)}/yr in savings* across ${matchedDealsCount} of your current providers! Switch to these deals to keep more of your payday.`;
+      } else {
+        message += `💡 Want to stretch your payday further? Ask me to scan for cheaper deals!`;
+      }
+      
+      message += `\n\n_Tip: Ask me "find savings opportunities" to switch & save_`;
 
       const ok = await sendTelegramMessage(token, Number(chatId), message);
       if (ok) {

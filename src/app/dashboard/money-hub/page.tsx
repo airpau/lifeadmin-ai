@@ -255,6 +255,7 @@ export default function MoneyHubPage() {
       });
       if (response.ok) {
         setFacItems(prev => prev.map(it => it.id === id ? { ...it, bankStatus: 'bank_matched' as FacBankStatus } : it));
+        setFacEditId(null);
         showToast('Marked as paid', 'success');
       } else {
         showToast('Failed to update — please try again', 'error');
@@ -429,7 +430,8 @@ export default function MoneyHubPage() {
   const scanInbox = async (silent = false) => {
     if (!silent) setScanning(true);
     try { 
-      await fetch('/api/gmail/scan', { method: 'POST' }); 
+      const res = await fetch('/api/gmail/scan', { method: 'POST' }); 
+      if (!res.ok) throw new Error('Scan failed');
       await refreshData(); 
       if (!silent) showToast('Inbox scan complete.', 'success'); 
     }

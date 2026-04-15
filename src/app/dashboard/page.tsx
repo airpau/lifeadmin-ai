@@ -691,16 +691,16 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <CreditCard className="h-6 w-6 text-mint-400 mb-3" />
-          <p className="text-3xl font-bold text-white">{subscriptionCount}</p>
+          <p className="text-3xl font-bold text-white">{spendBreakdown?.subscriptions_count || subscriptionCount}</p>
           <p className="text-slate-400 text-sm">Subscriptions & bills</p>
         </Link>
         <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
           <p className="text-slate-400 text-sm">Subscriptions & bills</p>
-          {spendBreakdown && (spendBreakdown.mortgages_monthly > 0 || spendBreakdown.loans_monthly > 0) && (
-            <p className="text-slate-500 text-xs mt-1">
-              + {formatGBP(spendBreakdown.mortgages_monthly + spendBreakdown.loans_monthly + spendBreakdown.council_tax_monthly)} commitments
+          {spendBreakdown && (spendBreakdown.mortgages_monthly > 0 || spendBreakdown.loans_monthly > 0 || spendBreakdown.council_tax_monthly > 0) && (
+            <p className="text-slate-500 text-xs mt-1 truncate">
+              + {formatGBP(spendBreakdown.mortgages_monthly + spendBreakdown.loans_monthly + spendBreakdown.council_tax_monthly)} in mortgages, loans & tax
             </p>
           )}
         </Link>
@@ -803,7 +803,7 @@ export default function DashboardPage() {
                 </button>
               ) : (
                 <Link
-                  href="/dashboard/scanner"
+                  href="/dashboard/profile?connect_email=true"
                   className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-mint-400 hover:bg-mint-500 text-navy-950"
                 >
                   Connect Email
@@ -955,7 +955,7 @@ export default function DashboardPage() {
               Add Bank Account
             </button>
             <Link
-              href="/dashboard/scanner"
+              href="/dashboard/profile?connect_email=true"
               className="flex items-center gap-1.5 text-sm text-purple-400 bg-purple-500/10 px-3 py-1.5 rounded-lg border border-purple-500/30 hover:bg-purple-500/20 transition-all"
             >
               <Mail className="h-3.5 w-3.5" />
@@ -1107,7 +1107,13 @@ export default function DashboardPage() {
                               });
                               window.location.href = `/dashboard/complaints?${params}`;
                             } else {
-                              window.location.href = '/dashboard/subscriptions';
+                              const params = new URLSearchParams({
+                                new: '1',
+                                provider: opp.provider || '',
+                                amount: opp.paymentAmount || opp.amount || '',
+                                taskId: opp.id || ''
+                              });
+                              window.location.href = `/dashboard/subscriptions?${params}`;
                             }
                           }}
                         >
@@ -1144,7 +1150,7 @@ export default function DashboardPage() {
               <p className="text-slate-400 text-xs">Connect your email to find hidden bills, overcharges, and money-saving opportunities</p>
             </div>
           </div>
-          <Link href="/dashboard/scanner" className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1 whitespace-nowrap ml-4">
+          <Link href="/dashboard/profile?connect_email=true" className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1 whitespace-nowrap ml-4">
             Connect Email <ArrowRight className="h-4 w-4" />
           </Link>
         </div>

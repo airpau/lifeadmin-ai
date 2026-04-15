@@ -27,7 +27,7 @@ const TUTORIALS: Tutorial[] = [
     link: '/dashboard',
     steps: [
       'Your dashboard shows key stats: total subscriptions, monthly spend, complaints generated, and connected bank accounts.',
-      'Action items highlight things that need your attention: overcharges, expiring contracts, or savings opportunities found by our scanner.',
+      'Action items highlight things that need your attention: overcharges, expiring contracts, or savings opportunities found by our inbox scan.',
       'The Money Recovery Score shows how much you could save based on our analysis of your bills.',
       'Better Deals shows cheaper alternatives for your current services.',
     ],
@@ -109,17 +109,17 @@ const TUTORIALS: Tutorial[] = [
     ],
   },
   {
-    id: 'scanner',
-    title: 'Scanner',
-    subtitle: 'Connect your bank and email. We automatically detect subscriptions, overcharges, and savings opportunities.',
+    id: 'inbox-scan',
+    title: 'Inbox Scan',
+    subtitle: 'Connect your email. We automatically detect subscriptions, overcharges, and savings opportunities.',
     icon: ScanSearch,
     colour: 'text-amber-400',
-    link: '/dashboard/scanner',
+    link: '/dashboard/profile?connect_email=true',
     steps: [
       'Connect your bank account via Open Banking (read-only, secure, FCA regulated).',
       'We scan up to 6 months of transactions to detect recurring payments you might have forgotten about.',
       'Connect your Gmail or Outlook to scan your inbox for bills, contracts, and savings opportunities.',
-      'The Opportunity Scanner finds overcharges, flight delay claims, and debt dispute opportunities.',
+      'The Inbox Scan finds overcharges, flight delay claims, and debt dispute opportunities.',
       'Smart action buttons let you: add to subscriptions, write a complaint letter, or dismiss the finding.',
     ],
   },
@@ -201,7 +201,7 @@ export default function TutorialsPage() {
           <div>
             <p className="text-white font-medium text-sm">New here?</p>
             <p className="text-slate-400 text-sm mt-1">
-              Start with <strong className="text-white">Disputes</strong> to write your first complaint letter in 30 seconds, or connect your bank in the <strong className="text-white">Scanner</strong> to find hidden savings.
+              Start with <strong className="text-white">Disputes</strong> to write your first complaint letter in 30 seconds, or connect your bank in the <strong className="text-white">Money Hub</strong> to find hidden savings.
             </p>
           </div>
         </div>

@@ -10,7 +10,7 @@ import { Resend } from 'resend';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const resend = new Resend(process.env.RESEND_API_KEY!);
+// Resend init moved inside the handler to prevent static build errors
 
 const AWIN_URL = 'https://www.awin1.com/cread.php?awinmid=3599&awinaffid=2825812&ued=https%3A%2F%2Fwww.giffgaff.com%2Fsim-only-plans';
 const DEALS_PAGE = 'https://paybacker.co.uk/dashboard/deals';
@@ -173,6 +173,8 @@ export async function POST(request: NextRequest) {
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const resend = new Resend(process.env.RESEND_API_KEY!);
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

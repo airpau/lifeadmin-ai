@@ -68,7 +68,7 @@ const ALL_BADGES = [
   { id: 'first_cancellation', name: 'Subscription Slayer', emoji: '✂️', description: 'Cancel your first subscription', action: '/dashboard/subscriptions' },
   { id: 'ten_cancellations', name: 'Cut The Cord', emoji: '🔥', description: 'Cancel 10 subscriptions', action: '/dashboard/subscriptions' },
   { id: 'bank_connected', name: 'Money Detective', emoji: '🔍', description: 'Connect your first bank account', action: '/dashboard/subscriptions' },
-  { id: 'email_connected', name: 'Inbox Raider', emoji: '📧', description: 'Connect your email inbox', action: '/dashboard/scanner' },
+  { id: 'email_connected', name: 'Inbox Raider', emoji: '📧', description: 'Connect your email inbox', action: '/dashboard/profile?connect_email=true' },
   { id: 'first_referral', name: 'Word Spreader', emoji: '📣', description: 'Refer your first friend', action: '#referrals' },
   { id: 'five_referrals', name: 'Paybacker Ambassador', emoji: '🌟', description: 'Refer 5 friends', action: '#referrals' },
   { id: 'streak_3', name: 'On A Roll', emoji: '🎯', description: '3-month active streak', action: '#streaks' },
