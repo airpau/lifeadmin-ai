@@ -465,7 +465,7 @@ export default function Home() {
             >
               <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm text-amber-400 border border-amber-500/20 mb-6">
                 <MessageCircle className="h-4 w-4" />
-                <span>Pro Feature</span>
+                <span>Available on all tiers</span>
               </div>
               <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
                 Meet{' '}
@@ -614,8 +614,8 @@ export default function Home() {
               className="max-w-3xl mx-auto mt-14 text-center bg-navy-900 border border-navy-700/50 rounded-2xl px-6 py-8 shadow-[--shadow-card]"
             >
               <p className="text-white font-semibold text-lg mb-4">
-                Pocket Agent is exclusive to{' '}
-                <span className="text-amber-400">Paybacker Pro</span>
+                Pocket Agent is available on all{' '}
+                <span className="text-amber-400">membership tiers</span>
               </p>
               <Link
                 href="/pricing"
@@ -1048,7 +1048,7 @@ export default function Home() {
                     { label: 'Email Scanning', sub: 'Gmail, Outlook, Yahoo — find hidden costs', free: 'One-time scan', essential: 'Daily re-scans', pro: 'Daily re-scans' },
                     { label: 'Money Hub & Budgets', sub: 'Spending intelligence, budget planner, goals', free: 'Top 5 categories', essential: 'Full dashboard', pro: 'Full + transactions' },
                     { label: 'Contract AI Analysis', sub: 'Renewal reminders, price increase alerts', free: false, essential: true, pro: true },
-                    { label: 'Pocket Agent', sub: 'AI assistant in Telegram — spending, disputes, alerts', free: false, essential: false, pro: true, isNew: true },
+                    { label: 'Pocket Agent', sub: 'AI assistant in Telegram — spending, disputes, alerts', free: true, essential: true, pro: true, isNew: true },
                     { label: 'Priority Support', sub: 'Faster response times', free: false, essential: false, pro: true },
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-navy-700/20 hover:bg-navy-900/30 transition-colors">

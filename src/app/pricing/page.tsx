@@ -18,6 +18,7 @@ const plans = [
     price: { monthly: 0, yearly: 0 },
     description: 'See what Paybacker can do for you',
     features: [
+      'Pocket Agent — AI chat on Telegram',
       '3 AI letters per month (complaints, HMRC, flights, more)',
       'Upload and scan bills with AI',
       'Unlimited subscription tracking',
@@ -39,6 +40,7 @@ const plans = [
     price: { monthly: 4.99, yearly: 44.99 },
     description: 'Automated money management',
     features: [
+      'Pocket Agent — AI chat on Telegram',
       'Unlimited AI letters (all 11 types)',
       '1 bank account with daily auto-sync',
       'Monthly email re-scans',
@@ -307,7 +309,7 @@ export default function PricingPage() {
                   </div>
                 )}
 
-                {plan.planKey === 'pro' && (
+                {plan.planKey && (
                   <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
                     <Bot className="h-5 w-5 text-amber-400 flex-shrink-0" />
                     <span className="text-amber-400 text-sm font-semibold">Includes Pocket Agent</span>
@@ -504,8 +506,8 @@ export default function PricingPage() {
                     Pocket Agent
                     <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded">NEW</span>
                   </td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
+                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
                   <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
                 </tr>
                 <tr>
