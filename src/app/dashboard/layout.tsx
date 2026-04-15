@@ -133,7 +133,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* User info below logo */}
       <div className="mb-6 pb-6 border-b border-navy-700/50">
         {firstName && (
-          <p className="text-sm font-medium text-white">{firstName}</p>
+          <p className="text-sm font-medium text-white truncate" title={firstName}>{firstName}</p>
         )}
         <p className="text-xs text-slate-500 truncate">{userEmail || ''}</p>
         {isTrial ? (
