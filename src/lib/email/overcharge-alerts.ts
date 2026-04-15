@@ -3,12 +3,12 @@ import type { OverchargeAssessment } from '@/lib/overcharge-engine/types';
 
 function scoreColor(score: number): string {
   if (score >= 70) return '#ef4444'; // red
-  if (score >= 40) return '#f59e0b'; // amber
+  if (score >= 40) return '#34d399'; // amber
   return '#22c55e'; // green
 }
 
 function confidenceBadge(confidence: string): string {
-  const colors: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#94a3b8' };
+  const colors: Record<string, string> = { high: '#22c55e', medium: '#34d399', low: '#94a3b8' };
   return `<span style="background: ${colors[confidence] || '#94a3b8'}; color: #0f172a; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">${confidence}</span>`;
 }
 
@@ -31,7 +31,7 @@ function buildAssessmentRow(a: OverchargeAssessment): string {
         </tr>` : ''}
         <tr>
           <td style="color: #94a3b8; font-size: 13px; padding: 4px 0;">Potential saving</td>
-          <td style="color: #f59e0b; font-size: 13px; font-weight: 700; padding: 4px 0; text-align: right;">&pound;${Math.round(a.estimatedAnnualSaving)}/yr</td>
+          <td style="color: #34d399; font-size: 13px; font-weight: 700; padding: 4px 0; text-align: right;">&pound;${Math.round(a.estimatedAnnualSaving)}/yr</td>
         </tr>
       </table>
       <div style="margin-top: 12px; font-size: 12px; color: #94a3b8;">

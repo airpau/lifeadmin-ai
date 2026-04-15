@@ -30,8 +30,8 @@ export function buildTargetedEmail(
       <div style="color: #94a3b8; font-size: 13px; margin-top: 4px;">Your opportunity score is ${score.total} — there are significant savings available</div>
     </div>
   ` : score.tier === 'high' ? `
-    <div style="background: #f59e0b22; border: 1px solid #f59e0b44; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 700; font-size: 14px;">SAVINGS OPPORTUNITY</div>
+    <div style="background: #34d39922; border: 1px solid #34d39944; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
+      <div style="color: #34d399; font-weight: 700; font-size: 14px;">SAVINGS OPPORTUNITY</div>
       <div style="color: #94a3b8; font-size: 13px; margin-top: 4px;">${score.topOpportunities.length} opportunities to save on your bills</div>
     </div>
   ` : '';
@@ -41,12 +41,12 @@ export function buildTargetedEmail(
       <td style="padding: 16px 20px; border-bottom: 1px solid #1e293b;">
         <div style="font-weight: 700; color: #ffffff; font-size: 15px;">${opp.provider}</div>
         <div style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">${opp.category.replace('_', ' ')}</div>
-        <div style="color: #f59e0b; font-size: 13px; margin-top: 6px;">${opp.reason}</div>
+        <div style="color: #34d399; font-size: 13px; margin-top: 6px;">${opp.reason}</div>
       </td>
       <td style="padding: 16px 20px; border-bottom: 1px solid #1e293b; text-align: right; vertical-align: top;">
         <div style="font-weight: 800; color: #ffffff; font-size: 18px;">£${opp.amount.toFixed(0)}</div>
         <div style="color: #475569; font-size: 11px;">/month</div>
-        <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; margin-top: 8px; background: #f59e0b; color: #0f172a; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 12px;">COMPARE</a>
+        <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; margin-top: 8px; background: #34d399; color: #0f172a; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; font-size: 12px;">COMPARE</a>
       </td>
     </tr>
   `).join('');
@@ -54,7 +54,7 @@ export function buildTargetedEmail(
   const breakdownRows = score.breakdown.slice(0, 8).map((b) => `
     <tr>
       <td style="padding: 8px 20px; color: #94a3b8; font-size: 12px;">${b.reason}</td>
-      <td style="padding: 8px 20px; text-align: right; color: #f59e0b; font-size: 12px; font-weight: 600;">+${b.points}</td>
+      <td style="padding: 8px 20px; text-align: right; color: #34d399; font-size: 12px; font-weight: 600;">+${b.points}</td>
     </tr>
   `).join('');
 
@@ -71,7 +71,7 @@ export function buildTargetedEmail(
     <div style="background: #0f172a; padding: 20px 32px; border-bottom: 1px solid #1e293b;">
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
-          <td style="font-size: 22px; font-weight: 800; color: #ffffff;">Pay<span style="color: #f59e0b;">backer</span></td>
+          <td style="font-size: 22px; font-weight: 800; color: #ffffff;">Pay<span style="color: #34d399;">backer</span></td>
           <td style="text-align: right; color: #475569; font-size: 12px;">Targeted Savings Alert</td>
         </tr>
       </table>
@@ -79,7 +79,7 @@ export function buildTargetedEmail(
 
     <div style="background: linear-gradient(180deg, #0f172a 0%, #1a1f35 100%); padding: 32px; text-align: center;">
       <div style="color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">Your opportunity score</div>
-      <div style="font-size: 56px; font-weight: 800; color: ${score.tier === 'critical' ? '#ef4444' : score.tier === 'high' ? '#f59e0b' : '#3b82f6'}; letter-spacing: -0.03em; line-height: 1;">${score.total}</div>
+      <div style="font-size: 56px; font-weight: 800; color: ${score.tier === 'critical' ? '#ef4444' : score.tier === 'high' ? '#34d399' : '#3b82f6'}; letter-spacing: -0.03em; line-height: 1;">${score.total}</div>
       <div style="color: #475569; font-size: 13px; margin-top: 6px;">${score.tier === 'critical' ? 'Critical — significant savings available' : score.tier === 'high' ? 'High — multiple opportunities found' : 'Moderate — worth reviewing'}</div>
     </div>
 
@@ -92,7 +92,7 @@ export function buildTargetedEmail(
       </div>
     </div>
 
-    <div style="background: #0f172a; border-top: 2px solid ${score.tier === 'critical' ? '#ef4444' : '#f59e0b'}; margin: 0 24px; border-radius: 0 0 16px 16px;">
+    <div style="background: #0f172a; border-top: 2px solid ${score.tier === 'critical' ? '#ef4444' : '#34d399'}; margin: 0 24px; border-radius: 0 0 16px 16px;">
       <div style="padding: 14px 20px 6px; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600;">Your top opportunities</div>
       <table style="width: 100%; border-collapse: collapse;">
         ${opportunityRows}
@@ -100,7 +100,7 @@ export function buildTargetedEmail(
     </div>
 
     <div style="padding: 28px; text-align: center;">
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #0f172a; padding: 16px 40px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 15px; box-shadow: 0 4px 14px #f59e0b40;">VIEW YOUR DEALS</a>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #34d399 0%, #d97706 100%); color: #0f172a; padding: 16px 40px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 15px; box-shadow: 0 4px 14px #34d39940;">VIEW YOUR DEALS</a>
     </div>
 
     <!-- Score breakdown -->
@@ -110,7 +110,7 @@ export function buildTargetedEmail(
         ${breakdownRows}
       </table>
       <div style="padding: 12px 20px; color: #475569; font-size: 11px; border-top: 1px solid #1e293b; text-align: right;">
-        Total score: <strong style="color: #f59e0b;">${score.total}</strong>
+        Total score: <strong style="color: #34d399;">${score.total}</strong>
       </div>
     </div>
 

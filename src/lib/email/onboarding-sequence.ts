@@ -8,26 +8,26 @@ const h1 = `color:#ffffff;font-size:24px;font-weight:700;margin:0 0 16px;line-he
 const h2 = `color:#ffffff;font-size:18px;font-weight:600;margin:0 0 12px;`;
 const p = `color:#94a3b8;font-size:15px;line-height:1.75;margin:0 0 16px;`;
 const pWhite = `color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #f59e0b;`;
-const tipBox = `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #FB923C;`;
-const cta = `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
+const box = `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #34d399;`;
+const tipBox = `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #10b981;`;
+const cta = `display:inline-block;background:#34d399;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
 const ctaSecondary = `display:inline-block;background:#1e3a5f;color:#e2e8f0;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;margin:8px 0 8px 12px;border:1px solid #1e3a5f;`;
 const footer = `padding:20px 32px 28px;border-top:1px solid #1e3a5f;`;
 const footerText = `color:#475569;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
-const stepNum = `display:inline-block;width:28px;height:28px;background:#f59e0b;color:#0f172a;font-weight:700;font-size:14px;border-radius:50%;text-align:center;line-height:28px;margin-right:10px;`;
-const badge = `display:inline-block;background:#f59e0b;color:#0f172a;font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;letter-spacing:0.05em;text-transform:uppercase;`;
+const stepNum = `display:inline-block;width:28px;height:28px;background:#34d399;color:#0f172a;font-weight:700;font-size:14px;border-radius:50%;text-align:center;line-height:28px;margin-right:10px;`;
+const badge = `display:inline-block;background:#34d399;color:#0f172a;font-weight:700;font-size:11px;padding:3px 10px;border-radius:6px;letter-spacing:0.05em;text-transform:uppercase;`;
 const statCard = `display:inline-block;background:#162544;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;text-align:center;margin:4px;min-width:120px;`;
 
 const Logo = () => `
   <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span>
+    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span>
   </a>
 `;
 
 const Footer = () => `
   <div style="${footer}">
     <p style="${footerText}">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
+      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
       AI-powered money recovery for UK consumers<br/><br/>
       <a href="https://paybacker.co.uk/privacy-policy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
       <a href="https://paybacker.co.uk/terms-of-service" style="color:#475569;text-decoration:none;">Terms</a> &nbsp;·&nbsp;
@@ -75,7 +75,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     </div>
 
     <div style="${tipBox}">
-      <p style="color:#FB923C;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Did you know?</p>
+      <p style="color:#10b981;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Did you know?</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">The average UK household overpays by over £1,000 per year on bills, subscriptions, and contracts they could challenge or switch. Paybacker helps you find and recover that money.</p>
     </div>
 
@@ -99,7 +99,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     <p style="${pWhite}">The most common complaints on Paybacker are energy overcharges, broadband price rises, and unexpected subscription renewals. Here is exactly how it works.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">How it works</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">How it works</p>
       <ol style="color:#e2e8f0;padding-left:20px;margin:0;line-height:2.4;font-size:14px;">
         <li>Go to <strong>Complaints</strong> in your dashboard</li>
         <li>Type the company name and describe the issue in your own words</li>
@@ -109,7 +109,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     </div>
 
     <div style="${tipBox}">
-      <p style="color:#FB923C;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Real example</p>
+      <p style="color:#10b981;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Real example</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">
         <strong style="color:#e2e8f0;">Issue:</strong> Energy supplier raised direct debit by £42 without proper notice.<br/>
         <strong style="color:#e2e8f0;">Paybacker generated:</strong> Formal complaint citing Ofgem Standards of Conduct and Consumer Rights Act 2015 s.49-50.<br/>
@@ -123,7 +123,7 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
       <a href="https://paybacker.co.uk/dashboard/complaints" style="${cta}">Write your first letter</a>
     </div>
 
-    <p style="color:#64748b;font-size:13px;margin:0;">Free accounts include 3 letters per month. <a href="https://paybacker.co.uk/pricing" style="color:#f59e0b;">Upgrade for unlimited</a>.</p>
+    <p style="color:#64748b;font-size:13px;margin:0;">Free accounts include 3 letters per month. <a href="https://paybacker.co.uk/pricing" style="color:#34d399;">Upgrade for unlimited</a>.</p>
   </div>
   ${Footer()}
 </div>`,
@@ -142,17 +142,17 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     <p style="${pWhite}">Most UK consumers don't realise how much money they're leaving on the table. Here are three things worth checking today.</p>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">Flight delays = up to £520 per person</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">Flight delays = up to £520 per person</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Under UK261 regulations, if your flight was delayed over 3 hours in the last 6 years, you could be owed compensation. Paybacker writes the claim letter for you.</p>
     </div>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">Broadband mid-contract price rises = free exit</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">Broadband mid-contract price rises = free exit</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">Ofcom rules mean if your broadband provider raises prices mid-contract without telling you upfront, you can leave penalty-free. Many providers did exactly this.</p>
     </div>
 
     <div style="${box}">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 8px;font-size:14px;">Energy credit balances = your money back</p>
+      <p style="color:#34d399;font-weight:700;margin:0 0 8px;font-size:14px;">Energy credit balances = your money back</p>
       <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.7;">If you've switched energy suppliers, your old provider must refund any credit balance within 10 working days. If they haven't, that's a valid complaint.</p>
     </div>
 
@@ -179,22 +179,22 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
 
     <div style="${box}">
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Bank Connection</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Connect your bank and Paybacker finds every subscription, direct debit, and recurring payment. You'll probably find ones you've forgotten about. <a href="https://paybacker.co.uk/dashboard/subscriptions" style="color:#f59e0b;">Connect now</a></p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Connect your bank and Paybacker finds every subscription, direct debit, and recurring payment. You'll probably find ones you've forgotten about. <a href="https://paybacker.co.uk/dashboard/subscriptions" style="color:#34d399;">Connect now</a></p>
     </div>
 
     <div style="${box}">
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Spending Intelligence</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">See where your money goes each month, broken down by category. Set budgets and get alerts when you're close to your limit. <a href="https://paybacker.co.uk/dashboard/money-hub" style="color:#f59e0b;">View Money Hub</a></p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">See where your money goes each month, broken down by category. Set budgets and get alerts when you're close to your limit. <a href="https://paybacker.co.uk/dashboard/money-hub" style="color:#34d399;">View Money Hub</a></p>
     </div>
 
     <div style="${box}">
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Disputes for Everything</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">HMRC tax rebates, council tax challenges, DVLA issues, NHS complaints, parking appeals. Paybacker writes these too. <a href="https://paybacker.co.uk/dashboard/complaints" style="color:#f59e0b;">Start a dispute</a></p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">HMRC tax rebates, council tax challenges, DVLA issues, NHS complaints, parking appeals. Paybacker writes these too. <a href="https://paybacker.co.uk/dashboard/complaints" style="color:#34d399;">Start a dispute</a></p>
     </div>
 
     <div style="${box}">
       <p style="color:#e2e8f0;font-weight:600;margin:0 0 6px;font-size:15px;">Savings Challenges</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Try "No Takeaways for 7 Days" or "Cancel an Unused Subscription". Paybacker verifies your progress using your bank data and awards loyalty points when you complete a challenge. A fun way to save real money. <a href="https://paybacker.co.uk/dashboard/rewards" style="color:#f59e0b;">View challenges</a></p>
+      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">Try "No Takeaways for 7 Days" or "Cancel an Unused Subscription". Paybacker verifies your progress using your bank data and awards loyalty points when you complete a challenge. A fun way to save real money. <a href="https://paybacker.co.uk/dashboard/rewards" style="color:#34d399;">View challenges</a></p>
     </div>
 
     <div style="${box}">
@@ -225,8 +225,8 @@ export const ONBOARDING_SEQUENCE: OnboardingEmail[] = [
     <h1 style="${h1}">Ready for more, ${name}?</h1>
     <p style="${pWhite}">Free accounts include 3 complaint letters per month and a one-time bank scan. If you've seen the value, the Essential plan unlocks everything.</p>
 
-    <div style="background:#162544;border:1px solid #f59e0b;border-radius:12px;padding:24px;margin:24px 0;text-align:center;">
-      <p style="color:#f59e0b;font-weight:700;margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Essential Plan</p>
+    <div style="background:#162544;border:1px solid #34d399;border-radius:12px;padding:24px;margin:24px 0;text-align:center;">
+      <p style="color:#34d399;font-weight:700;margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;">Essential Plan</p>
       <p style="color:white;font-size:32px;font-weight:800;margin:0;">£4.99<span style="color:#94a3b8;font-size:14px;font-weight:400;">/month</span></p>
     </div>
 

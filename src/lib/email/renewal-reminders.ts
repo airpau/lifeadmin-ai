@@ -59,7 +59,7 @@ export function buildRenewalEmail(
   }
 
   // Urgency banner
-  const urgencyColor = daysUntilRenewal <= 7 ? '#ef4444' : daysUntilRenewal <= 14 ? '#f59e0b' : '#3b82f6';
+  const urgencyColor = daysUntilRenewal <= 7 ? '#ef4444' : daysUntilRenewal <= 14 ? '#34d399' : '#3b82f6';
   const urgencyText = onlyPayments
     ? (daysUntilRenewal <= 7 ? 'Payments due soon' : daysUntilRenewal <= 14 ? 'Payments due in 2 weeks' : 'Upcoming payments')
     : (daysUntilRenewal <= 7 ? 'Renewing soon — act now' : daysUntilRenewal <= 14 ? 'Renewing in 2 weeks' : 'Upcoming renewal');
@@ -125,18 +125,18 @@ export function buildRenewalEmail(
 
   // Deals section — only shown when there are cancellable subscriptions
   const dealsSection = hasSubscriptions ? `
-    <div style="background: #0f172a; border: 1px solid #f59e0b44; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
+    <div style="background: #0f172a; border: 1px solid #34d39944; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+      <div style="color: #34d399; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
       <div style="color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
         Before these renew, check if you can save by switching. Your personalised deals page shows alternatives based on your current providers.
       </div>
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Personalised Deals &rarr;</a>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #34d399, #d97706); color: #0f172a; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Personalised Deals &rarr;</a>
     </div>` : '';
 
   // "Did you know" tip — only relevant for subscriptions
   const didYouKnow = hasSubscriptions ? `
     <div style="background: #0f172a; border: 1px solid #1e293b44; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-      <div style="color: #f59e0b; font-weight: 600; font-size: 13px; margin-bottom: 4px;">Did you know?</div>
+      <div style="color: #34d399; font-weight: 600; font-size: 13px; margin-bottom: 4px;">Did you know?</div>
       <div style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
         Paybacker can generate a cancellation email for any subscription in seconds, citing the correct UK consumer law. Just click on any subscription in your dashboard.
       </div>
@@ -149,7 +149,7 @@ export function buildRenewalEmail(
 <body style="margin: 0; padding: 0; background-color: #020617; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
     <div style="text-align: center; padding: 24px 0;">
-      <div style="font-size: 24px; font-weight: 700; color: #ffffff;">Pay<span style="color: #f59e0b;">backer</span></div>
+      <div style="font-size: 24px; font-weight: 700; color: #ffffff;">Pay<span style="color: #34d399;">backer</span></div>
     </div>
 
     <!-- Urgency Banner -->
@@ -176,7 +176,7 @@ export function buildRenewalEmail(
     <div style="text-align: center; padding: 24px 0; border-top: 1px solid #1e293b;">
       <div style="color: #64748b; font-size: 12px; line-height: 1.6;">
         Paybacker LTD &middot; paybacker.co.uk<br>
-        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #f59e0b; text-decoration: none;">Manage preferences</a>
+        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #34d399; text-decoration: none;">Manage preferences</a>
       </div>
     </div>
   </div>
