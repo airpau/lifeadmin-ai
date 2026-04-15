@@ -14,10 +14,13 @@ interface CategoryDrillDownModalProps {
 }
 
 const ALL_CATEGORIES = [
-  'groceries', 'eating_out', 'transport', 'bills', 'energy', 'water', 'streaming', 
-  'shopping', 'software', 'healthcare', 'pets', 'travel', 'fuel', 'cash', 'credit', 
-  'transfers', 'income', 'parking', 'fees', 'insurance', 'other'
-].sort();
+  'bills', 'broadband', 'cash', 'charity', 'childcare', 'council_tax', 'credit',
+  'eating_out', 'education', 'energy', 'fees', 'fitness', 'food', 'fuel',
+  'gambling', 'groceries', 'healthcare', 'insurance', 'loans', 'mobile',
+  'mortgage', 'motoring', 'other', 'parking', 'pets', 'professional',
+  'property_management', 'shopping', 'software', 'streaming', 'transport',
+  'transfers', 'travel', 'utility', 'water',
+];
 
 export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, searchQuery, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
   const [data, setData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
