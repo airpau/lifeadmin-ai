@@ -837,7 +837,7 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
             </p>
           </div>
         </div>
-        <div className="flex gap-3 p-6 pt-0">
+        <div className="flex gap-3 p-6 pt-0 flex-shrink-0">
           <button
             onClick={onClose}
             className="px-5 py-3 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg transition-all text-sm font-medium"
@@ -1869,6 +1869,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
             <label className="block text-sm font-medium text-slate-300 mb-2">What happened? *</label>
             <textarea
               required
+              minLength={40}
               rows={4}
               value={formData.issue_summary}
               onChange={(e) => setFormData({ ...formData, issue_summary: e.target.value })}

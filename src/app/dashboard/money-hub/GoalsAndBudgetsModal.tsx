@@ -11,6 +11,8 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
   const [budgetAmount, setBudgetAmount] = useState('');
   
   const [goalForm, setGoalForm] = useState({ name: '', emoji: '🎯', targetAmount: '', currentAmount: '0' });
+  const [addFundGoal, setAddFundGoal] = useState<{ id: string, current: number } | null>(null);
+  const [addFundAmount, setAddFundAmount] = useState('');
 
   const { budgets = [], goals = [] } = data;
 
@@ -68,17 +70,22 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
     setLoading(false);
   };
 
-  const handleAddMoneyToGoal = async (id: string, current: number) => {
-    const amount = prompt('How much to add? (£)');
-    if (!amount) return;
+  const handleAddMoneyToGoal = (id: string, current: number) => {
+    setAddFundGoal({ id, current });
+    setAddFundAmount('');
+  };
+
+  const submitAddFunds = async () => {
+    if (!addFundGoal || !addFundAmount) return;
     setLoading(true);
     try {
       await fetch('/api/money-hub/goals', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, current_amount: current + parseFloat(amount) }),
+        body: JSON.stringify({ id: addFundGoal.id, current_amount: addFundGoal.current + parseFloat(addFundAmount) }),
       });
       onUpdated();
+      setAddFundGoal(null);
     } catch { /* silent */ }
     setLoading(false);
   };
@@ -86,6 +93,7 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-navy-950/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-navy-900 border border-navy-700 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl">
@@ -158,5 +166,30 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
         </div>
       </div>
     </div>
+    
+      {/* Add Funds Modal */}
+      {addFundGoal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAddFundGoal(null)} />
+          <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-white mb-2">Add Funds to Goal</h3>
+            <p className="text-sm text-slate-400 mb-4">How much would you like to add?</p>
+            <input 
+              type="number" 
+              step="0.01"
+              value={addFundAmount} 
+              onChange={e => setAddFundAmount(e.target.value)} 
+              className="w-full bg-navy-950 border border-navy-700 rounded-lg px-3 py-2 text-white focus:border-mint-400 focus:outline-none mb-4" 
+              placeholder="Amount (£)"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button disabled={loading} onClick={() => setAddFundGoal(null)} className="px-4 py-2 hover:bg-navy-800 text-slate-300 rounded-lg text-sm transition-colors">Cancel</button>
+              <button disabled={loading || !addFundAmount} onClick={submitAddFunds} className="px-4 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm disabled:opacity-50 transition-colors">Add Funds</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

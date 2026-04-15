@@ -30,7 +30,24 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refreshes the auth token if expired
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (request.nextUrl.pathname.startsWith('/dashboard') && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/login';
+    url.searchParams.set('redirect', request.nextUrl.pathname);
+    return NextResponse.redirect(url, { status: 302 });
+  }
+
+  // Handle /admin paths explicitly
+  if (request.nextUrl.pathname.startsWith('/dashboard/admin') && user) {
+    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com').split(',');
+    if (!adminEmails.includes(user.email || '')) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url, { status: 302 });
+    }
+  }
 
   return supabaseResponse;
 }

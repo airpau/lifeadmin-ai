@@ -448,6 +448,31 @@ export default function ProfilePage() {
   const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
   const [showReport, setShowReport] = useState(false);
   const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
+  
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordMessage({ type: 'error', text: 'Password must be at least 8 characters long.' });
+      return;
+    }
+    setPasswordLoading(true);
+    setPasswordMessage(null);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+      setNewPassword('');
+      setTimeout(() => setPasswordMessage(null), 5000);
+    } catch (err: any) {
+      setPasswordMessage({ type: 'error', text: err.message || 'Failed to update password.' });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -895,6 +920,39 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Security Details */}
+      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-6">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-mint-400"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
+          Security
+        </h2>
+        
+        <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">New Password <span className="text-slate-500 font-normal">(min 8 characters)</span></label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+              placeholder="••••••••"
+             />
+          </div>
+          {passwordMessage && (
+            <p className={`text-sm ${passwordMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+              {passwordMessage.text}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={passwordLoading || newPassword.length < 8}
+            className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
+          >
+            {passwordLoading ? 'Updating...' : 'Update Password'}
+          </button>
+        </form>
       </div>
 
       {/* Profile Completeness */}

@@ -33,7 +33,7 @@ export default function TrackingScripts() {
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
-              gtag('config', 'G-GRL9XKYTN1');
+              gtag('config', 'G-GRL9XKYTN1', { cookie_flags: 'SameSite=None;Secure' });
             `}
           </Script>
         </>
@@ -52,6 +52,7 @@ export default function TrackingScripts() {
               t.src=v;s=b.getElementsByTagName(e)[0];
               s.parentNode.insertBefore(t,s)}(window, document,'script',
               'https://connect.facebook.net/en_US/fbevents.js');
+              fbq('set', 'autoConfig', 'false', '722806327584909');
               fbq('init', '722806327584909');
               fbq('track', 'PageView');
             `}

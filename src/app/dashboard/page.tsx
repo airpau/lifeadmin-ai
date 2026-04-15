@@ -240,7 +240,7 @@ export default function DashboardPage() {
         if (!user) { setLoading(false); return; }
 
         const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
-          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).single(),
+          supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
           supabase.from('disputes').select('id', { count: 'exact', head: true })
@@ -279,7 +279,7 @@ export default function DashboardPage() {
             .select('id, email')
             .eq('user_id', user.id)
             .limit(1)
-            .single();
+            .maybeSingle();
           if (gmailToken) {
             setEmailConnected(true);
             setEmailAddress(gmailToken.email);

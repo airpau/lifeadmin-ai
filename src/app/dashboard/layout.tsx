@@ -203,7 +203,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
       </nav>
 
-      <div className="pt-6 border-t border-navy-700/50 mt-6">
+      <div className="pt-6 border-t border-navy-700/50 mt-auto">
         <button
           onClick={handleSignOut}
           className="flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all duration-200 w-full min-h-[44px]"

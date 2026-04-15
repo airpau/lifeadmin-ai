@@ -124,6 +124,7 @@ export default function SubscriptionsPage() {
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [addingSubscription, setAddingSubscription] = useState(false);
   const [detectingFromInbox, setDetectingFromInbox] = useState(false);
   const [cancellationError, setCancellationError] = useState<string | null>(null);
@@ -1191,6 +1192,33 @@ export default function SubscriptionsPage() {
         providerName={shareModal.provider}
       />
 
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-md p-6 relative">
+            <h3 className="text-xl font-bold text-white mb-2">Delete Subscription</h3>
+            <p className="text-slate-400 text-sm mb-6">Are you sure you want to delete this subscription? This action cannot be undone.</p>
+            <div className="flex gap-3 justify-end mt-4">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 hover:bg-navy-800 text-slate-300 rounded-lg transition-all text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleDeleteSubscription(deleteConfirm);
+                  setDeleteConfirm(null);
+                }}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all text-sm"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Credit Score Warning Modal */}
       <CreditScoreWarning
         open={creditWarning.open}
@@ -2142,7 +2170,7 @@ export default function SubscriptionsPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDeleteSubscription(sub.id);
+                          setDeleteConfirm(sub.id);
                         }}
                         className="text-slate-600 hover:text-red-400 transition-all p-1"
                         title="Delete"
@@ -2620,7 +2648,7 @@ export default function SubscriptionsPage() {
       {/* Edit subscription modal */}
       {editSub && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Edit Subscription</h2>
               <button onClick={() => setEditSub(null)} className="text-slate-400 hover:text-white transition-all">
@@ -2647,6 +2675,7 @@ export default function SubscriptionsPage() {
                     type="number"
                     step="0.01"
                     min="0"
+                    max="999999"
                     required
                     value={editForm.amount}
                     onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
@@ -2873,7 +2902,7 @@ export default function SubscriptionsPage() {
       {/* Add subscription modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-md">
+          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Add Subscription</h2>
               <button
@@ -2892,6 +2921,7 @@ export default function SubscriptionsPage() {
                 <input
                   type="text"
                   required
+                  maxLength={100}
                   value={newSub.provider_name}
                   onChange={(e) => setNewSub({ ...newSub, provider_name: e.target.value })}
                   className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
@@ -2907,6 +2937,8 @@ export default function SubscriptionsPage() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
+                    max="10000"
                     required
                     value={newSub.amount}
                     onChange={(e) => setNewSub({ ...newSub, amount: e.target.value })}
