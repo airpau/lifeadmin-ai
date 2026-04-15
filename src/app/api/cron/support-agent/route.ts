@@ -186,7 +186,7 @@ async function sendConfirmationEmail(
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="background:#0f172a;padding:20px 32px;">
       <table width="100%"><tr>
-        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span></td>
+        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span></td>
         <td align="right"><span style="color:#94a3b8;font-size:12px;">${ticketRef}</span></td>
       </tr></table>
     </div>
@@ -203,7 +203,7 @@ async function sendConfirmationEmail(
       <p style="margin:0;color:#64748b;">Best regards,<br/>Paybacker Support</p>
     </div>
     <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
-      <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;">paybacker.co.uk</a>
     </div>
   </div>
 </body></html>`,
@@ -429,7 +429,7 @@ export async function GET(request: NextRequest) {
   <div style="max-width:600px;margin:0 auto;background:#ffffff;">
     <div style="background:#0f172a;padding:20px 32px;">
       <table width="100%"><tr>
-        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#f59e0b;">backer</span></span></td>
+        <td><span style="font-size:20px;font-weight:800;color:#ffffff;">Pay<span style="color:#34d399;">backer</span></span></td>
         <td align="right"><span style="color:#94a3b8;font-size:12px;">${ticketRef}</span></td>
       </tr></table>
     </div>
@@ -437,7 +437,7 @@ export async function GET(request: NextRequest) {
       <p style="color:#334155;font-size:14px;line-height:1.7;margin:12px 0;">${htmlReply}</p>
     </div>
     <div style="padding:16px 32px;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;">
-      Simply reply to this email if you need further help &middot; <a href="https://paybacker.co.uk" style="color:#f59e0b;text-decoration:none;">paybacker.co.uk</a>
+      Simply reply to this email if you need further help &middot; <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;">paybacker.co.uk</a>
     </div>
   </div>
 </body></html>`,

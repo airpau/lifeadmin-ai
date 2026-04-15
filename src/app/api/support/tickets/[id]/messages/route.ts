@@ -114,8 +114,8 @@ export async function POST(
           subject: `Re: ${ticket.subject} (${ticketRef})`,
           html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 40px; border-radius: 16px;">
-              <div style="border-bottom: 2px solid #f59e0b; padding-bottom: 16px; margin-bottom: 24px;">
-                <h1 style="color: #f59e0b; font-size: 22px; margin: 0;">Paybacker Support</h1>
+              <div style="border-bottom: 2px solid #34d399; padding-bottom: 16px; margin-bottom: 24px;">
+                <h1 style="color: #34d399; font-size: 22px; margin: 0;">Paybacker Support</h1>
                 <p style="color: #64748b; font-size: 14px; margin: 4px 0 0;">Ticket ${ticketRef}</p>
               </div>
               <p style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">
@@ -124,7 +124,7 @@ export async function POST(
               <p style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">
                 We've replied to your support request: <strong style="color: #e2e8f0;">${ticket.subject}</strong>
               </p>
-              <div style="background: #1e293b; border-left: 3px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 20px 0;">
+              <div style="background: #1e293b; border-left: 3px solid #34d399; border-radius: 8px; padding: 16px; margin: 20px 0;">
                 <p style="color: #e2e8f0; font-size: 14px; line-height: 1.6; margin: 0; white-space: pre-wrap;">${body.message}</p>
               </div>
               <p style="color: #94a3b8; font-size: 14px;">
