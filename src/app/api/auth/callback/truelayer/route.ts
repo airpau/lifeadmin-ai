@@ -152,18 +152,13 @@ async function syncTransactionsForConnection(
 ) {
   const { fetchTransactions } = await import('@/lib/truelayer');
 
-  // Many UK banks (e.g. NatWest via TrueLayer) only serve transactions on or after the
-  // consent / reconnection date. Requesting dates before that returns HTTP 400.
-  // We therefore never go further back than the connected_at date for this authorization.
-  const connectedAtDate = new Date(connection.connected_at);
-  connectedAtDate.setHours(0, 0, 0, 0); // start of that day
-
-  // Also enforce a hard 90-day cap so we never exceed TrueLayer's date range limits.
+  // Enforce a hard 90-day cap so we never exceed TrueLayer's date range limits.
+  // For initial connections, we always pull 90 days of history to populate subscriptions.
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  ninetyDaysAgo.setHours(0, 0, 0, 0);
 
-  // The earliest date we are allowed to query (whichever is more recent).
-  const earliestAllowed = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
+  const earliestAllowed = ninetyDaysAgo;
 
   let fromDate: Date;
   const { data: lastTx } = await supabase
