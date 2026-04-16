@@ -2,7 +2,7 @@
 
 import { fmtNum } from '@/lib/format';
 import { TrendingUp, TrendingDown, Target, Wallet, BarChart3 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
 
 const INCOME_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -46,16 +46,31 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
   const [drillSpendingCategory, setDrillSpendingCategory] = useState<string | null>(null);
   const [showAllIncome, setShowAllIncome] = useState(false);
   const [showAllSpending, setShowAllSpending] = useState(false);
+  // Optimistic adjustments applied immediately after recategorisation
+  const [spendAdj, setSpendAdj] = useState<Record<string, number>>({});
+  const [incomeAdj, setIncomeAdj] = useState<Record<string, number>>({});
+  const prevDataRef = useRef(data);
+
+  // Clear adjustments once the server data has been refreshed
+  useEffect(() => {
+    if (prevDataRef.current !== data) {
+      prevDataRef.current = data;
+      setSpendAdj({});
+      setIncomeAdj({});
+    }
+  }, [data]);
 
   const { overview, healthScore, spending } = data;
   const { monthlyIncome, monthlyOutgoings, savingsRate, incomeBreakdown } = overview;
   const monthlyTrends = spending?.monthlyTrends || [];
 
-  // Income breakdown entries
-  const incomeEntries = Object.entries(incomeBreakdown || {})
-    .map(([type, amount]) => ({
+  // Income breakdown entries — with optimistic adjustments applied
+  const rawIncomeBreakdown: Record<string, number> = incomeBreakdown || {};
+  const allIncomeKeys = new Set([...Object.keys(rawIncomeBreakdown), ...Object.keys(incomeAdj)]);
+  const incomeEntries = Array.from(allIncomeKeys)
+    .map((type) => ({
       type,
-      amount: amount as number,
+      amount: Math.max(0, (rawIncomeBreakdown[type] ?? 0) + (incomeAdj[type] ?? 0)),
       ...(INCOME_LABELS[type] || INCOME_LABELS.other),
     }))
     .filter(e => e.amount > 0)
@@ -63,7 +78,20 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
 
   const totalIncomeFromBreakdown = incomeEntries.reduce((s, e) => s + e.amount, 0);
 
-  const spendingCategories = spending?.categories || [];
+  // Spending categories — with optimistic adjustments applied
+  const rawSpendingCategories: Array<{ category: string; total: number }> = spending?.categories || [];
+  const allSpendKeys = new Set([
+    ...rawSpendingCategories.map((c) => c.category),
+    ...Object.keys(spendAdj),
+  ]);
+  const spendingCategories = Array.from(allSpendKeys)
+    .map((cat) => ({
+      category: cat,
+      total: Math.max(0, (rawSpendingCategories.find((c) => c.category === cat)?.total ?? 0) + (spendAdj[cat] ?? 0)),
+    }))
+    .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+
   const totalSpentFromBreakdown = spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
 
   const VISIBLE_ROWS = 6;
@@ -282,7 +310,17 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
           category={null}
           incomeType={drillIncomeType}
           selectedMonth={selectedMonth || ''}
-          onRecategorised={() => { setDrillIncomeType(null); refreshData?.(); }}
+          onRecategorised={(fromCat, toCat, amount) => {
+            if (amount > 0) {
+              setIncomeAdj((prev) => ({
+                ...prev,
+                [fromCat]: (prev[fromCat] ?? 0) - amount,
+                [toCat]: (prev[toCat] ?? 0) + amount,
+              }));
+            }
+            setDrillIncomeType(null);
+            refreshData?.();
+          }}
         />
       )}
 
@@ -292,7 +330,17 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
           onClose={() => setDrillSpendingCategory(null)}
           category={drillSpendingCategory}
           selectedMonth={selectedMonth || ''}
-          onRecategorised={() => { setDrillSpendingCategory(null); refreshData?.(); }}
+          onRecategorised={(fromCat, toCat, amount) => {
+            if (amount > 0) {
+              setSpendAdj((prev) => ({
+                ...prev,
+                [fromCat]: (prev[fromCat] ?? 0) - amount,
+                [toCat]: (prev[toCat] ?? 0) + amount,
+              }));
+            }
+            setDrillSpendingCategory(null);
+            refreshData?.();
+          }}
         />
       )}
     </div>
