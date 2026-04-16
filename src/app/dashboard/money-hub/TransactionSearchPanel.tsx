@@ -35,6 +35,7 @@ export default function TransactionSearchPanel({
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
   const [recatLoading, setRecatLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -44,17 +45,23 @@ export default function TransactionSearchPanel({
       return;
     }
     debounceRef.current = setTimeout(async () => {
+      // Abort any in-flight request from a previous query
+      if (abortRef.current) abortRef.current.abort();
+      abortRef.current = new AbortController();
+      const { signal } = abortRef.current;
+
       setLoading(true);
       try {
         const monthParam = selectedMonth ? `&month=${selectedMonth}` : '';
         const res = await fetch(
           `/api/money-hub/transactions?search=${encodeURIComponent(query.trim())}${monthParam}`,
-          { cache: 'no-store' }
+          { cache: 'no-store', signal }
         );
         const d = await res.json();
         setResults(d.transactions || []);
-      } catch {
-        setResults([]);
+      } catch (err: any) {
+        // Ignore AbortError — a newer request superseded this one
+        if (err?.name !== 'AbortError') setResults([]);
       }
       setLoading(false);
     }, 300);
