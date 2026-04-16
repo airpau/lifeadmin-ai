@@ -539,6 +539,12 @@ Look for: emails from gov.uk, hmrc.gov.uk, dvla.gov.uk, nhs.uk, student finance,
 - Only include items with confidence >= 60. If you are not reasonably confident this is a genuine financial opportunity, exclude it.
 - Quality over quantity — it is far better to return 5 accurate results than 30 with false positives. Users lose trust when they see personal/irrelevant items.
 - For deal expirations and price increases, ALWAYS include the extracted date even if approximate (e.g. "April 2026" → "2026-04-01")
+- NEVER classify as subscriptions: bank charges, overdraft interest, overdraft fees, account fees, service charges, interest payments, penalty charges, or any other bank-generated fee. These are bank charges, not services a user subscribes to.
+- NEVER classify as subscriptions: restaurant meals, café visits, pub visits, or any one-off food/dining purchase — even if from the same restaurant multiple times. Only recurring meal kit delivery services (Gousto, HelloFresh, Mindful Chef, Oddbox) are food subscriptions.
+- NEVER classify as subscriptions: ATM withdrawals, cash advances, internal transfers, balance transfers, refunds, cashback, or foreign exchange charges.
+- NEVER classify as subscriptions: one-off retail purchases (Amazon shopping orders, eBay, ASOS, Next, etc.). Amazon Prime membership IS a subscription; individual Amazon orders are NOT.
+- NEVER classify as subscriptions: council tax, HMRC tax payments, self-assessment payments, VAT. These are government levies, not subscriptions.
+- A subscription MUST be a recurring SERVICE the user has actively signed up to: streaming, software, broadband, mobile, insurance, gym membership, meal kit delivery, SaaS tools, cloud storage. When in doubt, DO NOT include it — a false positive is worse than a false negative.
 - Return ONLY the JSON array, no markdown, no explanation.`,
     messages: [{ role: 'user', content: `Analyse these ${senderMap.size} email providers and find every financial opportunity. Extract all dates, amounts, and frequencies you can find:\n\n${truncatedSummary}` }],
   });

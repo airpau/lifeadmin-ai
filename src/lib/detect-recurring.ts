@@ -4,6 +4,45 @@ const STRIP_SUFFIXES = /\b(ltd|limited|plc|llp|inc|corp|group|uk|co\.uk)\b/gi;
 const AMOUNT_VARIANCE = 0.10; // 10%
 const INTERVAL_TOLERANCE_DAYS = 5;
 
+// ---- Subscription exclusion rules ----
+
+// Keywords in transaction descriptions/merchant names that definitively mean NOT a subscription.
+// Bank charges, interest, ATM withdrawals, refunds, and transfers are never subscriptions.
+const NON_SUBSCRIPTION_KEYWORDS: string[] = [
+  'interest', 'overdraft', 'bank charge', 'bank charges', 'bank fee', 'bank fees',
+  'service charge', 'service fee', 'late fee', 'late payment', 'arrangement fee',
+  'account fee', 'maintenance fee', 'penalty charge', 'unarranged',
+  'cashback', 'cash back', 'refund', 'chargeback', 'reversal', 'credit adjustment',
+  'atm ', 'cash withdrawal', 'cashpoint', 'cash machine', 'cash advance',
+  'balance transfer', 'foreign exchange', 'fx fee', 'currency conversion',
+  'standing order', 'bacs credit', 'faster payment',
+];
+
+// Internal categories (from our CATEGORY_KEYWORDS matcher) that are NEVER subscriptions.
+const NON_SUBSCRIPTION_CATEGORIES = new Set<string>([
+  'council_tax',  // Government levy — not a service
+  'tax',          // HMRC, self-assessment, VAT
+  'shopping',     // One-off retail (Amazon orders, ASOS, eBay, Next)
+  'transport',    // One-off travel (TfL journeys, Trainline tickets, DVLA)
+  'gambling',     // One-off bets (Betfair, Bet365, etc.)
+]);
+
+// Food/delivery merchants that ARE genuine subscription services (meal kit boxes).
+// All other food merchants (restaurants, cafes, takeaways) are excluded.
+const FOOD_SUBSCRIPTION_PROVIDERS: string[] = [
+  'gousto', 'hellofresh', 'hello fresh', 'mindful chef', 'mindfulchef',
+  'oddbox', 'farmdrop', 'riverford', 'abel cole', 'abelandcole',
+];
+
+// Bank-provided (TrueLayer) transaction categories that signal non-subscription spend.
+// These come from the bank itself and are very reliable.
+const NON_SUBSCRIPTION_TX_CATEGORIES = new Set<string>([
+  'food_and_drink', 'restaurants', 'eating_out', 'bars_clubs_pubs', 'fast_food',
+  'groceries',  // Supermarket shops — not subscriptions (meal kit delivery is separate)
+  'cash', 'atm', 'bank_fee', 'interest', 'charge', 'fees',
+  'transfer', 'internal_transfer', 'direct_debit_transfer', 'refund',
+]);
+
 // Approximate day counts for billing cycles
 const CYCLE_DAYS = {
   weekly: 7,
@@ -144,10 +183,10 @@ export async function detectRecurring(
     rulesMap.set(rule.raw_name_normalised, rule);
   }
 
-  // Fetch all debit transactions
+  // Fetch all debit transactions (include category for bank-provided classification)
   const { data: transactions, error } = await supabase
     .from('bank_transactions')
-    .select('id, merchant_name, description, amount, timestamp, recurring_group')
+    .select('id, merchant_name, description, amount, timestamp, recurring_group, category')
     .eq('user_id', userId)
     .lt('amount', 0) // debits only
     .order('timestamp', { ascending: true });
@@ -161,8 +200,21 @@ export async function detectRecurring(
   const groups = new Map<string, Array<typeof transactions[0] & { extracted_name: string }>>();
 
   for (const tx of transactions) {
+    const descLower = (tx.description || '').toLowerCase();
+
+    // Skip transactions with non-subscription keywords in the description
+    if (NON_SUBSCRIPTION_KEYWORDS.some(kw => descLower.includes(kw))) continue;
+
+    // Skip based on bank-provided transaction category (very reliable signal)
+    const txCat = (tx.category || '').toLowerCase();
+    if (txCat && NON_SUBSCRIPTION_TX_CATEGORIES.has(txCat)) continue;
+
     const merchantName = tx.merchant_name || extractMerchantFromDescription(tx.description || '');
     if (!merchantName) continue;
+
+    // Also check merchant name itself for non-subscription keywords
+    const merchantLower = merchantName.toLowerCase();
+    if (NON_SUBSCRIPTION_KEYWORDS.some(kw => merchantLower.includes(kw))) continue;
 
     const key = normaliseMerchant(merchantName);
     if (!key || key.length < 3) continue;
@@ -269,6 +321,31 @@ export async function detectRecurring(
 
     const category = rule?.category || categoriseTransaction(displayName, bankDesc);
     const finalDisplayName = rule?.display_name || displayName;
+
+    // ---- EXCLUSION: skip categories that are never subscriptions ----
+    if (NON_SUBSCRIPTION_CATEGORIES.has(category)) {
+      console.log(`detectRecurring: skipping non-subscription category "${category}": ${finalDisplayName}`);
+      continue;
+    }
+
+    // For food category, only allow genuine meal kit subscription services.
+    // Restaurants, cafes, and takeaway platforms (Deliveroo, Just Eat) are NOT subscriptions.
+    if (category === 'food') {
+      const normName = normalisedName.toLowerCase();
+      const isMealKit = FOOD_SUBSCRIPTION_PROVIDERS.some(p => normName.includes(p) || p.includes(normName));
+      if (!isMealKit) {
+        console.log(`detectRecurring: skipping food merchant (not a meal kit subscription): ${finalDisplayName}`);
+        continue;
+      }
+    }
+
+    // ---- EXCLUSION: double-check using bank-provided transaction category ----
+    // txs[0].category comes from TrueLayer/bank and is a reliable second signal
+    const bankTxCategory = (txs[0]?.category || '').toLowerCase();
+    if (bankTxCategory && NON_SUBSCRIPTION_TX_CATEGORIES.has(bankTxCategory)) {
+      console.log(`detectRecurring: skipping bank-categorised non-subscription ("${bankTxCategory}"): ${finalDisplayName}`);
+      continue;
+    }
 
     const { error: insertError } = await supabase.from('subscriptions').insert({
       user_id: userId,
