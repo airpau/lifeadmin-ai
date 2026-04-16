@@ -69,13 +69,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (typeof body.provider_name !== 'string' || body.provider_name.trim().length === 0) {
+      return NextResponse.json({ error: 'Provider name is required' }, { status: 400 });
+    }
+    if (body.provider_name.length > 100) {
+      return NextResponse.json({ error: 'Provider name must be 100 characters or fewer' }, { status: 400 });
+    }
+
+    const parsedAmount = parseFloat(body.amount);
+    if (isNaN(parsedAmount) || parsedAmount < 0 || parsedAmount > 99999) {
+      return NextResponse.json({ error: 'Amount must be a number between 0 and 99,999' }, { status: 400 });
+    }
+
     const { data, error } = await supabase
       .from('subscriptions')
       .insert({
         user_id: user.id,
-        provider_name: body.provider_name,
+        provider_name: body.provider_name.trim().slice(0, 100),
         category: body.category || null,
-        amount: parseFloat(body.amount),
+        amount: parsedAmount,
         currency: 'GBP',
         billing_cycle: body.billing_cycle,
         next_billing_date: body.next_billing_date || null,
