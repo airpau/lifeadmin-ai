@@ -25,7 +25,13 @@ export async function GET() {
   // Add letter count, last activity date, and latest correspondence snippet
   const enriched = (disputes || []).map((d: any) => {
     const sortedByDate = d.correspondence?.length > 0
-      ? [...d.correspondence].sort((a: any, b: any) => new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime())
+      ? [...d.correspondence].sort((a: any, b: any) => {
+          const dateStrA = a.entry_date ?? a.created_at;
+          const dateStrB = b.entry_date ?? b.created_at;
+          const dateA = dateStrA ? new Date(dateStrA).getTime() : 0;
+          const dateB = dateStrB ? new Date(dateStrB).getTime() : 0;
+          return dateB - dateA;
+        })
       : [];
     const latestEntry = sortedByDate[0] ?? null;
     return {
