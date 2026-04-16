@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
       .is('dismissed_at', null)
       .eq('status', 'active')
       .not('next_billing_date', 'is', null)
+      .not('category', 'in', '(council_tax,tax,shopping,transport,gambling)')
       .gte('next_billing_date', dateStr)
       .lt('next_billing_date', nextDay.toISOString().split('T')[0]);
 
