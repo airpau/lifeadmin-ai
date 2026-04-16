@@ -69,6 +69,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (typeof body.provider_name === 'string' && body.provider_name.length > 100) {
+      return NextResponse.json(
+        { error: 'provider_name must be 100 characters or fewer' },
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('subscriptions')
       .insert({

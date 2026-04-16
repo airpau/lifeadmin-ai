@@ -144,6 +144,7 @@ export async function GET(request: NextRequest) {
       else if (avgGap < 25 || avgGap > 35) continue; // Not a clear monthly pattern
 
       // ---- EXCLUSION: skip non-subscription keywords in merchant name / description ----
+      // (Checked early — these are definitive regardless of any learned rules)
       const merchantLower = merchant.toLowerCase();
       const descLower = (merchantTxs[0].description || '').toLowerCase();
       if (NON_SUBSCRIPTION_KEYWORDS.some(kw => merchantLower.includes(kw) || descLower.includes(kw))) {
@@ -151,42 +152,45 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
-      // ---- EXCLUSION: skip based on bank-provided transaction category ----
-      const txCategory = (merchantTxs[0].category || '').toLowerCase();
-      if (txCategory && NON_SUBSCRIPTION_TX_CATEGORIES.has(txCategory)) {
-        results.skipped++;
-        continue;
-      }
-
-      results.detected++;
-
-      // Check confidence: is this from a known subscription merchant?
+      // ---- Look up merchant rules BEFORE category exclusion ----
+      // Known subscription merchants and explicit meal-kit providers must bypass
+      // bank-category exclusion — the bank may classify Gousto/HelloFresh as
+      // 'groceries' or 'food_and_drink', which would otherwise drop them.
       const { data: rule } = await supabase
         .from('merchant_rules')
         .select('is_subscription, category, payment_type')
         .ilike('display_name', merchant)
         .maybeSingle();
 
-      const isKnownSub = rule?.is_subscription === true;
-      // If merchant_rules explicitly marks this as NOT a subscription, skip
+      // If merchant_rules explicitly marks this as NOT a subscription, skip immediately
       if (rule && rule.is_subscription === false) {
         results.skipped++;
         continue;
       }
 
-      const merchantCategory = (rule?.category || merchantTxs[0].category || '').toLowerCase();
+      const isKnownSub = rule?.is_subscription === true;
+      const isMealKit = FOOD_SUBSCRIPTION_PROVIDERS.some(p => merchantLower.includes(p) || p.includes(merchantLower));
 
-      // ---- EXCLUSION: skip non-subscription internal categories ----
-      if (merchantCategory && NON_SUBSCRIPTION_CATEGORIES.has(merchantCategory)) {
-        results.skipped++;
-        continue;
-      }
+      // Known subscription merchants and meal-kit services skip category-based exclusions.
+      // For everything else, apply bank-category and internal-category filters.
+      if (!isKnownSub && !isMealKit) {
+        // ---- EXCLUSION: skip based on bank-provided transaction category ----
+        const txCategory = (merchantTxs[0].category || '').toLowerCase();
+        if (txCategory && NON_SUBSCRIPTION_TX_CATEGORIES.has(txCategory)) {
+          results.skipped++;
+          continue;
+        }
 
-      // For food category, only allow genuine meal kit subscription services
-      if (merchantCategory === 'food') {
-        const normMerchant = merchant.toLowerCase();
-        const isMealKit = FOOD_SUBSCRIPTION_PROVIDERS.some(p => normMerchant.includes(p) || p.includes(normMerchant));
-        if (!isMealKit) {
+        const merchantCategory = (rule?.category || merchantTxs[0].category || '').toLowerCase();
+
+        // ---- EXCLUSION: skip non-subscription internal categories ----
+        if (merchantCategory && NON_SUBSCRIPTION_CATEGORIES.has(merchantCategory)) {
+          results.skipped++;
+          continue;
+        }
+
+        // For food category, only allow genuine meal kit subscription services
+        if (merchantCategory === 'food') {
           results.skipped++;
           continue;
         }

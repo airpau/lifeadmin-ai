@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
         .eq('user_id', userId)
         .eq('status', 'active')
         .is('dismissed_at', null)
-        .not('category', 'in', '(council_tax,tax,shopping,transport,gambling)')
+        .or('category.is.null,category.not.in.(council_tax,tax,shopping,transport,gambling)')
         .gte('next_billing_date', now.toISOString().split('T')[0])
         .lte('next_billing_date', renewalCutoff.toISOString().split('T')[0])
         .order('next_billing_date', { ascending: true });
