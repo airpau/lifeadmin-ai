@@ -208,7 +208,7 @@ export default function LoginPage() {
                       <label className="block text-sm font-medium text-slate-300">
                         Password
                       </label>
-                      <Link href="/auth/reset-password" className="text-sm text-mint-400 hover:text-mint-300 font-medium">
+                      <Link href="/auth/forgot-password" className="text-xs text-mint-400 hover:text-mint-300 transition-colors">
                         Forgot password?
                       </Link>
                     </div>
