@@ -135,13 +135,14 @@ export async function GET(request: NextRequest) {
           percentage: weekSpend > 0 ? (total / weekSpend) * 100 : 0,
         }));
 
-      // Upcoming renewals (next 14 days)
+      // Upcoming renewals (next 14 days) — exclude non-subscription categories
       const { data: renewals } = await admin
         .from('subscriptions')
         .select('provider_name, amount, next_billing_date')
         .eq('user_id', userId)
         .eq('status', 'active')
         .is('dismissed_at', null)
+        .not('category', 'in', '(council_tax,tax,shopping,transport,gambling)')
         .gte('next_billing_date', now.toISOString().split('T')[0])
         .lte('next_billing_date', renewalCutoff.toISOString().split('T')[0])
         .order('next_billing_date', { ascending: true });

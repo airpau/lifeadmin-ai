@@ -3,6 +3,34 @@ import { createClient } from '@supabase/supabase-js';
 
 export const maxDuration = 120;
 
+// ---- Subscription exclusion rules ----
+// These mirror the logic in src/lib/detect-recurring.ts
+
+const NON_SUBSCRIPTION_KEYWORDS: string[] = [
+  'interest', 'overdraft', 'bank charge', 'bank charges', 'bank fee', 'bank fees',
+  'service charge', 'service fee', 'late fee', 'late payment', 'arrangement fee',
+  'account fee', 'maintenance fee', 'penalty charge', 'unarranged',
+  'cashback', 'cash back', 'refund', 'chargeback', 'reversal', 'credit adjustment',
+  'atm ', 'cash withdrawal', 'cashpoint', 'cash machine', 'cash advance',
+  'balance transfer', 'foreign exchange', 'fx fee', 'currency conversion',
+  'standing order', 'bacs credit', 'faster payment',
+];
+
+const NON_SUBSCRIPTION_CATEGORIES = new Set<string>([
+  'council_tax', 'tax', 'shopping', 'transport', 'gambling',
+]);
+
+const FOOD_SUBSCRIPTION_PROVIDERS: string[] = [
+  'gousto', 'hellofresh', 'hello fresh', 'mindful chef', 'mindfulchef',
+  'oddbox', 'farmdrop', 'riverford', 'abel cole', 'abelandcole',
+];
+
+const NON_SUBSCRIPTION_TX_CATEGORIES = new Set<string>([
+  'food_and_drink', 'restaurants', 'eating_out', 'bars_clubs_pubs', 'fast_food',
+  'groceries', 'cash', 'atm', 'bank_fee', 'interest', 'charge', 'fees',
+  'transfer', 'internal_transfer', 'direct_debit_transfer', 'refund',
+]);
+
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -115,6 +143,21 @@ export async function GET(request: NextRequest) {
       else if (avgGap >= 6 && avgGap <= 8) billingCycle = 'weekly';
       else if (avgGap < 25 || avgGap > 35) continue; // Not a clear monthly pattern
 
+      // ---- EXCLUSION: skip non-subscription keywords in merchant name / description ----
+      const merchantLower = merchant.toLowerCase();
+      const descLower = (merchantTxs[0].description || '').toLowerCase();
+      if (NON_SUBSCRIPTION_KEYWORDS.some(kw => merchantLower.includes(kw) || descLower.includes(kw))) {
+        results.skipped++;
+        continue;
+      }
+
+      // ---- EXCLUSION: skip based on bank-provided transaction category ----
+      const txCategory = (merchantTxs[0].category || '').toLowerCase();
+      if (txCategory && NON_SUBSCRIPTION_TX_CATEGORIES.has(txCategory)) {
+        results.skipped++;
+        continue;
+      }
+
       results.detected++;
 
       // Check confidence: is this from a known subscription merchant?
@@ -125,6 +168,30 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
 
       const isKnownSub = rule?.is_subscription === true;
+      // If merchant_rules explicitly marks this as NOT a subscription, skip
+      if (rule && rule.is_subscription === false) {
+        results.skipped++;
+        continue;
+      }
+
+      const merchantCategory = (rule?.category || merchantTxs[0].category || '').toLowerCase();
+
+      // ---- EXCLUSION: skip non-subscription internal categories ----
+      if (merchantCategory && NON_SUBSCRIPTION_CATEGORIES.has(merchantCategory)) {
+        results.skipped++;
+        continue;
+      }
+
+      // For food category, only allow genuine meal kit subscription services
+      if (merchantCategory === 'food') {
+        const normMerchant = merchant.toLowerCase();
+        const isMealKit = FOOD_SUBSCRIPTION_PROVIDERS.some(p => normMerchant.includes(p) || p.includes(normMerchant));
+        if (!isMealKit) {
+          results.skipped++;
+          continue;
+        }
+      }
+
       const confidence = isKnownSub ? 95 : (consistent && merchantTxs.length >= 3 ? 75 : 50);
 
       // Auto-create if high confidence
