@@ -156,6 +156,13 @@ export function resolveMoneyHubTransaction(
     return { amount, kind: 'other', spendingCategory: null, incomeType: effectiveIncomeType };
   }
 
+  // Explicit internal transfer — excluded from BOTH income and spending totals.
+  // Covers transactions the user has manually recategorised as 'internal_transfer'
+  // (e.g. movements between personal and business accounts).
+  if (resolvedOverride === 'internal_transfer' || storedCategory === 'internal_transfer') {
+    return { amount, kind: 'transfer', spendingCategory: 'transfers', incomeType: 'transfer' };
+  }
+
   if (amount > 0) {
     if (resolvedOverride === 'transfers' || isTransferLikeTransaction(txn, effectiveIncomeType)) {
       return { amount, kind: 'transfer', spendingCategory: 'transfers', incomeType: 'transfer' };
@@ -284,7 +291,7 @@ export function isTransferLikeTransaction(
   const effectiveIncomeType = incomeType || normalizeIncomeTypeKey(txn.income_type);
 
   if (TRANSFER_BANK_CATEGORIES.has(bankCategory)) return true;
-  if (storedCategory === 'transfers') return true;
+  if (storedCategory === 'transfers' || storedCategory === 'internal_transfer') return true;
   if (isExcludedIncomeType(effectiveIncomeType)) return true;
 
   return (

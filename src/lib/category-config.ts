@@ -3,6 +3,7 @@ import {
   Tv, Monitor, Car, Zap, MoreHorizontal, Dumbbell, Music, Gamepad2,
   Cloud, Heart, Lock, HandHeart, GraduationCap, PawPrint, ParkingCircle,
   Plane, Dice5, Receipt, CircleDollarSign, type LucideIcon, Droplets,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface CategoryConfig {
@@ -45,6 +46,7 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   credit_monitoring: { label: 'Credit Monitoring', icon: Shield, color: 'text-emerald-300', bgColor: 'bg-emerald-300/10' },
   tax: { label: 'Tax', icon: Landmark, color: 'text-red-300', bgColor: 'bg-red-300/10' },
   rent: { label: 'Rent', icon: Home, color: 'text-lime-400', bgColor: 'bg-lime-400/10' },
+  internal_transfer: { label: 'Internal Transfer', icon: ArrowLeftRight, color: 'text-slate-500', bgColor: 'bg-slate-500/10' },
 };
 
 export function getCategoryLabel(category: string): string {

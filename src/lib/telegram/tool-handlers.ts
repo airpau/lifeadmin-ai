@@ -15,6 +15,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   bills: 'Bills', transfers: 'Transfers', cash: 'Cash', fees: 'Fees',
   income: 'Income', other: 'Other', motoring: 'Motoring', property_management: 'Property',
   credit_monitoring: 'Credit Monitoring', charity: 'Charity', travel: 'Travel',
+  internal_transfer: 'Internal Transfer',
 };
 
 /** Classify transactions using the same engine as the Money Hub dashboard */
