@@ -28,17 +28,23 @@ const HOMEPAGE_CSS = `
        Elements with explicit inline color styles are unaffected (inline > CSS). */
     color: #1e293b;
   }
-  /* Reinforce dark text for all non-hero sections so any element that lacks
-     an explicit inline color defaults to dark rather than inheriting near-white */
-  [data-homepage="true"] section:not(#hero) {
+  /* Reinforce dark text for light sections — excludes dark-bg sections (#trust, #cta)
+     which need white text. footer is also excluded since it has its own dark bg. */
+  [data-homepage="true"] section:not(#hero):not(#trust):not(#cta) {
     color: #1e293b;
   }
-  [data-homepage="true"] section:not(#hero) h1,
-  [data-homepage="true"] section:not(#hero) h2,
-  [data-homepage="true"] section:not(#hero) h3,
-  [data-homepage="true"] section:not(#hero) h4,
-  [data-homepage="true"] section:not(#hero) p {
+  [data-homepage="true"] section:not(#hero):not(#trust):not(#cta) h1,
+  [data-homepage="true"] section:not(#hero):not(#trust):not(#cta) h2,
+  [data-homepage="true"] section:not(#hero):not(#trust):not(#cta) h3,
+  [data-homepage="true"] section:not(#hero):not(#trust):not(#cta) h4,
+  [data-homepage="true"] section:not(#hero):not(#trust):not(#cta) p {
     color: #1e293b;
+  }
+  /* Dark sections and footer use white text */
+  [data-homepage="true"] #trust,
+  [data-homepage="true"] #cta,
+  [data-homepage="true"] footer {
+    color: #ffffff;
   }
   /* Entrance animations removed — were causing sections to be invisible
      until IntersectionObserver fired. hp-reveal is kept as a no-op class
@@ -302,7 +308,7 @@ export default function Home() {
         </section>
 
         {/* Trust block */}
-        <section style={{ background: '#111318', padding: 'clamp(64px, 8vw, 96px) 24px' }}>
+        <section id="trust" style={{ background: '#111318', padding: 'clamp(64px, 8vw, 96px) 24px' }}>
           <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
             <div style={{ textAlign: 'center', marginBottom: '48px' }} className="hp-reveal">
               <p style={{ color: '#34d399', fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '12px' }}>Security</p>
@@ -337,7 +343,7 @@ export default function Home() {
         <HomeFAQ />
 
         {/* CTA Banner */}
-        <section style={{ background: '#111318', padding: 'clamp(64px, 8vw, 96px) 24px', textAlign: 'center' }}>
+        <section id="cta" style={{ background: '#111318', padding: 'clamp(64px, 8vw, 96px) 24px', textAlign: 'center' }}>
           <div style={{ maxWidth: '640px', margin: '0 auto' }} className="hp-reveal">
             <h2 style={{ fontFamily: 'var(--font-plus-jakarta), system-ui, sans-serif', fontSize: 'clamp(28px, 5vw, 44px)', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: '32px' }}>
               Stop losing money to forgotten subscriptions.
