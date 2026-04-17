@@ -147,12 +147,10 @@ export default function Home() {
                 <span>{trialActive ? 'Free 14-day Pro trial. No card required.' : '100% free to try. No credit card needed.'}</span>
               </div>
 
-              <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-                Find Hidden Overcharges.{' '}
-                <span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">
-                  Fight Unfair Bills.
-                </span>{' '}
-                Get Your Money Back.
+              <h1 className="font-[family-name:var(--font-heading)] text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-[1.15]">
+                <span className="block">Find Hidden Overcharges.</span>
+                <span className="block bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">Fight Unfair Bills.</span>
+                <span className="block text-amber-400">Get Your Money Back.</span>
               </h1>
 
               <p className="text-slate-300 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
