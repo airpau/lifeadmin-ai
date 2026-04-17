@@ -614,14 +614,14 @@ export default function Home() {
               className="max-w-3xl mx-auto mt-14 text-center bg-navy-900 border border-navy-700/50 rounded-2xl px-6 py-8 shadow-[--shadow-card]"
             >
               <p className="text-white font-semibold text-lg mb-4">
-                Pocket Agent is available on all{' '}
-                <span className="text-amber-400">membership tiers</span>
+                Pocket Agent is available on{' '}
+                <span className="text-amber-400">every plan — including Free</span>
               </p>
               <Link
-                href="/pricing"
+                href="/auth/signup"
                 className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-navy-950 font-semibold px-8 py-3 rounded-xl transition-all text-sm shadow-lg shadow-amber-500/20"
               >
-                Upgrade to Pro <ArrowRight className="h-4 w-4" />
+                Get Started Free <ArrowRight className="h-4 w-4" />
               </Link>
               <p className="text-slate-500 text-xs mt-4">
                 Available on Telegram. WhatsApp coming soon.

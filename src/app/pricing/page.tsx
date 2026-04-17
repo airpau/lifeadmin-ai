@@ -41,6 +41,7 @@ const plans = [
     description: 'Automated money management',
     features: [
       'Pocket Agent — AI chat on Telegram',
+      'AI chatbot',
       'Unlimited AI letters (all 11 types)',
       '1 bank account with daily auto-sync',
       'Monthly email re-scans',
@@ -76,7 +77,7 @@ const plans = [
       'Unlimited bank accounts',
       'Unlimited email scans',
       'Full transaction-level spending analysis',
-      'AI financial chatbot (18 tools)',
+      'Money Hub Pro AI chatbot (18 tools)',
       'Savings goals with progress tracking',
       'Annual financial report (PDF)',
       'On-demand financial reports',
@@ -537,8 +538,8 @@ export default function PricingPage() {
                 <tr>
                   <td className="px-6 py-4 text-slate-300">AI financial chatbot</td>
                   <td className="text-center px-4 py-4 text-slate-400">Basic</td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4 text-white font-medium">18 tools</td>
+                  <td className="text-center px-4 py-4 text-slate-300">Basic</td>
+                  <td className="text-center px-4 py-4 text-white font-medium">Money Hub Pro (18 tools)</td>
                 </tr>
                 <tr>
                   <td className="px-6 py-4 text-slate-300">Financial reports</td>
