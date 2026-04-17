@@ -10,17 +10,46 @@ interface RenewalSubscription {
   provider_type?: string | null;
 }
 
+/**
+ * Format a merchant/provider name for display.
+ * Words ≤4 chars that are all-alpha are uppercased (e.g. "lbh" → "LBH", "hsbc" → "HSBC").
+ * Longer words are title-cased.
+ */
+function fmtMerchant(name: string | null | undefined): string {
+  if (!name) return 'Unknown provider';
+  return name
+    .split(/\s+/)
+    .map(word => /^[a-zA-Z]{1,4}$/.test(word) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Format a category slug for display.
+ * Replaces underscores with spaces and title-cases each word.
+ */
+function fmtCategory(category: string | null | undefined, fallback: string): string {
+  if (!category) return fallback;
+  return category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // Contract/provider types that are scheduled payments, not cancellable subscriptions.
 // Loans, mortgages, and similar cannot be "switched" mid-term, so renewal language and
 // deals CTAs are inappropriate for them.
 const PAYMENT_CONTRACT_TYPES = new Set(['loan', 'mortgage', 'lease']);
 const PAYMENT_PROVIDER_TYPES = new Set(['loan', 'mortgage', 'credit_card']);
-const PAYMENT_CATEGORIES = new Set(['loan', 'mortgage', 'credit_card', 'finance', 'debt']);
+
+// Categories that are non-switchable fixed commitments — no deals CTA shown for these.
+// This covers both the legacy payment categories and property/housing costs.
+const NON_SWITCHABLE_CATEGORIES = new Set([
+  'loan', 'mortgage', 'credit_card', 'finance', 'debt',
+  'property_management', 'council_tax', 'rent',
+  'utilities_fixed', 'insurance_mandatory', 'loan_repayment',
+]);
 
 function isScheduledPayment(sub: RenewalSubscription): boolean {
   if (sub.contract_type && PAYMENT_CONTRACT_TYPES.has(sub.contract_type.toLowerCase())) return true;
   if (sub.provider_type && PAYMENT_PROVIDER_TYPES.has(sub.provider_type.toLowerCase())) return true;
-  if (sub.category && PAYMENT_CATEGORIES.has(sub.category.toLowerCase())) return true;
+  if (sub.category && NON_SWITCHABLE_CATEGORIES.has(sub.category.toLowerCase())) return true;
   return false;
 }
 
@@ -88,8 +117,8 @@ export function buildRenewalEmail(
     items.map((r) => `
       <tr>
         <td style="padding: 14px 16px; border-bottom: 1px solid #1e293b;">
-          <div style="font-weight: 600; color: #ffffff; font-size: 14px;">${r.provider_name}</div>
-          <div style="color: #64748b; font-size: 12px; margin-top: 2px;">${r.category || (labelType === 'renews' ? 'subscription' : 'payment')} · ${labelType} ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}</div>
+          <div style="font-weight: 600; color: #ffffff; font-size: 14px;">${fmtMerchant(r.provider_name)}</div>
+          <div style="color: #64748b; font-size: 12px; margin-top: 2px;">${fmtCategory(r.category, labelType === 'renews' ? 'Subscription' : 'Payment')} · ${labelType} ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}</div>
         </td>
         <td style="padding: 14px 16px; border-bottom: 1px solid #1e293b; text-align: right;">
           <div style="font-weight: 700; color: #ffffff; font-size: 16px;">£${r.amount.toFixed(2)}</div>
