@@ -29,7 +29,14 @@ function fmtMerchant(name: string | null | undefined): string {
  */
 function fmtCategory(category: string | null | undefined, fallback: string): string {
   if (!category) return fallback;
-  return category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  // Lowercase first so that mixed-case inputs (e.g. "PROPERTY_MANAGEMENT" or
+  // "ProPerTy_ManAgeMeNt") are normalised before title-casing. Without this
+  // step the \b\w regex only upper-cases the leading character of each word
+  // and leaves pre-existing uppercase letters untouched.
+  return category
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // Contract/provider types that are scheduled payments, not cancellable subscriptions.
