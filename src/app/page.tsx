@@ -24,6 +24,21 @@ const HOMEPAGE_CSS = `
     font-family: var(--font-plus-jakarta), system-ui, sans-serif;
     /* White base so gaps between sections never expose the dark body */
     background: #ffffff;
+    /* Dark base text — overrides body { color: #e2e8f0 } from globals.css.
+       Elements with explicit inline color styles are unaffected (inline > CSS). */
+    color: #1e293b;
+  }
+  /* Reinforce dark text for all non-hero sections so any element that lacks
+     an explicit inline color defaults to dark rather than inheriting near-white */
+  [data-homepage="true"] section:not(#hero) {
+    color: #1e293b;
+  }
+  [data-homepage="true"] section:not(#hero) h1,
+  [data-homepage="true"] section:not(#hero) h2,
+  [data-homepage="true"] section:not(#hero) h3,
+  [data-homepage="true"] section:not(#hero) h4,
+  [data-homepage="true"] section:not(#hero) p {
+    color: #1e293b;
   }
   /* Entrance animations removed — were causing sections to be invisible
      until IntersectionObserver fired. hp-reveal is kept as a no-op class
