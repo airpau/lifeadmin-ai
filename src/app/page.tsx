@@ -7,6 +7,10 @@ import HomeTestimonials from '@/components/home/HomeTestimonials';
 import AnimInit from '@/components/home/AnimInit';
 
 const HOMEPAGE_CSS = `
+  /* Override dark body background for the homepage — body has navy from globals.css */
+  body:has([data-homepage="true"]) {
+    background: #ffffff;
+  }
   [data-homepage="true"] {
     --hp-hero-bg: #111318;
     --hp-body-bg: #ffffff;
@@ -18,24 +22,15 @@ const HOMEPAGE_CSS = `
     --hp-amber: #f59e0b;
     --hp-amber-h: #d97706;
     font-family: var(--font-plus-jakarta), system-ui, sans-serif;
+    /* White base so gaps between sections never expose the dark body */
+    background: #ffffff;
   }
+  /* Entrance animations removed — were causing sections to be invisible
+     until IntersectionObserver fired. hp-reveal is kept as a no-op class
+     so markup doesn't need changing if animations are re-enabled later. */
   [data-homepage="true"] .hp-reveal {
-    opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.55s ease, transform 0.55s ease;
-  }
-  [data-homepage="true"] .hp-reveal.hp-visible {
     opacity: 1;
-    transform: translateY(0);
-  }
-  [data-homepage="true"] .hp-delay-1 { transition-delay: 0.1s; }
-  [data-homepage="true"] .hp-delay-2 { transition-delay: 0.2s; }
-  [data-homepage="true"] .hp-delay-3 { transition-delay: 0.3s; }
-  [data-homepage="true"] .hp-delay-4 { transition-delay: 0.4s; }
-  @media (prefers-reduced-motion: reduce) {
-    [data-homepage="true"] .hp-reveal {
-      opacity: 1; transform: none; transition: none;
-    }
+    transform: none;
   }
   @keyframes hp-fade-in {
     from { opacity: 0; transform: translateY(6px); }

@@ -15,6 +15,7 @@ function DashboardMockup() {
       boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04)',
       width: '100%',
       maxWidth: '440px',
+      maxHeight: 'calc(100svh - 80px)',
     }}>
       {/* Browser chrome */}
       <div style={{
@@ -111,7 +112,9 @@ export default function HomeHero() {
           gap: 56px;
           width: 100%;
           max-width: 1100px;
+          max-height: 100%;
           padding: 0 48px;
+          overflow: hidden;
         }
         [data-homepage="true"] .hp-hero-text {
           flex: 1;
@@ -127,6 +130,9 @@ export default function HomeHero() {
           flex: 0 0 auto;
           display: flex;
           justify-content: flex-end;
+          align-self: center;
+          max-height: calc(100svh - 80px);
+          overflow: hidden;
         }
         @media (max-width: 900px) {
           [data-homepage="true"] .hp-hero-inner {
