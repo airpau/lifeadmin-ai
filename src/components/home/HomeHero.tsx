@@ -123,23 +123,24 @@ export default function HomeHero() {
       <section
         id="hero"
         style={{
-          minHeight: '100svh',
+          height: '100svh',
           background: '#111318',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '96px 24px 64px',
+          padding: '0 24px',
           textAlign: 'center',
           position: 'relative',
           overflow: 'hidden',
+          boxSizing: 'border-box',
         }}
       >
         {/* Radial glow */}
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: 'radial-gradient(ellipse 80% 50% at 50% 0%, rgba(52,211,153,0.07) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(52,211,153,0.07) 0%, transparent 70%)',
           pointerEvents: 'none',
         }} />
 
