@@ -44,6 +44,11 @@ function fmtMerchant(raw: string): string {
   return capped.length > 25 ? capped.slice(0, 25) + '\u2026' : capped;
 }
 
+function escapeMd(text: string): string {
+  // Escape Telegram MarkdownV1 special chars: _ * ` [
+  return text.replace(/([_*`\[])/g, '\\$1');
+}
+
 function fmtDisputeStatus(status: string): string {
   const normalised = status.toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
   const map: Record<string, string> = {
@@ -255,7 +260,7 @@ export async function GET(request: NextRequest) {
 
         let spendingSection = `\n\n*Yesterday's Spending (${fmtGbp(total)})*`;
         for (const t of displayed) {
-          const name = fmtMerchant(t.merchant_name || t.description || 'Unknown');
+          const name = escapeMd(fmtMerchant(t.merchant_name || t.description || 'Unknown'));
           spendingSection += `\n  \u2022 ${name} \u2014 ${fmtGbp(Number(t.amount))}`;
         }
         if (remainder.length > 0) {
@@ -279,7 +284,7 @@ export async function GET(request: NextRequest) {
         let renewalSection = '\n\n*Upcoming Renewals*';
         for (const sub of renewals) {
           const when = sub.next_billing_date === todayStr ? 'Today' : 'Tomorrow';
-          renewalSection += `\n  - ${sub.provider_name}: ${fmt(Number(sub.amount))}/${sub.billing_cycle ?? 'month'} (${when})`;
+          renewalSection += `\n  - ${escapeMd(sub.provider_name)}: ${fmt(Number(sub.amount))}/${sub.billing_cycle ?? 'month'} (${when})`;
         }
         sections.push(renewalSection);
       }
@@ -297,7 +302,7 @@ export async function GET(request: NextRequest) {
       if (expiringContracts && expiringContracts.length > 0) {
         let contractSection = '\n\n*Contracts Expiring This Week*';
         for (const c of expiringContracts) {
-          contractSection += `\n  - ${c.provider_name}: ends ${fmtDate(c.contract_end_date)}`;
+          contractSection += `\n  - ${escapeMd(c.provider_name)}: ends ${fmtDate(c.contract_end_date)}`;
         }
         sections.push(contractSection);
       }
@@ -336,7 +341,7 @@ export async function GET(request: NextRequest) {
         let budgetSection = '\n\n*Budget Warnings*';
         for (const w of budgetWarnings) {
           const emoji = w.pct >= 100 ? '\u26a0\ufe0f' : '\u23f3';
-          budgetSection += `\n  ${emoji} ${w.category}: ${fmt(w.spent)} / ${fmt(w.limit)} (${Math.round(w.pct)}%)`;
+          budgetSection += `\n  ${emoji} ${escapeMd(w.category)}: ${fmt(w.spent)} / ${fmt(w.limit)} (${Math.round(w.pct)}%)`;
         }
         sections.push(budgetSection);
       }
@@ -351,7 +356,7 @@ export async function GET(request: NextRequest) {
       if (openDisputes && openDisputes.length > 0) {
         let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
         for (const d of openDisputes.slice(0, 3)) {
-          disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${fmtDisputeStatus(d.status)})`;
+          disputeSection += `\n  - ${escapeMd(d.provider_name)}: ${escapeMd(d.issue_type)} (${fmtDisputeStatus(d.status)})`;
         }
         if (openDisputes.length > 3) {
           disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
