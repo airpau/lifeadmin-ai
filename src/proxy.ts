@@ -81,6 +81,14 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Admin-only path protection
+  if (request.nextUrl.pathname.startsWith('/dashboard/admin') && user) {
+    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com').split(',');
+    if (!adminEmails.includes(user.email || '')) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
   // Redirect authenticated users away from auth pages, honouring any ?redirect= deep link
   if (request.nextUrl.pathname.startsWith('/auth') && user) {
     const rawRedirect = request.nextUrl.searchParams.get('redirect');
