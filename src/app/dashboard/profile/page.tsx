@@ -4,7 +4,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { isResolved as isDisputeResolved } from '@/lib/disputes/statuses';
+import { isResolved as isDisputeResolved, RESOLVED_STATUSES } from '@/lib/disputes/statuses';
+
+// Derived from the canonical RESOLVED_STATUSES constant — never edit this inline.
+const RESOLVED_IN = `(${RESOLVED_STATUSES.join(',')})` as const;
 import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
@@ -45,7 +48,7 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
       const [lettersCount, activeCount, resolved] = await Promise.all([
         supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
         supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
-          .not('status', 'in', '(resolved_won,resolved_partial,resolved_lost,won,partial,lost,closed,withdrawn,dismissed)'),
+          .not('status', 'in', RESOLVED_IN),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
       ]);
       setLettersWritten(lettersCount.count || 0);
