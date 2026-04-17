@@ -65,7 +65,7 @@ const CATEGORIES: Record<string, {
     tipBody: 'Start looking 30 days before your contract ends. You can switch penalty-free once your minimum term is up. Most new customer deals save 30-50% compared to out-of-contract rates.',
     deals: [
       { id: 'bt-broadband', provider: 'BT', headline: 'Full Fibre 500 - superfast speeds', saving: 'Save up to £240/yr', awinMid: '3041', providerUrl: 'https://www.bt.com/broadband', verified: true, featured: true, accent: 'from-purple-500 to-indigo-500' },
-      { id: 'virgin-media', provider: 'Virgin Media', headline: 'Gig1 - fastest widely available', saving: 'Save up to £200/yr', awinMid: '6399', providerUrl: 'https://www.virginmedia.com', verified: true, featured: true, accent: 'from-red-500 to-rose-500' },
+      { id: 'virgin-media', provider: 'Virgin Media', headline: 'Gig1 - fastest widely available', saving: 'Save up to £200/yr', awinMid: '6399', providerUrl: 'https://www.virginmedia.com/broadband', verified: true, featured: true, accent: 'from-red-500 to-rose-500' },
       { id: 'sky-broadband', provider: 'Sky', headline: 'Ultrafast broadband + streaming', saving: 'Save up to £180/yr', awinMid: '11005', providerUrl: 'https://www.sky.com/shop/broadband', verified: true, accent: 'from-blue-500 to-sky-500' },
       { id: 'ee-broadband', provider: 'EE', headline: 'Full Fibre with smart hub', saving: 'Save up to £180/yr', awinMid: '3516', providerUrl: 'https://shop.ee.co.uk/broadband', verified: true, accent: 'from-teal-500 to-cyan-500' },
       { id: 'hyperoptic', provider: 'Hyperoptic', headline: '1Gbps full fibre', saving: 'Save up to £200/yr', awinMid: '5737', providerUrl: 'https://www.hyperoptic.com', verified: true, accent: 'from-fuchsia-500 to-pink-500' },

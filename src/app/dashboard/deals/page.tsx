@@ -31,7 +31,7 @@ const DEALS: Record<string, Deal[]> = {
   Broadband: [
     { id: 'bt-broadband', provider: 'BT', headline: 'Full Fibre 500 - superfast speeds', saving: 'Save up to £240/yr', awinMid: '3041', providerUrl: 'https://www.bt.com/broadband', category: 'Broadband' },
     { id: 'sky-broadband', provider: 'Sky', headline: 'Ultrafast broadband + streaming', saving: 'Save up to £180/yr', awinMid: '11005', providerUrl: 'https://www.sky.com/shop/broadband', category: 'Broadband' },
-    { id: 'virgin-media', provider: 'Virgin Media', headline: "Gig1 - UK's fastest widely available broadband", saving: 'Save up to £200/yr', awinMid: '6399', providerUrl: 'https://www.virginmedia.com', category: 'Broadband' },
+    { id: 'virgin-media', provider: 'Virgin Media', headline: "Gig1 - UK's fastest widely available broadband", saving: 'Save up to £200/yr', awinMid: '6399', providerUrl: 'https://www.virginmedia.com/broadband', category: 'Broadband' },
     { id: 'ee-broadband', provider: 'EE', headline: 'Full Fibre with smart hub included', saving: 'Save up to £180/yr', awinMid: '3516', providerUrl: 'https://shop.ee.co.uk/broadband', category: 'Broadband' },
     { id: 'plusnet', provider: 'Plusnet', headline: 'Award-winning broadband from Yorkshire', saving: 'Save up to £160/yr', awinMid: '2973', providerUrl: 'https://www.plus.net', category: 'Broadband' },
     { id: 'talktalk', provider: 'TalkTalk', headline: 'Affordable fibre broadband', saving: 'Save up to £140/yr', awinMid: '3674', providerUrl: 'https://www.talktalk.co.uk', category: 'Broadband' },
