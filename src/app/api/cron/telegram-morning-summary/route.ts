@@ -260,7 +260,7 @@ export async function GET(request: NextRequest) {
 
         let spendingSection = `\n\n*Yesterday's Spending (${fmtGbp(total)})*`;
         for (const t of displayed) {
-          const name = escapeMd(fmtMerchant(t.merchant_name || t.description || 'Unknown'));
+          const name = escapeMd(fmtMerchant(t.merchant_name?.trim() || t.description?.trim() || 'Unknown'));
           spendingSection += `\n  \u2022 ${name} \u2014 ${fmtGbp(Number(t.amount))}`;
         }
         if (remainder.length > 0) {
@@ -356,7 +356,7 @@ export async function GET(request: NextRequest) {
       if (openDisputes && openDisputes.length > 0) {
         let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
         for (const d of openDisputes.slice(0, 3)) {
-          disputeSection += `\n  - ${escapeMd(d.provider_name)}: ${escapeMd(d.issue_type)} (${fmtDisputeStatus(d.status)})`;
+          disputeSection += `\n  - ${escapeMd(d.provider_name)}: ${escapeMd(d.issue_type)} (${escapeMd(fmtDisputeStatus(d.status))})`;
         }
         if (openDisputes.length > 3) {
           disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
