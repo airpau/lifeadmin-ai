@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { CreditCard, CheckCircle2, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
@@ -20,8 +20,18 @@ export default function BillingSettingsPage() {
   const [portalError, setPortalError] = useState<string | null>(null);
   const [renewalDate, setRenewalDate] = useState<string | null>(null);
   const [syncedTier, setSyncedTier] = useState<string | null>(null);
+  // Track the synced subscription status too — otherwise isActive is
+  // computed from pre-sync profile.subscription_status and paid controls
+  // hide for a user whose Stripe sync just moved them from incomplete →
+  // active (e.g. immediately after checkout).
+  const [syncedStatus, setSyncedStatus] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const supabase = createClient();
+  // Memoise the Supabase client so its reference is stable. Calling
+  // createClient() in the render body produced a new instance every
+  // render, and the effect below depended on it — meaning each setState
+  // (setProfile, setSyncedTier, setRenewalDate, setLoading) retriggered
+  // the effect, which re-POSTed /api/stripe/sync, ad infinitum.
+  const supabase = useMemo(() => createClient(), []);
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -42,6 +52,7 @@ export default function BillingSettingsPage() {
         const res = await fetch('/api/stripe/sync', { method: 'POST' });
         const syncData = await res.json();
         if (syncData.tier) setSyncedTier(syncData.tier);
+        if (syncData.status) setSyncedStatus(syncData.status);
         if (syncData.currentPeriodEnd) {
           setRenewalDate(new Date(syncData.currentPeriodEnd).toLocaleDateString('en-GB', {
             day: 'numeric', month: 'long', year: 'numeric',
@@ -57,7 +68,11 @@ export default function BillingSettingsPage() {
       setLoading(false);
     };
     init();
-  }, [supabase, searchParams]);
+    // Init-on-mount only. supabase is memoised (stable) and searchParams
+    // is only read once here; we deliberately omit both to avoid the
+    // infinite sync-loop flagged in the Codex review.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleManageBilling = async () => {
     setPortalLoading(true);
@@ -78,8 +93,17 @@ export default function BillingSettingsPage() {
   };
 
   const effectiveTier = syncedTier || profile?.subscription_tier || 'free';
-  const isActive = ['active', 'trialing'].includes(profile?.subscription_status || '');
-  const hasPaidPlan = effectiveTier !== 'free' && isActive;
+  // Prefer the freshly-synced status from Stripe over the cached profile
+  // value. This matters right after checkout where profile.subscription_status
+  // may still be "incomplete" while Stripe has already flipped to "active".
+  const effectiveStatus = syncedStatus || profile?.subscription_status || '';
+  const isActive = ['active', 'trialing'].includes(effectiveStatus);
+  // Portal actions require a Stripe customer — the /api/stripe/portal
+  // endpoint returns 400 without one. Users flagged trialing/active by
+  // internal mechanisms (manual grants, imported legacy accounts) must
+  // see the subscribe CTA rather than a broken Manage/Cancel button.
+  const hasStripeCustomer = Boolean(profile?.stripe_customer_id);
+  const hasPaidPlan = effectiveTier !== 'free' && isActive && hasStripeCustomer;
 
   if (loading) {
     return (
