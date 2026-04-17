@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { isResolved as isDisputeResolved } from '@/lib/disputes/statuses';
 import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
@@ -39,17 +40,18 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
-      const [disputes, resolved] = await Promise.all([
-        supabase.from('disputes').select('id, status').eq('user_id', user.id),
+      // Use count-only head queries to avoid the 1000-row Supabase API cap.
+      // For money_recovered we still need the values — tasks are typically few.
+      const [lettersCount, activeCount, resolved] = await Promise.all([
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+          .not('status', 'in', '(resolved_won,resolved_partial,resolved_lost,won,partial,lost,closed,withdrawn,dismissed)'),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
       ]);
-      const allDisputes = disputes.data || [];
-      setLettersWritten(allDisputes.length);
+      setLettersWritten(lettersCount.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
       setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
-      const RESOLVED_STATUSES = ['resolved_won', 'resolved_partial', 'resolved_lost', 'won', 'partial', 'lost', 'closed', 'withdrawn', 'dismissed'];
-      const activeCount = allDisputes.filter(d => !RESOLVED_STATUSES.includes(d.status)).length;
-      setActiveDisputes(activeCount);
+      setActiveDisputes(activeCount.count || 0);
       setLoaded(true);
     };
     load();
