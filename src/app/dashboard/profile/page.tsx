@@ -1040,7 +1040,7 @@ export default function ProfilePage() {
                 </Link>
               ) : (
                 <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-                  {portalLoading ? 'Loading...' : 'Manage Billing'}
+                  {portalLoading ? 'Loading...' : 'Manage / Cancel Plan'}
                 </button>
               )}
             </div>
@@ -1179,14 +1179,23 @@ export default function ProfilePage() {
                   <p className="text-xs text-slate-500 mt-1">Renews {renewalDate}</p>
                 )}
               </div>
-              <button
-                onClick={handleManageBilling}
-                disabled={portalLoading}
-                className="inline-flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
-              >
-                <CreditCard className="h-4 w-4" />
-                {portalLoading ? 'Loading...' : 'Manage Billing'}
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  onClick={handleManageBilling}
+                  disabled={portalLoading}
+                  className="inline-flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  {portalLoading ? 'Loading...' : 'Manage Billing'}
+                </button>
+                <button
+                  onClick={handleManageBilling}
+                  disabled={portalLoading}
+                  className="text-xs text-red-400 hover:text-red-300 transition-all disabled:opacity-50"
+                >
+                  Cancel subscription
+                </button>
+              </div>
             </div>
 
             {/* Pending downgrade or cancellation notice */}
@@ -1219,7 +1228,8 @@ export default function ProfilePage() {
               <p className="text-xs text-red-400 mt-2">{portalError}</p>
             )}
             <p className="text-xs text-slate-500">
-              Manage, upgrade, downgrade or cancel anytime via the billing portal.
+              Manage, upgrade, downgrade or cancel anytime via the billing portal.{' '}
+              <a href="/dashboard/settings/billing" className="text-mint-400 hover:underline">Billing settings</a>
             </p>
           </div>
         )}

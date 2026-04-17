@@ -174,6 +174,7 @@ export default function DashboardPage() {
         .then(r => r.json())
         .then(data => {
           if (data.synced && data.tier && data.tier !== 'free') {
+            setUserTier(data.tier);
             setSyncMessage(`Welcome to Paybacker ${data.tier.charAt(0).toUpperCase() + data.tier.slice(1)}!`);
             setTimeout(() => setSyncMessage(null), 5000);
 
