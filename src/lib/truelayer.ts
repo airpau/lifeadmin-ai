@@ -199,6 +199,9 @@ export async function fetchCardPendingTransactions(
 
 /**
  * Fetches transactions for a specific account from a given date.
+ * Follows TrueLayer's next_link pagination to retrieve all pages.
+ * TrueLayer may cap each page at ~500 results; without following next_link
+ * users with many transactions see ~70% of their history (Ryan UAT bug).
  */
 export async function fetchTransactions(
   accessToken: string,
@@ -213,20 +216,43 @@ export async function fetchTransactions(
   // settled transactions; pending ones are picked up via the /pending endpoint.
   const to = new Date().toISOString().split('T')[0];
 
-  const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions?from=${from}&to=${to}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const allTransactions: TrueLayerTransaction[] = [];
+  let url: string | null =
+    `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions?from=${from}&to=${to}`;
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(
-      `Failed to fetch transactions for account ${accountId}: ${res.status} ${body.slice(0, 300)}`
-    );
+  // Safety cap: 20 pages × 500 = 10,000 transactions max per account
+  const MAX_PAGES = 20;
+  let pages = 0;
+
+  while (url && pages < MAX_PAGES) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(
+        `Failed to fetch transactions for account ${accountId}: ${res.status} ${body.slice(0, 300)}`
+      );
+    }
+
+    const data: { results?: TrueLayerTransaction[]; next_link?: string } = await res.json();
+    const page = data.results || [];
+    allTransactions.push(...page);
+
+    // Follow next_link if TrueLayer has more pages
+    url = data.next_link || null;
+    pages++;
+
+    // If we got a partial page, we've hit the end regardless of next_link
+    if (page.length === 0) break;
   }
 
-  const data = await res.json();
-  return data.results || [];
+  if (pages >= MAX_PAGES) {
+    console.warn(`[truelayer] fetchTransactions hit page cap (${MAX_PAGES}) for account ${accountId} — some older transactions may be missing`);
+  }
+
+  return allTransactions;
 }
 
 /**
