@@ -24,7 +24,9 @@ export default function ForgotPasswordPage() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+        // Supabase PKCE flow sends a token_hash to this URL.
+        // /auth/confirm exchanges it server-side and redirects to /auth/reset-password.
+        redirectTo: `${window.location.origin}/auth/confirm?next=/auth/reset-password`,
       });
 
       if (error) throw error;
