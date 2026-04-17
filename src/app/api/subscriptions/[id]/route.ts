@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { awardPoints } from '@/lib/loyalty';
+import { learnFromCorrection, normalisePattern } from '@/lib/learning-engine';
 
 export async function PATCH(
   request: NextRequest,
@@ -85,63 +86,72 @@ export async function PATCH(
       }
     }
 
-    // Self-learning: if user changed category, propagate everywhere
-    if (original && body.category) {
-      const newCategory = body.category;
-      const providerName = data.provider_name;
-      const rawName = original.bank_description || original.provider_name;
-      const normalised = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    // ─────────────────────────────────────────────────────────────────────
+    // Subscription ↔ Money Hub category unity
+    //
+    // When a user corrects a subscription's category, we must:
+    //   (1) update the cross-user self-learning merchant_rules via the
+    //       canonical learning-engine (confidence scoring, amount ranges)
+    //   (2) propagate that correction into money_hub_category_overrides AND
+    //       retroactively into every matching bank_transactions row, so the
+    //       Money Hub "spending by category" totals move immediately.
+    //
+    // (2) is done inside a SECURITY DEFINER Postgres RPC
+    // (apply_subscription_category_correction — migration 20260417000000)
+    // so the three writes are atomic and respect per-transaction overrides.
+    //
+    // Both promises are AWAITED — on Vercel's serverless runtime, fire-and-
+    // forget .then() chains are killed when the response returns, which is
+    // why this sync was previously silently failing.
+    // ─────────────────────────────────────────────────────────────────────
+    if (original) {
+      const categoryChanged = Boolean(
+        body.category && body.category !== original.category
+      );
+      const providerNameChanged = Boolean(
+        body.provider_name && body.provider_name !== original.provider_name
+      );
 
-      // 1. Update merchant rule for future auto-categorisation
-      if (normalised) {
-        supabase.from('merchant_rules').upsert({
-          raw_name: rawName,
-          raw_name_normalised: normalised,
-          display_name: body.provider_name || providerName,
-          category: newCategory,
-          created_by_user_id: user.id,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'raw_name_normalised' }).then(({ error: ruleError }) => {
-          if (ruleError) console.error('Merchant rule save failed:', ruleError);
-        });
-      }
+      if (categoryChanged || providerNameChanged) {
+        const newCategory: string = body.category || data.category || 'other';
+        const providerName: string = data.provider_name;
+        const rawName: string = original.bank_description || original.provider_name;
+        const rawNameNormalised = normalisePattern(rawName);
 
-      // 2. Update ALL bank transactions with matching merchant name (user_category)
-      // This ensures Money Hub spending breakdown matches the subscription category
-      const merchantVariants = [providerName, rawName].filter(Boolean);
-      for (const name of merchantVariants) {
-        supabase.from('bank_transactions')
-          .update({ user_category: newCategory })
-          .eq('user_id', user.id)
-          .ilike('merchant_name', `%${name}%`)
-          .then(({ error: txErr, count }) => {
-            if (txErr) console.error(`Transaction recategorise failed for "${name}":`, txErr);
-            else if (count) console.log(`Recategorised ${count} transactions for "${name}" → ${newCategory}`);
-          });
-      }
-
-      // 3. Update category override table for Money Hub consistency
-      supabase.from('money_hub_category_overrides').upsert({
-        user_id: user.id,
-        merchant_pattern: providerName.toLowerCase(),
-        new_category: newCategory,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,merchant_pattern' }).then(({ error: ovErr }) => {
-        if (ovErr) console.error('Category override save failed:', ovErr);
-      });
-    } else if (original && body.provider_name) {
-      // Provider name changed without category — still update merchant rule
-      const rawName = original.bank_description || original.provider_name;
-      const normalised = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-      if (normalised) {
-        supabase.from('merchant_rules').upsert({
-          raw_name: rawName,
-          raw_name_normalised: normalised,
-          display_name: body.provider_name,
-          category: data.category || 'other',
-          created_by_user_id: user.id,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'raw_name_normalised' }).then(() => {});
+        try {
+          await Promise.all([
+            // (1) Self-learning rule (cross-user, confidence-scored)
+            learnFromCorrection({
+              rawName,
+              displayName: providerName,
+              category: newCategory,
+              userId: user.id,
+            }),
+            // (2) Propagate to Money Hub (only when the category changed —
+            //     a rename alone should not reclassify spending)
+            categoryChanged
+              ? supabase.rpc('apply_subscription_category_correction', {
+                  p_user_id: user.id,
+                  p_subscription_id: id,
+                  p_new_category: newCategory,
+                  p_raw_name: rawName,
+                  p_raw_name_normalised: rawNameNormalised,
+                  p_provider_name: providerName,
+                }).then(({ data: rpcData, error: rpcErr }) => {
+                  if (rpcErr) throw rpcErr;
+                  console.log('[subs.patch] category unity RPC:', rpcData);
+                  return rpcData;
+                })
+              : Promise.resolve(null),
+          ]);
+        } catch (syncErr: any) {
+          // We deliberately DO NOT fail the PATCH response — the subscription
+          // update itself succeeded. Money Hub unity failures are logged so
+          // Morgan (CTO agent) can pick them up via the executive_reports
+          // pipeline, and the next cron run of auto_categorise_transactions
+          // will pick up the override regardless.
+          console.error('[subs.patch] category sync failed:', syncErr?.message || syncErr);
+        }
       }
     }
 
