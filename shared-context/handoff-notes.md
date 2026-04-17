@@ -1,4 +1,28 @@
-# Handoff Notes — Last Updated 11 Apr 2026 13:20 UTC
+# Handoff Notes — Last Updated 17 Apr 2026
+
+## Session: Cowork Desktop — Agent Reality Audit + CLAUDE.md Correction (17 Apr 2026)
+
+### What was done
+1. **Tool-grounded audit of all agent systems.** Queried `agent_runs`, `executive_reports`, `business_log`, `agent_messages`, `agent_tasks` for 30-day activity. Cross-referenced against `vercel.json` (39 cron entries), `src/lib/managed-agents/config.ts` (9 Managed Agents), and the `/api/cron/executive-agents` deprecated route.
+
+2. **Findings.**
+   - ACTIVE: `complaint_writer` (33 runs in 30d), `riley-support-agent` (247 milestone logs), `discover_features_cron`, `dev-sprint-runner`, `analyze_chatbot_gaps_cron`, `paperclip-business-monitor`.
+   - DORMANT: Every "executive C-suite" agent (Alex/Morgan/Jamie/Taylor/Jordan/Charlie/Casey/Drew/Pippa/Leo/Nico/Bella/Finn). All stopped reporting between 24 Mar – 6 Apr 2026 when Railway was disabled. No cron trigger replaced them.
+   - CONFIGURED-BUT-IDLE: 9 Claude Managed Agents (alert-tester, digest-compiler, support-triager, email-marketer, ux-auditor, feature-tester, bug-triager, reviewer, builder). Endpoint `/api/cron/managed-agents` exists but is NOT in `vercel.json`, so Vercel cron never triggers it. `agent_messages` has 0 rows in 30d.
+
+3. **CLAUDE.md rewritten.** Replaced the "EXISTING AGENTS" / "NEW AGENTS" tables with an honest three-bucket view: Active / Dormant / Configured-but-idle / Disabled. Added explicit rule: "Configured ≠ firing. Before describing an agent as running, verify with `agent_runs`, `executive_reports`, or `business_log`."
+
+4. **Architecture rules 6 and 7 updated** — removed implied claim that Charlie's digest email and Casey's approval workflow are live.
+
+### Next steps (explicitly deferred)
+- **Option 2 (recommended next week):** Add the 9 Managed Agents to `vercel.json` with sensible cadences so they start actually firing. Currently tokens were spent configuring them and they're doing nothing.
+- **Option 3 (only if founder wants daily digests):** Rebuild the executive C-suite on Vercel cron (the pattern `complaint_writer` uses). Biggest lift — only do if digest emails are actually wanted.
+
+### Files touched
+- `CLAUDE.md` — AI AGENT TEAM section rewritten + rules 6 & 7 corrected.
+- `shared-context/handoff-notes.md` — this entry.
+
+---
 
 ## Session: Cowork Desktop — GitHub MCP Cleanup Complete
 
