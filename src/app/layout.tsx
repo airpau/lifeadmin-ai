@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta",
   subsets: ["latin"],
-  weight: ["400", "600", "700", "800"],
+  weight: ["600", "700", "800"],
 });
 
 const inter = Inter({
