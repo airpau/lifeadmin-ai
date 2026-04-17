@@ -70,9 +70,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdmin();
-  const today = new Date();
-  const isMonday = today.getUTCDay() === 1; // 0=Sunday, 1=Monday
-  const now = today.toISOString();
+  const now = new Date().toISOString();
 
   // Check global API ceiling before doing anything
   const callCountAtStart = await getTodayApiCallCount(supabase);
@@ -89,11 +87,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Determine which tiers to sync today
-  // Pro + Essential: every day. Free: Mondays only.
-  const tiersToSync = isMonday
-    ? ['pro', 'essential', 'free']
-    : ['pro', 'essential'];
+  // Sync all tiers every run — transaction fetches are free under TrueLayer's pricing.
+  // Connection limits (Free: 1, Essential: 2, Pro: unlimited) are enforced at OAuth time.
+  const tiersToSync = ['pro', 'essential', 'free'];
 
   // Fetch all users by tier, maintaining processing order (Pro first)
   const { data: allProfiles } = await supabase
@@ -580,12 +576,11 @@ export async function GET(request: NextRequest) {
   console.log(
     `Bank sync complete: connections=${results.length} txs=${totalTxs} ` +
     `recurring=${totalRecurring} errors=${errors} api_calls=${totalApiCalls} ` +
-    `monday=${isMonday} tiers_synced=${tiersToSync.join(',')}`
+    `tiers_synced=${tiersToSync.join(',')}`
   );
 
   return NextResponse.json({
     ok: true,
-    is_monday: isMonday,
     tiers_synced: tiersToSync,
     connections_processed: results.length,
     total_transactions: totalTxs,

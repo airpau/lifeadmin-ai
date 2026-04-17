@@ -10,8 +10,8 @@ export type BankTier = 'free' | 'essential' | 'pro';
 export const TIER_CONFIG = {
   free: {
     maxConnections: 1,
-    dailyCron: false,     // Only syncs on Mondays via cron
-    weeklyCron: true,
+    dailyCron: true,
+    weeklyCron: false,
     manualSyncAllowed: false,
     manualSyncCooldownHours: 0,
     manualSyncDailyLimit: 0,
