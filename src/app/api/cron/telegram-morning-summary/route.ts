@@ -34,6 +34,31 @@ function fmtDate(dateStr: string): string {
   });
 }
 
+function fmtGbp(amount: number): string {
+  return `£${Math.abs(amount).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtMerchant(raw: string): string {
+  const trimmed = raw.trim();
+  const capped = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  return capped.length > 25 ? capped.slice(0, 25) + '\u2026' : capped;
+}
+
+function fmtDisputeStatus(status: string): string {
+  const normalised = status.toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const map: Record<string, string> = {
+    'resolved won': 'resolved (won)',
+    'resolvedwon': 'resolved (won)',
+    'resolved lost': 'resolved (lost)',
+    'resolvedlost': 'resolved (lost)',
+    'awaiting response': 'awaiting response',
+    'awaitingresponse': 'awaiting response',
+    'in progress': 'in progress',
+    'inprogress': 'in progress',
+  };
+  return map[normalised] ?? normalised;
+}
+
 function splitMessage(text: string, limit = 4000): string[] {
   if (text.length <= limit) return [text];
   const chunks: string[] = [];
@@ -205,10 +230,10 @@ export async function GET(request: NextRequest) {
       sections.push('*Good morning! Here\'s your daily money briefing:*');
 
       // ------ 1. Yesterday's spending ------
-      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      const EXCLUDE_CATS = new Set(['transfers', 'income', 'internal_transfer']);
       const { data: yesterdayTxRaw } = await supabase
         .from('bank_transactions')
-        .select('user_category, amount')
+        .select('merchant_name, description, user_category, amount')
         .eq('user_id', userId)
         .lt('amount', 0)
         .gte('timestamp', yesterdayStart.toISOString())
@@ -220,22 +245,21 @@ export async function GET(request: NextRequest) {
 
       if (yesterdayTx.length > 0) {
         const total = yesterdayTx.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
-        const byCategory: Record<string, number> = {};
-        for (const t of yesterdayTx) {
-          const cat = t.user_category ?? 'Other';
-          byCategory[cat] = (byCategory[cat] ?? 0) + Math.abs(Number(t.amount));
+
+        const sorted = [...yesterdayTx].sort(
+          (a, b) => Math.abs(Number(b.amount)) - Math.abs(Number(a.amount)),
+        );
+        const displayed = sorted.slice(0, 8);
+        const remainder = sorted.slice(8);
+        const remainderTotal = remainder.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+
+        let spendingSection = `\n\n*Yesterday's Spending (${fmtGbp(total)})*`;
+        for (const t of displayed) {
+          const name = fmtMerchant(t.merchant_name || t.description || 'Unknown');
+          spendingSection += `\n  \u2022 ${name} \u2014 ${fmtGbp(Number(t.amount))}`;
         }
-
-        const topCategories = Object.entries(byCategory)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 3);
-
-        let spendingSection = `\n\n*Yesterday's Spending*\nTotal: *${fmt(total)}*`;
-        if (topCategories.length > 0) {
-          spendingSection += '\nTop categories:';
-          for (const [cat, amount] of topCategories) {
-            spendingSection += `\n  - ${cat}: ${fmt(amount)}`;
-          }
+        if (remainder.length > 0) {
+          spendingSection += `\n  _\u2026and ${remainder.length} more (${fmtGbp(remainderTotal)})_`;
         }
         sections.push(spendingSection);
       } else {
@@ -327,7 +351,7 @@ export async function GET(request: NextRequest) {
       if (openDisputes && openDisputes.length > 0) {
         let disputeSection = `\n\n*Open Disputes (${openDisputes.length})*`;
         for (const d of openDisputes.slice(0, 3)) {
-          disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${d.status})`;
+          disputeSection += `\n  - ${d.provider_name}: ${d.issue_type} (${fmtDisputeStatus(d.status)})`;
         }
         if (openDisputes.length > 3) {
           disputeSection += `\n  _...and ${openDisputes.length - 3} more_`;
