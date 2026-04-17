@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
   const todayStr = now.toISOString().split('T')[0];
   const sevenDaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
     .toISOString().split('T')[0];
-  const startOfMonthStr = new Date(year, month - 1, 1).toISOString();
+  const startOfMonthStr = new Date(Date.UTC(year, month - 1, 1)).toISOString();
 
   // For recent activity: look back 7 days to handle sync lag
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -372,7 +372,9 @@ export async function GET(request: NextRequest) {
           (b) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
         );
 
-        // Build merchant name list from this month's non-transfer debits for paid-bill detection
+        // Build merchant name list from this month's non-transfer debits for paid-bill detection.
+        // Filter out blank/very-short strings — an empty pm would make name.includes("") always
+        // true, falsely marking every expected bill as paid and zeroing unpaidBillsTotal.
         const paidMerchants = ((monthDebitsRes.data ?? []) as Array<{
           merchant_name?: string;
           description?: string;
@@ -381,7 +383,8 @@ export async function GET(request: NextRequest) {
           .filter((t) => !['transfers', 'income'].includes(t.user_category ?? ''))
           .map((t) =>
             (t.merchant_name || t.description || '').substring(0, 30).toLowerCase(),
-          );
+          )
+          .filter((pm) => pm.length >= 3);
 
         let paidBillsTotal = 0;
         let unpaidBillsTotal = 0;
@@ -390,9 +393,11 @@ export async function GET(request: NextRequest) {
         for (const bill of rawBills) {
           const amount = Math.abs(Number(bill.expected_amount));
           const name = (bill.provider_name || '').toLowerCase().substring(0, 15);
-          // Loose name match: bill name appears in a transaction or vice-versa
+          // Loose name match: bill name appears in a transaction or vice-versa.
+          // Guard the reverse-substring check so it only runs when pm is long enough
+          // to avoid spurious matches on very short strings.
           const isPaid = paidMerchants.some(
-            (pm) => pm.includes(name) || name.includes(pm.substring(0, 8)),
+            (pm) => pm.includes(name) || (pm.length >= 8 && name.includes(pm.substring(0, 8))),
           );
           if (isPaid) {
             paidBillsTotal += amount;
