@@ -56,6 +56,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isTrial, setIsTrial] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
+  const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(null);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -117,6 +118,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Close sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
+
+  // Load loyalty points balance for sidebar badge
+  useEffect(() => {
+    fetch('/api/loyalty')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.balance != null) setLoyaltyPoints(data.balance); })
+      .catch(() => {});
+  }, [pathname]); // refresh when navigating so points update after actions
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -182,6 +191,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
               <span className="text-sm">{item.name}</span>
+              {item.name === 'Rewards' && loyaltyPoints !== null && loyaltyPoints > 0 && (
+                <span className="text-[10px] bg-amber-400/20 text-amber-400 px-1.5 py-0.5 rounded-full ml-auto font-semibold">
+                  {loyaltyPoints.toLocaleString()} pts
+                </span>
+              )}
               {item.name === 'Pocket Agent' && (
                 <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full ml-auto">NEW</span>
               )}

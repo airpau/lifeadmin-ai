@@ -10,18 +10,17 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get('error');
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
-  const returnPath = '/dashboard/profile';
 
   if (error) {
     console.error('[google-callback] OAuth error:', error);
     return NextResponse.redirect(
-      `${baseUrl}${returnPath}?error=${encodeURIComponent('Google: ' + error)}`
+      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Google: ' + error)}`
     );
   }
 
   if (!code || !state) {
     console.error('[google-callback] Missing code or state');
-    return NextResponse.redirect(`${baseUrl}${returnPath}?error=missing_params`);
+    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=missing_params`);
   }
 
   // Verify state contains a valid user ID
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
     if (!userId) throw new Error('Invalid state');
   } catch {
     console.error('[google-callback] Invalid state parameter');
-    return NextResponse.redirect(`${baseUrl}${returnPath}?error=invalid_state`);
+    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=invalid_state`);
   }
 
   // Double-check the authenticated session matches
@@ -70,15 +69,12 @@ export async function GET(request: NextRequest) {
       console.error('[google-callback] gmail_tokens upsert error:', gmailErr);
     }
 
-    // 2. Save to email_connections (unified connection display).
-    // IMPORTANT: only clear a row with the SAME email address so that
-    // reconnecting account A doesn't wipe account B. Users can have any
-    // number of Gmail accounts linked simultaneously.
+    // 2. Save to email_connections (unified connection display on Scanner page)
+    // Delete any existing Google connection first
     await admin.from('email_connections')
       .delete()
       .eq('user_id', user.id)
-      .eq('provider_type', 'google')
-      .eq('email_address', tokens.email);
+      .eq('provider_type', 'google');
 
     const { error: connErr } = await admin.from('email_connections').insert({
       user_id: user.id,
@@ -97,11 +93,17 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[google-callback] Successfully saved Gmail connection for', tokens.email);
-    return NextResponse.redirect(`${baseUrl}${returnPath}?gmail_connected=true`);
+
+    // Award points for connecting email inbox (fire-and-forget, non-blocking)
+    import('@/lib/loyalty').then(({ awardPoints }) => {
+      awardPoints(user.id, 'email_connected');
+    }).catch(() => {});
+
+    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?gmail_connected=true`);
   } catch (err: any) {
     console.error('[google-callback] Error:', err.message, err.stack);
     return NextResponse.redirect(
-      `${baseUrl}${returnPath}?error=${encodeURIComponent('Gmail connection failed: ' + err.message)}`
+      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Gmail connection failed: ' + err.message)}`
     );
   }
 }
