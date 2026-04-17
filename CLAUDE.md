@@ -105,8 +105,8 @@ Paybacker is an AI-powered savings platform for UK consumers. It helps people di
 3. **ALL real-time web research by agents uses Perplexity API.** Not web scraping, not Google Search API, not Bing — Perplexity only.
 4. **ALL product analytics and funnel tracking uses PostHog.** Never add Google Analytics or Mixpanel.
 5. **ALL transactional and lifecycle emails use Resend.** Already integrated — never add SendGrid, Mailchimp, or any other email provider.
-6. **ALL agent output is stored in the agent_reports Supabase table** and included in Charlie's daily digest email to the founder.
-7. **Casey (CCO) requires founder approval before any content is posted.** Approve/reject links in the digest email update content_drafts.status. Never auto-post without approval.
+6. **ALL agent output is stored in Supabase** (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL. Note: Charlie's daily digest email is currently dormant (see AI AGENT TEAM section) — do not assume digests are reaching the founder unless verified.
+7. **Casey (CCO) requires founder approval before any content is posted.** Approve/reject links update `content_drafts.status`. Never auto-post without approval. Note: Casey is currently dormant — content drafting is manual until a cron trigger is wired up.
 8. **Never expose API keys in client-side code.** All API calls to external services must be server-side only.
 
 ## Project Structure
@@ -286,42 +286,66 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 
 ---
 
-## AI AGENT TEAM
+## AI AGENT TEAM — HONEST STATE (verified 17 April 2026)
 
-All agents follow the same architectural pattern. Every agent must:
-- Log run status and output to Supabase executive_reports table
-- Feed output into Charlie's daily digest email
-- Run on a defined schedule via cron
-- Be built as a standalone file — never modify existing agent files
+This section was overhauled on 17 April 2026 after a tool-grounded audit. Earlier versions of this file described an "executive C-suite" (Alex, Morgan, Jamie, Taylor, Jordan, Charlie, Casey, Drew, Pippa, Leo, Nico, Bella, Finn) as if they were firing daily. That was aspirational and is no longer true — the Railway agent-server that ran them was disabled around 5 April 2026 (see shared-context/handoff-notes.md) and nothing replaced the schedule. Do not assume any agent named below is running unless it appears in the "Active" table.
 
-### EXISTING AGENTS — DO NOT MODIFY THESE
+When writing about agents, always check `agent_runs`, `executive_reports`, and `business_log` before stating an agent's status. Configured ≠ firing.
 
-| Agent | Role | Schedule |
-|-------|------|----------|
-| Alex | CFO — financial reports | 3x daily |
-| Morgan | CTO — tech health monitoring | 3x daily |
-| Jamie | CAO — operations | 3x daily |
-| Taylor | CMO — marketing strategy | 3x daily |
-| Jordan | Head of Ads — advertising performance | 3x daily |
-| Charlie | EA — compiles task list, emails founder | 7x daily |
-| Sam | Support Lead — ticket triage | Every 30 mins |
-| Riley | Support Agent — auto-responds to tickets | Every 15 mins |
+### Active agents (verified firing in last 7 days)
 
-### NEW AGENTS — BUILD AS NEW FILES ONLY
+| Worker | Trigger | Source | What it does | Last seen |
+|---|---|---|---|---|
+| `complaint_writer` | On-demand (user clicks) | `src/app/api/agents/complaints/route.ts` | Generates UK-legislation-cited complaint letters | Active — 33 runs in last 30d |
+| `riley-support-agent` | Vercel cron | `vercel.json` | Support ticket auto-response | Active today |
+| `discover_features_cron` | Vercel cron | `vercel.json` | Feature discovery | Active today |
+| `dev-sprint-runner` | Vercel cron | `vercel.json` | Dev sprint bookkeeping | Active this week |
+| `analyze_chatbot_gaps_cron` | Vercel cron | `vercel.json` | Chatbot gap analysis | Active this week |
+| `paperclip-business-monitor` | External monitor | Paperclip | Business monitoring | Active this week |
 
-**Casey (CCO)** — daily 7am. Content calendar, fal.ai images/video, Late API posting, founder approval required.
+### Dormant agents (configured but not firing)
 
-**Drew (CGO)** — daily 8am. Funnel conversion, PostHog events, Resend behavioural email triggers.
+These rows exist in `ai_executives` and have `executive_reports` history, but have produced no output since the Railway disable:
 
-**Pippa (CRO)** — every 6 hours. Activity scores, churn detection, loyalty tier management, monthly user summaries.
+| Agent | Role | Last report | Status |
+|---|---|---|---|
+| Casey | CCO | 2026-04-06 | Dormant — no cron trigger |
+| Charlie | EA | 2026-04-06 | Dormant — no cron trigger |
+| Sam | Support Lead | 2026-04-04 | Dormant — no cron trigger |
+| Alex | CFO | 2026-04-03 | Dormant — no cron trigger |
+| Jordan | Head of Ads | 2026-03-25 | Dormant — no cron trigger |
+| Morgan | CTO | 2026-03-24 | Dormant — no cron trigger |
+| Jamie | CAO | 2026-03-24 | Dormant — no cron trigger |
+| Taylor | CMO | 2026-03-24 | Dormant — no cron trigger |
+| Drew | CGO | 2026-03-24 | Dormant — no cron trigger |
+| Pippa | CRO | 2026-03-24 | Dormant — no cron trigger |
+| Leo | CLO | 2026-03-26 | Dormant — no cron trigger |
+| Nico | CIO | 2026-03-24 | Dormant — no cron trigger |
+| Bella | CXO | 2026-03-24 | Dormant — no cron trigger |
+| Finn | CFraudO | 2026-03-24 | Dormant — no cron trigger |
 
-**Leo (CLO)** — daily 6am. Perplexity regulatory research, letter quality audits, GDPR checks, urgent compliance alerts.
+Assume none of these will run unless a Vercel cron entry is added to trigger them. Do not cite their outputs in any summary without first checking `executive_reports` for a recent row.
 
-**Nico (CIO)** — weekly Monday 7am. Perplexity competitor research, competitive_intelligence table, weekly report.
+### Claude Managed Agents (platform.claude.com) — configured, not scheduled
 
-**Bella (CXO)** — daily 9am. Support ticket UX analysis, feature requests, weekly UX report to CTO, 90-day NPS surveys.
+Nine agents are registered in `src/lib/managed-agents/config.ts`:
 
-**Finn (CFraudO)** — daily + on signup. IP fraud checks via ipapi.co, abuse detection, over-limit flags.
+`alert-tester`, `digest-compiler`, `support-triager`, `email-marketer`, `ux-auditor`, `feature-tester`, `bug-triager`, `reviewer`, `builder`.
+
+There is an endpoint at `src/app/api/cron/managed-agents/route.ts`, but it is NOT listed in `vercel.json`, so Vercel cron never invokes it. `agent_messages` has 0 rows in the last 30 days, confirming no sessions have fired. These agents are fully configured and ready to run — they just need cron entries to wake them up.
+
+### Disabled systems
+
+- **Railway agent-server** — legacy, flagged for disable 5 April 2026 (see handoff-notes.md). Do not restart.
+- **`/api/cron/executive-agents`** — returns `{status: 'deprecated'}`. Do not wire anything to it.
+
+### Rules for agents going forward
+
+1. Before describing an agent as "running", verify with `agent_runs`, `executive_reports`, or `business_log`.
+2. New agents must be registered in `vercel.json` with an explicit cron schedule — otherwise they are dormant by default.
+3. All agent output must land in Supabase (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL.
+4. Never modify `complaint_writer` or Riley without explicit user approval — these are the two workers actually serving users.
+5. When in doubt, ask before you build.
 
 ---
 
