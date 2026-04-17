@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle, Sparkles, TrendingUp, Scale, CreditCard, Banknote, Check, X, ArrowRight, ChevronRight, MessageCircle, Zap, FileEdit, Bell, BadgeCheck, Shield, PieChart, Activity, LayoutDashboard } from 'lucide-react';
+import { CheckCircle, Sparkles, TrendingUp, Scale, CreditCard, Banknote, Check, X, ArrowRight, ChevronRight, MessageCircle, Zap, FileEdit, Bell, BadgeCheck, Shield, ShieldCheck, Star, PieChart, Activity, LayoutDashboard, Wifi, Smartphone, Flame, Home as HomeIcon, Plane } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { motion } from 'framer-motion';
 import PublicNavbar from '@/components/PublicNavbar';
@@ -904,50 +904,119 @@ export default function Home() {
         </section>
 
         {/* Feature Section 4: Find Better Deals */}
-        <section className="py-20 md:py-28">
-          <div className="container mx-auto px-4 md:px-6">
+        <section className="py-20 md:py-28 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-mint-400/[0.03] to-transparent pointer-events-none" />
+          <div className="container mx-auto px-4 md:px-6 relative">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.6 }}
-              className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto"
+              className="max-w-6xl mx-auto"
             >
-              <div>
+              <div className="text-center mb-12">
                 <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-3 py-1.5 text-xs text-mint-400 border border-mint-400/20 mb-6">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  <span>Deal Comparison</span>
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>Verified UK Partners</span>
                 </div>
-                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                  Find Better Deals
+                <h2 className="font-[family-name:var(--font-heading)] text-3xl md:text-5xl font-bold text-white tracking-tight mb-4">
+                  Switch and save with <span className="text-mint-400">trusted providers</span>
                 </h2>
-                <p className="text-slate-400 text-lg leading-relaxed mb-6">
-                  We analyse your bills and show you cheaper alternatives from 50+ UK providers. Energy, broadband, mobile, insurance, and more.
+                <p className="text-slate-400 text-lg leading-relaxed max-w-2xl mx-auto">
+                  53+ verified deals from the UK&apos;s biggest names. We earn a small commission if you switch — you pay nothing extra, and we stay free to use.
                 </p>
-                <ul className="space-y-3 mb-8">
-                  {[
-                    '53 deals across 9 categories from top UK providers',
-                    'Personalised recommendations based on your real spending',
-                    'Alerts before contracts renew so you never overpay',
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-3">
-                      <CheckCircle className="h-5 w-5 text-mint-400 mt-0.5 shrink-0" />
-                      <span className="text-slate-300 text-sm">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/deals" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center gap-2">
-                  Browse Deals Free <ChevronRight className="h-4 w-4" />
-                </Link>
               </div>
-              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card]">
-                <div className="space-y-3">
-                  {['Energy', 'Broadband', 'Mobile', 'Insurance', 'Mortgages', 'Loans', 'Credit Cards', 'Car Finance', 'Travel'].map(cat => (
-                    <div key={cat} className="flex items-center justify-between bg-navy-800 rounded-lg px-4 py-2.5">
-                      <span className="text-slate-300 text-sm">{cat}</span>
-                      <span className="text-mint-400 text-xs font-medium">View deals &rarr;</span>
-                    </div>
+
+              {/* Verified provider logos strip */}
+              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 md:p-6 mb-10 shadow-[--shadow-card]">
+                <div className="flex items-center gap-2 justify-center mb-4">
+                  <BadgeCheck className="h-4 w-4 text-mint-400" />
+                  <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Our verified partners include</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
+                  {[
+                    { name: 'BT', accent: 'from-purple-500 to-indigo-500' },
+                    { name: 'Sky', accent: 'from-blue-500 to-sky-500' },
+                    { name: 'Virgin Media', accent: 'from-red-500 to-rose-500' },
+                    { name: 'EE', accent: 'from-teal-500 to-cyan-500' },
+                    { name: 'E.ON', accent: 'from-rose-500 to-pink-500' },
+                    { name: 'EDF', accent: 'from-orange-500 to-amber-500' },
+                    { name: 'OVO', accent: 'from-emerald-500 to-green-500' },
+                    { name: 'Vodafone', accent: 'from-red-600 to-red-500' },
+                    { name: 'Three', accent: 'from-slate-500 to-slate-400' },
+                    { name: 'O2', accent: 'from-blue-600 to-indigo-500' },
+                    { name: 'giffgaff', accent: 'from-lime-500 to-yellow-400' },
+                    { name: 'Plusnet', accent: 'from-pink-500 to-rose-500' },
+                    { name: 'RAC', accent: 'from-orange-500 to-red-500' },
+                    { name: 'Habito', accent: 'from-violet-500 to-purple-500' },
+                    { name: '+40 more', accent: 'from-mint-400 to-emerald-500' },
+                  ].map((p) => (
+                    <span
+                      key={p.name}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-gradient-to-br ${p.accent} shadow-sm whitespace-nowrap`}
+                    >
+                      {p.name}
+                    </span>
                   ))}
+                </div>
+              </div>
+
+              {/* Category cards grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-10">
+                {[
+                  { slug: 'broadband', name: 'Broadband', icon: Wifi, count: 10, accent: 'from-blue-500 to-cyan-500', save: 'Save £240/yr', featured: 'BT, Sky, Virgin' },
+                  { slug: 'mobile', name: 'Mobile', icon: Smartphone, count: 12, accent: 'from-green-500 to-emerald-500', save: 'Save £180/yr', featured: 'EE, Vodafone, O2' },
+                  { slug: 'energy', name: 'Energy', icon: Flame, count: 4, accent: 'from-amber-500 to-orange-500', save: 'Save £450/yr', featured: 'E.ON, EDF, OVO' },
+                  { slug: 'insurance', name: 'Insurance', icon: Shield, count: 6, accent: 'from-purple-500 to-violet-500', save: 'Save £320/yr', featured: 'RAC, AA, Aviva' },
+                  { slug: 'mortgages', name: 'Mortgages', icon: HomeIcon, count: 4, accent: 'from-red-500 to-rose-500', save: 'Find best rate', featured: 'Habito, Maze, L&C' },
+                  { slug: 'travel', name: 'Travel', icon: Plane, count: 6, accent: 'from-teal-500 to-cyan-500', save: 'Save up to 40%', featured: 'Jet2, Trip.com' },
+                ].map((cat) => {
+                  const Icon = cat.icon;
+                  return (
+                    <Link
+                      key={cat.slug}
+                      href={`/deals/${cat.slug}`}
+                      className="group relative bg-navy-900 border border-navy-700/50 hover:border-mint-400/40 rounded-2xl p-4 md:p-5 transition-all duration-200 shadow-[--shadow-card] hover:shadow-[--shadow-glow-mint] overflow-hidden"
+                    >
+                      <div className={`absolute -top-6 -right-6 w-24 h-24 rounded-full bg-gradient-to-br ${cat.accent} opacity-10 group-hover:opacity-20 blur-2xl transition-opacity`} />
+                      <div className="relative">
+                        <div className={`inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br ${cat.accent} mb-3 shadow-sm`}>
+                          <Icon className="h-5 w-5 text-white" />
+                        </div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <h3 className="text-white font-bold text-base md:text-lg group-hover:text-mint-400 transition-colors">{cat.name}</h3>
+                          <span className="bg-navy-800 text-slate-400 text-[10px] font-semibold px-1.5 py-0.5 rounded">{cat.count}</span>
+                        </div>
+                        <p className="text-mint-400 text-xs font-semibold mb-2">{cat.save}</p>
+                        <p className="text-slate-500 text-[11px] mb-3 truncate">{cat.featured}</p>
+                        <div className="flex items-center gap-1 text-mint-400 text-xs font-medium">
+                          Compare deals <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Bottom CTA row */}
+              <div className="bg-gradient-to-br from-navy-900 to-navy-800 border border-mint-400/20 rounded-2xl p-6 md:p-8 shadow-[--shadow-card]">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Star className="h-4 w-4 text-mint-400 fill-mint-400" />
+                      <span className="text-xs uppercase tracking-wider text-mint-400 font-semibold">Personalised for you</span>
+                    </div>
+                    <h3 className="text-white font-bold text-xl md:text-2xl mb-2">Get deal recommendations based on your real bills</h3>
+                    <p className="text-slate-400 text-sm">Connect your email or bank and we&apos;ll match you to verified partners where you can save the most. Takes 60 seconds.</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    <Link href="/deals" className="bg-navy-950 hover:bg-navy-900 border border-navy-700 text-white font-semibold px-5 py-3 rounded-xl transition-all duration-200 inline-flex items-center justify-center gap-2 whitespace-nowrap">
+                      Browse all 53+ deals
+                    </Link>
+                    <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-3 rounded-xl transition-all duration-200 shadow-[--shadow-glow-mint] inline-flex items-center justify-center gap-2 whitespace-nowrap">
+                      Sign up free <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  </div>
                 </div>
               </div>
             </motion.div>
