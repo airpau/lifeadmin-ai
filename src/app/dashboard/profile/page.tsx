@@ -39,15 +39,17 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
-      const [letters, resolved, disputes] = await Promise.all([
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+      const [disputes, resolved] = await Promise.all([
+        supabase.from('disputes').select('id, status').eq('user_id', user.id),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
       ]);
-      setLettersWritten(letters.count || 0);
+      const allDisputes = disputes.data || [];
+      setLettersWritten(allDisputes.length);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
       setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
-      setActiveDisputes(disputes.count || 0);
+      const RESOLVED_STATUSES = ['resolved_won', 'resolved_partial', 'resolved_lost', 'won', 'partial', 'lost', 'closed', 'withdrawn', 'dismissed'];
+      const activeCount = allDisputes.filter(d => !RESOLVED_STATUSES.includes(d.status)).length;
+      setActiveDisputes(activeCount);
       setLoaded(true);
     };
     load();
