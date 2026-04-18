@@ -1663,6 +1663,204 @@ Return JSON: { "subject": "...", "body": "..." }`;
   });
 
   // -------------------------------------------------------
+  // Photo message handler — dispute creation from bank screenshots
+  // -------------------------------------------------------
+  bot.on('message:photo', async (ctx) => {
+    const updateId = ctx.update.update_id;
+    if (processedUpdateIds.has(updateId)) {
+      console.log(`[UserBot] Skipping duplicate photo update_id=${updateId}`);
+      return;
+    }
+    processedUpdateIds.add(updateId);
+    if (processedUpdateIds.size > 200) {
+      const ids = Array.from(processedUpdateIds);
+      for (let i = 0; i < ids.length - 200; i++) processedUpdateIds.delete(ids[i]);
+    }
+
+    const supabase = getAdmin();
+    const chatId = ctx.chat.id;
+    const caption = ctx.message.caption?.trim() ?? '';
+    console.log(`[UserBot] Received photo from chat_id=${chatId}, update_id=${updateId}, caption="${caption.slice(0, 80)}"`);
+
+    const [, sessionResult] = await Promise.all([
+      supabase.from('telegram_message_log').insert({
+        telegram_chat_id: chatId,
+        direction: 'inbound',
+        message_text: caption ? `[Photo] ${caption}` : '[Photo — no caption]',
+      }),
+      supabase.from('telegram_sessions')
+        .select('user_id, last_message_at')
+        .eq('telegram_chat_id', chatId)
+        .eq('is_active', true)
+        .single(),
+    ]);
+
+    const session = sessionResult.data;
+
+    if (!session) {
+      return ctx.reply(
+        `Please link your Paybacker account first:\n\n` +
+          `1. Go to paybacker.co.uk/dashboard/settings/telegram\n` +
+          `2. Generate a link code\n` +
+          `3. Send: /link YOUR_CODE`,
+      );
+    }
+
+    if (isSessionExpired(session.last_message_at)) {
+      await supabase.from('telegram_sessions').update({ is_active: false }).eq('telegram_chat_id', chatId);
+      return ctx.reply(`Your session has expired. Please re-link at paybacker.co.uk/dashboard/settings/telegram`);
+    }
+
+    const [profileResult, rateLimitResult] = await Promise.all([
+      supabase.from('profiles')
+        .select('subscription_tier, subscription_status, stripe_subscription_id')
+        .eq('id', session.user_id)
+        .single(),
+      checkRateLimit(supabase, session.user_id),
+    ]);
+
+    const profile = profileResult.data;
+    const isPro =
+      profile?.subscription_tier === 'pro' &&
+      (profile?.stripe_subscription_id
+        ? ['active', 'trialing'].includes(profile?.subscription_status ?? '')
+        : profile?.subscription_status === 'trialing');
+
+    if (!isPro) {
+      const upgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
+      return ctx.reply(
+        `To use Pocket Agent, upgrade to *Pro* — *£9.99/month*.`,
+        { parse_mode: 'Markdown', reply_markup: upgradeKeyboard },
+      );
+    }
+
+    if (!rateLimitResult) {
+      return ctx.reply(`You've reached the limit of ${RATE_LIMIT_PER_HOUR} messages per hour. Please try again shortly.`);
+    }
+
+    supabase.from('telegram_sessions').update({ last_message_at: new Date().toISOString() }).eq('telegram_chat_id', chatId).then(() => {});
+
+    // If caption doesn't suggest dispute intent, prompt the user
+    const disputeIntent = /dispute|charg|overcharg|refund|scam|fraud|incorrect|wrong|unauthoris|unauthoriz/i.test(caption);
+    if (!disputeIntent) {
+      return ctx.reply(
+        "I can see your screenshot. What would you like me to do with it? You can ask me to raise a dispute, check a charge, or analyse a transaction.",
+      );
+    }
+
+    await ctx.replyWithChatAction('typing').catch(() => {});
+
+    try {
+      // Get the highest-resolution photo (last in the array)
+      const photo = ctx.message.photo[ctx.message.photo.length - 1];
+      const fileInfo = await ctx.api.getFile(photo.file_id);
+      const filePath = fileInfo.file_path;
+      if (!filePath) throw new Error('Could not get file path from Telegram');
+
+      // Download image bytes using the same bot token
+      const botToken = process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+      const imageRes = await fetch(`https://api.telegram.org/file/bot${botToken}/${filePath}`);
+      if (!imageRes.ok) throw new Error(`Failed to download photo: ${imageRes.status}`);
+      const imageBuffer = await imageRes.arrayBuffer();
+      const base64Image = Buffer.from(imageBuffer).toString('base64');
+
+      // Detect media type from file extension
+      const ext = filePath.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' =
+        ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+      // Use Claude Haiku vision to extract transaction details
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const visionRes = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: base64Image },
+            },
+            {
+              type: 'text',
+              text: `The user has sent a bank screenshot with the message: "${caption}". Identify the transaction(s) they want to dispute — extract the merchant name, amount, and date if visible. Return JSON only with no other text: { "merchant": string, "amount": string, "date": string, "reason": string }`,
+            },
+          ],
+        }],
+      });
+
+      const rawText = visionRes.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+
+      let extracted: { merchant: string; amount: string; date: string; reason: string } | null = null;
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try { extracted = JSON.parse(jsonMatch[0]); } catch { /* fall through */ }
+      }
+
+      if (!extracted?.merchant) {
+        return ctx.reply(
+          "I could see your screenshot but couldn't identify the specific transaction. Could you tell me the merchant name and amount you'd like to dispute?",
+        );
+      }
+
+      // Parse amount to number (strip currency symbols)
+      const amountNum = extracted.amount ? parseFloat(extracted.amount.replace(/[^0-9.]/g, '')) || null : null;
+      const issueDescription =
+        `${extracted.reason || `Unauthorised or incorrect transaction with ${extracted.merchant}`}` +
+        `${extracted.date ? ` on ${extracted.date}` : ''}` +
+        `${extracted.amount ? ` for ${extracted.amount}` : ''}. Raised via Telegram screenshot.`;
+
+      const { data: dispute } = await supabase
+        .from('disputes')
+        .insert({
+          user_id: session.user_id,
+          provider_name: extracted.merchant,
+          issue_type: 'complaint',
+          issue_summary: issueDescription,
+          desired_outcome: 'Please investigate and provide a full refund for this transaction.',
+          disputed_amount: amountNum,
+          currency: 'GBP',
+          status: 'open',
+        })
+        .select('id')
+        .single();
+
+      // Log agent run for cost tracking
+      await supabase.from('agent_runs').insert({
+        user_id: session.user_id,
+        agent_type: 'photo_dispute_extractor',
+        model_name: 'claude-haiku-4-5-20251001',
+        status: 'completed',
+        input_data: { caption, source: 'telegram_photo' },
+        output_data: { extracted, dispute_id: dispute?.id },
+        input_tokens: visionRes.usage?.input_tokens ?? null,
+        output_tokens: visionRes.usage?.output_tokens ?? null,
+        completed_at: new Date().toISOString(),
+      });
+
+      const disputeKeyboard = new InlineKeyboard().url('View disputes →', 'https://paybacker.co.uk/dashboard/disputes');
+
+      await ctx.reply(
+        `✅ *Dispute raised*\n\n` +
+          `*Merchant:* ${extracted.merchant}\n` +
+          `*Amount:* ${extracted.amount || 'Not identified'}\n` +
+          `*Date:* ${extracted.date || 'Not identified'}\n\n` +
+          `Your dispute has been opened. I'll remind you in 14 days if there's no response — at that point you can escalate to the relevant ombudsman or regulator.\n\n` +
+          `Track it at paybacker.co.uk/dashboard/disputes`,
+        { parse_mode: 'Markdown', reply_markup: disputeKeyboard },
+      );
+    } catch (err) {
+      console.error('[UserBot] Photo dispute error:', err);
+      await ctx.reply(
+        'Sorry, I had trouble processing your screenshot. Please try again, or describe the transaction in a text message.',
+      ).catch(() => {});
+    }
+  });
+
+  // -------------------------------------------------------
   // Global error handler — catches any uncaught middleware error
   // Uses raw chatId from the update (not ctx.chatId shorthand) so it works
   // in ALL update types including callback_query where ctx.chat may differ.
