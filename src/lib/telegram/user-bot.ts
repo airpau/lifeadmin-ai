@@ -720,7 +720,7 @@ export function createUserBot(): Bot<UserBotContext> {
       bot.api,
       chatId,
       msgId,
-      `✅ *Saving recorded!*\n\nGreat news — this has been added to your Verified Savings in your Money Hub dashboard.\n\npaybacker.co.uk/dashboard/money-hub`,
+      `✅ *Dispute win recorded!*\n\nYour dispute win has been recorded. View it in your Disputes dashboard.\n\npaybacker.co.uk/dashboard/disputes`,
     );
   });
 
