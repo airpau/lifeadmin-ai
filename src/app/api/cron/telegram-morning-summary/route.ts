@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -190,6 +191,11 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours()) {
+        console.log(`[telegram-morning-summary] quiet hours: suppressed message to chat ${chatId}`);
+        skipped++;
+        continue;
+      }
       // Check if user has any bank transaction data at all
       const { count: txCount } = await supabase
         .from('bank_transactions')

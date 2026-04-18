@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchedDigest } from '@/lib/telegram/queue';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -173,6 +174,11 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours()) {
+        console.log(`[telegram-evening-summary] quiet hours: suppressed message to chat ${chatId}`);
+        skipped++;
+        continue;
+      }
       // ── 0. Flush any pending alert queue first (separate message) ──────────
       // Batches all queued findings from email scans / detections into one
       // concise "daily money update" message with inline action buttons.

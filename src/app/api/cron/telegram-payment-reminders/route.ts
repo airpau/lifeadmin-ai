@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -171,6 +172,11 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours()) {
+        console.log(`[telegram-payment-reminders] quiet hours: suppressed message to chat ${chatId}`);
+        skipped++;
+        continue;
+      }
       const { data: payments } = await supabase
         .from('subscriptions')
         .select('provider_name, amount, next_billing_date, category')

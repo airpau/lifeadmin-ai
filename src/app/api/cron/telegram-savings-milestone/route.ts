@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -109,6 +110,10 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours()) {
+        console.log(`[telegram-savings-milestone] quiet hours: suppressed message to chat ${chatId}`);
+        continue;
+      }
       // Total verified savings from verified_savings table
       const { data: savings } = await supabase
         .from('verified_savings')

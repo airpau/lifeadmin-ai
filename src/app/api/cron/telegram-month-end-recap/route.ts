@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -150,6 +151,10 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours()) {
+        console.log(`[telegram-month-end-recap] quiet hours: suppressed message to chat ${chatId}`);
+        continue;
+      }
       // Parallel RPC calls — same RPCs as Money Hub dashboard
       const [prevSpendRes, prevPrevSpendRes, prevIncomeRes, prevBreakdownRes] = await Promise.all([
         supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevYear, p_month: prevMonth }),

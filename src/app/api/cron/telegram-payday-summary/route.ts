@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -112,6 +113,10 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours()) {
+        console.log(`[telegram-payday-summary] quiet hours: suppressed message to chat ${chatId}`);
+        continue;
+      }
       // Look for salary/income transactions in the last 2 days
       // Income: positive amounts, categorised as income, or large credits
       const { data: incomeTxns } = await supabase
