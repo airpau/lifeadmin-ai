@@ -158,13 +158,14 @@ export async function GET(request: Request) {
     const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth, internalTransfers);
 
     // Authoritative income/spending from RPCs (exclude transfers correctly) with JS fallback
-    const authSpending = parseFloat(String(rpcSpendingTotal)) || currentSummary.monthlyOutgoings;
-    const authIncome = parseFloat(String(rpcIncomeTotal)) || currentSummary.monthlyIncome;
+    const authSpending = rpcSpendingTotal != null ? parseFloat(String(rpcSpendingTotal)) : currentSummary.monthlyOutgoings;
+    const authIncome = rpcIncomeTotal != null ? parseFloat(String(rpcIncomeTotal)) : currentSummary.monthlyIncome;
 
     // Build authoritative category breakdown from RPC; fall back to JS if RPC returned nothing
+    // Normalize category keys so they match the keys used in budget matching
     const rpcCategoryBreakdown = (rpcSpendingCategories || []).map((c: any) => ({
-      category: c.category as string,
-      total: parseFloat(String(c.category_total)),
+      category: normalizeSpendingCategoryKey(c.category as string),
+      total: parseFloat(String(c.category_total ?? 0)),
       transactions: [] as any[],
     }));
     const authCategoryBreakdown = rpcCategoryBreakdown.length > 0
@@ -174,7 +175,7 @@ export async function GET(request: Request) {
     // Build authoritative income breakdown from RPC; fall back to JS if RPC returned nothing
     const rpcIncomeBD: Record<string, number> = {};
     for (const row of (rpcIncomeCategories || [])) {
-      rpcIncomeBD[row.source || 'other'] = parseFloat(String(row.source_total));
+      rpcIncomeBD[row.source || 'other'] = parseFloat(String(row.source_total ?? 0));
     }
     const authIncomeBreakdown: Record<string, number> = Object.keys(rpcIncomeBD).length > 0
       ? rpcIncomeBD
