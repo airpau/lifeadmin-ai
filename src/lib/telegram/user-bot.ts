@@ -1682,20 +1682,23 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const caption = ctx.message.caption?.trim() ?? '';
     console.log(`[UserBot] Received photo from chat_id=${chatId}, update_id=${updateId}, caption="${caption.slice(0, 80)}"`);
 
-    const [, sessionResult] = await Promise.all([
-      supabase.from('telegram_message_log').insert({
-        telegram_chat_id: chatId,
-        direction: 'inbound',
-        message_text: caption ? `[Photo] ${caption}` : '[Photo — no caption]',
-      }),
-      supabase.from('telegram_sessions')
-        .select('user_id, last_message_at')
-        .eq('telegram_chat_id', chatId)
-        .eq('is_active', true)
-        .single(),
-    ]);
+    // Resolve session first so user_id is available for the inbound log (rate limit counts by user_id)
+    const sessionResult = await supabase
+      .from('telegram_sessions')
+      .select('user_id, last_message_at')
+      .eq('telegram_chat_id', chatId)
+      .eq('is_active', true)
+      .single();
 
     const session = sessionResult.data;
+
+    // Insert inbound log with user_id so it counts toward the hourly rate limit
+    supabase.from('telegram_message_log').insert({
+      telegram_chat_id: chatId,
+      user_id: session?.user_id ?? null,
+      direction: 'inbound',
+      message_text: caption ? `[Photo] ${caption}` : '[Photo — no caption]',
+    }).then(() => {});
 
     if (!session) {
       return ctx.reply(
@@ -1769,25 +1772,36 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' =
         ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
 
-      // Use Claude Haiku vision to extract transaction details
+      // Use Claude Haiku vision to extract transaction details.
+      // Caption is passed as a separate content block to avoid prompt injection.
       const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const visionRes = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: base64Image },
-            },
-            {
-              type: 'text',
-              text: `The user has sent a bank screenshot with the message: "${caption}". Identify the transaction(s) they want to dispute — extract the merchant name, amount, and date if visible. Return JSON only with no other text: { "merchant": string, "amount": string, "date": string, "reason": string }`,
-            },
-          ],
-        }],
-      });
+      const VISION_TIMEOUT_MS = 25_000;
+      const visionRes = await Promise.race([
+        anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 500,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: mediaType, data: base64Image },
+              },
+              {
+                type: 'text',
+                text: 'Look at this bank screenshot. The user wants to raise a dispute. Identify the transaction(s) — extract the merchant name, amount, and date if visible. Return JSON only with no other text: { "merchant": string, "amount": string, "date": string, "reason": string }',
+              },
+              {
+                type: 'text',
+                text: `User message: ${caption}`,
+              },
+            ],
+          }],
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('VISION_TIMEOUT')), VISION_TIMEOUT_MS),
+        ),
+      ]);
 
       const rawText = visionRes.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -1852,10 +1866,13 @@ Return JSON: { "subject": "...", "body": "..." }`;
           `Track it at paybacker.co.uk/dashboard/disputes`,
         { parse_mode: 'Markdown', reply_markup: disputeKeyboard },
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('[UserBot] Photo dispute error:', err);
+      const isTimeout = err?.message === 'VISION_TIMEOUT';
       await ctx.reply(
-        'Sorry, I had trouble processing your screenshot. Please try again, or describe the transaction in a text message.',
+        isTimeout
+          ? "Sorry, I couldn't read your screenshot in time — please try again."
+          : 'Sorry, I had trouble processing your screenshot. Please try again, or describe the transaction in a text message.',
       ).catch(() => {});
     }
   });
