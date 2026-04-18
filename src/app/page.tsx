@@ -57,30 +57,6 @@ export default function Home() {
     </Link>
   );
 
-  const spotsRemaining = publicStats?.foundingSpots ?? null;
-  const spotsColour = spotsRemaining !== null && spotsRemaining < 200 ? 'text-red-400' : spotsRemaining !== null && spotsRemaining < 500 ? 'text-amber-400' : 'text-mint-400';
-
-  const foundingBanner = (
-    <div className="space-y-3 mb-6">
-      {trialActive && (
-        <div className="bg-gradient-to-r from-mint-400/10 to-mint-500/10 border border-mint-400/30 rounded-2xl px-6 py-4 text-center">
-          <p className="text-mint-400 font-bold text-lg mb-1">
-            Try Pro FREE for 14 days
-          </p>
-          <p className="text-slate-400 text-sm">
-            Unlimited complaint letters, bank scanning, spending intelligence, renewal alerts, and more. No card required.
-          </p>
-        </div>
-      )}
-      {spotsRemaining !== null && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-6 py-3 text-center">
-          <p className="text-amber-400 text-sm font-semibold">
-            <span className={`font-bold text-base ${spotsColour}`}>{spotsRemaining.toLocaleString()}</span> of 1,000 founding member spots remaining — price increases after first 1,000 members
-          </p>
-        </div>
-      )}
-    </div>
-  );
 
   const handlePreviewGenerate = async () => {
     if (!previewCategory) return;
@@ -130,13 +106,6 @@ export default function Home() {
       <div className="h-16" />
 
       <main>
-        {/* Founding member banner */}
-        <div className="container mx-auto px-4 md:px-6 pt-4">
-          <div className="max-w-4xl mx-auto">
-            {foundingBanner}
-          </div>
-        </div>
-
         {/* Hero Section */}
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-400/5 via-transparent to-transparent" />
