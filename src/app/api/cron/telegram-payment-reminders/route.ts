@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
   const userIds = sessions.map((s) => s.user_id);
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, timezone')
     .in('id', userIds);
 
   const proUserIds = new Set(
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
   );
 
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
-
+  const tzMap = new Map((profiles ?? []).map(p => [p.id, p.timezone ?? undefined]));
   if (proSessions.length === 0) {
     return NextResponse.json({ ok: true, message: 'No Pro sessions', sent: 0 });
   }
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
-      if (isQuietHours()) {
+      if (isQuietHours(tzMap.get(userId))) {
         console.log(`[telegram-payment-reminders] quiet hours: suppressed message to chat ${chatId}`);
         skipped++;
         continue;

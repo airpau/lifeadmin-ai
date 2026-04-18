@@ -2,7 +2,7 @@
  * Quiet hours guard for proactive Telegram messages.
  *
  * Returns true if the current wall-clock time in the given IANA timezone
- * falls within the do-not-disturb window (23:00–05:00 inclusive).
+ * falls within the do-not-disturb window (23:00–04:59).
  * Falls back to Europe/London when no timezone is supplied or the supplied
  * value is unrecognised.
  *

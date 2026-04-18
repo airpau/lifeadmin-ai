@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
   const userIds = sessions.map((s) => s.user_id);
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, timezone')
     .in('id', userIds);
 
   const proUserIds = new Set(
@@ -87,9 +88,14 @@ export async function GET(request: NextRequest) {
   );
 
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
-
+  const tzMap = new Map((profiles ?? []).map(p => [p.id, p.timezone ?? undefined]));
   for (const session of proSessions) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
+
+    if (isQuietHours(tzMap.get(userId))) {
+      console.log(`[telegram-alerts] quiet hours: suppressed alerts for user ${userId}`);
+      continue;
+    }
 
     // Check for existing active detected_issues to avoid duplicates
     const { data: existingIssues } = await supabase
