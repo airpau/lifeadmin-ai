@@ -361,7 +361,7 @@ async function callClaudeWithTools(
   }
 
   // Strip any UUID-fragment identifiers (e.g. #80975F71) that should never appear in user-facing messages
-  finalText = finalText.replace(/#[A-F0-9]{6,8}\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+  finalText = finalText.replace(/#[A-F0-9]{6,8}\b/g, '').replace(/\s{2,}/g, ' ').trim();
 
   return { text: finalText };
 }
