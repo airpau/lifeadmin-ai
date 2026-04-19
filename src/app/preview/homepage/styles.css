@@ -518,6 +518,43 @@
   font-weight: 600; font-size: 13px; cursor: pointer;
 }
 .m-v2-root .mini-form button:disabled { opacity: 0.7; cursor: progress; }
+.m-v2-root .mini-letter-out {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: rgba(52,211,153,0.08);
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-on-ink);
+  line-height: 1.5;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.m-v2-root .mini-letter-head {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-mint);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.m-v2-root .mini-letter-out p {
+  margin: 0 0 10px;
+  font-family: 'Georgia', serif;
+  color: var(--text-on-ink);
+  text-wrap: pretty;
+  white-space: pre-wrap;
+}
+.m-v2-root .mini-letter-cta {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent-mint);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.m-v2-root .mini-letter-cta:hover { text-decoration: underline; }
 .m-v2-root .bank-list { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
 .m-v2-root .bank-row {
   display: flex; justify-content: space-between; align-items: center;
