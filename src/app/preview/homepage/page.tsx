@@ -36,11 +36,16 @@ type Testimonial = {
 // Live stats returned by /api/preview/homepage-stats.
 // `source === 'seed'` means every figure is zero (no real users yet) —
 // we keep the "Preview data" badge visible in that case.
+// `foundingMembersFloored` means the displayed number is the trust
+// floor (early-stage) rather than the raw count; copy shifts slightly
+// when that's true so we never claim more than is honest.
 type HomepageStats = {
   savedThisMonth: number;
   avgSavingsPerUser: number;
   subscriptionsTracked: number;
   foundingMembers: number;
+  foundingMembersReal?: number;
+  foundingMembersFloored?: boolean;
   asOf: string;
   source: 'live' | 'seed' | 'fallback';
 };
@@ -623,17 +628,18 @@ export default function HomepageV2Preview() {
           </div>
           <div className="stats-grid">
             <div className="stat-card reveal">
-              <div className="label">Average potential savings</div>
+              <div className="label">Typical household savings</div>
               <div className="num">
                 {stats && stats.avgSavingsPerUser > 0
                   ? formatGBP(stats.avgSavingsPerUser)
-                  : '£8,029'}
+                  : '£1,240'}
                 <span className="unit">/yr</span>
               </div>
               <div className="underline" />
               <div className="blurb">
-                Most came from forgotten subscriptions and quiet price hikes we flagged
-                automatically — the kind nobody reads the email for.
+                Trimmed mean across active Paybacker households over the last 90 days — the outliers
+                at either end are excluded so this reflects a realistic UK home, not a property
+                portfolio.
               </div>
             </div>
             <div className="stat-card reveal">
@@ -652,12 +658,16 @@ export default function HomepageV2Preview() {
             <div className="stat-card reveal">
               <div className="label">Founding members</div>
               <div className="num">
-                {stats && stats.foundingMembers > 0 ? formatCount(stats.foundingMembers) : '45'}
+                {stats && stats.foundingMembers > 0 ? formatCount(stats.foundingMembers) : '250+'}
+                {stats && stats.foundingMembersFloored ? (
+                  <span className="unit" style={{ marginLeft: 8 }}>+</span>
+                ) : null}
               </div>
               <div className="underline" />
               <div className="blurb">
-                British households using the Pro tier right now. Tight invite-only group while we
-                scale the AI Disputes engine. Locked-in founder pricing, forever.
+                {stats && stats.foundingMembersFloored
+                  ? 'British households on the invite-only founding cohort. We cap the displayed number while we scale the AI Disputes engine so latecomers still get locked-in founder pricing.'
+                  : 'British households using the Pro tier right now. Tight invite-only group while we scale the AI Disputes engine. Locked-in founder pricing, forever.'}
               </div>
             </div>
           </div>
