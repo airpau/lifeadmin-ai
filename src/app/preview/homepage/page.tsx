@@ -135,6 +135,19 @@ export default function HomepageV2Preview() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Capture & persist referral code from URL — preserves the attribution
+  // behaviour the old homepage had. Signup flow reads pb_ref from
+  // localStorage and credits the referrer if the user converts.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      if (ref) window.localStorage.setItem('pb_ref', ref);
+    } catch {
+      // ignore — localStorage unavailable in some privacy modes
+    }
+  }, []);
+
   // Reveal-on-scroll for .reveal elements inside the page (not globally).
   useEffect(() => {
     const container = revealContainerRef.current;
