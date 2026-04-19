@@ -8,7 +8,7 @@ import {
   RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2,
   Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
   AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
-  Trophy, PoundSterling, TrendingUp, Scale, Trash2,
+  Trophy, PoundSterling, TrendingUp, Scale, Trash2, ArrowRight, Bell,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { capture } from '@/lib/posthog';
@@ -16,6 +16,7 @@ import UpgradeModal from '@/components/UpgradeModal';
 import { AI_LETTER_DISCLAIMER_HTML } from '@/lib/legal-disclaimer';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
+import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
 // Types
@@ -37,6 +38,8 @@ interface Dispute {
   message_count: number;
   last_activity: string;
   latest_snippet?: string | null;
+  unread_reply_count?: number;
+  last_reply_received_at?: string | null;
   correspondence?: Correspondence[];
   contract_extractions?: ContractExtraction[];
 }
@@ -84,6 +87,9 @@ interface Correspondence {
   estimated_success?: number;
   next_steps?: string[];
   escalation_path?: string;
+  detected_from_email?: boolean;
+  sender_address?: string | null;
+  email_thread_id?: string | null;
 }
 
 // ============================================================
@@ -1121,6 +1127,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       {/* Progress Tracker */}
       <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
 
+      {/* Watchdog — email reply sync */}
+      <WatchdogCard
+        disputeId={dispute.id}
+        providerName={dispute.provider_name}
+        onChanged={fetchDispute}
+      />
+
       {/* Provider Info Card */}
       {providerInfo && (
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
@@ -1259,12 +1272,44 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                       {entry.title && (
                         <span className="text-slate-500 text-sm">— {entry.title}</span>
                       )}
+                      {entry.detected_from_email && (
+                        <span className="text-[10px] bg-mint-400/15 text-mint-400 border border-mint-400/20 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide">
+                          Auto-imported
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-slate-600 text-xs flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {formatDate(entry.entry_date)}
                       </span>
+                      {entry.detected_from_email && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const target = prompt('Move this reply to a different dispute.\n\nPaste the dispute ID you want to move it to (you can copy it from the URL of the other dispute).');
+                            if (!target) return;
+                            fetch(`/api/disputes/${dispute.id}/correspondence/${entry.id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ move_to_dispute_id: target.trim() }),
+                            })
+                              .then(async (r) => {
+                                if (r.ok) {
+                                  fetchDispute();
+                                } else {
+                                  const err = await r.json().catch(() => ({}));
+                                  alert(err.error ?? 'Failed to move reply');
+                                }
+                              })
+                              .catch(() => alert('Failed to move reply'));
+                          }}
+                          className="text-slate-600 hover:text-mint-400 transition-colors p-0.5"
+                          title="Move to a different dispute"
+                        >
+                          <ArrowRight className="h-3 w-3" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2267,7 +2312,19 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-semibold mb-1 truncate">{d.provider_name}</h3>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="text-white font-semibold truncate">{d.provider_name}</h3>
+                      {(d.unread_reply_count ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-brand-400/15 text-brand-400 border border-brand-400/25 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-400"></span>
+                          </span>
+                          New reply
+                          {(d.unread_reply_count ?? 0) > 1 && ` · ${d.unread_reply_count}`}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-slate-400 text-sm truncate">{d.latest_snippet || d.issue_summary}</p>
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       <span className="text-slate-500 text-xs">{ISSUE_TYPE_LABELS[d.issue_type] || d.issue_type}</span>
