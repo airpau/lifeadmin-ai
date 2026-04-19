@@ -385,15 +385,19 @@
   display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
 .m-v2-root .trust-item .ring {
-  width: 28px; height: 28px; border-radius: 8px;
+  /* Export shipped a fixed 28×28 box which clipped 'GDPR'. Expand to
+     hug the label and keep a min square shape for single-char rings. */
+  min-width: 44px; height: 28px; padding: 0 10px; border-radius: 8px;
   border: 1.5px solid #D1D5DB;
-  display: grid; place-items: center;
+  display: inline-flex; align-items: center; justify-content: center;
   font-size: 12px; color: #9CA3AF; font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 /* Stats ----------------------------------------------------------- */
 .m-v2-root .stats-section { padding: 120px 0; }
 .m-v2-root .section-head { text-align: left; max-width: 720px; margin-bottom: 56px; }
+.m-v2-root .why-copy h2 { text-wrap: balance; }
 .m-v2-root .section-head h2 {
   font-size: var(--fs-h2);
   letter-spacing: var(--track-tight);
