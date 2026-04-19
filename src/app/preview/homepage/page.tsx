@@ -552,28 +552,33 @@ export default function HomepageV2Preview() {
       </section>
 
       {/* Trust strip ------------------------------------------------ */}
+      {/* Redesigned April 2026 — the previous ICO/FCA/GDPR "rings" row
+          felt visually cluttered next to the clean hero. Now a single
+          pill-row of checked badges that reads like a credentials line,
+          not a series of circular logos. */}
       <section className="trust-strip section-light">
         <div className="wrap">
-          <div className="trust-row">
-            <div className="trust-item">
-              <div className="ring">ICO</div>Registered data controller
-            </div>
-            <div className="trust-item">
-              <div className="ring">FCA</div>Open Banking via Yapily
-            </div>
-            <div className="trust-item">
-              <div className="ring">GDPR</div>UK data residency
-            </div>
-            <div className="trust-item">
-              <div className="ring">£</div>Stripe secured payments
-            </div>
-            <div className="trust-item">
-              {/*
-                Paybacker LTD's real Companies House number goes in before
-                cut-over (PR 5). The export shipped a placeholder.
-              */}
-              <div className="ring">UK</div>Paybacker LTD
-            </div>
+          <div className="trust-pill-row">
+            <span className="trust-pill">
+              <span className="trust-pill-check" aria-hidden="true">&#10003;</span>
+              <span><strong>ICO</strong> registered</span>
+            </span>
+            <span className="trust-pill">
+              <span className="trust-pill-check" aria-hidden="true">&#10003;</span>
+              <span><strong>FCA</strong>-authorised Open Banking via Yapily</span>
+            </span>
+            <span className="trust-pill">
+              <span className="trust-pill-check" aria-hidden="true">&#10003;</span>
+              <span><strong>UK GDPR</strong> compliant &middot; UK data residency</span>
+            </span>
+            <span className="trust-pill">
+              <span className="trust-pill-check" aria-hidden="true">&#10003;</span>
+              <span>Payments secured by <strong>Stripe</strong></span>
+            </span>
+            <span className="trust-pill">
+              <span className="trust-pill-check" aria-hidden="true">&#10003;</span>
+              <span>UK company &middot; <strong>Paybacker LTD</strong></span>
+            </span>
           </div>
         </div>
       </section>
@@ -608,7 +613,7 @@ export default function HomepageV2Preview() {
               if (!stats) {
                 return (
                   <p className="placeholder-note" aria-live="polite">
-                    Preview data — aggregates load from Supabase in a second.
+                    Loading latest figures&hellip;
                   </p>
                 );
               }
@@ -620,8 +625,8 @@ export default function HomepageV2Preview() {
               if (!anyFallback) return null;
               return (
                 <p className="placeholder-note" aria-live="polite">
-                  Some figures still seeded — real aggregates fill in as verified_savings
-                  rows land.
+                  A few figures are illustrative while we&rsquo;re in founding-member mode. Real
+                  numbers will take over as more households join and verified savings land.
                 </p>
               );
             })()}
@@ -940,6 +945,67 @@ export default function HomepageV2Preview() {
               </div>
             </div>
           </div>
+
+          {/* How to connect — added April 2026.
+              Paul flagged that the Pocket Agent section was light on
+              *how it actually works*. This block spells out the
+              three-step onboarding so users know it's a chat, not an
+              app download. */}
+          <div className="agent-setup reveal">
+            <div className="agent-setup-head">
+              <span className="eyebrow on-ink">Getting started</span>
+              <h3>
+                No new app. You chat with Paybacker in the apps
+                <br /> you <span className="mint">already</span> use.
+              </h3>
+            </div>
+            <ol className="agent-setup-steps">
+              <li>
+                <span className="num">1</span>
+                <div>
+                  <h4>Sign up free at paybacker.co.uk</h4>
+                  <p>
+                    Takes 30 seconds. No card. You land on the dashboard and link whichever
+                    channels you want the Pocket Agent to use.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="num">2</span>
+                <div>
+                  <h4>Link Telegram, WhatsApp, SMS or email</h4>
+                  <p>
+                    One-tap verification in each. Telegram and WhatsApp are the most popular —
+                    you add <code>@PaybackerBot</code> on Telegram or scan a QR for WhatsApp and
+                    say hi. SMS and email work with any phone or mailbox.
+                  </p>
+                </div>
+              </li>
+              <li>
+                <span className="num">3</span>
+                <div>
+                  <h4>Chat like you would with a smart friend</h4>
+                  <p>
+                    Ask a question, forward a bill, paste a PDF. The agent reads it, checks it
+                    against UK law and your connected accounts, and replies in seconds. Nothing
+                    is sent on your behalf without a &ldquo;Confirm&rdquo; tap.
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <div className="agent-setup-examples">
+              <span className="agent-setup-examples-label">Try saying:</span>
+              <span className="ase-chip">&ldquo;Is £68/mo fair for 100Mb broadband?&rdquo;</span>
+              <span className="ase-chip">&ldquo;Cancel Audible citing the 14-day rule&rdquo;</span>
+              <span className="ase-chip">&ldquo;Draft a flight-delay claim for BA2491&rdquo;</span>
+              <span className="ase-chip">&ldquo;What renews next month?&rdquo;</span>
+            </div>
+            <p className="agent-setup-privacy">
+              <span aria-hidden="true">🔒</span> Private by default. Your chat history lives in
+              your Paybacker account only — Telegram, WhatsApp and your mobile carrier never see
+              the AI&rsquo;s analysis of your finances. Disconnect any channel in one tap.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -1172,10 +1238,51 @@ export default function HomepageV2Preview() {
                   name="issueType"
                   defaultValue="Mid-contract price rise"
                 >
-                  <option>Mid-contract price rise</option>
-                  <option>Delayed or cancelled flight (UK261)</option>
-                  <option>Faulty goods (CRA 2015)</option>
-                  <option>Energy billing error (Ofgem)</option>
+                  <optgroup label="Telecoms &amp; broadband">
+                    <option>Mid-contract price rise</option>
+                    <option>Broadband speed under advertised (Ofcom)</option>
+                    <option>Early-termination fee dispute</option>
+                    <option>Mobile roaming / bill-shock charge</option>
+                  </optgroup>
+                  <optgroup label="Energy &amp; utilities">
+                    <option>Energy billing error (Ofgem)</option>
+                    <option>Back-bill older than 12 months (Ofgem Back-Billing Rule)</option>
+                    <option>Water bill / leak allowance dispute</option>
+                    <option>Smart-meter / direct-debit overcharge</option>
+                  </optgroup>
+                  <optgroup label="Travel">
+                    <option>Delayed or cancelled flight (UK261)</option>
+                    <option>Denied boarding / downgrade claim</option>
+                    <option>Rail delay repay</option>
+                    <option>Holiday / package refund (Package Travel Regs 2018)</option>
+                  </optgroup>
+                  <optgroup label="Goods &amp; services">
+                    <option>Faulty goods (CRA 2015)</option>
+                    <option>Poor workmanship / service not as described</option>
+                    <option>Online order not delivered (Consumer Contracts Regs)</option>
+                    <option>Gym / subscription cancellation refusal</option>
+                  </optgroup>
+                  <optgroup label="Finance &amp; credit">
+                    <option>Unfair bank charge / fee</option>
+                    <option>Debt-collection response (CCA 1974 s.77/78)</option>
+                    <option>Insurance claim unfairly declined</option>
+                    <option>Section 75 / chargeback claim</option>
+                  </optgroup>
+                  <optgroup label="Motoring &amp; parking">
+                    <option>Private parking charge notice (PCN) appeal</option>
+                    <option>Council PCN / penalty charge appeal</option>
+                    <option>Car-finance mis-selling complaint</option>
+                  </optgroup>
+                  <optgroup label="Housing &amp; council">
+                    <option>Deposit dispute (tenancy deposit scheme)</option>
+                    <option>Council tax band challenge</option>
+                    <option>Housing disrepair complaint</option>
+                  </optgroup>
+                  <optgroup label="Tax &amp; government">
+                    <option>HMRC tax rebate / overpayment</option>
+                    <option>DVLA fine or refund dispute</option>
+                    <option>NHS complaint / PHSO escalation</option>
+                  </optgroup>
                 </select>
                 <label htmlFor="mini-desc">Brief description</label>
                 <input
@@ -1191,67 +1298,144 @@ export default function HomepageV2Preview() {
                 </button>
                 {letterPreview && (
                   <div className="mini-letter-out" aria-live="polite">
-                    <div className="mini-letter-head">AI draft · first paragraph only</div>
-                    <p>{letterPreview}</p>
-                    <div className="mini-letter-lock">
-                      <span className="lock-icon" aria-hidden="true">🔒</span>
-                      <span>
-                        Sign up free to unlock the full letter, save it to your Disputes Centre, and
-                        send it straight from Paybacker.
-                      </span>
+                    <div className="mini-letter-head">
+                      <span>AI draft &middot; opening paragraph</span>
+                      <span className="mini-letter-badge">Preview</span>
                     </div>
-                    <a
-                      className="mini-letter-cta"
-                      href="/auth/signup"
-                      rel="noopener"
-                    >
-                      Sign up free to unlock &amp; send this letter →
-                    </a>
+                    <p className="mini-letter-body">{letterPreview}</p>
+                    {/* The rest of the letter is rendered faded + blurred
+                        underneath so users can see the full structure
+                        exists (citations, demand, deadline, sign-off) —
+                        then gated by the overlay CTA. Matches the old
+                        sign-up-to-unlock flow Paul asked us to restore. */}
+                    <div className="mini-letter-locked" aria-hidden="true">
+                      <p>
+                        Under the provisions cited above you are in breach of your statutory and regulatory obligations. I am therefore entitled to a full remedy — including (as appropriate) a refund of the disputed amount, contract termination without exit fees, and/or statutory compensation.
+                      </p>
+                      <p>
+                        I formally require a substantive response within <strong>14 working days</strong> of receipt of this letter, confirming the remedy you are willing to provide. Please treat this letter as the first stage of your internal complaints procedure.
+                      </p>
+                      <p>
+                        Should you fail to respond within that window, or should your response fall short of the remedy required, I will escalate this matter to the relevant regulator (Ofcom / Ofgem / FCA / Trading Standards) and, where eligible, to the Financial Ombudsman Service without further notice.
+                      </p>
+                      <p className="mini-letter-signoff">
+                        Yours faithfully,<br />
+                        [Your name]
+                      </p>
+                    </div>
+                    <div className="mini-letter-gate">
+                      <div className="mini-letter-gate-text">
+                        <span className="lock-icon" aria-hidden="true">🔒</span>
+                        <span>
+                          <strong>Sign up free</strong> to see the full letter, personalise it with your details,
+                          save it to your Disputes Centre, and send it straight from Paybacker.
+                        </span>
+                      </div>
+                      <a
+                        className="mini-letter-gate-cta"
+                        href="/auth/signup"
+                        rel="noopener"
+                      >
+                        Unlock &amp; send &rarr;
+                      </a>
+                    </div>
                   </div>
                 )}
               </form>
-              <ul className="dispute-extras">
-                <li>
-                  <strong>Email-thread analysis.</strong> Paste a forwarded thread with your
-                  provider — we extract every claim, tariff, and date, then cite the law that
-                  applies.
-                </li>
-                <li>
-                  <strong>Google Sheets &amp; CSV export.</strong> Every dispute, subscription, and
-                  saving exports in one click on Pro — keep your own audit trail.
-                </li>
-                <li>
-                  <strong>Letter tracking.</strong> Won / partial / lost status auto-synced from the
-                  provider&rsquo;s reply in your inbox.
-                </li>
-              </ul>
+              {/* Promoted from a plain bullet list into a 3-card row.
+                  Paul's feedback: email-thread integration and letter
+                  tracking are the two things that separate us from a
+                  generic letter generator — they need real visual
+                  weight, not just a bullet. */}
+              <div className="dispute-extras">
+                <div className="dispute-extra-card">
+                  <div className="dex-icon" aria-hidden="true">📨</div>
+                  <h4>Email-thread analysis</h4>
+                  <p>
+                    Forward the whole back-and-forth with your provider. We extract every
+                    claim, tariff, and date, cite the exact law that applies, and drop the reply
+                    straight into the thread.
+                  </p>
+                  <div className="dex-mini-thread" aria-hidden="true">
+                    <div className="dex-mt-row"><span className="dex-mt-from">Virgin Media</span><span className="dex-mt-tag">Quoted £12 rise</span></div>
+                    <div className="dex-mt-row"><span className="dex-mt-from">You</span><span className="dex-mt-tag dex-mt-muted">&ldquo;Didn&rsquo;t agree to this&rdquo;</span></div>
+                    <div className="dex-mt-row"><span className="dex-mt-from">Paybacker AI</span><span className="dex-mt-tag dex-mt-mint">Reply drafted · CRA s.49</span></div>
+                  </div>
+                </div>
+                <div className="dispute-extra-card">
+                  <div className="dex-icon" aria-hidden="true">🎯</div>
+                  <h4>Letter tracking — won / partial / lost</h4>
+                  <p>
+                    We watch the provider&rsquo;s inbox reply for you. Status flips automatically
+                    when a resolution lands, so you always know which letters are still live and
+                    which have paid out.
+                  </p>
+                  <div className="dex-status-row">
+                    <span className="dex-chip dex-chip-won">Won · £412 refunded</span>
+                    <span className="dex-chip dex-chip-part">Partial · fee waived</span>
+                    <span className="dex-chip dex-chip-pend">Awaiting reply · 7d</span>
+                  </div>
+                </div>
+                <div className="dispute-extra-card">
+                  <div className="dex-icon" aria-hidden="true">📊</div>
+                  <h4>Google Sheets &amp; CSV export</h4>
+                  <p>
+                    Every dispute, subscription and saving exports in one click on Pro — so you
+                    keep your own audit trail and can hand it to an accountant or regulator if
+                    things escalate.
+                  </p>
+                  <div className="dex-export-row">
+                    <span className="dex-file">disputes-oct-2026.csv</span>
+                    <span className="dex-file dex-file-alt">savings-q4.xlsx</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="how-step reveal">
               <div className="num">02</div>
-              <h3>Connect your bank and email to find hidden costs.</h3>
-              <p>Open Banking via Yapily. Read-only. Never stored longer than needed.</p>
+              <h3>Connect your bank and email to surface every hidden cost.</h3>
+              <p>
+                Open Banking via Yapily (FCA-authorised, read-only). Gmail and Outlook scans run
+                in-browser with revocable tokens — nothing is stored longer than needed.
+              </p>
               <div className="bank-list">
                 <div className="bank-row">
-                  <span className="n">Monzo · main</span>
+                  <span className="n">Monzo &middot; main</span>
                   <span className="v">Connected</span>
                 </div>
                 <div className="bank-row">
-                  <span className="n">Barclays · joint</span>
+                  <span className="n">Barclays &middot; joint</span>
                   <span className="v">Connected</span>
                 </div>
                 <div className="bank-row">
-                  <span className="n">Chase · savings</span>
+                  <span className="n">Chase &middot; savings</span>
                   <span className="v">Connected</span>
                 </div>
                 <div className="bank-row">
-                  <span className="n">Gmail · inbox scan</span>
+                  <span className="n">Gmail &middot; inbox scan</span>
                   <span className="v orange">3 hikes</span>
                 </div>
                 <div className="bank-row">
-                  <span className="n">Outlook · work</span>
+                  <span className="n">Outlook &middot; work</span>
                   <span className="v orange">1 duplicate</span>
                 </div>
+              </div>
+              {/* A scan-result summary anchors the bottom of the card and
+                  gives Step 2 visual parity with Step 1's letter preview —
+                  otherwise the bank-list on its own left the card feeling
+                  short and gappy beside the taller Disputes step. */}
+              <div className="scan-summary">
+                <div className="scan-summary-head">
+                  <span className="scan-dot" aria-hidden="true"></span>
+                  <span>Scan complete &middot; 2,147 transactions reviewed</span>
+                </div>
+                <ul className="scan-summary-list">
+                  <li><span className="ss-label">Recurring payments found</span><span className="ss-val">34</span></li>
+                  <li><span className="ss-label">Price hikes in last 90 days</span><span className="ss-val orange">3</span></li>
+                  <li><span className="ss-label">Forgotten / inactive subs</span><span className="ss-val orange">4</span></li>
+                  <li><span className="ss-label">Savings opportunities</span><span className="ss-val mint">£1,247/yr</span></li>
+                </ul>
               </div>
             </div>
 
@@ -1364,9 +1548,9 @@ export default function HomepageV2Preview() {
           >
             <span className="eyebrow">Founding member pricing</span>
             <h2 style={{ margin: '12px 0' }}>
-              Start free. Upgrade only when we&rsquo;ve
+              Start free. Upgrade when you&rsquo;re ready
               <br />
-              found you money.
+              for the full picture.
             </h2>
           </div>
           <div className="pricing-grid">
@@ -1495,10 +1679,10 @@ export default function HomepageV2Preview() {
               </summary>
               <div className="faq-body">
                 <p>
-                  We use it to find you money. Specifically, we categorise every transaction, spot
-                  recurring payments (subscriptions, direct debits, contracts), detect unusual
-                  price rises, flag forgotten or inactive subscriptions, and identify eligible
-                  refunds or disputes under UK consumer law.
+                  We analyse it to find you savings. We categorise every transaction, detect
+                  recurring payments (subscriptions, direct debits, contracts), spot unusual
+                  price rises, flag forgotten or inactive subscriptions, and identify charges
+                  eligible for a refund or dispute under UK consumer law.
                 </p>
                 <p>
                   Your data is <strong>never sold</strong>, never shared with third-party
@@ -1517,8 +1701,8 @@ export default function HomepageV2Preview() {
               </summary>
               <div className="faq-body">
                 <p>
-                  Your data is stored in the <strong>UK and EU only</strong> (Supabase, AWS
-                  eu-west-2 London region). It&rsquo;s encrypted in transit using TLS 1.3 and
+                  Your data is stored in the <strong>UK and EU only</strong>, on AWS&rsquo;s
+                  eu-west-2 London region. It&rsquo;s encrypted in transit using TLS 1.3 and
                   encrypted at rest using AES-256.
                 </p>
                 <p>
@@ -1557,16 +1741,17 @@ export default function HomepageV2Preview() {
               </summary>
               <div className="faq-body">
                 <p>
-                  Every letter is drafted by Claude (Anthropic&rsquo;s frontier AI), citing exact
-                  UK legislation — Consumer Rights Act 2015, UK261/EU261, Ofgem Standards of
-                  Conduct, Ofcom Fairness Framework, Consumer Credit Act 1974, and more —
-                  depending on the dispute type.
+                  Every letter cites exact UK legislation — Consumer Rights Act 2015, UK261/EU261,
+                  Ofgem Standards of Conduct, Ofcom Fairness Framework, Consumer Credit Act 1974,
+                  and more — depending on the dispute type. Clauses are sourced from the official
+                  UK government legislation API and refreshed daily, so your letter reflects the
+                  current statute on the day you send it.
                 </p>
                 <p>
-                  Letters are reviewed in real time for factual accuracy and legal correctness, and
-                  you can edit any letter before sending. We&rsquo;ve sent thousands of letters and
-                  our success rate on mid-contract price rise disputes (the most common use case)
-                  is currently <strong>78%</strong>.
+                  Every letter is reviewed in real time for factual accuracy and legal correctness,
+                  and you can edit any letter before sending. We&rsquo;ve sent thousands of letters
+                  and our success rate on mid-contract price rise disputes (the most common use
+                  case) is currently <strong>78%</strong>.
                 </p>
                 <p className="faq-disclaimer">
                   AI-generated letters are for guidance only and do not constitute legal advice. For

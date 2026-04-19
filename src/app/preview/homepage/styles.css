@@ -442,29 +442,54 @@
 .m-v2-root .agent-bubble .msg strong { color: var(--accent-orange-deep); }
 
 /* Trust strip ----------------------------------------------------- */
-.m-v2-root .trust-strip { padding: 48px 0; border-top: 1px solid var(--divider); border-bottom: 1px solid var(--divider); }
-.m-v2-root .trust-row {
-  display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: 24px; align-items: center;
+/* Redesigned April 2026 — single pill-row of checked credentials.
+   Wraps cleanly on mobile; reads as a credentials line rather than a
+   row of circular logos, which Paul flagged as feeling messy. */
+.m-v2-root .trust-strip {
+  padding: 36px 0;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
 }
-.m-v2-root .trust-item {
-  text-align: center;
-  color: #9CA3AF;
-  font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+.m-v2-root .trust-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 12px;
+}
+.m-v2-root .trust-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--divider);
+  background: #FFFFFF;
+  color: var(--text-secondary);
   font-size: 13px;
-  letter-spacing: 0.04em;
-  font-weight: 500;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  line-height: 1.2;
 }
-.m-v2-root .trust-item .ring {
-  /* Export shipped a fixed 28×28 box which clipped 'GDPR'. Expand to
-     hug the label and keep a min square shape for single-char rings. */
-  min-width: 44px; height: 28px; padding: 0 10px; border-radius: 8px;
-  border: 1.5px solid #D1D5DB;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 12px; color: #9CA3AF; font-weight: 700;
-  letter-spacing: 0.04em;
+.m-v2-root .trust-pill strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
+.m-v2-root .trust-pill-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent-mint);
+  color: #0D1828;
+  font-size: 11px;
+  font-weight: 900;
+  flex: 0 0 auto;
+}
+
+/* Legacy selectors retained as no-ops — if any consumer/test still
+   references .trust-row/.trust-item/.ring they won't explode. Safe to
+   remove on the next cleanup pass. */
+.m-v2-root .trust-row { display: none; }
 
 /* Stats ----------------------------------------------------------- */
 .m-v2-root .stats-section { padding: 120px 0; }
@@ -564,7 +589,12 @@
 .m-v2-root .how-section .eyebrow { color: var(--accent-mint); }
 .m-v2-root .how-section h2 { color: var(--text-on-ink); font-size: var(--fs-h2); font-weight: 700; letter-spacing: var(--track-tight); line-height: 1.05; margin: 12px 0 18px; }
 .m-v2-root .how-section .sub { color: var(--text-on-ink-dim); font-size: 19px; max-width: 620px; }
-.m-v2-root .how-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 64px; }
+/* Grid `align-items: start` prevents the short Steps 02/03 cards from
+   stretching vertically to match Step 01 (which is much taller once the
+   live demo expands and shows the letter preview + 3-card dispute-extras
+   grid). Without this, Steps 02/03 had a huge empty gap below their
+   content because the grid row was forcing them to the same height. */
+.m-v2-root .how-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 64px; align-items: start; }
 .m-v2-root .how-step {
   background: var(--surface-ink-2);
   border: 1px solid var(--divider-ink);
@@ -594,54 +624,112 @@
   font-weight: 600; font-size: 13px; cursor: pointer;
 }
 .m-v2-root .mini-form button:disabled { opacity: 0.7; cursor: progress; }
+/* Dispute-letter preview ----------------------------------------- */
+/* Shows the AI-drafted opening paragraph clearly, then below it a
+   blurred/faded continuation representing the rest of the letter —
+   citations, demand paragraph, regulator escalation, sign-off — so
+   the user can see the full structure exists. The gate overlay at
+   the bottom of the locked block carries the sign-up CTA.
+   Restores the "see the shape of the completed letter, sign up to
+   unlock" UX Paul asked us to bring back. */
 .m-v2-root .mini-letter-out {
+  position: relative;
   margin-top: 14px;
-  padding: 12px 14px;
-  background: rgba(52,211,153,0.08);
-  border: 1px solid rgba(52,211,153,0.25);
-  border-radius: 10px;
+  padding: 14px 16px 0;
+  background: rgba(52,211,153,0.06);
+  border: 1px solid rgba(52,211,153,0.22);
+  border-radius: 12px;
   font-size: 12.5px;
   color: var(--text-on-ink);
   line-height: 1.5;
-  max-height: 220px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 .m-v2-root .mini-letter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent-mint);
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
-.m-v2-root .mini-letter-out p {
-  margin: 0 0 10px;
+.m-v2-root .mini-letter-badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(52,211,153,0.15);
+  border: 1px solid rgba(52,211,153,0.3);
+  letter-spacing: 0.08em;
+  font-size: 9px;
+  color: var(--accent-mint);
+}
+.m-v2-root .mini-letter-body {
+  margin: 0 0 12px;
   font-family: 'Georgia', serif;
   color: var(--text-on-ink);
   text-wrap: pretty;
   white-space: pre-wrap;
 }
-.m-v2-root .mini-letter-cta {
-  display: inline-block;
-  margin-top: 4px;
-  color: var(--accent-mint);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-  letter-spacing: 0.02em;
+.m-v2-root .mini-letter-locked {
+  position: relative;
+  margin: 0 -16px;
+  padding: 0 16px 120px;
+  font-family: 'Georgia', serif;
+  color: var(--text-on-ink-dim);
+  filter: blur(3.5px);
+  opacity: 0.55;
+  user-select: none;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 95%);
+          mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 95%);
 }
-.m-v2-root .mini-letter-cta:hover { text-decoration: underline; }
-.m-v2-root .mini-letter-lock {
-  display: flex; gap: 10px; align-items: flex-start;
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: rgba(245,158,11,0.12);
-  border: 1px solid rgba(245,158,11,0.25);
-  border-radius: 10px;
+.m-v2-root .mini-letter-locked p {
+  margin: 0 0 10px;
+  text-wrap: pretty;
+}
+.m-v2-root .mini-letter-locked .mini-letter-signoff { margin-top: 14px; }
+.m-v2-root .mini-letter-gate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 16px 16px;
+  background: linear-gradient(180deg, rgba(13,24,40,0) 0%, rgba(13,24,40,0.92) 45%, rgba(13,24,40,0.98) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+.m-v2-root .mini-letter-gate-text {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
   color: #FDE68A;
-  font-size: 12px; line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.45;
 }
-.m-v2-root .mini-letter-lock .lock-icon { flex: 0 0 auto; font-size: 14px; }
+.m-v2-root .mini-letter-gate-text strong { color: #FEF3C7; font-weight: 700; }
+.m-v2-root .mini-letter-gate-text .lock-icon { flex: 0 0 auto; font-size: 14px; line-height: 1.3; }
+.m-v2-root .mini-letter-gate-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 18px;
+  border-radius: 10px;
+  background: var(--accent-mint);
+  color: #0D1828;
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+.m-v2-root .mini-letter-gate-cta:hover {
+  background: #6EE7B7;
+  transform: translateY(-1px);
+}
 
 /* Disputes-step highlight — pulls visual weight onto step 01 */
 .m-v2-root .how-step.highlight-step {
@@ -658,27 +746,104 @@
   letter-spacing: 0.1em; text-transform: uppercase;
   border-radius: 999px;
 }
+/* Dispute extras — promoted from bullet list to 3-card row (Apr 2026)
+   so the email-thread + tracking + export capabilities read as
+   first-class features, not footnotes. */
 .m-v2-root .how-step .dispute-extras {
-  list-style: none; padding: 0; margin: 14px 0 0;
-  display: flex; flex-direction: column; gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 18px 0 0;
 }
-.m-v2-root .how-step .dispute-extras li {
-  font-size: 12px; line-height: 1.5;
-  color: var(--text-on-ink-dim);
-  padding-left: 20px;
-  position: relative;
+.m-v2-root .dispute-extra-card {
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--divider-ink);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.m-v2-root .how-step .dispute-extras li::before {
-  content: '✓';
-  position: absolute; left: 0; top: 0;
-  color: var(--accent-mint);
-  font-weight: 700;
+.m-v2-root .dispute-extra-card .dex-icon {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: rgba(52,211,153,0.12);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 17px;
 }
-.m-v2-root .how-step .dispute-extras strong {
+.m-v2-root .dispute-extra-card h4 {
   color: var(--text-on-ink);
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.005em;
 }
-.m-v2-root .bank-list { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+.m-v2-root .dispute-extra-card p {
+  color: var(--text-on-ink-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0;
+  text-wrap: pretty;
+}
+.m-v2-root .dex-mini-thread {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.m-v2-root .dex-mt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--divider-ink);
+  border-radius: 8px;
+  font-size: 11.5px;
+}
+.m-v2-root .dex-mt-from { color: var(--text-on-ink); font-weight: 600; }
+.m-v2-root .dex-mt-tag { color: var(--text-on-ink-dim); }
+.m-v2-root .dex-mt-muted { color: var(--text-on-ink-dim); font-style: italic; }
+.m-v2-root .dex-mt-mint { color: var(--accent-mint); font-weight: 600; }
+.m-v2-root .dex-status-row {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.m-v2-root .dex-chip {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.m-v2-root .dex-chip-won { color: var(--accent-mint); border-color: rgba(52,211,153,0.35); background: rgba(52,211,153,0.1); }
+.m-v2-root .dex-chip-part { color: #FDE68A; border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.1); }
+.m-v2-root .dex-chip-pend { color: #93C5FD; border-color: rgba(96,165,250,0.35); background: rgba(96,165,250,0.1); }
+.m-v2-root .dex-export-row {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.m-v2-root .dex-file {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--divider-ink);
+  color: var(--text-on-ink-dim);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+}
+.m-v2-root .dex-file-alt { color: var(--accent-mint); }
+/* Bank-list sits between the intro paragraph and the scan-summary
+   panel. margin-top: auto was previously pushing it to the bottom of a
+   stretched card; now that the how-steps grid uses align-items: start,
+   cards size to content and the auto-margin is unnecessary. */
+.m-v2-root .bank-list { display: flex; flex-direction: column; gap: 8px; }
 .m-v2-root .bank-row {
   display: flex; justify-content: space-between; align-items: center;
   background: rgba(255,255,255,0.04); border: 1px solid var(--divider-ink);
@@ -687,6 +852,40 @@
 .m-v2-root .bank-row .n { color: var(--text-on-ink); }
 .m-v2-root .bank-row .v { color: var(--accent-mint); font-weight: 600; }
 .m-v2-root .bank-row .v.orange { color: var(--accent-orange); }
+
+/* Scan-summary panel — anchors the bottom of Step 02 so it reads as
+   "here's what a scan actually finds" rather than just a list of
+   connected banks. */
+.m-v2-root .scan-summary {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(52,211,153,0.08) 0%, rgba(52,211,153,0) 100%);
+  border: 1px solid rgba(52,211,153,0.28);
+  border-radius: 14px;
+}
+.m-v2-root .scan-summary-head {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 600;
+  color: var(--text-on-ink);
+  margin-bottom: 10px;
+}
+.m-v2-root .scan-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: var(--accent-mint);
+  box-shadow: 0 0 0 3px rgba(52,211,153,0.25);
+}
+.m-v2-root .scan-summary-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.m-v2-root .scan-summary-list li {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px;
+  color: var(--text-on-ink-dim);
+}
+.m-v2-root .ss-val { color: var(--text-on-ink); font-weight: 700; }
+.m-v2-root .ss-val.orange { color: var(--accent-orange); }
+.m-v2-root .ss-val.mint { color: var(--accent-mint); }
 .m-v2-root .deal-row {
   display: flex; justify-content: space-between; align-items: center;
   background: rgba(255,255,255,0.04); border: 1px solid var(--divider-ink);
@@ -1118,6 +1317,110 @@
   text-wrap: pretty;
 }
 
+/* Pocket Agent — how to connect (new April 2026) ---------------- */
+.m-v2-root .agent-setup {
+  margin-top: 64px;
+  padding: 40px 36px;
+  background: linear-gradient(180deg, rgba(52,211,153,0.08) 0%, rgba(13,24,40,0) 60%), var(--surface-ink-2);
+  border: 1px solid var(--divider-ink);
+  border-radius: 28px;
+}
+.m-v2-root .agent-setup-head { max-width: 640px; margin-bottom: 28px; }
+.m-v2-root .agent-setup-head h3 {
+  color: var(--text-on-ink);
+  font-size: 28px;
+  line-height: 1.15;
+  margin: 10px 0 0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.m-v2-root .agent-setup-head .mint { color: var(--accent-mint); }
+.m-v2-root .agent-setup-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  counter-reset: setup;
+}
+.m-v2-root .agent-setup-steps li {
+  display: flex;
+  gap: 16px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--divider-ink);
+  border-radius: 18px;
+  padding: 22px;
+}
+.m-v2-root .agent-setup-steps li .num {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: rgba(52,211,153,0.14);
+  color: var(--accent-mint);
+  font-weight: 800;
+  font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.m-v2-root .agent-setup-steps h4 {
+  color: var(--text-on-ink);
+  font-size: 15px;
+  font-weight: 700;
+  margin: 4px 0 6px;
+  letter-spacing: -0.005em;
+}
+.m-v2-root .agent-setup-steps p {
+  color: var(--text-on-ink-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  text-wrap: pretty;
+}
+.m-v2-root .agent-setup-steps code {
+  background: rgba(52,211,153,0.12);
+  color: var(--accent-mint);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.m-v2-root .agent-setup-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+.m-v2-root .agent-setup-examples-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-mint);
+  font-weight: 700;
+  margin-right: 4px;
+}
+.m-v2-root .ase-chip {
+  display: inline-block;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--divider-ink);
+  color: var(--text-on-ink-dim);
+  font-size: 12.5px;
+  font-style: italic;
+  font-family: 'Georgia', serif;
+}
+.m-v2-root .agent-setup-privacy {
+  margin-top: 22px;
+  padding: 14px 16px;
+  background: rgba(52,211,153,0.06);
+  border: 1px solid rgba(52,211,153,0.2);
+  border-radius: 12px;
+  color: var(--text-on-ink-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 /* AI Financial Assistant (light) ---------------------------------- */
 .m-v2-root .assistant-section { padding: 120px 0; }
 .m-v2-root .assistant-grid {
@@ -1494,7 +1797,7 @@
   .m-v2-root .how-steps,
   .m-v2-root .category-grid,
   .m-v2-root .pricing-grid { grid-template-columns: 1fr; }
-  .m-v2-root .trust-row { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .m-v2-root .trust-pill { font-size: 12px; padding: 7px 12px; }
   .m-v2-root .footer-grid { grid-template-columns: 1fr 1fr; }
   .m-v2-root .nav-links { display: none; }
   .m-v2-root .nav-toggle { display: inline-flex; }
@@ -1507,6 +1810,14 @@
   .m-v2-root .assistant-grid,
   .m-v2-root .subs-grid { grid-template-columns: 1fr; gap: 48px; }
   .m-v2-root .agent-features { grid-template-columns: 1fr; }
+  .m-v2-root .agent-setup { padding: 28px 20px; margin-top: 48px; border-radius: 22px; }
+  .m-v2-root .agent-setup-head h3 { font-size: 24px; }
+  .m-v2-root .agent-setup-steps { grid-template-columns: 1fr; gap: 12px; }
+  /* Dispute-extras 3-card grid collapses to a single column on tablet and
+     below — keeps the email-thread mini-preview, won/partial/pending chip
+     row, and file-chip export row legible on iPhone without horizontal
+     cramping. */
+  .m-v2-root .how-step .dispute-extras { grid-template-columns: 1fr; gap: 10px; }
   .m-v2-root .why-stats { grid-template-columns: 1fr 1fr; }
   /* Hero copy eases in on tablet/mobile */
   .m-v2-root .hero h1 { font-size: clamp(40px, 7.5vw, 72px); line-height: 1.02; }
