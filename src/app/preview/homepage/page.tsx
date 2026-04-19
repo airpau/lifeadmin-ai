@@ -240,29 +240,26 @@ export default function HomepageV2Preview() {
 
   return (
     <div className="m-v2-root" ref={revealContainerRef}>
-      <div className="preview-badge" aria-label="Preview page">
-        Preview · Homepage v2
-      </div>
 
       {/* Floating pill nav ------------------------------------------ */}
       <div className={`nav-shell${navScrolled ? ' scrolled' : ''}`} id="navShell">
         <nav className="nav-pill" aria-label="Primary">
-          <a className="nav-logo" href="#">
+          <a className="nav-logo" href="/">
             <span className="pay">Pay</span>
             <span className="backer">backer</span>
           </a>
           <div className="nav-links">
-            <a href="#how">About</a>
+            <a href="/about">About</a>
             <a href="#pricing">Pricing</a>
             <a href="#deals">Deals</a>
-            <a href="#">Blog</a>
-            <a href="#">FAQ</a>
+            <a href="/blog">Blog</a>
+            <a href="#faq">FAQ</a>
           </div>
           <div className="nav-cta-row">
-            <a className="nav-signin" href="#">
+            <a className="nav-signin" href="/auth/login">
               Sign in
             </a>
-            <a className="nav-start" href="#">
+            <a className="nav-start" href="/auth/signup">
               Start Free
             </a>
           </div>
@@ -295,7 +292,7 @@ export default function HomepageV2Preview() {
                 seconds.
               </p>
               <div className="hero-cta-row">
-                <a className="btn btn-mint" href="#">
+                <a className="btn btn-mint" href="/auth/signup">
                   Start free 14-day Pro trial →
                 </a>
                 <a className="btn btn-ghost" href="#how">
@@ -1199,7 +1196,7 @@ export default function HomepageV2Preview() {
           </div>
 
           <div className="how-cta-row">
-            <a className="btn btn-mint" href="#">
+            <a className="btn btn-mint" href="#try-letter">
               Try it free — no account needed
             </a>
           </div>
@@ -1294,7 +1291,7 @@ export default function HomepageV2Preview() {
                 <li>Manual subscription tracker</li>
                 <li>Public deals marketplace</li>
               </ul>
-              <a className="btn btn-ghost cta" href="#" style={{ justifyContent: 'center' }}>
+              <a className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
               </a>
             </div>
@@ -1312,7 +1309,7 @@ export default function HomepageV2Preview() {
                 <li>Email inbox scan</li>
                 <li>Pocket Agent in Telegram</li>
               </ul>
-              <a className="btn btn-mint cta" href="#" style={{ justifyContent: 'center' }}>
+              <a className="btn btn-mint cta" href="/auth/signup?plan=essential" style={{ justifyContent: 'center' }}>
                 Start 14-day trial →
               </a>
             </div>
@@ -1329,13 +1326,13 @@ export default function HomepageV2Preview() {
                 <li>Deal alerts on bill changes</li>
                 <li>Priority human review on complex disputes</li>
               </ul>
-              <a className="btn btn-ghost cta" href="#" style={{ justifyContent: 'center' }}>
+              <a className="btn btn-ghost cta" href="/auth/signup?plan=pro" style={{ justifyContent: 'center' }}>
                 Go Pro →
               </a>
             </div>
           </div>
           <p className="compare-link">
-            <a href="#">See the full feature comparison →</a>
+            <a href="/pricing">See the full feature comparison →</a>
           </p>
         </div>
       </section>
@@ -1654,7 +1651,7 @@ export default function HomepageV2Preview() {
             cancel it — in minutes.
           </p>
           <div className="fc-btn-row reveal">
-            <a className="btn btn-mint" href="#">
+            <a className="btn btn-mint" href="/auth/signup">
               Start your free 14-day Pro trial →
             </a>
           </div>
@@ -1689,48 +1686,48 @@ export default function HomepageV2Preview() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#">Disputes Centre</a>
-              <a href="#">Money Hub</a>
-              <a href="#">Pocket Agent</a>
-              <a href="#">Deals</a>
-              <a href="#">Pricing</a>
+              <a href="/complaints">Disputes Centre</a>
+              <a href="/dashboard">Money Hub</a>
+              <a href="/#pocket-agent">Pocket Agent</a>
+              <a href="/deals">Deals</a>
+              <a href="/pricing">Pricing</a>
             </div>
             <div className="footer-col">
               <h5>Company</h5>
-              <a href="#">About</a>
-              <a href="#">Blog</a>
-              <a href="#">Press</a>
-              <a href="#">Careers</a>
-              <a href="#">Contact</a>
+              <a href="/about">About</a>
+              <a href="/blog">Blog</a>
+              <a href="mailto:press@paybacker.co.uk">Press</a>
+              <a href="/careers">Careers</a>
+              <a href="mailto:hello@paybacker.co.uk">Contact</a>
             </div>
             <div className="footer-col">
               <h5>Legal</h5>
-              <a href="#">Privacy</a>
-              <a href="#">Terms</a>
-              <a href="#">Cookies</a>
-              <a href="#">ICO notice</a>
-              <a href="#">Complaints</a>
+              <a href="/privacy-policy">Privacy</a>
+              <a href="/terms-of-service">Terms</a>
+              <a href="/cookie-policy">Cookies</a>
+              <a href="/privacy-policy#ico">ICO notice</a>
+              <a href="mailto:complaints@paybacker.co.uk">Complaints</a>
             </div>
             <div className="footer-col">
               <h5>Connect</h5>
               <div className="footer-socials" style={{ marginBottom: '14px' }}>
-                <a href="#" aria-label="X">
+                <a href="https://x.com/PaybackerUK" target="_blank" rel="noopener noreferrer" aria-label="X">
                   𝕏
                 </a>
-                <a href="#" aria-label="Instagram">
+                <a href="https://www.instagram.com/paybacker.co.uk/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
                   ◎
                 </a>
-                <a href="#" aria-label="Facebook">
+                <a href="https://www.facebook.com/profile.php?id=61579563073310" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
                   f
                 </a>
-                <a href="#" aria-label="TikTok">
+                <a href="https://www.tiktok.com/@paybacker.co.uk" target="_blank" rel="noopener noreferrer" aria-label="TikTok">
                   ♪
                 </a>
-                <a href="#" aria-label="LinkedIn">
+                <a href="https://www.linkedin.com/company/112575954/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
                   in
                 </a>
               </div>
-              <a href="#">hello@paybacker.co.uk</a>
+              <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>
             </div>
           </div>
           <div className="footer-bottom">
