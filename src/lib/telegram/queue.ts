@@ -96,16 +96,24 @@ export function buildActionButtons(
   alertType: string,
   affiliateUrl: string | null,
   amountChange: number | null,
+  providerName?: string | null,
 ): TgButton[][] {
   switch (alertType) {
-    case 'price_increase':
+    case 'price_increase': {
+      const norm = (providerName ?? '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '')
+        .slice(0, 48);
       return [
         [
-          { text: '⚡ Draft dispute letter', callback_data: `palert_draft_${alertId}` },
-          { text: '✅ Accept increase',       callback_data: `palert_accept_${alertId}` },
+          { text: 'Raise Dispute 🔴', callback_data: `palert_draft_${alertId}` },
+          { text: 'Looks right ✅',   callback_data: `price_action:ack:${norm}` },
         ],
-        [{ text: '🔕 Dismiss', callback_data: `palert_dismiss_${alertId}` }],
+        [{ text: 'Snooze 7 days ⏰', callback_data: `price_action:snooze:${norm}` }],
       ];
+    }
 
     case 'subscription_detected':
       return [
@@ -245,7 +253,7 @@ export async function sendBatchedDigest(
         chat_id:      chatId,
         text,
         parse_mode:   'Markdown',
-        reply_markup: { inline_keyboard: buildActionButtons(a.id, a.alert_type, a.affiliate_url, a.amount_change) },
+        reply_markup: { inline_keyboard: buildActionButtons(a.id, a.alert_type, a.affiliate_url, a.amount_change, a.provider_name) },
       }),
     }).then(r => r.json() as Promise<{ ok: boolean }>);
 

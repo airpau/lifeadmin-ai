@@ -157,6 +157,7 @@ export async function GET(request: NextRequest) {
       // For each subscription, find matching transactions and compare amounts
       const increases: Array<{
         name: string;
+        merchantNorm: string;
         prevAmount: number;
         newAmount: number;
         increase: number;
@@ -183,19 +184,31 @@ export async function GET(request: NextRequest) {
         if (increase <= 1) continue;
 
         // Check we haven't already alerted for this increase this month
-        const refKey = `${sub.provider_name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
-        const { data: existing } = await supabase
-          .from('notification_log')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('notification_type', 'price_increase')
-          .eq('reference_key', refKey)
-          .single();
+        const merchantNorm = normaliseName(sub.provider_name).replace(/\s+/g, '_');
+        const refKey = `${merchantNorm}_${monthStr}`;
 
-        if (existing) continue;
+        const [existingLog, snoozedRow] = await Promise.all([
+          supabase
+            .from('notification_log')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('notification_type', 'price_increase')
+            .eq('reference_key', refKey)
+            .single(),
+          supabase
+            .from('user_notification_snoozes')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('snooze_type', 'price_merchant')
+            .eq('reference_key', merchantNorm)
+            .gt('snoozed_until', new Date().toISOString())
+            .maybeSingle(),
+        ]);
+
+        if (existingLog.data || snoozedRow.data) continue;
 
         const annualIncrease = increase * 12;
-        increases.push({ name: sub.provider_name, prevAmount: prevAmt, newAmount: thisAmt, increase, annualIncrease });
+        increases.push({ name: sub.provider_name, merchantNorm, prevAmount: prevAmt, newAmount: thisAmt, increase, annualIncrease });
       }
 
       if (increases.length === 0) continue;
@@ -203,7 +216,7 @@ export async function GET(request: NextRequest) {
       // Route each increase: > £20/mo → immediate send with inline buttons
       //                       ≤ £20/mo → queue for evening digest
       for (const inc of increases) {
-        const refKey = `${inc.name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
+        const refKey = `${inc.merchantNorm}_${monthStr}`;
 
         if (inc.increase > 20) {
           // Urgent: create a detected_issue so draft_dispute_ handler can find it,
@@ -232,7 +245,7 @@ export async function GET(request: NextRequest) {
           if (issue) {
             const { ok, messageId } = await sendProactiveAlert({
               chatId: Number(chatId),
-              issue: { id: issue.id, title, detail, recommendation: null, amount_impact: inc.annualIncrease, issue_type: 'price_increase' },
+              issue: { id: issue.id, title, detail, recommendation: null, amount_impact: inc.annualIncrease, issue_type: 'price_increase', merchantNorm: inc.merchantNorm },
             });
 
             if (ok) {
