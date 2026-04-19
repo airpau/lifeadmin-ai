@@ -120,6 +120,7 @@ const TESTIMONIALS: Testimonial[] = [
 
 export default function HomepageV2Preview() {
   const [navScrolled, setNavScrolled] = useState(false);
+  const [navOpen, setNavOpen] = useState(false); // mobile drawer (≤980px)
   const [letterBusy, setLetterBusy] = useState(false);
   const [letterLabel, setLetterLabel] = useState('Generate letter →');
   const [letterPreview, setLetterPreview] = useState<string | null>(null);
@@ -133,6 +134,21 @@ export default function HomepageV2Preview() {
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Close mobile drawer when viewport grows past the mobile breakpoint,
+  // and lock body scroll while the drawer is open so the backdrop doesn't
+  // scroll behind it on iOS Safari.
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth > 980) setNavOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (navOpen) document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [navOpen]);
+  const closeNav = () => setNavOpen(false);
 
   // Capture & persist referral code from URL — preserves the attribution
   // behaviour the old homepage had. Signup flow reads pb_ref from
@@ -255,8 +271,54 @@ export default function HomepageV2Preview() {
             <a className="nav-start" href="/auth/signup">
               Start Free
             </a>
+            {/*
+              Hamburger toggle — CSS hides it above 980px. Below that
+              breakpoint .nav-links is hidden and this button reveals the
+              drawer below. Keeps the pill nav visually identical on
+              desktop while finally giving iPhone users working nav.
+            */}
+            <button
+              type="button"
+              className="nav-toggle"
+              aria-label={navOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={navOpen}
+              aria-controls="m-v2-nav-drawer"
+              onClick={() => setNavOpen((v) => !v)}
+            >
+              <span className={`nav-toggle-bars${navOpen ? ' open' : ''}`} aria-hidden="true">
+                <span /><span /><span />
+              </span>
+            </button>
           </div>
         </nav>
+      </div>
+
+      {/* Mobile drawer (≤980px only — CSS hidden above) ------------- */}
+      <div
+        id="m-v2-nav-drawer"
+        className={`nav-drawer${navOpen ? ' open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Main menu"
+        hidden={!navOpen}
+      >
+        <div className="nav-drawer-backdrop" onClick={closeNav} aria-hidden="true" />
+        <div className="nav-drawer-panel">
+          <a href="/about" onClick={closeNav}>About</a>
+          <a href="#pricing" onClick={closeNav}>Pricing</a>
+          <a href="#deals" onClick={closeNav}>Deals</a>
+          <a href="#pocket-agent" onClick={closeNav}>Pocket Agent</a>
+          <a href="/blog" onClick={closeNav}>Blog</a>
+          <a href="#faq" onClick={closeNav}>FAQ</a>
+          <div className="nav-drawer-cta-row">
+            <a className="btn btn-ghost" href="/auth/login" onClick={closeNav}>
+              Sign in
+            </a>
+            <a className="btn btn-mint" href="/auth/signup" onClick={closeNav}>
+              Start free →
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Hero ------------------------------------------------------- */}
@@ -1085,10 +1147,14 @@ export default function HomepageV2Preview() {
           </div>
 
           <div className="how-steps">
-            <div className="how-step reveal">
+            <div className="how-step reveal highlight-step" id="disputes-try">
               <div className="num">01</div>
+              <span className="step-flag">AI Disputes Centre · try it live</span>
               <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
-              <p>Pick the category, type a sentence. We cite the law, you send the letter.</p>
+              <p>
+                Pick the category, type a sentence. We cite the exact UK law — Consumer Rights Act
+                2015, Ofcom, Ofgem, UK261 — and draft the letter, ready to send.
+              </p>
               <form id="try-letter" className="mini-form" onSubmit={onDemoGenerate}>
                 <label htmlFor="mini-issue">What&rsquo;s the issue?</label>
                 <select
@@ -1115,18 +1181,40 @@ export default function HomepageV2Preview() {
                 </button>
                 {letterPreview && (
                   <div className="mini-letter-out" aria-live="polite">
-                    <div className="mini-letter-head">AI draft · preview</div>
+                    <div className="mini-letter-head">AI draft · first paragraph only</div>
                     <p>{letterPreview}</p>
+                    <div className="mini-letter-lock">
+                      <span className="lock-icon" aria-hidden="true">🔒</span>
+                      <span>
+                        Sign up free to unlock the full letter, save it to your Disputes Centre, and
+                        send it straight from Paybacker.
+                      </span>
+                    </div>
                     <a
                       className="mini-letter-cta"
-                      href="/auth/login"
+                      href="/auth/signup"
                       rel="noopener"
                     >
-                      Sign up free to save &amp; send this letter →
+                      Sign up free to unlock &amp; send this letter →
                     </a>
                   </div>
                 )}
               </form>
+              <ul className="dispute-extras">
+                <li>
+                  <strong>Email-thread analysis.</strong> Paste a forwarded thread with your
+                  provider — we extract every claim, tariff, and date, then cite the law that
+                  applies.
+                </li>
+                <li>
+                  <strong>Google Sheets &amp; CSV export.</strong> Every dispute, subscription, and
+                  saving exports in one click on Pro — keep your own audit trail.
+                </li>
+                <li>
+                  <strong>Letter tracking.</strong> Won / partial / lost status auto-synced from the
+                  provider&rsquo;s reply in your inbox.
+                </li>
+              </ul>
             </div>
 
             <div className="how-step reveal">
@@ -1282,6 +1370,10 @@ export default function HomepageV2Preview() {
                 <li>3 AI dispute letters / month</li>
                 <li>Manual subscription tracker</li>
                 <li>Public deals marketplace</li>
+                <li>
+                  <span className="feat-muted">Pocket Agent</span>
+                  <span className="feat-pill">Preview on Essential+</span>
+                </li>
               </ul>
               <a className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
@@ -1317,6 +1409,10 @@ export default function HomepageV2Preview() {
                 <li>Unlimited bank &amp; email connections</li>
                 <li>Deal alerts on bill changes</li>
                 <li>Priority human review on complex disputes</li>
+                <li>
+                  Exports — Google Sheets &amp; CSV
+                  <span className="feat-pill feat-pill-new">New</span>
+                </li>
               </ul>
               <a className="btn btn-ghost cta" href="/auth/signup?plan=pro" style={{ justifyContent: 'center' }}>
                 Go Pro →
@@ -1324,7 +1420,7 @@ export default function HomepageV2Preview() {
             </div>
           </div>
           <p className="compare-link">
-            <a href="/pricing">See the full feature comparison →</a>
+            <a href="/pricing#feature-matrix">See the full feature comparison →</a>
           </p>
         </div>
       </section>

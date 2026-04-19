@@ -190,6 +190,78 @@
 }
 .m-v2-root .nav-start:hover { transform: scale(1.03); box-shadow: var(--shadow-mint); }
 
+/* Hamburger toggle — hidden on desktop, shown at ≤980px in media query */
+.m-v2-root .nav-toggle {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin-left: 4px;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-pill);
+  background: rgba(255,255,255,0.6);
+  cursor: pointer; padding: 0;
+  transition: background 150ms, transform 150ms;
+}
+.m-v2-root .nav-toggle:hover { background: #fff; transform: scale(1.03); }
+.m-v2-root .nav-toggle-bars { position: relative; width: 18px; height: 14px; display: inline-block; }
+.m-v2-root .nav-toggle-bars span {
+  position: absolute; left: 0; right: 0; height: 2px;
+  background: var(--text-primary);
+  border-radius: 2px;
+  transition: transform 200ms ease, opacity 150ms ease, top 200ms ease;
+}
+.m-v2-root .nav-toggle-bars span:nth-child(1) { top: 0; }
+.m-v2-root .nav-toggle-bars span:nth-child(2) { top: 6px; }
+.m-v2-root .nav-toggle-bars span:nth-child(3) { top: 12px; }
+.m-v2-root .nav-toggle-bars.open span:nth-child(1) { top: 6px; transform: rotate(45deg); }
+.m-v2-root .nav-toggle-bars.open span:nth-child(2) { opacity: 0; }
+.m-v2-root .nav-toggle-bars.open span:nth-child(3) { top: 6px; transform: rotate(-45deg); }
+
+/* Mobile drawer — full-screen panel sliding from top */
+.m-v2-root .nav-drawer {
+  position: fixed; inset: 0; z-index: 120;
+  pointer-events: auto;
+}
+.m-v2-root .nav-drawer[hidden] { display: none; }
+.m-v2-root .nav-drawer-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(11,18,32,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: navFade 180ms ease;
+}
+@keyframes navFade { from { opacity: 0; } to { opacity: 1; } }
+.m-v2-root .nav-drawer-panel {
+  position: absolute; top: 76px; left: 12px; right: 12px;
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: 24px;
+  padding: 18px 18px 22px;
+  box-shadow: var(--shadow-xl);
+  display: flex; flex-direction: column; gap: 4px;
+  animation: navSlide 220ms cubic-bezier(.22,.68,.29,1.02);
+}
+@keyframes navSlide { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.m-v2-root .nav-drawer-panel a {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 16px; font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.m-v2-root .nav-drawer-panel a:hover { background: rgba(11,18,32,0.04); }
+.m-v2-root .nav-drawer-cta-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-top: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--divider);
+}
+.m-v2-root .nav-drawer-cta-row .btn {
+  justify-content: center;
+  width: 100%;
+  padding: 14px 16px;
+}
+
 .m-v2-root .trust-bar {
   text-align: center;
   padding: 84px 32px 0;
@@ -559,6 +631,53 @@
   letter-spacing: 0.02em;
 }
 .m-v2-root .mini-letter-cta:hover { text-decoration: underline; }
+.m-v2-root .mini-letter-lock {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 10px;
+  color: #FDE68A;
+  font-size: 12px; line-height: 1.45;
+}
+.m-v2-root .mini-letter-lock .lock-icon { flex: 0 0 auto; font-size: 14px; }
+
+/* Disputes-step highlight — pulls visual weight onto step 01 */
+.m-v2-root .how-step.highlight-step {
+  background: linear-gradient(180deg, rgba(52,211,153,0.10) 0%, rgba(52,211,153,0.00) 55%), #0D1828;
+  border-color: rgba(52,211,153,0.35);
+  box-shadow: 0 30px 80px -40px rgba(52,211,153,0.35);
+}
+.m-v2-root .how-step .step-flag {
+  display: inline-block;
+  padding: 4px 10px; margin-bottom: 10px;
+  background: rgba(52,211,153,0.16);
+  color: var(--accent-mint);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  border-radius: 999px;
+}
+.m-v2-root .how-step .dispute-extras {
+  list-style: none; padding: 0; margin: 14px 0 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.m-v2-root .how-step .dispute-extras li {
+  font-size: 12px; line-height: 1.5;
+  color: var(--text-on-ink-dim);
+  padding-left: 20px;
+  position: relative;
+}
+.m-v2-root .how-step .dispute-extras li::before {
+  content: '✓';
+  position: absolute; left: 0; top: 0;
+  color: var(--accent-mint);
+  font-weight: 700;
+}
+.m-v2-root .how-step .dispute-extras strong {
+  color: var(--text-on-ink);
+  font-weight: 600;
+}
 .m-v2-root .bank-list { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
 .m-v2-root .bank-row {
   display: flex; justify-content: space-between; align-items: center;
@@ -658,6 +777,24 @@
   background-repeat: no-repeat; background-position: center;
 }
 .m-v2-root .price-card .cta { margin-top: auto; }
+
+/* "Preview on Essential+" / "New" pills inside price-card li */
+.m-v2-root .price-card li .feat-muted { color: var(--text-tertiary); }
+.m-v2-root .price-card li .feat-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(11,18,32,0.06);
+  color: var(--text-tertiary);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+.m-v2-root .price-card li .feat-pill-new {
+  background: var(--accent-orange-wash, rgba(245,158,11,0.16));
+  color: var(--accent-orange-deep);
+}
 
 .m-v2-root .compare-link { text-align: center; margin-top: 36px; font-size: 14px; color: var(--text-secondary); }
 .m-v2-root .compare-link a { color: var(--accent-mint-deep); text-decoration: none; font-weight: 600; }
@@ -1360,15 +1497,32 @@
   .m-v2-root .trust-row { grid-template-columns: repeat(2, 1fr); gap: 16px; }
   .m-v2-root .footer-grid { grid-template-columns: 1fr 1fr; }
   .m-v2-root .nav-links { display: none; }
+  .m-v2-root .nav-toggle { display: inline-flex; }
+  /* Keep the pill tight on mobile: hide the inline "Sign in" link — it
+     lives in the drawer below, and the Start Free button stays visible
+     so conversion isn't buried. */
+  .m-v2-root .nav-signin { display: none; }
   .m-v2-root .why-grid,
   .m-v2-root .agent-showcase-grid,
   .m-v2-root .assistant-grid,
   .m-v2-root .subs-grid { grid-template-columns: 1fr; gap: 48px; }
   .m-v2-root .agent-features { grid-template-columns: 1fr; }
   .m-v2-root .why-stats { grid-template-columns: 1fr 1fr; }
+  /* Hero copy eases in on tablet/mobile */
+  .m-v2-root .hero h1 { font-size: clamp(40px, 7.5vw, 72px); line-height: 1.02; }
+  .m-v2-root .hero-sub { font-size: 17px; }
+  /* Pocket Agent phone feels tight beside its feature grid on mobile —
+     center it and let features breathe underneath. */
+  .m-v2-root .agent-phone { margin: 0 auto; }
 }
 @media (max-width: 480px) {
   .m-v2-root .wrap { padding: 0 20px; }
+  /* iPhone-sized hero: big enough to lead, small enough not to wrap ugly */
+  .m-v2-root .hero h1 { font-size: clamp(34px, 9.5vw, 48px); line-height: 1.04; letter-spacing: -0.02em; }
+  .m-v2-root .hero-sub { font-size: 16px; margin-bottom: 22px; }
+  .m-v2-root .trust-bar { padding-top: 68px; font-size: 11px; line-height: 1.6; }
+  .m-v2-root .trust-bar .dot { margin: 0 6px; }
+  .m-v2-root .eyebrow { font-size: 11px; }
   .m-v2-root .hero-visual { height: 440px; }
   .m-v2-root .dash-card { width: 300px; height: 420px; right: 0; top: 10px; }
   .m-v2-root .mini-card { width: 200px; height: 280px; left: 0; top: 120px; }
@@ -1388,4 +1542,20 @@
   .m-v2-root .why-stats { grid-template-columns: 1fr; }
   .m-v2-root .faq-item summary { padding: 18px 20px; font-size: 15px; }
   .m-v2-root .faq-body { padding: 16px 20px 20px; }
+  /* Deals grid — 2 columns on phones (was 1), still 3 above 980px */
+  .m-v2-root .category-grid { grid-template-columns: 1fr 1fr !important; gap: 12px; }
+  .m-v2-root .cat-tile { padding: 20px 16px; }
+  .m-v2-root .logo-cloud { gap: 8px; }
+  .m-v2-root .logo-chip { padding: 6px 12px; font-size: 12px; }
+  /* Pocket Agent phone: cap width so it doesn't overflow the card */
+  .m-v2-root .agent-phone { max-width: 100%; border-radius: 22px; }
+  .m-v2-root .agent-phone-body { padding: 16px; gap: 10px; }
+  .m-v2-root .ap-bubble { max-width: 92%; font-size: 13px; padding: 10px 12px; }
+  /* Pricing cards — ensure ribbon doesn't clip off the top on phones */
+  .m-v2-root .price-card { padding: 28px 22px; }
+  .m-v2-root .price-card.featured { margin-top: 14px; }
+  /* Footer stacks cleaner */
+  .m-v2-root .footer-grid { grid-template-columns: 1fr; gap: 28px; }
+  /* Nav drawer margin on very small screens */
+  .m-v2-root .nav-drawer-panel { top: 72px; left: 8px; right: 8px; padding: 16px 14px 18px; }
 }
