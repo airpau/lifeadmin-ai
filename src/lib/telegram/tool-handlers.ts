@@ -3757,7 +3757,7 @@ async function createSupportTicket(
     message: params.description,
   });
 
-  const ref = ticket.ticket_number || `TKT-${String(Date.now()).slice(-4)}`;
+  const ref = ticket.ticket_number || `TKT-${ticket.id.slice(0, 8).toUpperCase()}`;
   const userEmail = profile?.email;
   const userName = profile?.full_name || 'there';
 
