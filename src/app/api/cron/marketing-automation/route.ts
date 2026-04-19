@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { templates, sendEmail, sendIntelligentUpdate } from '@/lib/email/marketing-automation';
+import { normalizeTier, tierDisplayName } from '@/lib/tier-utils';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // 60 seconds
@@ -149,7 +150,8 @@ export async function GET(request: NextRequest) {
           .eq('status', 'active')
           .limit(5);
 
-        let userContext = `User is on ${user.subscription_tier} tier.`;
+        const normalizedTier = normalizeTier(user.subscription_tier);
+        let userContext = `User is on the Paybacker ${tierDisplayName(normalizedTier)} plan.`;
         if (userSubs && userSubs.length > 0) {
           const subDetails = userSubs.map(s => `${s.provider_name} (£${s.amount})`).join(', ');
           userContext += ` They currently have active subscriptions: ${subDetails}.`;
