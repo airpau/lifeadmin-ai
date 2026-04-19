@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { normaliseMerchant } from '@/lib/telegram/normalise-merchant';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -143,12 +144,7 @@ export async function GET(request: NextRequest) {
 
       if (issue) {
         const annualImpact = Number(alert.annual_impact);
-        const merchantNorm = (alert.merchant_name ?? '')
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, '_')
-          .replace(/_+/g, '_')
-          .replace(/^_|_$/g, '')
-          .slice(0, 48);
+        const merchantNorm = normaliseMerchant(alert.merchant_name ?? '');
         if (annualImpact > 240) {
           // > £20/mo: send immediately
           const { ok, messageId } = await sendProactiveAlert({
@@ -172,7 +168,7 @@ export async function GET(request: NextRequest) {
             providerName: alert.merchant_name ?? undefined,
             amount:      Number(alert.new_amount),
             amountChange: Number(alert.new_amount) - Number(alert.old_amount),
-            referenceKey: `alerts_price_${String(alert.merchant_name ?? 'unknown').toLowerCase().replace(/\s+/g, '_')}_${monthStr}`,
+            referenceKey: `alerts_price_${normaliseMerchant(alert.merchant_name ?? 'unknown')}_${monthStr}`,
             sourceId:    issue.id,
             metadata:    { detected_issue_id: issue.id, source: 'telegram_alerts' },
           });

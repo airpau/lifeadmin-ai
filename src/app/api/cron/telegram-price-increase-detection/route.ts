@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { normaliseMerchant } from '@/lib/telegram/normalise-merchant';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -184,7 +185,7 @@ export async function GET(request: NextRequest) {
         if (increase <= 1) continue;
 
         // Check we haven't already alerted for this increase this month
-        const merchantNorm = normaliseName(sub.provider_name).replace(/\s+/g, '_');
+        const merchantNorm = normaliseMerchant(sub.provider_name);
         const refKey = `${merchantNorm}_${monthStr}`;
 
         const [existingLog, snoozedRow] = await Promise.all([

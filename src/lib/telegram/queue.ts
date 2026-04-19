@@ -13,6 +13,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normaliseMerchant } from './normalise-merchant';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -100,12 +101,7 @@ export function buildActionButtons(
 ): TgButton[][] {
   switch (alertType) {
     case 'price_increase': {
-      const norm = (providerName ?? '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '_')
-        .replace(/_+/g, '_')
-        .replace(/^_|_$/g, '')
-        .slice(0, 48);
+      const norm = normaliseMerchant(providerName ?? '');
       if (!norm) {
         // No merchant context — can't scope ack/snooze safely; show dispute + dismiss only
         return [
