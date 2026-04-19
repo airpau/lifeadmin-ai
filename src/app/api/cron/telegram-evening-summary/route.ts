@@ -264,7 +264,7 @@ export async function GET(request: NextRequest) {
       // Show the actual breakdown so Paul can see where money is going,
       // even when categories don't align with predefined budgets.
       const topSpend = ((spendingBreakdownResult.data ?? []) as Array<{category: string; category_total: number}>)
-        .filter(r => !['transfers', 'income'].includes(r.category))
+        .filter(r => !['transfers', 'income', 'loan', 'loans', 'mortgage'].includes(r.category))
         .sort((a, b) => Number(b.category_total) - Number(a.category_total))
         .slice(0, 5);
 
@@ -354,12 +354,32 @@ export async function GET(request: NextRequest) {
         sections.push(paymentSection);
       }
 
-      // ------ 8. Motivational close ------
-      const daysProjection = dayOfMonth > 0 ? Math.round((monthlySpending / dayOfMonth) * daysInMonth) : 0;
-      if (monthlySpending > 0 && daysProjection > 0) {
-        sections.push(
-          `\n\n\u2728 At this rate you're on track to spend *${fmt(daysProjection)}* this month.`,
-        );
+      // ------ 8. Month-end projection ------
+      // Projection = actual spend to date + sum of remaining scheduled payments this month.
+      // Linear extrapolation is NOT used because it inflates the total whenever a large
+      // one-off payment (loan, legal fee, etc.) falls early in the month.
+      const endOfMonthStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+      const { data: upcomingRestOfMonth } = await supabase
+        .from('subscriptions')
+        .select('amount')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .gt('next_billing_date', todayStr)
+        .lte('next_billing_date', endOfMonthStr);
+
+      const upcomingRestTotal = (upcomingRestOfMonth ?? []).reduce(
+        (sum, p) => sum + Math.abs(Number(p.amount)), 0,
+      );
+
+      if (monthlySpending > 0) {
+        const onTrackTotal = monthlySpending + upcomingRestTotal;
+        let projectionMsg = `\n\n\u2728 You've spent *${fmt(monthlySpending)}* so far this month`;
+        if (upcomingRestTotal > 0) {
+          projectionMsg += ` with *${fmt(upcomingRestTotal)}* in scheduled payments still to come — total on track: *${fmt(onTrackTotal)}*.`;
+        } else {
+          projectionMsg += ` with no further scheduled payments logged for ${monthName}.`;
+        }
+        sections.push(projectionMsg);
       } else {
         sections.push(
           '\n\n\u2728 *Paybacker is working hard to find savings and dispute unfair charges for you.*',
