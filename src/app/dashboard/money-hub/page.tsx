@@ -1057,12 +1057,13 @@ export default function MoneyHubPage() {
 
           {/* Better Deals Section */}
           {(() => {
-            // Take best comparison per subscription, then deduplicate by normalised provider name.
-            // This matches the Overview page calculation via parseComparisonDeals.
+            // Build one deal per subscription (best comparison), filter valid deals FIRST,
+            // then deduplicate by subscriptionId so EE broadband + EE mobile are separate entries.
             const dealsPerSub = (deals?.subscriptions || []).map((sub: any) => {
               const best = (sub.comparisons || [])[0];
               if (!best || !best.annualSaving || best.annualSaving <= 0) return null;
               return {
+                subscriptionId: sub.subscriptionId || '',
                 subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
                 currentPrice: best.currentPrice,
                 dealProvider: best.dealProvider,
@@ -1072,13 +1073,17 @@ export default function MoneyHubPage() {
                 category: sub.category || '',
               };
             }).filter(Boolean);
-            const byProvider = new Map<string, any>();
-            for (const deal of dealsPerSub) {
-              const key = (deal.subscriptionName as string).toLowerCase().trim();
-              const existing = byProvider.get(key);
-              if (!existing || deal.annualSaving > existing.annualSaving) byProvider.set(key, deal);
+            // Filter invalid deals FIRST so valid alternatives are never shadowed by invalid ones
+            const validFirst = dealsPerSub.filter((d: any) => isDealValid(d));
+            // Then deduplicate by subscriptionId (keeps same-provider-different-subscription pairs)
+            const byId = new Map<string, any>();
+            for (let i = 0; i < validFirst.length; i++) {
+              const deal = validFirst[i];
+              const key = deal.subscriptionId || `_idx_${i}`;
+              const existing = byId.get(key);
+              if (!existing || deal.annualSaving > existing.annualSaving) byId.set(key, deal);
             }
-            const validDeals = Array.from(byProvider.values()).filter((d: any) => isDealValid(d));
+            const validDeals = Array.from(byId.values());
             const filteredTotal = validDeals.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0);
             
             if (validDeals.length > 0) {

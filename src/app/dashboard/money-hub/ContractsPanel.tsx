@@ -23,8 +23,9 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
     return true;
   });
   
-  // Calculate totals
-  const monthlyTotal = activeSubs.reduce((sum: number, s: any) => {
+  // Totals use the raw (pre-dedup) list so legitimately identical-priced
+  // subscriptions from the same provider are still counted in the spend figure.
+  const monthlyTotal = rawActive.reduce((sum: number, s: any) => {
     const amt = Math.abs(parseFloat(String(s.amount)) || 0);
     if (s.billing_cycle === 'yearly') return sum + amt / 12;
     if (s.billing_cycle === 'quarterly') return sum + amt / 3;
@@ -32,7 +33,7 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
   }, 0);
   
   const switchableCats = new Set(['energy', 'broadband', 'mobile', 'insurance', 'streaming']);
-  const switchableCount = activeSubs.filter((s: any) => switchableCats.has(s.category)).length;
+  const switchableCount = rawActive.filter((s: any) => switchableCats.has(s.category)).length;
 
   return (
     <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 flex flex-col h-full">

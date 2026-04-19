@@ -41,6 +41,7 @@ export function parseComparisonDeals(data: any) {
 
     const best = sub.comparisons[0];
     const deal = {
+      subscriptionId: sub.subscriptionId || '',
       subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
       currentPrice: best.currentPrice,
       dealProvider: best.dealProvider,
@@ -55,16 +56,18 @@ export function parseComparisonDeals(data: any) {
     }
   }
 
-  // Deduplicate by normalized provider name, keep highest saving per distinct provider
-  const byProvider = new Map<string, typeof dealsList[0]>();
-  for (const deal of dealsList) {
-    const key = deal.subscriptionName.toLowerCase().trim();
-    const existing = byProvider.get(key);
+  // Deduplicate by subscriptionId so two subscriptions to the same provider
+  // (e.g. EE broadband + EE mobile) are kept as separate entries.
+  const byId = new Map<string, typeof dealsList[0]>();
+  for (let i = 0; i < dealsList.length; i++) {
+    const deal = dealsList[i];
+    const key = deal.subscriptionId || `_idx_${i}`;
+    const existing = byId.get(key);
     if (!existing || deal.annualSaving > existing.annualSaving) {
-      byProvider.set(key, deal);
+      byId.set(key, deal);
     }
   }
-  const deduped = Array.from(byProvider.values());
+  const deduped = Array.from(byId.values());
 
   return {
     saving: deduped.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0),
