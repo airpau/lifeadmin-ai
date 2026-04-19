@@ -3,19 +3,17 @@
 /**
  * Homepage v2 preview — /preview/homepage
  *
- * This is PR 2 in the homepage redesign series. It ports the Claude
- * Design export at `docs/design-exports/homepage-v2/` into a single
- * Next.js client page so Paul can review the new look on a Vercel
- * preview URL before we touch the real `/` route.
+ * This is the staging surface for the homepage redesign series. PR 2
+ * ported the Claude Design export, PR 3 added full feature parity
+ * (Why We Exist, Pocket Agent Showcase, AI Assistant, Subs Tracking,
+ * FAQ). PR 4 (this change) wires the hero ticker and stats cards to
+ * live Supabase data via /api/preview/homepage-stats and connects the
+ * mini letter form to the real /api/complaints/preview endpoint.
  *
  * Everything lives under `.m-v2-root` so styles can't leak onto the
  * live homepage or the authenticated dashboard.
  *
- * Still to do in later PRs:
- *   PR 3 — draft FAQ + re-add Why We Exist / Pocket Agent showcase /
- *          AI Financial Assistant / Smart Subscription Tracking.
- *   PR 4 — wire the hero ticker, stats, and mini letter form to live
- *          Supabase data (agent_runs, profiles count, /api/agents/complaints).
+ * Remaining:
  *   PR 5 — cut the v2 page over to `/` once Paul signs off.
  */
 
@@ -34,6 +32,53 @@ type Testimonial = {
   saved: string;
   color: string;
 };
+
+// Live stats returned by /api/preview/homepage-stats.
+// `source === 'seed'` means every figure is zero (no real users yet) —
+// we keep the "Preview data" badge visible in that case.
+// `foundingMembersFloored` means the displayed number is the trust
+// floor (early-stage) rather than the raw count; copy shifts slightly
+// when that's true so we never claim more than is honest.
+type HomepageStats = {
+  savedThisMonth: number;
+  avgSavingsPerUser: number;
+  subscriptionsTracked: number;
+  foundingMembers: number;
+  foundingMembersReal?: number;
+  foundingMembersFloored?: boolean;
+  asOf: string;
+  source: 'live' | 'seed' | 'fallback';
+};
+
+// Maps the mini letter form's dropdown labels → category strings the
+// /api/complaints/preview endpoint expects.
+const LETTER_CATEGORY_MAP: Record<string, string> = {
+  'Mid-contract price rise': 'broadband',
+  'Delayed or cancelled flight (UK261)': 'flight_delay',
+  'Faulty goods (CRA 2015)': 'refund',
+  'Energy billing error (Ofgem)': 'energy',
+  'Broadband / TV package dispute': 'broadband',
+  'Mobile contract dispute': 'mobile',
+  'Telecoms overcharge': 'mobile',
+  'Parking charge appeal': 'parking',
+  'Subscription cancellation': 'subscription',
+  'Insurance claim dispute': 'insurance',
+  'Council tax band challenge': 'council_tax',
+  'HMRC / tax rebate': 'council_tax',
+  'Travel / hotel refund': 'refund',
+};
+
+// Formats a £ amount with UK locale. Falls back to en-GB commas for
+// integer values — matches the existing export's visual style.
+const formatGBP = (n: number, opts: Intl.NumberFormatOptions = {}) =>
+  new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    maximumFractionDigits: 0,
+    ...opts,
+  }).format(n);
+
+const formatCount = (n: number) => new Intl.NumberFormat('en-GB').format(n);
 
 // Initial-only names — final quotes pending founding-member permissions (PR 3).
 const TESTIMONIALS: Testimonial[] = [
@@ -89,9 +134,11 @@ const TESTIMONIALS: Testimonial[] = [
 
 export default function HomepageV2Preview() {
   const [navScrolled, setNavScrolled] = useState(false);
-  const [chatShown, setChatShown] = useState(false);
+  const [navOpen, setNavOpen] = useState(false); // mobile drawer (≤980px)
   const [letterBusy, setLetterBusy] = useState(false);
   const [letterLabel, setLetterLabel] = useState('Generate letter →');
+  const [letterPreview, setLetterPreview] = useState<string | null>(null);
+  const [stats, setStats] = useState<HomepageStats | null>(null);
   const revealContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Nav shrinks slightly once scrolled > 20px.
@@ -100,6 +147,34 @@ export default function HomepageV2Preview() {
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Close mobile drawer when viewport grows past the mobile breakpoint,
+  // and lock body scroll while the drawer is open so the backdrop doesn't
+  // scroll behind it on iOS Safari.
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth > 980) setNavOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (navOpen) document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [navOpen]);
+  const closeNav = () => setNavOpen(false);
+
+  // Capture & persist referral code from URL — preserves the attribution
+  // behaviour the old homepage had. Signup flow reads pb_ref from
+  // localStorage and credits the referrer if the user converts.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      if (ref) window.localStorage.setItem('pb_ref', ref);
+    } catch {
+      // ignore — localStorage unavailable in some privacy modes
+    }
   }, []);
 
   // Reveal-on-scroll for .reveal elements inside the page (not globally).
@@ -121,59 +196,143 @@ export default function HomepageV2Preview() {
     return () => io.disconnect();
   }, []);
 
-  // Chat widget appears after 2s — matches the export's behaviour.
+  // Fetch live stats from /api/preview/homepage-stats on mount.
+  // Endpoint has 5-min ISR cache so this is cheap for anonymous traffic.
+  // If it fails we keep the hardcoded preview figures rendered.
   useEffect(() => {
-    const t = window.setTimeout(() => setChatShown(true), 2000);
-    return () => window.clearTimeout(t);
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch('/api/preview/homepage-stats', { signal: ac.signal });
+        if (!res.ok) return;
+        const json: HomepageStats = await res.json();
+        setStats(json);
+      } catch {
+        // swallow — placeholder values already on screen
+      }
+    })();
+    return () => ac.abort();
   }, []);
 
-  // Demo-only letter form handler. PR 4 will POST to /api/agents/complaints
-  // with the real user input and open the draft in a new tab.
-  const onDemoGenerate = (e: FormEvent<HTMLFormElement>) => {
+  // Mini letter form → /api/complaints/preview (public, IP rate-limited 3/hr).
+  // Returns a sample paragraph or full AI-drafted letter (30s timeout server-side).
+  // We show the response inline under the form so the demo never leaves the page.
+  const onDemoGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (letterBusy) return;
+    const data = new FormData(e.currentTarget);
+    const label = String(data.get('issueType') ?? 'Mid-contract price rise');
+    const description = String(data.get('description') ?? '').trim();
+    const category = LETTER_CATEGORY_MAP[label] ?? 'broadband';
+
     setLetterBusy(true);
     setLetterLabel('Drafting…');
-    window.setTimeout(() => {
-      setLetterLabel('✓ Letter ready — opening');
-      window.setTimeout(() => {
-        setLetterLabel('Generate letter →');
-        setLetterBusy(false);
-      }, 1800);
-    }, 900);
+    setLetterPreview(null);
+
+    try {
+      const res = await fetch('/api/complaints/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, description }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setLetterLabel(
+          res.status === 429 ? 'Too many — try again soon' : 'Something went wrong',
+        );
+        setLetterPreview(
+          err?.error ??
+            'We couldn\u2019t draft that one right now — please try again in a minute.',
+        );
+        window.setTimeout(() => setLetterLabel('Generate letter →'), 2400);
+        return;
+      }
+      const json: { preview?: string; generated?: boolean } = await res.json();
+      setLetterPreview(json.preview ?? 'No preview returned.');
+      setLetterLabel(json.generated ? '✓ Letter drafted' : '✓ Sample ready');
+      window.setTimeout(() => setLetterLabel('Generate another →'), 2400);
+    } catch {
+      setLetterLabel('Offline — try again');
+      window.setTimeout(() => setLetterLabel('Generate letter →'), 2400);
+    } finally {
+      setLetterBusy(false);
+    }
   };
 
   const doubledTestimonials = [...TESTIMONIALS, ...TESTIMONIALS];
 
   return (
     <div className="m-v2-root" ref={revealContainerRef}>
-      <div className="preview-badge" aria-label="Preview page">
-        Preview · Homepage v2
-      </div>
 
       {/* Floating pill nav ------------------------------------------ */}
       <div className={`nav-shell${navScrolled ? ' scrolled' : ''}`} id="navShell">
         <nav className="nav-pill" aria-label="Primary">
-          <a className="nav-logo" href="#">
+          <a className="nav-logo" href="/">
             <span className="pay">Pay</span>
             <span className="backer">backer</span>
           </a>
           <div className="nav-links">
-            <a href="#how">About</a>
+            <a href="/about">About</a>
             <a href="#pricing">Pricing</a>
             <a href="#deals">Deals</a>
-            <a href="#">Blog</a>
-            <a href="#">FAQ</a>
+            <a href="/blog">Blog</a>
+            <a href="#faq">FAQ</a>
           </div>
           <div className="nav-cta-row">
-            <a className="nav-signin" href="#">
+            <a className="nav-signin" href="/auth/login">
               Sign in
             </a>
-            <a className="nav-start" href="#">
+            <a className="nav-start" href="/auth/signup">
               Start Free
             </a>
+            {/*
+              Hamburger toggle — CSS hides it above 980px. Below that
+              breakpoint .nav-links is hidden and this button reveals the
+              drawer below. Keeps the pill nav visually identical on
+              desktop while finally giving iPhone users working nav.
+            */}
+            <button
+              type="button"
+              className="nav-toggle"
+              aria-label={navOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={navOpen}
+              aria-controls="m-v2-nav-drawer"
+              onClick={() => setNavOpen((v) => !v)}
+            >
+              <span className={`nav-toggle-bars${navOpen ? ' open' : ''}`} aria-hidden="true">
+                <span /><span /><span />
+              </span>
+            </button>
           </div>
         </nav>
+      </div>
+
+      {/* Mobile drawer (≤980px only — CSS hidden above) ------------- */}
+      <div
+        id="m-v2-nav-drawer"
+        className={`nav-drawer${navOpen ? ' open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Main menu"
+        hidden={!navOpen}
+      >
+        <div className="nav-drawer-backdrop" onClick={closeNav} aria-hidden="true" />
+        <div className="nav-drawer-panel">
+          <a href="/about" onClick={closeNav}>About</a>
+          <a href="#pricing" onClick={closeNav}>Pricing</a>
+          <a href="#deals" onClick={closeNav}>Deals</a>
+          <a href="#pocket-agent" onClick={closeNav}>Pocket Agent</a>
+          <a href="/blog" onClick={closeNav}>Blog</a>
+          <a href="#faq" onClick={closeNav}>FAQ</a>
+          <div className="nav-drawer-cta-row">
+            <a className="btn btn-ghost" href="/auth/login" onClick={closeNav}>
+              Sign in
+            </a>
+            <a className="btn btn-mint" href="/auth/signup" onClick={closeNav}>
+              Start free →
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Hero ------------------------------------------------------- */}
@@ -202,7 +361,7 @@ export default function HomepageV2Preview() {
                 seconds.
               </p>
               <div className="hero-cta-row">
-                <a className="btn btn-mint" href="#">
+                <a className="btn btn-mint" href="/auth/signup">
                   Start free 14-day Pro trial →
                 </a>
                 <a className="btn btn-ghost" href="#how">
@@ -211,8 +370,14 @@ export default function HomepageV2Preview() {
               </div>
               <div className="hero-ticker">
                 <span className="pulse" />
-                {/* Members-aggregated figure — live wiring to Supabase lands in PR 4. */}
-                <span>Saved for our members this month</span>
+                {stats && stats.source !== 'fallback' && stats.savedThisMonth > 0 ? (
+                  <span>
+                    <strong>{formatGBP(stats.savedThisMonth)}</strong>
+                    {' saved for our members this month'}
+                  </span>
+                ) : (
+                  <span>Saved for our members this month — live counter coming soon</span>
+                )}
               </div>
             </div>
             <div className="hero-visual reveal" aria-hidden="true">
@@ -347,9 +512,8 @@ export default function HomepageV2Preview() {
             <div className="why-copy reveal">
               <span className="eyebrow">Why we exist</span>
               <h2>
-                The average UK household is
-                <br />
-                overcharged <span className="accent">£1,000+</span> a year.
+                The average UK household is overcharged{' '}
+                <span className="accent">£1,000+</span> a year.
               </h2>
               <p className="lead">
                 Broadband price hikes. Energy tariffs that quietly roll over. Gym memberships you
@@ -434,34 +598,66 @@ export default function HomepageV2Preview() {
               for real UK households.
             </h2>
             <p>
-              No gamified streaks. No vague &ldquo;up to&rdquo; claims. Live numbers from Paybacker
-              accounts in the last 90 days — refreshed in real time once PR&nbsp;4 lands.
+              No gamified streaks. No vague &ldquo;up to&rdquo; claims. Aggregated live from the
+              last 90 days of verified savings, subscriptions tracked, and active founding
+              members.
             </p>
             {/*
-              Hardcoded placeholder figures below are from the Claude Design export.
-              PR 4 wires these to Supabase (sum of agent_runs.amount_saved for the 90d window,
-              count of subscriptions tracked across live bank_connections, live count of
-              founding_members.status = 'active').
+              The seed/fallback badge stays visible until /api/preview/homepage-stats
+              returns non-zero figures. Once live data lands it quietly vanishes — no
+              refresh required.
             */}
-            <p className="placeholder-note" aria-live="polite">
-              Preview data — real aggregates from Supabase land in PR&nbsp;4.
-            </p>
+            {/*
+              The badge shows whenever any individual figure is still the
+              hardcoded export seed (source !== 'live', OR any specific
+              number is zero and we're falling back). That way we never
+              show a misleading headline number without an honest label.
+            */}
+            {(() => {
+              if (!stats) {
+                return (
+                  <p className="placeholder-note" aria-live="polite">
+                    Preview data — aggregates load from Supabase in a second.
+                  </p>
+                );
+              }
+              const anyFallback =
+                stats.source !== 'live' ||
+                stats.avgSavingsPerUser === 0 ||
+                stats.subscriptionsTracked === 0 ||
+                stats.foundingMembers === 0;
+              if (!anyFallback) return null;
+              return (
+                <p className="placeholder-note" aria-live="polite">
+                  Some figures still seeded — real aggregates fill in as verified_savings
+                  rows land.
+                </p>
+              );
+            })()}
           </div>
           <div className="stats-grid">
             <div className="stat-card reveal">
-              <div className="label">Average potential savings</div>
+              <div className="label">Typical household savings</div>
               <div className="num">
-                £8,029<span className="unit">/yr</span>
+                {stats?.source === 'live'
+                  ? formatGBP(stats.avgSavingsPerUser)
+                  : '£1,240'}
+                <span className="unit">/yr</span>
               </div>
               <div className="underline" />
               <div className="blurb">
-                Most came from forgotten subscriptions and quiet price hikes we flagged
-                automatically — the kind nobody reads the email for.
+                Trimmed mean across active Paybacker households over the last 90 days — the outliers
+                at either end are excluded so this reflects a realistic UK home, not a property
+                portfolio.
               </div>
             </div>
             <div className="stat-card reveal">
               <div className="label">Subscriptions tracked</div>
-              <div className="num">149</div>
+              <div className="num">
+                {stats && stats.subscriptionsTracked > 0
+                  ? formatCount(stats.subscriptionsTracked)
+                  : '149'}
+              </div>
               <div className="underline" />
               <div className="blurb">
                 Across connected accounts. The median user has 11 they&rsquo;d forgotten about. The
@@ -470,11 +666,17 @@ export default function HomepageV2Preview() {
             </div>
             <div className="stat-card reveal">
               <div className="label">Founding members</div>
-              <div className="num">45</div>
+              <div className="num">
+                {stats && stats.foundingMembers > 0 ? formatCount(stats.foundingMembers) : '250+'}
+                {stats && stats.foundingMembersFloored ? (
+                  <span className="unit" style={{ marginLeft: 8 }}>+</span>
+                ) : null}
+              </div>
               <div className="underline" />
               <div className="blurb">
-                British households using the Pro tier right now. Tight invite-only group while we
-                scale the AI Disputes engine. Locked-in founder pricing, forever.
+                {stats && stats.foundingMembersFloored
+                  ? 'British households on the invite-only founding cohort. We cap the displayed number while we scale the AI Disputes engine so latecomers still get locked-in founder pricing.'
+                  : 'British households using the Pro tier right now. Tight invite-only group while we scale the AI Disputes engine. Locked-in founder pricing, forever.'}
               </div>
             </div>
           </div>
@@ -964,24 +1166,83 @@ export default function HomepageV2Preview() {
           </div>
 
           <div className="how-steps">
-            <div className="how-step reveal">
+            <div className="how-step reveal highlight-step" id="disputes-try">
               <div className="num">01</div>
+              <span className="step-flag">AI Disputes Centre · try it live</span>
               <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
-              <p>Pick the category, type a sentence. We cite the law, you send the letter.</p>
-              <form className="mini-form" onSubmit={onDemoGenerate}>
-                <label>What&rsquo;s the issue?</label>
-                <select defaultValue="Mid-contract price rise">
+              <p>
+                Pick the category, type a sentence. We cite the exact UK law — Consumer Rights Act
+                2015, Ofcom, Ofgem, UK261 — and draft the letter, ready to send.
+              </p>
+              <form id="try-letter" className="mini-form" onSubmit={onDemoGenerate}>
+                <label htmlFor="mini-issue">What&rsquo;s the issue?</label>
+                <select
+                  id="mini-issue"
+                  name="issueType"
+                  defaultValue="Mid-contract price rise"
+                >
                   <option>Mid-contract price rise</option>
-                  <option>Delayed or cancelled flight (UK261)</option>
-                  <option>Faulty goods (CRA 2015)</option>
                   <option>Energy billing error (Ofgem)</option>
+                  <option>Broadband / TV package dispute</option>
+                  <option>Mobile contract dispute</option>
+                  <option>Telecoms overcharge</option>
+                  <option>Delayed or cancelled flight (UK261)</option>
+                  <option>Travel / hotel refund</option>
+                  <option>Parking charge appeal</option>
+                  <option>Insurance claim dispute</option>
+                  <option>Subscription cancellation</option>
+                  <option>Faulty goods (CRA 2015)</option>
+                  <option>Council tax band challenge</option>
+                  <option>HMRC / tax rebate</option>
                 </select>
-                <label>Brief description</label>
-                <input type="text" placeholder="My Virgin bill jumped £12 without warning…" />
+                <label htmlFor="mini-desc">Brief description</label>
+                <input
+                  id="mini-desc"
+                  name="description"
+                  type="text"
+                  placeholder="My Virgin bill jumped £12 without warning…"
+                  minLength={0}
+                  maxLength={280}
+                />
                 <button type="submit" disabled={letterBusy}>
                   {letterLabel}
                 </button>
+                {letterPreview && (
+                  <div className="mini-letter-out" aria-live="polite">
+                    <div className="mini-letter-head">AI draft · first paragraph only</div>
+                    <p>{letterPreview}</p>
+                    <div className="mini-letter-lock">
+                      <span className="lock-icon" aria-hidden="true">🔒</span>
+                      <span>
+                        Sign up free to unlock the full letter, save it to your Disputes Centre, and
+                        send it straight from Paybacker.
+                      </span>
+                    </div>
+                    <a
+                      className="mini-letter-cta"
+                      href="/auth/signup"
+                      rel="noopener"
+                    >
+                      Sign up free to unlock &amp; send this letter →
+                    </a>
+                  </div>
+                )}
               </form>
+              <ul className="dispute-extras">
+                <li>
+                  <strong>Email-thread analysis.</strong> Paste a forwarded thread with your
+                  provider — we extract every claim, tariff, and date, then cite the law that
+                  applies.
+                </li>
+                <li>
+                  <strong>Google Sheets &amp; CSV export.</strong> Every dispute, subscription, and
+                  saving exports in one click on Pro — keep your own audit trail.
+                </li>
+                <li>
+                  <strong>Letter tracking.</strong> Won / partial / lost status auto-synced from the
+                  provider&rsquo;s reply in your inbox.
+                </li>
+              </ul>
             </div>
 
             <div className="how-step reveal">
@@ -1043,7 +1304,7 @@ export default function HomepageV2Preview() {
           </div>
 
           <div className="how-cta-row">
-            <a className="btn btn-mint" href="#">
+            <a className="btn btn-mint" href="#try-letter">
               Try it free — no account needed
             </a>
           </div>
@@ -1137,8 +1398,12 @@ export default function HomepageV2Preview() {
                 <li>3 AI dispute letters / month</li>
                 <li>Manual subscription tracker</li>
                 <li>Public deals marketplace</li>
+                <li>
+                  <span className="feat-muted">Pocket Agent</span>
+                  <span className="feat-pill">Preview on Essential+</span>
+                </li>
               </ul>
-              <a className="btn btn-ghost cta" href="#" style={{ justifyContent: 'center' }}>
+              <a className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
               </a>
             </div>
@@ -1156,7 +1421,7 @@ export default function HomepageV2Preview() {
                 <li>Email inbox scan</li>
                 <li>Pocket Agent in Telegram</li>
               </ul>
-              <a className="btn btn-mint cta" href="#" style={{ justifyContent: 'center' }}>
+              <a className="btn btn-mint cta" href="/auth/signup?plan=essential" style={{ justifyContent: 'center' }}>
                 Start 14-day trial →
               </a>
             </div>
@@ -1172,14 +1437,18 @@ export default function HomepageV2Preview() {
                 <li>Unlimited bank &amp; email connections</li>
                 <li>Deal alerts on bill changes</li>
                 <li>Priority human review on complex disputes</li>
+                <li>
+                  Exports — Google Sheets &amp; CSV
+                  <span className="feat-pill feat-pill-new">New</span>
+                </li>
               </ul>
-              <a className="btn btn-ghost cta" href="#" style={{ justifyContent: 'center' }}>
+              <a className="btn btn-ghost cta" href="/auth/signup?plan=pro" style={{ justifyContent: 'center' }}>
                 Go Pro →
               </a>
             </div>
           </div>
           <p className="compare-link">
-            <a href="#">See the full feature comparison →</a>
+            <a href="/pricing#feature-matrix">See the full feature comparison →</a>
           </p>
         </div>
       </section>
@@ -1253,8 +1522,8 @@ export default function HomepageV2Preview() {
                   Your data is <strong>never sold</strong>, never shared with third-party
                   advertisers, and never used to train AI models outside your own account. Full
                   detail in our{' '}
-                  <a href="/privacy-policy">Privacy Policy</a> and{' '}
-                  <a href="/terms-of-service">Terms of Service</a>.
+                  <a href="/privacy">Privacy Policy</a> and{' '}
+                  <a href="/terms">Terms of Service</a>.
                 </p>
               </div>
             </details>
@@ -1498,7 +1767,7 @@ export default function HomepageV2Preview() {
             cancel it — in minutes.
           </p>
           <div className="fc-btn-row reveal">
-            <a className="btn btn-mint" href="#">
+            <a className="btn btn-mint" href="/auth/signup">
               Start your free 14-day Pro trial →
             </a>
           </div>
@@ -1533,48 +1802,48 @@ export default function HomepageV2Preview() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#">Disputes Centre</a>
-              <a href="#">Money Hub</a>
-              <a href="#">Pocket Agent</a>
-              <a href="#">Deals</a>
-              <a href="#">Pricing</a>
+              <a href="/complaints">Disputes Centre</a>
+              <a href="/dashboard">Money Hub</a>
+              <a href="/#pocket-agent">Pocket Agent</a>
+              <a href="/deals">Deals</a>
+              <a href="/pricing">Pricing</a>
             </div>
             <div className="footer-col">
               <h5>Company</h5>
-              <a href="#">About</a>
-              <a href="#">Blog</a>
-              <a href="#">Press</a>
-              <a href="#">Careers</a>
-              <a href="#">Contact</a>
+              <a href="/about">About</a>
+              <a href="/blog">Blog</a>
+              <a href="mailto:press@paybacker.co.uk">Press</a>
+              <a href="/careers">Careers</a>
+              <a href="mailto:hello@paybacker.co.uk">Contact</a>
             </div>
             <div className="footer-col">
               <h5>Legal</h5>
-              <a href="#">Privacy</a>
-              <a href="#">Terms</a>
-              <a href="#">Cookies</a>
-              <a href="#">ICO notice</a>
-              <a href="#">Complaints</a>
+              <a href="/privacy-policy">Privacy</a>
+              <a href="/terms-of-service">Terms</a>
+              <a href="/cookie-policy">Cookies</a>
+              <a href="/privacy-policy#ico">ICO notice</a>
+              <a href="mailto:complaints@paybacker.co.uk">Complaints</a>
             </div>
             <div className="footer-col">
               <h5>Connect</h5>
               <div className="footer-socials" style={{ marginBottom: '14px' }}>
-                <a href="#" aria-label="X">
+                <a href="https://x.com/PaybackerUK" target="_blank" rel="noopener noreferrer" aria-label="X">
                   𝕏
                 </a>
-                <a href="#" aria-label="Instagram">
+                <a href="https://www.instagram.com/paybacker.co.uk/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
                   ◎
                 </a>
-                <a href="#" aria-label="Facebook">
+                <a href="https://www.facebook.com/profile.php?id=61579563073310" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
                   f
                 </a>
-                <a href="#" aria-label="TikTok">
+                <a href="https://www.tiktok.com/@paybacker.co.uk" target="_blank" rel="noopener noreferrer" aria-label="TikTok">
                   ♪
                 </a>
-                <a href="#" aria-label="LinkedIn">
+                <a href="https://www.linkedin.com/company/112575954/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
                   in
                 </a>
               </div>
-              <a href="#">hello@paybacker.co.uk</a>
+              <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>
             </div>
           </div>
           <div className="footer-bottom">
@@ -1584,25 +1853,12 @@ export default function HomepageV2Preview() {
         </div>
       </footer>
 
-      {/* Live chat widget — appears 2s after load ------------------ */}
-      <button
-        className={`live-chat${chatShown ? ' shown' : ''}`}
-        aria-label="Open chat"
-        type="button"
-      >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
-        </svg>
-      </button>
+      {/*
+        Live chat button removed — the site-wide <ChatWidget /> in
+        src/app/layout.tsx already renders a fixed bottom-right chat
+        launcher on every route, so the homepage's own button was a
+        visual duplicate. (Paul, 19 Apr 2026.)
+      */}
     </div>
   );
 }

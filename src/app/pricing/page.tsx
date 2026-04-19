@@ -486,6 +486,7 @@ export default function PricingPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.5 }}
           className="mt-16 max-w-4xl mx-auto"
+          id="feature-matrix"
         >
           <h2 className="font-[family-name:var(--font-heading)] text-2xl md:text-3xl font-bold text-white text-center mb-8">
             Compare plans
