@@ -10,6 +10,7 @@ import {
 } from '@/lib/truelayer';
 import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
+import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import {
   TIER_CONFIG,
   GLOBAL_DAILY_API_CEILING,
@@ -572,6 +573,21 @@ export async function GET(request: NextRequest) {
 
   // Fire ceiling alert if we crossed 80% during this cron run
   await checkAndAlertCeiling(callCountAtStart, callCountAtStart + totalApiCalls);
+
+  // Push newly-synced transactions into connected Google Sheets, one per user.
+  // We dedupe by user_id so a user with two banks only triggers one export,
+  // and we only trigger for users whose bank sync actually succeeded (no error).
+  // Fire-and-forget — a failure here must not roll back the sync response.
+  const sheetSyncUsers = Array.from(
+    new Set(
+      results
+        .filter((r) => !r.error && r.transactions > 0)
+        .map((r) => r.user_id)
+    )
+  );
+  for (const uid of sheetSyncUsers) {
+    await triggerSheetsExport(supabase, uid);
+  }
 
   const totalTxs = results.reduce((sum, r) => sum + r.transactions, 0);
   const totalRecurring = results.reduce((sum, r) => sum + r.recurring, 0);

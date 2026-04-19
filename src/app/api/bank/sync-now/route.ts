@@ -12,6 +12,7 @@ import {
 import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
+import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 import {
   TIER_CONFIG,
   GLOBAL_DAILY_API_CEILING,
@@ -488,6 +489,11 @@ export async function POST(request: NextRequest) {
 
   // Check if we've crossed the 80% ceiling alert threshold
   await checkAndAlertCeiling(totalCallsToday, totalCallsToday + apiCallsMade);
+
+  // Push newly-synced transactions to the user's connected Google Sheet, if any.
+  // Fire-and-forget — the sheet writes happen in the background and a missing
+  // or errored Sheets connection must never affect the bank sync response.
+  await triggerSheetsExport(adminClient, user.id);
 
   return NextResponse.json({
     synced: totalSynced,

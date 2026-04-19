@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getTransactions } from '@/lib/yapily';
 import { detectRecurring } from '@/lib/detect-recurring';
+import { triggerSheetsExport } from '@/lib/trigger-sheets-export';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for full 12-month sync
@@ -118,6 +119,10 @@ export async function POST(request: NextRequest) {
   });
 
   console.log(`Yapily initial sync complete: ${totalSynced} transactions across ${accountIds.length} accounts`);
+
+  // Push newly-synced transactions to the user's connected Google Sheet (if any).
+  // Fire-and-forget; a missing sheets connection is a no-op.
+  await triggerSheetsExport(supabase, userId);
 
   return NextResponse.json({ ok: true, synced: totalSynced, apiCalls: apiCallsMade });
 }
