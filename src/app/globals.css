@@ -11,10 +11,41 @@
   --color-mint-300: #6EE7B7;
   --color-mint-400: #34D399;
   --color-mint-500: #10B981;
+  --color-mint-600: #059669;
+  --color-mint-50: #ECFBF3;
 
   /* Warm - Orange (Paybacker brand) */
   --color-brand-400: #FB923C;
   --color-brand-500: #F97316;
+
+  /*
+   * Homepage v2 — marketing palette (Apr 2026 brand refresh)
+   * Additive only. Existing navy tokens above are used throughout the
+   * authenticated dashboard and must stay untouched. These new tokens
+   * power the layered light/mint/dark marketing rhythm behind the
+   * /preview/homepage feature-flagged preview route. Do not use these
+   * on /dashboard/* surfaces.
+   */
+  --color-surface-base: #FAFAF7;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-ink: #0B1220;
+  --color-surface-ink-2: #111A2E;
+  --color-surface-soft-mint: #ECFBF3;
+
+  --color-ink-primary: #0B1220;
+  --color-ink-secondary: #4B5563;
+  --color-ink-tertiary: #6B7280;
+  --color-on-ink: #F3F4F6;
+  --color-on-ink-dim: #9CA3AF;
+
+  --color-accent-mint: #34D399;
+  --color-accent-mint-deep: #059669;
+  --color-accent-mint-wash: #ECFBF3;
+  --color-accent-orange: #F59E0B;
+  --color-accent-orange-deep: #D97706;
+
+  --color-divider-light: #E5E7EB;
+  --color-divider-ink: #1F2A44;
 
   /* Fonts */
   --font-heading: var(--font-plus-jakarta), system-ui, sans-serif;
@@ -27,6 +58,28 @@
   --shadow-card-hover: 0 10px 25px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.04);
   --shadow-glow-mint: 0 0 20px rgba(52,211,153,0.15);
   --shadow-glow-brand: 0 0 20px rgba(251,146,60,0.15);
+
+  /* Homepage v2 — warm shadows (not black) */
+  --shadow-marketing-sm: 0 2px 8px -2px rgba(11, 18, 32, 0.08);
+  --shadow-marketing-md: 0 10px 30px -10px rgba(11, 18, 32, 0.14);
+  --shadow-marketing-lg: 0 20px 60px -20px rgba(11, 18, 32, 0.18);
+  --shadow-marketing-xl: 0 30px 90px -30px rgba(11, 18, 32, 0.22);
+  --shadow-marketing-mint: 0 20px 50px -18px rgba(52, 211, 153, 0.5);
+  --shadow-marketing-orange: 0 20px 50px -18px rgba(245, 158, 11, 0.35);
+
+  /* Homepage v2 — radii */
+  --radius-marketing-card: 24px;
+  --radius-marketing-figure: 32px;
+  --radius-marketing-btn: 14px;
+  --radius-marketing-input: 12px;
+  --radius-marketing-pill: 999px;
+
+  /* Homepage v2 — type scale (fluid clamp) */
+  --text-display: clamp(56px, 8vw, 104px);
+  --text-h1-marketing: clamp(40px, 5vw, 64px);
+  --text-h2-marketing: clamp(32px, 4vw, 48px);
+  --tracking-marketing-tight: -0.025em;
+  --tracking-marketing-eyebrow: 0.14em;
 }
 
 body {
