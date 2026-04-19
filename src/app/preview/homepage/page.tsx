@@ -120,7 +120,6 @@ const TESTIMONIALS: Testimonial[] = [
 
 export default function HomepageV2Preview() {
   const [navScrolled, setNavScrolled] = useState(false);
-  const [chatShown, setChatShown] = useState(false);
   const [letterBusy, setLetterBusy] = useState(false);
   const [letterLabel, setLetterLabel] = useState('Generate letter →');
   const [letterPreview, setLetterPreview] = useState<string | null>(null);
@@ -165,12 +164,6 @@ export default function HomepageV2Preview() {
     );
     container.querySelectorAll('.reveal').forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, []);
-
-  // Chat widget appears after 2s — matches the export's behaviour.
-  useEffect(() => {
-    const t = window.setTimeout(() => setChatShown(true), 2000);
-    return () => window.clearTimeout(t);
   }, []);
 
   // Fetch live stats from /api/preview/homepage-stats on mount.
@@ -443,9 +436,8 @@ export default function HomepageV2Preview() {
             <div className="why-copy reveal">
               <span className="eyebrow">Why we exist</span>
               <h2>
-                The average UK household is
-                <br />
-                overcharged <span className="accent">£1,000+</span> a year.
+                The average UK household is overcharged{' '}
+                <span className="accent">£1,000+</span> a year.
               </h2>
               <p className="lead">
                 Broadband price hikes. Energy tariffs that quietly roll over. Gym memberships you
@@ -1737,25 +1729,12 @@ export default function HomepageV2Preview() {
         </div>
       </footer>
 
-      {/* Live chat widget — appears 2s after load ------------------ */}
-      <button
-        className={`live-chat${chatShown ? ' shown' : ''}`}
-        aria-label="Open chat"
-        type="button"
-      >
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
-        </svg>
-      </button>
+      {/*
+        Live chat button removed — the site-wide <ChatWidget /> in
+        src/app/layout.tsx already renders a fixed bottom-right chat
+        launcher on every route, so the homepage's own button was a
+        visual duplicate. (Paul, 19 Apr 2026.)
+      */}
     </div>
   );
 }
