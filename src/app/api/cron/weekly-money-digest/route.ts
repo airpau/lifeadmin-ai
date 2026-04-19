@@ -150,12 +150,9 @@ export async function GET(request: NextRequest) {
 
       function toMonthly(amount: number, cycle: string | null): number {
         switch (cycle) {
-          case 'annual':      return amount / 12;
-          case 'semi_annual': return amount / 6;
-          case 'quarterly':   return amount / 3;
-          case 'weekly':      return (amount * 52) / 12;
-          case 'biweekly':    return (amount * 26) / 12;
-          default:            return amount; // monthly or unrecognised
+          case 'yearly':    return amount / 12;
+          case 'quarterly': return amount / 3;
+          default:          return amount; // monthly or unrecognised
         }
       }
 
