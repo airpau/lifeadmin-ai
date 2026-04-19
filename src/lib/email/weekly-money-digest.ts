@@ -21,6 +21,8 @@ interface DigestData {
   budgetAlerts: { category: string; limit: number; spent: number; percentage: number }[];
   totalSaved: number;
   transactionCount: number;
+  subscriptionCount: number;
+  monthlyOutgoings: number;
 }
 
 export function buildWeeklyDigestEmail(
@@ -93,6 +95,27 @@ export function buildWeeklyDigestEmail(
 
         <!-- Greeting -->
         <p style="color: #94a3b8; font-size: 15px; margin: 0 0 24px;">Hi ${userName}, here is your financial snapshot for the past week.</p>
+
+        <!-- Account at a Glance -->
+        <div style="background: #dbeafe; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+          <h2 style="color: #1e293b; font-size: 15px; font-weight: 700; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.5px;">Your Account at a Glance</h2>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 0 16px 0 0; vertical-align: top; width: 33%;">
+                <p style="color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px;">Active Subscriptions</p>
+                <p style="color: #1e293b; font-size: 26px; font-weight: bold; margin: 0;">${data.subscriptionCount}</p>
+              </td>
+              <td style="padding: 0 16px; vertical-align: top; width: 33%; border-left: 1px solid #bfdbfe;">
+                <p style="color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px;">Monthly Outgoings Tracked</p>
+                <p style="color: #1e293b; font-size: 20px; font-weight: bold; margin: 0;">£${data.monthlyOutgoings.toFixed(2)}</p>
+              </td>
+              <td style="padding: 0 0 0 16px; vertical-align: top; width: 33%; border-left: 1px solid #bfdbfe;">
+                <p style="color: #475569; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px;">${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier Status</p>
+                <p style="color: #1e293b; font-size: 15px; font-weight: 700; margin: 0;">Active &amp; Unlocked</p>
+              </td>
+            </tr>
+          </table>
+        </div>
 
         <!-- Headline stat -->
         <div style="background: linear-gradient(135deg, #162544 0%, #1e3a5f 100%); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px; border: 1px solid #1e3a5f;">

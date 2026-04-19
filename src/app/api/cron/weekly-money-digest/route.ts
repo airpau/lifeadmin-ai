@@ -135,12 +135,27 @@ export async function GET(request: NextRequest) {
           percentage: weekSpend > 0 ? (total / weekSpend) * 100 : 0,
         }));
 
-      // Upcoming renewals (next 14 days)
+      // All tracked subscriptions (active + detected + pending — not just 'active')
+      const TRACKED_STATUSES = ['active', 'detected', 'pending', 'paused'];
+
+      const { data: allTrackedSubs } = await admin
+        .from('subscriptions')
+        .select('amount')
+        .eq('user_id', userId)
+        .in('status', TRACKED_STATUSES)
+        .is('dismissed_at', null);
+
+      const subscriptionCount = (allTrackedSubs || []).length;
+      const monthlyOutgoings = (allTrackedSubs || []).reduce(
+        (sum, s) => sum + (parseFloat(String(s.amount)) || 0), 0
+      );
+
+      // Upcoming renewals (next 14 days) — keep 'active' only for renewal alerts
       const { data: renewals } = await admin
         .from('subscriptions')
         .select('provider_name, amount, next_billing_date')
         .eq('user_id', userId)
-        .eq('status', 'active')
+        .in('status', TRACKED_STATUSES)
         .is('dismissed_at', null)
         .gte('next_billing_date', now.toISOString().split('T')[0])
         .lte('next_billing_date', renewalCutoff.toISOString().split('T')[0])
@@ -210,6 +225,8 @@ export async function GET(request: NextRequest) {
           budgetAlerts,
           totalSaved,
           transactionCount: (thisWeekTx || []).length,
+          subscriptionCount,
+          monthlyOutgoings,
         },
         tier,
       );
