@@ -143,11 +143,17 @@ export async function GET(request: NextRequest) {
 
       if (issue) {
         const annualImpact = Number(alert.annual_impact);
+        const merchantNorm = (alert.merchant_name ?? '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '')
+          .slice(0, 48);
         if (annualImpact > 240) {
           // > £20/mo: send immediately
           const { ok, messageId } = await sendProactiveAlert({
             chatId: Number(chatId),
-            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualImpact, issue_type: 'price_increase' },
+            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualImpact, issue_type: 'price_increase', merchantNorm },
           });
           if (ok && messageId) {
             await supabase

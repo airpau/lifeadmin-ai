@@ -106,6 +106,15 @@ export function buildActionButtons(
         .replace(/_+/g, '_')
         .replace(/^_|_$/g, '')
         .slice(0, 48);
+      if (!norm) {
+        // No merchant context — can't scope ack/snooze safely; show dispute + dismiss only
+        return [
+          [
+            { text: 'Raise Dispute 🔴', callback_data: `palert_draft_${alertId}` },
+            { text: '🔕 Dismiss',        callback_data: `palert_dismiss_${alertId}` },
+          ],
+        ];
+      }
       return [
         [
           { text: 'Raise Dispute 🔴', callback_data: `palert_draft_${alertId}` },

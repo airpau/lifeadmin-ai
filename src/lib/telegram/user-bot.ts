@@ -1226,7 +1226,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const text = `📋 *${buildAlertLine(alert)}*\n\n${alert.metadata?.detail as string ?? ''}`.trim();
       await ctx.api.sendMessage(chatId, text, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: buildActionButtons(alert.id, alert.alert_type, alert.affiliate_url, alert.amount_change) as any },
+        reply_markup: { inline_keyboard: buildActionButtons(alert.id, alert.alert_type, alert.affiliate_url, alert.amount_change, alert.provider_name) as any },
       });
     } catch (err) {
       console.error('[UserBot] palert_expand_ error:', err);
@@ -1922,15 +1922,24 @@ export async function sendProactiveAlert(params: {
     };
   } else if (issue.issue_type === 'price_increase') {
     const mNorm = (issue.merchantNorm ?? '').slice(0, 48);
-    replyMarkup = {
-      inline_keyboard: [
-        [
-          { text: 'Raise Dispute 🔴', callback_data: `draft_dispute_${issue.id}` },
-          { text: 'Looks right ✅',   callback_data: `price_action:ack:${mNorm}` },
-        ],
-        [{ text: 'Snooze 7 days ⏰', callback_data: `price_action:snooze:${mNorm}` }],
-      ],
-    };
+    replyMarkup = mNorm
+      ? {
+          inline_keyboard: [
+            [
+              { text: 'Raise Dispute 🔴', callback_data: `draft_dispute_${issue.id}` },
+              { text: 'Looks right ✅',   callback_data: `price_action:ack:${mNorm}` },
+            ],
+            [{ text: 'Snooze 7 days ⏰', callback_data: `price_action:snooze:${mNorm}` }],
+          ],
+        }
+      : {
+          inline_keyboard: [
+            [
+              { text: 'Raise Dispute 🔴', callback_data: `draft_dispute_${issue.id}` },
+              { text: '🔕 Dismiss',        callback_data: `dismiss_${issue.id}` },
+            ],
+          ],
+        };
   } else if (issue.issue_type === 'contract_expiring') {
     replyMarkup = {
       inline_keyboard: [
