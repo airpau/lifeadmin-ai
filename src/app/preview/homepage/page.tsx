@@ -3,19 +3,17 @@
 /**
  * Homepage v2 preview — /preview/homepage
  *
- * This is PR 2 in the homepage redesign series. It ports the Claude
- * Design export at `docs/design-exports/homepage-v2/` into a single
- * Next.js client page so Paul can review the new look on a Vercel
- * preview URL before we touch the real `/` route.
+ * This is the staging surface for the homepage redesign series. PR 2
+ * ported the Claude Design export, PR 3 added full feature parity
+ * (Why We Exist, Pocket Agent Showcase, AI Assistant, Subs Tracking,
+ * FAQ). PR 4 (this change) wires the hero ticker and stats cards to
+ * live Supabase data via /api/preview/homepage-stats and connects the
+ * mini letter form to the real /api/complaints/preview endpoint.
  *
  * Everything lives under `.m-v2-root` so styles can't leak onto the
  * live homepage or the authenticated dashboard.
  *
- * Still to do in later PRs:
- *   PR 3 — draft FAQ + re-add Why We Exist / Pocket Agent showcase /
- *          AI Financial Assistant / Smart Subscription Tracking.
- *   PR 4 — wire the hero ticker, stats, and mini letter form to live
- *          Supabase data (agent_runs, profiles count, /api/agents/complaints).
+ * Remaining:
  *   PR 5 — cut the v2 page over to `/` once Paul signs off.
  */
 
@@ -34,6 +32,39 @@ type Testimonial = {
   saved: string;
   color: string;
 };
+
+// Live stats returned by /api/preview/homepage-stats.
+// `source === 'seed'` means every figure is zero (no real users yet) —
+// we keep the "Preview data" badge visible in that case.
+type HomepageStats = {
+  savedThisMonth: number;
+  avgSavingsPerUser: number;
+  subscriptionsTracked: number;
+  foundingMembers: number;
+  asOf: string;
+  source: 'live' | 'seed' | 'fallback';
+};
+
+// Maps the mini letter form's dropdown labels → category strings the
+// /api/complaints/preview endpoint expects.
+const LETTER_CATEGORY_MAP: Record<string, string> = {
+  'Mid-contract price rise': 'broadband',
+  'Delayed or cancelled flight (UK261)': 'flight_delay',
+  'Faulty goods (CRA 2015)': 'refund',
+  'Energy billing error (Ofgem)': 'energy',
+};
+
+// Formats a £ amount with UK locale. Falls back to en-GB commas for
+// integer values — matches the existing export's visual style.
+const formatGBP = (n: number, opts: Intl.NumberFormatOptions = {}) =>
+  new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    maximumFractionDigits: 0,
+    ...opts,
+  }).format(n);
+
+const formatCount = (n: number) => new Intl.NumberFormat('en-GB').format(n);
 
 // Initial-only names — final quotes pending founding-member permissions (PR 3).
 const TESTIMONIALS: Testimonial[] = [
@@ -92,6 +123,8 @@ export default function HomepageV2Preview() {
   const [chatShown, setChatShown] = useState(false);
   const [letterBusy, setLetterBusy] = useState(false);
   const [letterLabel, setLetterLabel] = useState('Generate letter →');
+  const [letterPreview, setLetterPreview] = useState<string | null>(null);
+  const [stats, setStats] = useState<HomepageStats | null>(null);
   const revealContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Nav shrinks slightly once scrolled > 20px.
@@ -127,20 +160,67 @@ export default function HomepageV2Preview() {
     return () => window.clearTimeout(t);
   }, []);
 
-  // Demo-only letter form handler. PR 4 will POST to /api/agents/complaints
-  // with the real user input and open the draft in a new tab.
-  const onDemoGenerate = (e: FormEvent<HTMLFormElement>) => {
+  // Fetch live stats from /api/preview/homepage-stats on mount.
+  // Endpoint has 5-min ISR cache so this is cheap for anonymous traffic.
+  // If it fails we keep the hardcoded preview figures rendered.
+  useEffect(() => {
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch('/api/preview/homepage-stats', { signal: ac.signal });
+        if (!res.ok) return;
+        const json: HomepageStats = await res.json();
+        setStats(json);
+      } catch {
+        // swallow — placeholder values already on screen
+      }
+    })();
+    return () => ac.abort();
+  }, []);
+
+  // Mini letter form → /api/complaints/preview (public, IP rate-limited 3/hr).
+  // Returns a sample paragraph or full AI-drafted letter (30s timeout server-side).
+  // We show the response inline under the form so the demo never leaves the page.
+  const onDemoGenerate = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (letterBusy) return;
+    const data = new FormData(e.currentTarget);
+    const label = String(data.get('issueType') ?? 'Mid-contract price rise');
+    const description = String(data.get('description') ?? '').trim();
+    const category = LETTER_CATEGORY_MAP[label] ?? 'broadband';
+
     setLetterBusy(true);
     setLetterLabel('Drafting…');
-    window.setTimeout(() => {
-      setLetterLabel('✓ Letter ready — opening');
-      window.setTimeout(() => {
-        setLetterLabel('Generate letter →');
-        setLetterBusy(false);
-      }, 1800);
-    }, 900);
+    setLetterPreview(null);
+
+    try {
+      const res = await fetch('/api/complaints/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, description }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setLetterLabel(
+          res.status === 429 ? 'Too many — try again soon' : 'Something went wrong',
+        );
+        setLetterPreview(
+          err?.error ??
+            'We couldn\u2019t draft that one right now — please try again in a minute.',
+        );
+        window.setTimeout(() => setLetterLabel('Generate letter →'), 2400);
+        return;
+      }
+      const json: { preview?: string; generated?: boolean } = await res.json();
+      setLetterPreview(json.preview ?? 'No preview returned.');
+      setLetterLabel(json.generated ? '✓ Letter drafted' : '✓ Sample ready');
+      window.setTimeout(() => setLetterLabel('Generate another →'), 2400);
+    } catch {
+      setLetterLabel('Offline — try again');
+      window.setTimeout(() => setLetterLabel('Generate letter →'), 2400);
+    } finally {
+      setLetterBusy(false);
+    }
   };
 
   const doubledTestimonials = [...TESTIMONIALS, ...TESTIMONIALS];
@@ -211,8 +291,14 @@ export default function HomepageV2Preview() {
               </div>
               <div className="hero-ticker">
                 <span className="pulse" />
-                {/* Members-aggregated figure — live wiring to Supabase lands in PR 4. */}
-                <span>Saved for our members this month</span>
+                {stats && stats.source !== 'fallback' && stats.savedThisMonth > 0 ? (
+                  <span>
+                    <strong>{formatGBP(stats.savedThisMonth)}</strong>
+                    {' saved for our members this month'}
+                  </span>
+                ) : (
+                  <span>Saved for our members this month — live counter coming soon</span>
+                )}
               </div>
             </div>
             <div className="hero-visual reveal" aria-hidden="true">
@@ -434,24 +520,31 @@ export default function HomepageV2Preview() {
               for real UK households.
             </h2>
             <p>
-              No gamified streaks. No vague &ldquo;up to&rdquo; claims. Live numbers from Paybacker
-              accounts in the last 90 days — refreshed in real time once PR&nbsp;4 lands.
+              No gamified streaks. No vague &ldquo;up to&rdquo; claims. Aggregated live from the
+              last 90 days of verified savings, subscriptions tracked, and active founding
+              members.
             </p>
             {/*
-              Hardcoded placeholder figures below are from the Claude Design export.
-              PR 4 wires these to Supabase (sum of agent_runs.amount_saved for the 90d window,
-              count of subscriptions tracked across live bank_connections, live count of
-              founding_members.status = 'active').
+              The seed/fallback badge stays visible until /api/preview/homepage-stats
+              returns non-zero figures. Once live data lands it quietly vanishes — no
+              refresh required.
             */}
-            <p className="placeholder-note" aria-live="polite">
-              Preview data — real aggregates from Supabase land in PR&nbsp;4.
-            </p>
+            {(!stats || stats.source !== 'live') && (
+              <p className="placeholder-note" aria-live="polite">
+                {stats?.source === 'seed'
+                  ? 'Seed data — figures will update as verified_savings rows land.'
+                  : 'Preview data — aggregates load from Supabase in a second.'}
+              </p>
+            )}
           </div>
           <div className="stats-grid">
             <div className="stat-card reveal">
               <div className="label">Average potential savings</div>
               <div className="num">
-                £8,029<span className="unit">/yr</span>
+                {stats && stats.avgSavingsPerUser > 0
+                  ? formatGBP(stats.avgSavingsPerUser)
+                  : '£8,029'}
+                <span className="unit">/yr</span>
               </div>
               <div className="underline" />
               <div className="blurb">
@@ -461,7 +554,11 @@ export default function HomepageV2Preview() {
             </div>
             <div className="stat-card reveal">
               <div className="label">Subscriptions tracked</div>
-              <div className="num">149</div>
+              <div className="num">
+                {stats && stats.subscriptionsTracked > 0
+                  ? formatCount(stats.subscriptionsTracked)
+                  : '149'}
+              </div>
               <div className="underline" />
               <div className="blurb">
                 Across connected accounts. The median user has 11 they&rsquo;d forgotten about. The
@@ -470,7 +567,9 @@ export default function HomepageV2Preview() {
             </div>
             <div className="stat-card reveal">
               <div className="label">Founding members</div>
-              <div className="num">45</div>
+              <div className="num">
+                {stats && stats.foundingMembers > 0 ? formatCount(stats.foundingMembers) : '45'}
+              </div>
               <div className="underline" />
               <div className="blurb">
                 British households using the Pro tier right now. Tight invite-only group while we
@@ -969,18 +1068,42 @@ export default function HomepageV2Preview() {
               <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
               <p>Pick the category, type a sentence. We cite the law, you send the letter.</p>
               <form className="mini-form" onSubmit={onDemoGenerate}>
-                <label>What&rsquo;s the issue?</label>
-                <select defaultValue="Mid-contract price rise">
+                <label htmlFor="mini-issue">What&rsquo;s the issue?</label>
+                <select
+                  id="mini-issue"
+                  name="issueType"
+                  defaultValue="Mid-contract price rise"
+                >
                   <option>Mid-contract price rise</option>
                   <option>Delayed or cancelled flight (UK261)</option>
                   <option>Faulty goods (CRA 2015)</option>
                   <option>Energy billing error (Ofgem)</option>
                 </select>
-                <label>Brief description</label>
-                <input type="text" placeholder="My Virgin bill jumped £12 without warning…" />
+                <label htmlFor="mini-desc">Brief description</label>
+                <input
+                  id="mini-desc"
+                  name="description"
+                  type="text"
+                  placeholder="My Virgin bill jumped £12 without warning…"
+                  minLength={0}
+                  maxLength={280}
+                />
                 <button type="submit" disabled={letterBusy}>
                   {letterLabel}
                 </button>
+                {letterPreview && (
+                  <div className="mini-letter-out" aria-live="polite">
+                    <div className="mini-letter-head">AI draft · preview</div>
+                    <p>{letterPreview}</p>
+                    <a
+                      className="mini-letter-cta"
+                      href="/auth/login"
+                      rel="noopener"
+                    >
+                      Sign up free to save &amp; send this letter →
+                    </a>
+                  </div>
+                )}
               </form>
             </div>
 
