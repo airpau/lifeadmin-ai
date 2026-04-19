@@ -716,11 +716,8 @@ export default function MoneyHubPage() {
       {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
       <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
 
-      {/* MAIN GRID: Spending + Budgets & Goals */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
-        <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
-      </div>
+      {/* Spending Intelligence */}
+      <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
 
       {/* Expected Bills (for the selected month) */}
       {expectedBills.length > 0 && (
@@ -827,6 +824,9 @@ export default function MoneyHubPage() {
         <ContractsPanel data={data} isPro={isPro} />
         <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
       </div>
+
+      {/* Budgets & Savings Goals — above FAC for visibility */}
+      <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
 
       {/* Financial Action Centre (Pro) */}
       {isPro && (
