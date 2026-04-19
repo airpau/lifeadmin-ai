@@ -1,11 +1,7 @@
 'use client'
 // src/components/GoogleSheetsConnect.tsx
-// Drop this card into the Money Hub page or Settings page.
-// It handles: not connected → connect flow → connected state with sheet link + last sync.
-//
-// Usage:
-//   import GoogleSheetsConnect from '@/components/GoogleSheetsConnect'
-//   <GoogleSheetsConnect />
+// Google Sheets destination card — rendered on /dashboard/export.
+// Handles: not-connected → OAuth flow → connected state with sheet link + last sync.
 
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
@@ -62,37 +58,36 @@ export default function GoogleSheetsConnect() {
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm animate-pulse">
-        <div className="h-5 w-40 bg-gray-100 rounded mb-2" />
-        <div className="h-4 w-64 bg-gray-100 rounded" />
+      <div className="rounded-2xl border border-navy-700/50 bg-navy-900 p-5 animate-pulse">
+        <div className="h-5 w-40 bg-navy-800 rounded mb-2" />
+        <div className="h-4 w-64 bg-navy-800 rounded" />
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-navy-700/50 bg-navy-900 p-5 shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-3">
-        {/* Google Sheets icon — simple SVG inline */}
-        <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
             <rect x="3" y="2" width="18" height="20" rx="2" fill="#34A853" />
             <rect x="7" y="8" width="10" height="1.5" rx="0.75" fill="white" />
             <rect x="7" y="11.5" width="10" height="1.5" rx="0.75" fill="white" />
             <rect x="7" y="15" width="6" height="1.5" rx="0.75" fill="white" />
           </svg>
         </div>
-        <div>
-          <h3 className="font-semibold text-gray-900 text-sm">Google Sheets Export</h3>
-          <p className="text-xs text-gray-500">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-white text-sm">Google Sheets</h3>
+          <p className="text-xs text-slate-400 truncate">
             {connection
               ? `Connected as ${connection.email}`
-              : 'Sync all your accounts to a Google Sheet, updated daily'}
+              : 'Sync every account to a Google Sheet, updated daily'}
           </p>
         </div>
         {connection && (
-          <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+          <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-medium text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
             Live
           </span>
         )}
@@ -101,10 +96,10 @@ export default function GoogleSheetsConnect() {
       {connection ? (
         /* Connected state */
         <div className="space-y-3">
-          <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600 space-y-1">
+          <div className="rounded-lg bg-navy-800/60 p-3 text-sm space-y-1.5">
             <div className="flex justify-between">
-              <span className="text-gray-500">Last synced</span>
-              <span className="font-medium text-gray-800">
+              <span className="text-slate-400 text-xs">Last synced</span>
+              <span className="font-medium text-white text-xs">
                 {connection.last_synced_at
                   ? new Date(connection.last_synced_at).toLocaleString('en-GB', {
                       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -113,8 +108,8 @@ export default function GoogleSheetsConnect() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Newest transaction</span>
-              <span className="font-medium text-gray-800">
+              <span className="text-slate-400 text-xs">Newest transaction</span>
+              <span className="font-medium text-white text-xs">
                 {connection.last_synced_timestamp
                   ? new Date(connection.last_synced_timestamp).toLocaleDateString('en-GB', {
                       day: 'numeric', month: 'short', year: 'numeric',
@@ -130,7 +125,7 @@ export default function GoogleSheetsConnect() {
                 href={connection.spreadsheet_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 text-center text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors rounded-lg py-2"
+                className="flex-1 text-center text-sm font-semibold text-white bg-green-600 hover:bg-green-500 transition-colors rounded-lg py-2.5"
               >
                 Open Sheet ↗
               </a>
@@ -138,7 +133,7 @@ export default function GoogleSheetsConnect() {
             <button
               onClick={handleDisconnect}
               disabled={disconnecting}
-              className="text-sm text-gray-500 hover:text-red-600 transition-colors px-3 py-2 rounded-lg border border-gray-200 hover:border-red-200"
+              className="text-sm text-slate-400 hover:text-red-400 transition-colors px-3 py-2 rounded-lg border border-navy-700 hover:border-red-400/50"
             >
               {disconnecting ? 'Disconnecting…' : 'Disconnect'}
             </button>
@@ -147,20 +142,20 @@ export default function GoogleSheetsConnect() {
       ) : (
         /* Not connected state */
         <div className="space-y-3">
-          <ul className="text-xs text-gray-500 space-y-1 pl-1">
+          <ul className="text-xs text-slate-400 space-y-1.5 pl-1">
             <li className="flex items-center gap-2">
-              <span className="text-green-500">✓</span> One tab per bank account
+              <span className="text-green-400">✓</span> One tab per bank account
             </li>
             <li className="flex items-center gap-2">
-              <span className="text-green-500">✓</span> Full transaction history, growing daily
+              <span className="text-green-400">✓</span> Full transaction history, growing daily
             </li>
             <li className="flex items-center gap-2">
-              <span className="text-green-500">✓</span> Date, merchant, amount, category &amp; more
+              <span className="text-green-400">✓</span> Date, merchant, amount, category &amp; more
             </li>
           </ul>
           <a
             href="/api/auth/google-sheets"
-            className="flex items-center justify-center gap-2 w-full text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors rounded-lg py-2.5 shadow-sm"
+            className="flex items-center justify-center gap-2 w-full text-sm font-semibold text-navy-950 bg-white hover:bg-slate-100 transition-colors rounded-lg py-2.5 shadow-sm"
           >
             <svg width="16" height="16" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -170,7 +165,7 @@ export default function GoogleSheetsConnect() {
             </svg>
             Connect Google Sheets
           </a>
-          <p className="text-[11px] text-gray-400 text-center">
+          <p className="text-[11px] text-slate-500 text-center">
             Your data stays in your Google account. Updated every morning at 6am.
           </p>
         </div>

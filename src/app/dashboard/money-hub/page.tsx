@@ -20,7 +20,6 @@ import SpendingPanel from './SpendingPanel';
 import GoalsAndBudgetsPanel from './GoalsAndBudgetsPanel';
 import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
-import GoogleSheetsConnect from '@/components/GoogleSheetsConnect';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -828,9 +827,6 @@ export default function MoneyHubPage() {
         <ContractsPanel data={data} isPro={isPro} />
         <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
       </div>
-
-      {/* Export destinations — Google Sheets */}
-      <GoogleSheetsConnect />
 
       {/* Financial Action Centre (Pro) */}
       {isPro && (
