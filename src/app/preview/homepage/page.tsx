@@ -1097,7 +1097,7 @@ export default function HomepageV2Preview() {
               <div className="num">01</div>
               <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
               <p>Pick the category, type a sentence. We cite the law, you send the letter.</p>
-              <form className="mini-form" onSubmit={onDemoGenerate}>
+              <form id="try-letter" className="mini-form" onSubmit={onDemoGenerate}>
                 <label htmlFor="mini-issue">What&rsquo;s the issue?</label>
                 <select
                   id="mini-issue"
