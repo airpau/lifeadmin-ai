@@ -719,7 +719,7 @@ export default function MoneyHubPage() {
       {/* MAIN GRID: Spending + Budgets & Goals */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
-        <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
+        <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
       </div>
 
       {/* Expected Bills (for the selected month) */}
