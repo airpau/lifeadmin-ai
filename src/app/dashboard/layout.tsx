@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import TrialBanner from '@/components/TrialBanner';
+import NotificationBell from '@/components/NotificationBell';
 import {
   LayoutDashboard,
   ScanSearch,
@@ -25,7 +26,6 @@ import {
   BookOpen,
   FolderLock,
   MessageCircle,
-  Download,
   Loader2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -39,7 +39,6 @@ const navItems = [
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
-  { name: 'Export', href: '/dashboard/export', icon: Download },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
@@ -235,12 +234,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span>
           </span>
         </Link>
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 text-slate-400 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
-        >
-          <Menu className="h-6 w-6" />
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 text-slate-400 hover:text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+        </div>
       </header>
 
       {/* Mobile sidebar overlay */}
@@ -267,6 +269,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Main content */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 min-w-0 bg-navy-950 pb-20 lg:pb-8 flex flex-col min-h-screen">
+          {/* Desktop top-right bell */}
+          <div className="hidden lg:flex justify-end mb-2">
+            <NotificationBell />
+          </div>
           <div className="flex-1">
             {(isTrial || trialExpired) && <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />}
             {children}

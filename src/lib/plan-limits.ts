@@ -5,6 +5,17 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
+  /**
+   * Max number of active dispute→email-thread links (Watchdog feature).
+   * null = unlimited. A "link" is one row in dispute_watchdog_links with
+   * sync_enabled=true.
+   */
+  disputeThreadLinks: number | null;
+  /**
+   * Minimum minutes between automatic background syncs of a linked thread.
+   * Free tier has no background sync (manual only) — represented by null.
+   */
+  watchdogSyncIntervalMinutes: number | null;
   features: string[];
 }
 
@@ -12,17 +23,23 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     complaintsPerMonth: 3,
     scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
-    features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan'],
+    disputeThreadLinks: 1,
+    watchdogSyncIntervalMinutes: null, // manual only
+    features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
   },
   essential: {
     complaintsPerMonth: null,
     scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending'],
+    disputeThreadLinks: 5,
+    watchdogSyncIntervalMinutes: 60,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'watchdog_auto'],
   },
   pro: {
     complaintsPerMonth: null,
     scanRunsPerMonth: null, // unlimited everything
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent'],
+    disputeThreadLinks: null,
+    watchdogSyncIntervalMinutes: 30,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant'],
   },
 };
 
@@ -117,4 +134,57 @@ export async function incrementUsage(
     p_action: action,
     p_year_month: yearMonth,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Watchdog (dispute ⇄ email thread sync) helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the user's effective plan tier, applying the same
+ * Stripe/founding-member logic as checkUsageLimit().
+ */
+export async function getEffectiveTier(userId: string): Promise<PlanTier> {
+  const admin = getAdmin();
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .eq('id', userId)
+    .single();
+
+  const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
+  const isPaid = tier !== 'free';
+  const hasActiveStripe = profile?.stripe_subscription_id &&
+    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+  const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
+    profile?.subscription_status === 'trialing' &&
+    profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+
+  return (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
+}
+
+/**
+ * Check whether the user can link a new dispute email thread (Watchdog).
+ *
+ * Unlike monthly-quota checks this is a *concurrent* limit based on the
+ * current count of active rows in dispute_watchdog_links.
+ */
+export async function checkWatchdogLinkLimit(userId: string): Promise<UsageCheckResult> {
+  const admin = getAdmin();
+  const tier = await getEffectiveTier(userId);
+  const limit = PLAN_LIMITS[tier].disputeThreadLinks;
+
+  if (limit === null) {
+    return { allowed: true, used: 0, limit: null, tier, upgradeRequired: false };
+  }
+
+  const { count } = await admin
+    .from('dispute_watchdog_links')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('sync_enabled', true);
+
+  const used = count ?? 0;
+  const allowed = used < limit;
+  return { allowed, used, limit, tier, upgradeRequired: !allowed };
 }
