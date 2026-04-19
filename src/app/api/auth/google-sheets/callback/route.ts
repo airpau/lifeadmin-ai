@@ -4,6 +4,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!
@@ -17,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code) {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/money-hub?sheets_error=access_denied`
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=access_denied`
     )
   }
 
@@ -38,7 +40,7 @@ export async function GET(req: NextRequest) {
   if (!tokens.access_token) {
     console.error('Google Sheets OAuth error:', tokens)
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/money-hub?sheets_error=token_failed`
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=token_failed`
     )
   }
 
@@ -48,23 +50,26 @@ export async function GET(req: NextRequest) {
   })
   const userInfo = await userInfoRes.json()
 
-  // 3. Get Supabase user from session cookie
-  // We use service role to look up user by google email match in profiles
-  // In production: prefer reading the Supabase session cookie directly
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-  // Attempt to read user from auth cookie
-  const cookieHeader = req.headers.get('cookie') ?? ''
-  const supabaseUserClient = createClient(SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    global: { headers: { cookie: cookieHeader } },
-  })
+  // 3. Read Supabase session via the SSR cookie helper (same pattern as
+  // /api/google-sheets/disconnect). The previous approach used the
+  // supabase-js client with a manually-forwarded cookie header, which
+  // doesn't parse the sb-* auth cookies and always returned no user.
+  const cookieStore = await cookies()
+  const supabaseUserClient = createServerClient(
+    SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get: (name: string) => cookieStore.get(name)?.value } }
+  )
   const { data: { user } } = await supabaseUserClient.auth.getUser()
 
   if (!user) {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/login?sheets_error=not_logged_in`
+      `${process.env.NEXT_PUBLIC_APP_URL}/auth/login?sheets_error=not_logged_in&redirect=/dashboard/export`
     )
   }
+
+  // Service-role client used for the upsert (bypasses RLS) and the profile lookup.
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
   // 4. Get user's name for sheet title
   const { data: profile } = await supabase
@@ -92,7 +97,7 @@ export async function GET(req: NextRequest) {
   if (!sheet.spreadsheetId) {
     console.error('Sheet creation failed:', sheet)
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/money-hub?sheets_error=sheet_create_failed`
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_error=sheet_create_failed`
     )
   }
 
@@ -124,6 +129,6 @@ export async function GET(req: NextRequest) {
   }).catch(console.error)
 
   return NextResponse.redirect(
-    `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/money-hub?sheets_connected=true`
+    `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/export?sheets_connected=true`
   )
 }
