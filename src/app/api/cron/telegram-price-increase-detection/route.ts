@@ -41,6 +41,12 @@ function normaliseName(name: string): string {
     .trim();
 }
 
+// Strip trailing space+digit(s) banks append to disambiguate duplicate direct debits
+// e.g. "Onestream Broadband 1" → "Onestream Broadband"
+function normaliseProviderName(name: string): string {
+  return name.replace(/\s+\d+$/, '').trim();
+}
+
 function namesMatch(a: string, b: string): boolean {
   const na = normaliseName(a);
   const nb = normaliseName(b);
@@ -182,8 +188,12 @@ export async function GET(request: NextRequest) {
         // Only alert if increase > £1
         if (increase <= 1) continue;
 
+        // Normalise away trailing digit suffixes banks use to disambiguate duplicate DDs
+        // e.g. "Onestream Broadband 1" → "Onestream Broadband"
+        const normName = normaliseProviderName(sub.provider_name);
+
         // Check we haven't already alerted for this increase this month
-        const refKey = `${sub.provider_name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
+        const refKey = `${normName.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
         const { data: existing } = await supabase
           .from('notification_log')
           .select('id')
@@ -195,14 +205,24 @@ export async function GET(request: NextRequest) {
         if (existing) continue;
 
         const annualIncrease = increase * 12;
-        increases.push({ name: sub.provider_name, prevAmount: prevAmt, newAmount: thisAmt, increase, annualIncrease });
+        increases.push({ name: normName, prevAmount: prevAmt, newAmount: thisAmt, increase, annualIncrease });
       }
 
       if (increases.length === 0) continue;
 
+      // Deduplicate by normalised name — multiple subscription rows for the same
+      // provider (e.g. "Onestream Broadband 1/2/3") must only produce one alert
+      const seenNames = new Set<string>();
+      const dedupedIncreases = increases.filter((inc) => {
+        const key = inc.name.toLowerCase();
+        if (seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+      });
+
       // Route each increase: > £20/mo → immediate send with inline buttons
       //                       ≤ £20/mo → queue for evening digest
-      for (const inc of increases) {
+      for (const inc of dedupedIncreases) {
         const refKey = `${inc.name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
 
         if (inc.increase > 20) {
