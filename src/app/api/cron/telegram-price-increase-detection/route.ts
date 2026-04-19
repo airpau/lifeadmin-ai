@@ -192,15 +192,18 @@ export async function GET(request: NextRequest) {
         // e.g. "Onestream Broadband 1" → "Onestream Broadband"
         const normName = normaliseProviderName(sub.provider_name);
 
-        // Check we haven't already alerted for this increase this month
-        const refKey = `${normName.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
+        // Check we haven't already alerted for this increase this month.
+        // Check both the new normalised key AND the legacy raw key so users who
+        // received an alert before this deploy (old key format) aren't re-alerted.
+        const newKey = `${normName.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
+        const legacyKey = `${sub.provider_name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
         const { data: existing } = await supabase
           .from('notification_log')
           .select('id')
           .eq('user_id', userId)
           .eq('notification_type', 'price_increase')
-          .eq('reference_key', refKey)
-          .single();
+          .in('reference_key', [newKey, legacyKey])
+          .maybeSingle();
 
         if (existing) continue;
 
