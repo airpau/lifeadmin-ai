@@ -136,7 +136,8 @@ export async function GET(request: NextRequest) {
         }));
 
       // All tracked subscriptions (active + detected + pending — not just 'active')
-      const TRACKED_STATUSES = ['active', 'detected', 'pending', 'paused'];
+      // pending_cancellation = user has requested cancellation but sub is still live
+      const TRACKED_STATUSES = ['active', 'pending_cancellation'];
 
       const { data: allTrackedSubs } = await admin
         .from('subscriptions')
