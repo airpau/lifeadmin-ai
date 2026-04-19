@@ -330,8 +330,65 @@ export default function HomepageV2Preview() {
                   <span className="dot-mint" /> Pocket Agent · Telegram
                 </div>
                 <div className="msg">
-                  Virgin Media bill increased by <strong>£12</strong> this month — want me to draft
-                  a dispute citing Ofcom&rsquo;s mid-contract price rise rules?
+                  {'Your Virgin Media bill is up '}
+                  <strong>£12</strong>
+                  {' this month. Want me to draft a dispute citing Ofcom\u2019s mid-contract price rise rules?'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Why We Exist (light narrative) — brought across from v1 ---- */}
+      <section className="why-we-exist section-light" id="why">
+        <div className="wrap">
+          <div className="why-grid">
+            <div className="why-copy reveal">
+              <span className="eyebrow">Why we exist</span>
+              <h2>
+                The average UK household is
+                <br />
+                overcharged <span className="accent">£1,000+</span> a year.
+              </h2>
+              <p className="lead">
+                Broadband price hikes. Energy tariffs that quietly roll over. Gym memberships you
+                forgot about. Flight compensation you never claimed. Insurance renewals that drift
+                up every year.
+              </p>
+              <p>
+                Paybacker exists because the admin of fighting this — reading the email, finding
+                the policy, writing the letter — is designed to be too painful for any normal
+                person to keep up with. So we built an AI team that does it for you.
+              </p>
+              <p className="closing">
+                Point it at your bank and your inbox. Get your money back.
+              </p>
+            </div>
+            <div className="why-stats reveal">
+              <div className="why-stat">
+                <div className="n">£82.6bn</div>
+                <div className="l">
+                  lost to overcharges across UK households every year (Citizens Advice, 2024).
+                </div>
+              </div>
+              <div className="why-stat">
+                <div className="n">68%</div>
+                <div className="l">
+                  of UK adults have at least one subscription they&rsquo;ve forgotten about.
+                </div>
+              </div>
+              <div className="why-stat">
+                <div className="n">£520</div>
+                <div className="l">
+                  maximum compensation under UK261 for a single delayed or cancelled flight — most
+                  never claim it.
+                </div>
+              </div>
+              <div className="why-stat">
+                <div className="n">30 sec</div>
+                <div className="l">
+                  to draft a formal dispute citing the exact UK law — with Paybacker.
                 </div>
               </div>
             </div>
@@ -372,13 +429,22 @@ export default function HomepageV2Preview() {
           <div className="section-head reveal">
             <span className="eyebrow">Real numbers · Real users</span>
             <h2>
-              Every £ we&rsquo;ve found
+              Real pounds recovered
               <br />
-              for real UK users.
+              for real UK households.
             </h2>
             <p>
-              No gamified streaks. No vague &ldquo;up to&rdquo; claims. These are live figures from
-              Paybacker accounts in the last 90 days.
+              No gamified streaks. No vague &ldquo;up to&rdquo; claims. Live numbers from Paybacker
+              accounts in the last 90 days — refreshed in real time once PR&nbsp;4 lands.
+            </p>
+            {/*
+              Hardcoded placeholder figures below are from the Claude Design export.
+              PR 4 wires these to Supabase (sum of agent_runs.amount_saved for the 90d window,
+              count of subscriptions tracked across live bank_connections, live count of
+              founding_members.status = 'active').
+            */}
+            <p className="placeholder-note" aria-live="polite">
+              Preview data — real aggregates from Supabase land in PR&nbsp;4.
             </p>
           </div>
           <div className="stats-grid">
@@ -467,6 +533,44 @@ export default function HomepageV2Preview() {
               </div>
             </div>
 
+            {/* Pocket Agent moved up to position 2 per Paul's feedback
+                (Apr 2026 review): focus order is Disputes → Pocket Agent → Money Hub. */}
+            <div className="pillar-card reveal">
+              <div className="pillar-icon gradient" aria-hidden="true">
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
+                </svg>
+              </div>
+              <h3>Pocket Agent</h3>
+              <p className="copy">
+                Your AI financial agent, always in your pocket. Telegram, WhatsApp, SMS and email —
+                answers, drafts, cancels, and switches in plain English.
+              </p>
+              <div className="pillar-preview">
+                <div className="head">Today · Telegram</div>
+                <div className="chat-preview">
+                  <div className="chat-bubble user">Is £68/mo fair for 100Mb broadband?</div>
+                  <div className="chat-bubble agent">
+                    Above UK median of £32. Two cheaper options on your postcode. Draft switch?
+                  </div>
+                  <div className="chat-bubble user">Yes please</div>
+                  <div className="chat-bubble agent">
+                    {'On it — you\u2019ll save '}
+                    <strong>£432/yr</strong>.
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="pillar-card reveal">
               <div className="pillar-icon mint" aria-hidden="true">
                 <svg
@@ -525,40 +629,319 @@ export default function HomepageV2Preview() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
 
-            <div className="pillar-card reveal">
-              <div className="pillar-icon gradient" aria-hidden="true">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
-                </svg>
+      {/* Pocket Agent showcase (dark) — new in PR 3 ---------------- */}
+      <section className="agent-showcase section-ink" id="pocket-agent">
+        <div className="wrap">
+          <div className="section-head reveal">
+            <span className="eyebrow on-ink">Meet your Pocket Agent</span>
+            <h2>
+              An AI that actually
+              <br />
+              <span className="mint">does</span> the admin for you.
+            </h2>
+            <p className="sub">
+              Your Pocket Agent lives in Telegram, WhatsApp, SMS, and email — watching for
+              overcharges, drafting letters, and cancelling the stuff you never use. Reply in a
+              sentence. It handles the rest.
+            </p>
+          </div>
+
+          <div className="agent-showcase-grid">
+            <div className="agent-phone reveal" aria-hidden="true">
+              <div className="agent-phone-header">
+                <span className="dot-mint" />
+                <span>Pocket Agent · Telegram</span>
+                <span className="agent-phone-time">Today · 10:47</span>
               </div>
-              <h3>Pocket Agent</h3>
-              <p className="copy">
-                Your AI financial agent in Telegram. Ask anything, fix everything. &ldquo;Is my
-                energy bill fair?&rdquo; &ldquo;Cancel my gym.&rdquo; Done.
-              </p>
-              <div className="pillar-preview">
-                <div className="head">Today · Telegram</div>
-                <div className="chat-preview">
-                  <div className="chat-bubble user">Is £68/mo fair for 100Mb broadband?</div>
-                  <div className="chat-bubble agent">
-                    Above UK median of £32. Two cheaper options on your postcode. Draft switch?
-                  </div>
-                  <div className="chat-bubble user">Yes please</div>
-                  <div className="chat-bubble agent">
-                    On it — you&rsquo;ll save <strong>£432/yr</strong>.
+              <div className="agent-phone-body">
+                <div className="ap-bubble agent">
+                  {'Morning Paul \u2014 your British Gas bill just landed. It\u2019s up '}
+                  <strong>£41</strong>
+                  {' versus last month. Want me to check if that\u2019s fair?'}
+                </div>
+                <div className="ap-bubble user">Yes please, quickly.</div>
+                <div className="ap-bubble agent">
+                  {'Your unit rate jumped from 24.5p to 30.2p/kWh. That\u2019s above the current UK price cap for your tariff. Want me to draft an Ofgem dispute?'}
+                </div>
+                <div className="ap-bubble user">Yeah, go on.</div>
+                <div className="ap-bubble agent">
+                  {'Done \u2014 letter cites Ofgem\u2019s Standards of Conduct and the price cap rules. Sent to your inbox to sign.'}
+                  <span className="ap-link">Preview letter →</span>
+                </div>
+                <div className="ap-bubble user">Can you also cancel my Audible?</div>
+                <div className="ap-bubble agent">
+                  {'On it. Drafted a cancellation citing your 14-day cooling-off right under the Consumer Contracts Regulations. Confirm?'}
+                  <div className="ap-chips">
+                    <span className="ap-chip ap-chip-mint">✓ Confirm</span>
+                    <span className="ap-chip">Change wording</span>
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="agent-features reveal">
+              <div className="agent-feature">
+                <div className="af-icon">⚡</div>
+                <div>
+                  <h4>Instant answers</h4>
+                  <p>
+                    &ldquo;Is £68 fair for broadband?&rdquo; &ldquo;Can I claim for this flight
+                    delay?&rdquo; Ask in plain English — get a straight answer with the UK law
+                    cited.
+                  </p>
+                </div>
+              </div>
+              <div className="agent-feature">
+                <div className="af-icon">✍️</div>
+                <div>
+                  <h4>One-tap dispute letters</h4>
+                  <p>
+                    Drafts formal complaints, cancellations, or refund requests in 30 seconds —
+                    citing Consumer Rights Act 2015, UK261, Ofgem, Ofcom or the relevant rule.
+                  </p>
+                </div>
+              </div>
+              <div className="agent-feature">
+                <div className="af-icon">🔔</div>
+                <div>
+                  <h4>Proactive alerts</h4>
+                  <p>
+                    Pings you when a bill jumps, a free trial is about to convert, a contract is
+                    ending, or a flight delay qualifies for compensation. No more missed deadlines.
+                  </p>
+                </div>
+              </div>
+              <div className="agent-feature">
+                <div className="af-icon">💷</div>
+                <div>
+                  <h4>Verified switches</h4>
+                  <p>
+                    Compares your current bill against 53+ UK partners. Only suggests a switch if
+                    it genuinely beats what you&rsquo;re on — in pounds and pence.
+                  </p>
+                </div>
+              </div>
+              <div className="agent-feature">
+                <div className="af-icon">🔒</div>
+                <div>
+                  <h4>Bank-grade security</h4>
+                  <p>
+                    Read-only Open Banking via Yapily (FCA-authorised). Never stores passwords.
+                    Encrypted end-to-end. UK data residency only.
+                  </p>
+                </div>
+              </div>
+              <div className="agent-feature">
+                <div className="af-icon">🧠</div>
+                <div>
+                  <h4>Remembers context</h4>
+                  <p>
+                    Knows your postcode, your contracts, your renewal dates, and your loyalty
+                    preferences. Doesn&rsquo;t re-ask the same question twice.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* AI Financial Assistant (light) — recategorisation convo --- */}
+      <section className="assistant-section section-light" id="assistant">
+        <div className="wrap">
+          <div className="assistant-grid">
+            <div className="assistant-copy reveal">
+              <span className="eyebrow">AI Financial Assistant</span>
+              <h2>
+                Ask your money anything.
+                <br />
+                It actually answers.
+              </h2>
+              <p>
+                Every transaction, subscription, contract, and bill — categorised in real time.
+                When it gets something wrong, just tell it. The assistant learns how
+                <em> your </em>
+                spending works, not the average household&rsquo;s.
+              </p>
+              <ul className="assistant-bullets">
+                <li>
+                  <strong>Instant recategorisation.</strong> One sentence fixes every past and
+                  future match.
+                </li>
+                <li>
+                  <strong>Category drill-down.</strong> &ldquo;What did I spend on takeaways in
+                  March?&rdquo; — see the list in seconds.
+                </li>
+                <li>
+                  <strong>Dynamic charts.</strong> Ask for a pie chart of utilities or a 6-month
+                  bar for dining — rendered in the chat.
+                </li>
+                <li>
+                  <strong>Budget links.</strong> Every category connects to a budget limit and
+                  renewal alerts.
+                </li>
+              </ul>
+            </div>
+
+            <div className="assistant-chat reveal">
+              <div className="ac-header">Money Hub · AI Assistant</div>
+              <div className="ac-body">
+                <div className="ac-bubble user">
+                  My OneStream direct debit keeps appearing as Bills &amp; Utilities, but it&rsquo;s
+                  broadband. Can you fix it?
+                </div>
+                <div className="ac-bubble assistant">
+                  {'Done. I\u2019ve moved all 14 OneStream transactions (Jan \u2013 Oct) into '}
+                  <strong>Broadband</strong>
+                  {'. Any future OneStream payments will land there automatically. Your monthly Broadband total is now '}
+                  <strong>£38.50</strong>
+                  {'.'}
+                </div>
+                <div className="ac-bubble user">Show me a pie chart of my subscription spend last month.</div>
+                <div className="ac-bubble assistant">
+                  <div className="ac-chart" aria-hidden="true">
+                    <div className="ac-pie">
+                      <div className="ac-slice ac-slice-1" />
+                      <div className="ac-slice ac-slice-2" />
+                      <div className="ac-slice ac-slice-3" />
+                      <div className="ac-slice ac-slice-4" />
+                    </div>
+                    <div className="ac-legend">
+                      <span>
+                        <i style={{ background: 'var(--accent-mint)' }} /> Broadband · £38.50
+                      </span>
+                      <span>
+                        <i style={{ background: 'var(--accent-orange)' }} /> Streaming · £27.97
+                      </span>
+                      <span>
+                        <i style={{ background: '#60A5FA' }} /> Gym · £34.99
+                      </span>
+                      <span>
+                        <i style={{ background: '#A78BFA' }} /> Software · £12.99
+                      </span>
+                    </div>
+                  </div>
+                  {'Total subscription spend in September was '}
+                  <strong>£114.45</strong>
+                  {'. Want me to flag Netflix Premium (unused for 47 days) for cancellation?'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Smart Subscription Tracking (mint wash) ------------------- */}
+      <section className="subs-section section-mint" id="subscriptions">
+        <div className="wrap">
+          <div className="subs-grid">
+            <div className="subs-list reveal" aria-hidden="true">
+              <div className="subs-list-head">
+                <span>October · 11 active subscriptions</span>
+                <span className="subs-total">£143.92/mo</span>
+              </div>
+              <div className="subs-row">
+                <div className="subs-logo mint">N</div>
+                <div className="subs-meta">
+                  <div className="subs-name">Netflix Premium</div>
+                  <div className="subs-tags">
+                    <span className="subs-tag tag-orange">Unused 47 days</span>
+                    <span className="subs-tag">Renews in 14 days</span>
+                  </div>
+                </div>
+                <div className="subs-amt">£17.99</div>
+              </div>
+              <div className="subs-row">
+                <div className="subs-logo orange">V</div>
+                <div className="subs-meta">
+                  <div className="subs-name">Virgin Media Broadband</div>
+                  <div className="subs-tags">
+                    <span className="subs-tag tag-red">Price hike · +£12</span>
+                    <span className="subs-tag">Dispute drafted</span>
+                  </div>
+                </div>
+                <div className="subs-amt">£49.00</div>
+              </div>
+              <div className="subs-row">
+                <div className="subs-logo mint">S</div>
+                <div className="subs-meta">
+                  <div className="subs-name">Spotify Family</div>
+                  <div className="subs-tags">
+                    <span className="subs-tag">Active · 4 profiles</span>
+                  </div>
+                </div>
+                <div className="subs-amt">£19.99</div>
+              </div>
+              <div className="subs-row">
+                <div className="subs-logo orange">G</div>
+                <div className="subs-meta">
+                  <div className="subs-name">PureGym Plus</div>
+                  <div className="subs-tags">
+                    <span className="subs-tag tag-orange">Inactive 86 days</span>
+                    <span className="subs-tag">Cancel draft ready</span>
+                  </div>
+                </div>
+                <div className="subs-amt">£34.99</div>
+              </div>
+              <div className="subs-row">
+                <div className="subs-logo mint">A</div>
+                <div className="subs-meta">
+                  <div className="subs-name">Audible UK</div>
+                  <div className="subs-tags">
+                    <span className="subs-tag">Active · 3 credits unused</span>
+                  </div>
+                </div>
+                <div className="subs-amt">£7.99</div>
+              </div>
+              <div className="subs-row">
+                <div className="subs-logo orange">S</div>
+                <div className="subs-meta">
+                  <div className="subs-name">Sky Mobile</div>
+                  <div className="subs-tags">
+                    <span className="subs-tag">Contract ends 12 Dec</span>
+                    <span className="subs-tag tag-mint">Switch offer · save £168</span>
+                  </div>
+                </div>
+                <div className="subs-amt">£28.00</div>
+              </div>
+            </div>
+
+            <div className="subs-copy reveal">
+              <span className="eyebrow">Smart subscription tracking</span>
+              <h2>
+                Every sub. Every contract.
+                <br />
+                Every renewal.
+              </h2>
+              <p>
+                Paybacker spots every recurring payment the moment it hits your bank — then flags
+                the ones that are quietly costing you money.
+              </p>
+              <ul className="subs-features">
+                <li>
+                  <strong>Renewal alerts.</strong> 30, 14 and 7 days before any contract renews.
+                </li>
+                <li>
+                  <strong>Price-rise detection.</strong> We compare every bill against the last one
+                  and flag anything above inflation.
+                </li>
+                <li>
+                  <strong>Inactive-use detection.</strong> Gym not opened in 86 days? Streaming
+                  service not played in 47? We tell you.
+                </li>
+                <li>
+                  <strong>Contract end-dates tracked.</strong> No more rolling onto the
+                  &ldquo;loyalty tax&rdquo; after your intro rate expires.
+                </li>
+                <li>
+                  <strong>One-tap cancellation letters.</strong> Drafted with your rights under UK
+                  consumer law — you just hit send.
+                </li>
+              </ul>
             </div>
           </div>
         </div>
@@ -798,6 +1181,275 @@ export default function HomepageV2Preview() {
           <p className="compare-link">
             <a href="#">See the full feature comparison →</a>
           </p>
+        </div>
+      </section>
+
+      {/* FAQ (light) — trust-building detail on data & safety ------ */}
+      <section className="faq-section section-light" id="faq">
+        <div className="wrap">
+          <div className="section-head reveal" style={{ textAlign: 'center', margin: '0 auto 48px' }}>
+            <span className="eyebrow">Your most common questions</span>
+            <h2 style={{ margin: '12px 0' }}>
+              How your data stays safe,
+              <br />
+              and how Paybacker actually works.
+            </h2>
+            <p>
+              We&rsquo;re a UK company, ICO-registered, FCA-authorised via Yapily for Open Banking,
+              and GDPR-compliant. Here&rsquo;s the plain-English detail.
+            </p>
+          </div>
+
+          <div className="faq-list reveal">
+            <details className="faq-item">
+              <summary>
+                <span>Is it safe to connect my bank account?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  Yes. We use <strong>Yapily</strong>, an FCA-authorised Open Banking provider
+                  regulated by the Financial Conduct Authority (FRN 827001). Open Banking is the
+                  UK&rsquo;s official, government-backed framework for connecting to bank
+                  accounts — the same tech used by Monzo, Emma, Plaid-powered apps, and HMRC&rsquo;s
+                  own services.
+                </p>
+                <p>
+                  Three things you should know:
+                </p>
+                <ul>
+                  <li>
+                    <strong>Read-only access.</strong> Paybacker can <em>see</em> your transactions
+                    and balances. We physically cannot move money, make payments, or change your
+                    account settings.
+                  </li>
+                  <li>
+                    <strong>We never see your banking password.</strong> You authenticate directly
+                    with your bank using their own app or online banking — we never see or store
+                    your credentials.
+                  </li>
+                  <li>
+                    <strong>Revoke anytime.</strong> You can disconnect any bank in one tap from
+                    your Paybacker dashboard, or revoke access directly from your bank&rsquo;s
+                    Open Banking settings.
+                  </li>
+                </ul>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>What does Paybacker actually do with my transaction data?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  We use it to find you money. Specifically, we categorise every transaction, spot
+                  recurring payments (subscriptions, direct debits, contracts), detect unusual
+                  price rises, flag forgotten or inactive subscriptions, and identify eligible
+                  refunds or disputes under UK consumer law.
+                </p>
+                <p>
+                  Your data is <strong>never sold</strong>, never shared with third-party
+                  advertisers, and never used to train AI models outside your own account. Full
+                  detail in our{' '}
+                  <a href="/privacy">Privacy Policy</a> and{' '}
+                  <a href="/terms">Terms of Service</a>.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>Where is my data stored, and is it encrypted?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  Your data is stored in the <strong>UK and EU only</strong> (Supabase, AWS
+                  eu-west-2 London region). It&rsquo;s encrypted in transit using TLS 1.3 and
+                  encrypted at rest using AES-256.
+                </p>
+                <p>
+                  We are registered with the UK Information Commissioner&rsquo;s Office (ICO) as a
+                  data controller. Under UK GDPR you have the right to access, correct, export, or
+                  delete all of your data at any time — directly from your dashboard or by emailing{' '}
+                  <a href="mailto:privacy@paybacker.co.uk">privacy@paybacker.co.uk</a>.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>Which UK banks are supported?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  All major UK high-street banks and challenger banks via Open Banking, including:
+                  Barclays, HSBC, Lloyds, NatWest, RBS, Santander, Halifax, Nationwide, TSB, Monzo,
+                  Starling, Revolut, Chase UK, First Direct, Metro Bank, Co-op Bank, and the vast
+                  majority of UK building societies and credit card issuers.
+                </p>
+                <p>
+                  Most US, Australian and EU banks are also supported for international users, but
+                  Paybacker&rsquo;s core features (UK consumer law letters, UK switching deals) are
+                  built for UK residents.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>How accurate are the AI-generated complaint letters?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  Every letter is drafted by Claude (Anthropic&rsquo;s frontier AI), citing exact
+                  UK legislation — Consumer Rights Act 2015, UK261/EU261, Ofgem Standards of
+                  Conduct, Ofcom Fairness Framework, Consumer Credit Act 1974, and more —
+                  depending on the dispute type.
+                </p>
+                <p>
+                  Letters are reviewed in real time for factual accuracy and legal correctness, and
+                  you can edit any letter before sending. We&rsquo;ve sent thousands of letters and
+                  our success rate on mid-contract price rise disputes (the most common use case)
+                  is currently <strong>78%</strong>.
+                </p>
+                <p className="faq-disclaimer">
+                  AI-generated letters are for guidance only and do not constitute legal advice. For
+                  complex disputes (e.g. disputes over £10,000, probate matters, or pending court
+                  proceedings), always consult a qualified solicitor.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>What happens if the company ignores my letter?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  Every letter sets a 14-day response window (28 days for regulated financial
+                  services under FCA rules). If the company doesn&rsquo;t respond or refuses, we
+                  escalate:
+                </p>
+                <ul>
+                  <li>
+                    <strong>Broadband / mobile / TV:</strong> Ofcom-backed ombudsman (CISAS or
+                    Ombudsman Services: Communications).
+                  </li>
+                  <li>
+                    <strong>Energy:</strong> Ofgem-backed Energy Ombudsman.
+                  </li>
+                  <li>
+                    <strong>Banking / credit / insurance:</strong> Financial Ombudsman Service
+                    (FOS) — decisions are legally binding on the company up to £430,000.
+                  </li>
+                  <li>
+                    <strong>Retail goods &amp; services:</strong> Small Claims Court (up to
+                    £10,000, £30 fee, no solicitor needed).
+                  </li>
+                </ul>
+                <p>
+                  Paybacker auto-drafts the escalation letter when the window expires — you just
+                  click send.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>What&rsquo;s actually free, and when do I have to pay?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  The Free plan includes 3 AI dispute letters per month, a manual subscription
+                  tracker, a one-time bank scan, a one-time email inbox scan, the full deals
+                  marketplace, and the AI chatbot.
+                </p>
+                <p>
+                  You only need Essential (£4.99/mo) or Pro (£9.99/mo) if you want{' '}
+                  <strong>unlimited</strong> disputes, daily automatic bank sync, monthly (or
+                  unlimited) email scans, the Pocket Agent in Telegram/WhatsApp, and priority
+                  human review on complex disputes. Founding-member pricing is locked in forever.
+                </p>
+                <p>
+                  No ads, no affiliate upsell traps. We make money from the monthly subscription
+                  and a small optional commission if you switch provider via the deals marketplace
+                  — you pay the same price either way.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>Which email providers can Paybacker scan?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  <strong>Gmail</strong> and <strong>Outlook</strong> (Microsoft 365) are fully
+                  supported using the official, Google/Microsoft-verified OAuth flow with
+                  read-only permissions. We&rsquo;ve passed Google&rsquo;s CASA security
+                  assessment for sensitive-scope access.
+                </p>
+                <p>
+                  Yahoo Mail and generic IMAP (Fastmail, ProtonMail, custom domains) are supported
+                  via app passwords. iCloud Mail is on the roadmap for Q3 2026.
+                </p>
+                <p>
+                  The inbox scan looks for subscription receipts, contract confirmations, price
+                  rise notifications, flight delay emails, and potential refund opportunities —
+                  nothing else. We don&rsquo;t read personal email.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>Can I cancel my subscription at any time?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  Yes — cancel in one click from your Paybacker dashboard (Settings → Billing). No
+                  call centre, no retention dark patterns, no &ldquo;let me transfer you to
+                  someone who can help.&rdquo; Your subscription stops at the end of the current
+                  billing period.
+                </p>
+                <p>
+                  If you cancel within 14 days of signing up and haven&rsquo;t used Paybacker
+                  intensively, you&rsquo;re entitled to a full refund under the Consumer Contracts
+                  Regulations — we&rsquo;ll process it within 5 working days.
+                </p>
+              </div>
+            </details>
+
+            <details className="faq-item">
+              <summary>
+                <span>Who&rsquo;s behind Paybacker?</span>
+                <span className="faq-chev" aria-hidden="true">+</span>
+              </summary>
+              <div className="faq-body">
+                <p>
+                  Paybacker is built by <strong>Paybacker LTD</strong>, a UK company registered in
+                  England &amp; Wales, founded March 2026. We&rsquo;re an ICO-registered data
+                  controller, FCA-authorised via Yapily for Open Banking access, and a verified
+                  Google Cloud partner for OAuth scopes.
+                </p>
+                <p>
+                  You can reach the founder directly at{' '}
+                  <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a> — we aim to
+                  respond within 24 hours, usually much faster. For data protection queries,{' '}
+                  <a href="mailto:privacy@paybacker.co.uk">privacy@paybacker.co.uk</a>.
+                </p>
+              </div>
+            </details>
+          </div>
         </div>
       </section>
 
