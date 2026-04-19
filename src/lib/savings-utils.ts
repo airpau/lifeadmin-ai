@@ -35,12 +35,10 @@ export function calculateTotalSavings(deals: any[], priceAlerts: any[]): number 
 
 export function parseComparisonDeals(data: any) {
   const dealsList: any[] = [];
-  let filteredSaving = 0;
-  let filteredCount = 0;
-  
+
   for (const sub of (data.subscriptions || [])) {
     if (!sub.comparisons?.length) continue;
-    
+
     const best = sub.comparisons[0];
     const deal = {
       subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
@@ -51,13 +49,26 @@ export function parseComparisonDeals(data: any) {
       dealUrl: best.dealUrl,
       category: sub.category || '',
     };
-    
+
     if (isDealValid(deal)) {
-      filteredSaving += deal.annualSaving;
-      filteredCount++;
       dealsList.push(deal);
     }
   }
-  
-  return { saving: filteredSaving, count: filteredCount, deals: dealsList };
+
+  // Deduplicate by normalized provider name, keep highest saving per distinct provider
+  const byProvider = new Map<string, typeof dealsList[0]>();
+  for (const deal of dealsList) {
+    const key = deal.subscriptionName.toLowerCase().trim();
+    const existing = byProvider.get(key);
+    if (!existing || deal.annualSaving > existing.annualSaving) {
+      byProvider.set(key, deal);
+    }
+  }
+  const deduped = Array.from(byProvider.values());
+
+  return {
+    saving: deduped.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0),
+    count: deduped.length,
+    deals: deduped,
+  };
 }

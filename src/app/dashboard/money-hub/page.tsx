@@ -71,6 +71,7 @@ export default function MoneyHubPage() {
   // Expected bills
   const [expectedBills, setExpectedBills] = useState<ExpectedBill[]>([]);
   const [expectedBillsTotal, setExpectedBillsTotal] = useState(0);
+  const [billsExpanded, setBillsExpanded] = useState(false);
 
   // Bank state
   const [expiredConnections, setExpiredConnections] = useState<any[]>([]);
@@ -738,7 +739,7 @@ export default function MoneyHubPage() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {expectedBills.slice(0, 12).map((bill: any) => {
+            {expectedBills.slice(0, billsExpanded ? undefined : 12).map((bill: any) => {
               const statusColor = bill.paid
                 ? 'border-green-500/30 bg-green-500/5'
                 : bill.past_due
@@ -794,7 +795,14 @@ export default function MoneyHubPage() {
             })}
           </div>
           {expectedBills.length > 12 && (
-            <p className="text-center text-xs text-slate-500 mt-2">+ {expectedBills.length - 12} more expected bills</p>
+            <button
+              onClick={() => setBillsExpanded(prev => !prev)}
+              className="w-full text-center text-xs text-slate-500 hover:text-slate-300 transition-colors mt-2 flex items-center justify-center gap-1"
+            >
+              {billsExpanded
+                ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</>
+                : <><ChevronDown className="h-3.5 w-3.5" /> + {expectedBills.length - 12} more expected bills</>}
+            </button>
           )}
         </div>
       )}
@@ -1049,19 +1057,28 @@ export default function MoneyHubPage() {
 
           {/* Better Deals Section */}
           {(() => {
-            // Filter deals through isDealValid to exclude mortgages, loans, council tax etc.
-            // This ensures the total here matches the dashboard hero figure
-            const validDeals = (deals?.subscriptions || []).flatMap((sub: any) =>
-              (sub.comparisons || []).map((c: any) => ({
+            // Take best comparison per subscription, then deduplicate by normalised provider name.
+            // This matches the Overview page calculation via parseComparisonDeals.
+            const dealsPerSub = (deals?.subscriptions || []).map((sub: any) => {
+              const best = (sub.comparisons || [])[0];
+              if (!best || !best.annualSaving || best.annualSaving <= 0) return null;
+              return {
                 subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
-                currentPrice: c.currentPrice,
-                dealProvider: c.dealProvider,
-                dealPrice: c.dealPrice,
-                annualSaving: c.annualSaving,
-                dealUrl: c.dealUrl,
+                currentPrice: best.currentPrice,
+                dealProvider: best.dealProvider,
+                dealPrice: best.dealPrice,
+                annualSaving: best.annualSaving,
+                dealUrl: best.dealUrl,
                 category: sub.category || '',
-              }))
-            ).filter((d: any) => d.annualSaving > 0 && isDealValid(d));
+              };
+            }).filter(Boolean);
+            const byProvider = new Map<string, any>();
+            for (const deal of dealsPerSub) {
+              const key = (deal.subscriptionName as string).toLowerCase().trim();
+              const existing = byProvider.get(key);
+              if (!existing || deal.annualSaving > existing.annualSaving) byProvider.set(key, deal);
+            }
+            const validDeals = Array.from(byProvider.values()).filter((d: any) => isDealValid(d));
             const filteredTotal = validDeals.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0);
             
             if (validDeals.length > 0) {
