@@ -16,7 +16,8 @@ export async function GET(
     .select(`
       *,
       correspondence(
-        id, entry_type, title, content, summary, attachments, task_id, entry_date, created_at
+        id, entry_type, title, content, summary, attachments, task_id, entry_date, created_at,
+        detected_from_email, sender_address, email_thread_id
       ),
       contract_extractions(
         id, file_url, file_name, provider_name, contract_start_date, contract_end_date,

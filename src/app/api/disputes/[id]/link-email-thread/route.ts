@@ -121,8 +121,15 @@ export async function POST(
     return NextResponse.json({ error: 'Email connection not found' }, { status: 404 });
   }
 
-  // Upsert dispute_watchdog_links (user may have previously unlinked the same thread)
+  // Disable all existing active watchdog links for this dispute before creating a new one.
+  // This ensures only one active link per dispute at a time.
   const db = admin();
+  await db
+    .from('dispute_watchdog_links')
+    .update({ sync_enabled: false, updated_at: new Date().toISOString() })
+    .eq('dispute_id', disputeId)
+    .eq('user_id', user.id)
+    .eq('sync_enabled', true);
   const senderDomain =
     body.senderAddress && typeof body.senderAddress === 'string' && body.senderAddress.includes('@')
       ? body.senderAddress.split('@')[1].toLowerCase()
@@ -156,8 +163,20 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to save link' }, { status: 500 });
   }
 
-  // Initial sync: pull the entire thread history into correspondence
+  // Initial sync: pull the entire thread history into correspondence.
+  // Guard against concurrent requests for the same thread both running the sync —
+  // if last_synced_at is already set, another request already completed it.
   let imported = 0;
+  if (linkRow.last_synced_at) {
+    return NextResponse.json({
+      success: true,
+      linkId: linkRow.id,
+      imported,
+      tier: limitCheck.tier,
+      linksUsed: (limitCheck.used ?? 0) + 1,
+      linksLimit: limitCheck.limit,
+    });
+  }
   try {
     const messages = await fetchNewMessages(conn as EmailConnection, body.threadId, null);
     for (const m of messages) {

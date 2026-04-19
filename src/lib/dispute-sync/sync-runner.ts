@@ -112,14 +112,17 @@ export async function syncLinkedThread(
     imported++;
 
     // Bump dispute counters atomically
-    await db.rpc('record_dispute_reply', {
+    const { error: rpcError } = await db.rpc('record_dispute_reply', {
       p_dispute_id: link.dispute_id,
       p_received_at: m.receivedAt.toISOString(),
     });
+    if (rpcError) {
+      console.warn(`[watchdog] record_dispute_reply failed for ${m.messageId}:`, rpcError.message);
+    }
 
     if (options.sendNotifications !== false) {
       // In-app notification
-      await db.from('user_notifications').insert({
+      const { error: notifError } = await db.from('user_notifications').insert({
         user_id: link.user_id,
         type: 'dispute_reply',
         title: `New reply from ${providerName}`,
@@ -132,6 +135,9 @@ export async function syncLinkedThread(
           messageId: m.messageId,
         },
       });
+      if (notifError) {
+        console.warn(`[watchdog] notification insert failed for ${m.messageId}:`, notifError.message);
+      }
 
       // Telegram alert — fire-and-forget. Import lazily so the module graph stays light.
       sendTelegramSafely({
