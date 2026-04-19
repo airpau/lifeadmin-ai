@@ -132,19 +132,19 @@ export default function AboutPage() {
           </h2>
           <div className="space-y-4 text-slate-300 leading-relaxed">
             <p>
-              I spent a decade working as an IT specialist inside some of the UK&apos;s biggest law firms and banks. I saw exactly how institutions protect their interests: layers of process, deliberate complexity, terms and conditions written by lawyers specifically so you can&apos;t use them against the company.
+              I spent a decade working as an IT specialist inside some of the UK&apos;s biggest law firms and banks. I saw first-hand how institutions protect their interests: layers of process, deliberate complexity, terms and conditions written by lawyers so you can&apos;t use them against the company.
             </p>
             <p>
-              Then I got home one evening and opened a £400 energy bill I hadn&apos;t been expecting. It wasn&apos;t justified, and I knew it. When I called to dispute it, I was passed between departments for 45 minutes before giving up. A few weeks later I found a cancellation clause in my gym contract buried in paragraph 14. Three streaming subscriptions were quietly draining my account on a card I barely used.
+              Then I got home one evening and opened a £400 energy bill I hadn&apos;t been expecting. I knew it wasn&apos;t right. When I called to dispute it, I was passed between departments for 45 minutes before giving up. A few weeks later I found a cancellation clause buried in paragraph 14 of my gym contract — and three streaming subscriptions quietly draining an old card I barely used.
             </p>
             <p>
-              The worst part wasn&apos;t the money. It was knowing the tools to fight back already existed. The Consumer Rights Act 2015. Ofgem&apos;s billing codes. UK261 for flight delays. UK law is genuinely on consumers&apos; sides — it&apos;s just written in a language that takes time and specialist knowledge most people don&apos;t have to spare.
+              The worst part wasn&apos;t the money. It was knowing the tools to fight back already existed — the Consumer Rights Act 2015, Ofgem&apos;s billing codes, UK261 for flight delays. UK law is genuinely on the consumer&apos;s side. It&apos;s just written in language that takes time and specialist knowledge to decode, and most people don&apos;t have either to spare.
             </p>
             <p>
-              And that is exactly what big corporations count on. Most people give up, not because the company is right, but because challenging them feels impossibly complicated. Hiring a solicitor to dispute a £400 bill costs more than the bill itself. So people pay up and feel powerless.
+              That&apos;s exactly what big corporations count on. Most people give up — not because the company is right, but because fighting back feels impossibly complicated. Hiring a solicitor to dispute a £400 bill costs more than the bill. So people pay up, and feel powerless.
             </p>
             <p>
-              I built Paybacker to end that. Connect your bank and email, and our AI finds every hidden charge, forgotten subscription, and overpriced contract in minutes. Then it generates the formal complaint letter — citing the exact legislation that applies to your case — in 30 seconds. No legal fees. No hold music. No giving up.
+              I built Paybacker to change that. You connect your bank and email; the AI finds every hidden charge, forgotten subscription and overpriced contract in minutes, then drafts the formal complaint letter — citing the exact UK legislation that applies to your case — in 30 seconds. No legal fees. No hold music. No giving up.
             </p>
             <p className="text-white font-semibold text-base pt-2">
               Know your rights. Fight for your rights. Paybacker makes it simple.
@@ -183,7 +183,7 @@ export default function AboutPage() {
             </div>
             <div className="space-y-3 text-slate-300 leading-relaxed text-sm">
               <p>
-                Computer science graduate. Ten years as an IT specialist inside some of the UK&apos;s largest law firms and banks. Paul spent a decade watching how institutions protect themselves from the people they serve — and how rarely ordinary people come out on top.
+                A computer science graduate, Paul spent ten years as an IT specialist inside some of the UK&apos;s largest law firms and banks — watching how institutions quietly protect themselves from the people they&apos;re meant to serve, and how rarely ordinary people come out on top.
               </p>
               <p>
                 After one too many unjustified bills, impossible cancellations, and charges buried deep in the small print, he built the tool he wished he&apos;d had.
