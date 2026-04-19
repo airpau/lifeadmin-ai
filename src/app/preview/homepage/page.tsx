@@ -529,13 +529,33 @@ export default function HomepageV2Preview() {
               returns non-zero figures. Once live data lands it quietly vanishes — no
               refresh required.
             */}
-            {(!stats || stats.source !== 'live') && (
-              <p className="placeholder-note" aria-live="polite">
-                {stats?.source === 'seed'
-                  ? 'Seed data — figures will update as verified_savings rows land.'
-                  : 'Preview data — aggregates load from Supabase in a second.'}
-              </p>
-            )}
+            {/*
+              The badge shows whenever any individual figure is still the
+              hardcoded export seed (source !== 'live', OR any specific
+              number is zero and we're falling back). That way we never
+              show a misleading headline number without an honest label.
+            */}
+            {(() => {
+              if (!stats) {
+                return (
+                  <p className="placeholder-note" aria-live="polite">
+                    Preview data — aggregates load from Supabase in a second.
+                  </p>
+                );
+              }
+              const anyFallback =
+                stats.source !== 'live' ||
+                stats.avgSavingsPerUser === 0 ||
+                stats.subscriptionsTracked === 0 ||
+                stats.foundingMembers === 0;
+              if (!anyFallback) return null;
+              return (
+                <p className="placeholder-note" aria-live="polite">
+                  Some figures still seeded — real aggregates fill in as verified_savings
+                  rows land.
+                </p>
+              );
+            })()}
           </div>
           <div className="stats-grid">
             <div className="stat-card reveal">
