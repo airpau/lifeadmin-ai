@@ -454,6 +454,10 @@ async function generateSpendingChart(
       .sort((a, b) => b.monthly - a.monthly)
       .slice(0, 15);
 
+    if (monthly.length === 0) {
+      return { text: 'No subscription spend data found for this period.' };
+    }
+
     labels = monthly.map((s) => s.name);
     values = monthly.map((s) => parseFloat(s.monthly.toFixed(2)));
     total = values.reduce((a, b) => a + b, 0);
