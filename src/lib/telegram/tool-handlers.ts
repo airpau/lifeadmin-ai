@@ -3,19 +3,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCategoryOverride, resolveMoneyHubTransaction } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
+import { CATEGORY_LABELS as CANONICAL_LABELS, isValidCategory, normaliseCategory } from '@/lib/categories';
 
-const CATEGORY_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
-  council_tax: 'Council Tax', energy: 'Energy', water: 'Water',
-  broadband: 'Broadband', mobile: 'Mobile', streaming: 'Streaming',
-  fitness: 'Fitness', groceries: 'Groceries', eating_out: 'Eating Out',
-  fuel: 'Fuel', shopping: 'Shopping', insurance: 'Insurance',
-  transport: 'Transport', gambling: 'Gambling', childcare: 'Childcare',
-  software: 'Software', tax: 'Tax (HMRC)', professional: 'Professional Services',
-  bills: 'Bills', transfers: 'Transfers', cash: 'Cash', fees: 'Fees',
-  income: 'Income', other: 'Other', motoring: 'Motoring', property_management: 'Property',
-  credit_monitoring: 'Credit Monitoring', charity: 'Charity', travel: 'Travel',
-};
+// Re-export canonical labels for local use (keeps existing references working)
+const CATEGORY_LABELS: Record<string, string> = { ...CANONICAL_LABELS };
 
 /** Classify transactions using the same engine as the Money Hub dashboard */
 async function classifyTransactions(supabase: ReturnType<typeof getAdmin>, userId: string, startDate: string, endDate: string) {
@@ -152,19 +143,50 @@ export async function executeToolCall(
         toolInput.category as string | undefined,
         toolInput.query as string,
       );
-    case 'recategorise_transactions':
-      return recategoriseTransactions(supabase, userId, toolInput.merchant_name as string, toolInput.new_category as string);
-    case 'set_budget':
-      return setBudget(supabase, userId, toolInput.category as string, toolInput.monthly_limit as number);
-    case 'recategorise_subscription':
-      return recategoriseSubscription(supabase, userId, toolInput.provider_name as string, toolInput.new_category as string);
+    case 'recategorise_transactions': {
+      const rawCat = toolInput.new_category as string;
+      const canonical = normaliseCategory(rawCat);
+      if (!isValidCategory(canonical)) {
+        return { text: `"${rawCat}" is not a valid category. Valid categories: ${Object.keys(CATEGORY_LABELS).join(', ')}` };
+      }
+      return recategoriseTransactions(
+        supabase, userId,
+        toolInput.merchant_name as string,
+        canonical,
+        toolInput.subcategory as string | undefined,
+      );
+    }
+    case 'set_budget': {
+      const rawCat = toolInput.category as string;
+      const canonical = normaliseCategory(rawCat);
+      if (!isValidCategory(canonical)) {
+        return { text: `"${rawCat}" is not a valid category. Valid categories: ${Object.keys(CATEGORY_LABELS).join(', ')}` };
+      }
+      return setBudget(supabase, userId, canonical, toolInput.monthly_limit as number);
+    }
+    case 'recategorise_subscription': {
+      const rawCat = toolInput.new_category as string;
+      const canonical = normaliseCategory(rawCat);
+      if (!isValidCategory(canonical)) {
+        return { text: `"${rawCat}" is not a valid category. Valid categories: ${Object.keys(CATEGORY_LABELS).join(', ')}` };
+      }
+      return recategoriseSubscription(
+        supabase, userId,
+        toolInput.provider_name as string,
+        canonical,
+        toolInput.subcategory as string | undefined,
+      );
+    }
     case 'add_subscription':
       return addSubscription(supabase, userId, {
         provider_name: toolInput.provider_name as string,
         amount: toolInput.amount as number,
         billing_cycle: (toolInput.billing_cycle as string | undefined) ?? 'monthly',
-        category: (toolInput.category as string | undefined) ?? 'other',
+        category: normaliseCategory(toolInput.category as string | undefined),
+        subcategory: toolInput.subcategory as string | undefined,
       });
+    case 'get_subcategories':
+      return getSubcategories(supabase, userId, toolInput.parent_category as string | undefined);
     case 'cancel_subscription':
       return cancelSubscription(supabase, userId, toolInput.provider_name as string);
     case 'delete_budget':
@@ -212,13 +234,20 @@ export async function executeToolCall(
         interest_rate: toolInput.interest_rate as number | undefined,
         remaining_balance: toolInput.remaining_balance as number | undefined,
       });
-    case 'recategorise_transaction':
+    case 'recategorise_transaction': {
+      const rawCat = toolInput.new_category as string;
+      const canonical = normaliseCategory(rawCat);
+      if (!isValidCategory(canonical)) {
+        return { text: `"${rawCat}" is not a valid category. Valid categories: ${Object.keys(CATEGORY_LABELS).join(', ')}` };
+      }
       return recategoriseTransaction(
         supabase,
         userId,
         toolInput.transaction_id as string,
-        toolInput.new_category as string,
+        canonical,
+        toolInput.subcategory as string | undefined,
       );
+    }
     case 'get_weekly_outlook':
       return getWeeklyOutlook(supabase, userId);
     case 'get_monthly_recap':
@@ -1157,11 +1186,19 @@ async function recategoriseTransactions(
   userId: string,
   merchantName: string,
   newCategory: string,
+  subcategory?: string,
 ): Promise<ToolResult> {
-  // Update user_category, which is our internal system rule
+  // Build the update object — subcategory is stored directly on the transaction
+  // and also registered in user_category_custom for future suggestions.
+  const updatePayload: Record<string, string | null> = { user_category: newCategory };
+  if (subcategory !== undefined) {
+    updatePayload.user_subcategory = subcategory.trim() || null;
+  }
+
+  // Update user_category (and optionally user_subcategory)
   const { data, error } = await supabase
     .from('bank_transactions')
-    .update({ user_category: newCategory })
+    .update(updatePayload)
     .eq('user_id', userId)
     .or(`merchant_name.ilike.%${merchantName}%,description.ilike.%${merchantName}%`)
     .select('id, amount, description, merchant_name');
@@ -1191,7 +1228,23 @@ async function recategoriseTransactions(
     console.error('[UserBot] Error pushing to learning engine:', err.message);
   }
 
-  return { text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${newCategory}". Future transactions from this merchant will also be categorised as "${newCategory}".` };
+  // Register subcategory in user_category_custom so it appears in future suggestions
+  if (subcategory && subcategory.trim()) {
+    try {
+      await supabase.rpc('upsert_user_subcategory', {
+        p_user_id: userId,
+        p_parent: newCategory,
+        p_name: subcategory.trim(),
+      });
+    } catch (err: any) {
+      console.error('[UserBot] Error upserting subcategory:', err.message);
+    }
+  }
+
+  const subLabel = subcategory ? ` > ${subcategory.trim()}` : '';
+  return {
+    text: `Recategorised ${count} transaction${count !== 1 ? 's' : ''} matching "${merchantName}" to "${newCategory}${subLabel}". Future transactions from this merchant will also be categorised as "${newCategory}".`,
+  };
 }
 
 async function setBudget(
@@ -1244,10 +1297,16 @@ async function recategoriseSubscription(
   userId: string,
   providerName: string,
   newCategory: string,
+  subcategory?: string,
 ): Promise<ToolResult> {
+  const updatePayload: Record<string, string | null> = { category: newCategory };
+  if (subcategory !== undefined) {
+    updatePayload.user_subcategory = subcategory.trim() || null;
+  }
+
   const { data, error } = await supabase
     .from('subscriptions')
-    .update({ category: newCategory })
+    .update(updatePayload)
     .eq('user_id', userId)
     .ilike('provider_name', `%${providerName}%`)
     .eq('status', 'active')
@@ -1261,14 +1320,30 @@ async function recategoriseSubscription(
     return { text: `No active subscription found matching "${providerName}".` };
   }
 
+  // Register subcategory for future suggestions
+  if (subcategory && subcategory.trim()) {
+    try {
+      await supabase.rpc('upsert_user_subcategory', {
+        p_user_id: userId,
+        p_parent: newCategory,
+        p_name: subcategory.trim(),
+      });
+    } catch (err: any) {
+      console.error('[UserBot] Error upserting subcategory:', err.message);
+    }
+  }
+
   const names = data.map(s => s.provider_name).join(', ');
-  return { text: `Recategorised ${data.length} subscription${data.length !== 1 ? 's' : ''} (${names}) to "${newCategory}".` };
+  const subLabel = subcategory ? ` > ${subcategory.trim()}` : '';
+  return {
+    text: `Recategorised ${data.length} subscription${data.length !== 1 ? 's' : ''} (${names}) to "${newCategory}${subLabel}".`,
+  };
 }
 
 async function addSubscription(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
-  params: { provider_name: string; amount: number; billing_cycle: string; category: string },
+  params: { provider_name: string; amount: number; billing_cycle: string; category: string; subcategory?: string },
 ): Promise<ToolResult> {
   const { error } = await supabase.from('subscriptions').insert({
     user_id: userId,
@@ -1276,6 +1351,7 @@ async function addSubscription(
     amount: params.amount,
     billing_cycle: params.billing_cycle,
     category: params.category,
+    user_subcategory: params.subcategory?.trim() || null,
     status: 'active',
   });
 
@@ -1283,9 +1359,25 @@ async function addSubscription(
     return { text: `Failed to add subscription: ${error.message}` };
   }
 
+  // Register subcategory for future suggestions
+  if (params.subcategory?.trim()) {
+    try {
+      await supabase.rpc('upsert_user_subcategory', {
+        p_user_id: userId,
+        p_parent: params.category,
+        p_name: params.subcategory.trim(),
+      });
+    } catch (err: any) {
+      console.error('[UserBot] Error upserting subcategory:', err.message);
+    }
+  }
+
   const cycle = params.billing_cycle;
   const annual = params.amount * (cycle === 'monthly' ? 12 : cycle === 'quarterly' ? 4 : 1);
-  return { text: `Subscription added: ${params.provider_name} — ${fmt(params.amount)}/${cycle} (${fmt(annual)}/year). Category: ${params.category}.` };
+  const subLabel = params.subcategory ? ` > ${params.subcategory.trim()}` : '';
+  return {
+    text: `Subscription added: ${params.provider_name} — ${fmt(params.amount)}/${cycle} (${fmt(annual)}/year). Category: ${params.category}${subLabel}.`,
+  };
 }
 
 async function cancelSubscription(
@@ -2182,19 +2274,19 @@ async function recategoriseTransaction(
   userId: string,
   transactionId: string,
   newCategory: string,
+  subcategory?: string,
 ): Promise<ToolResult> {
   // Support truncated IDs (8-char prefix shown in list_transactions output)
   if (transactionId.length < 36) {
     return { text: `Error: You provided a truncated ID ("${transactionId}"). The database requires a full 36-character UUID. Please use the 'recategorise_transactions' tool to search by merchant_name instead.` };
   }
-  
-  let txnQuery = supabase
+
+  const { data: matches, error: fetchError } = await supabase
     .from('bank_transactions')
     .select('id, merchant_name, description, amount, category, user_category')
     .eq('user_id', userId)
-    .eq('id', transactionId);
-
-  const { data: matches, error: fetchError } = await txnQuery.limit(2);
+    .eq('id', transactionId)
+    .limit(2);
 
   if (fetchError) {
     return { text: `Database error querying transaction: ${fetchError.message}` };
@@ -2207,9 +2299,14 @@ async function recategoriseTransaction(
   }
   const txn = matches[0];
 
+  const updatePayload: Record<string, string | null> = { user_category: newCategory };
+  if (subcategory !== undefined) {
+    updatePayload.user_subcategory = subcategory.trim() || null;
+  }
+
   const { error: updateError } = await supabase
     .from('bank_transactions')
-    .update({ user_category: newCategory })
+    .update(updatePayload)
     .eq('id', txn.id)
     .eq('user_id', userId);
 
@@ -2217,7 +2314,7 @@ async function recategoriseTransaction(
     return { text: `Failed to recategorise: ${updateError.message}` };
   }
 
-  // Persist override so it survives future syncs
+  // Persist transaction-level override so it survives future syncs
   await supabase.from('money_hub_category_overrides').insert({
     user_id: userId,
     merchant_pattern: 'txn_specific',
@@ -2225,7 +2322,20 @@ async function recategoriseTransaction(
     transaction_id: txn.id,
   });
 
-  // Automatically feed this into the Learning Engine!
+  // Register subcategory for future suggestions
+  if (subcategory && subcategory.trim()) {
+    try {
+      await supabase.rpc('upsert_user_subcategory', {
+        p_user_id: userId,
+        p_parent: newCategory,
+        p_name: subcategory.trim(),
+      });
+    } catch (err: any) {
+      console.error('[UserBot] Error upserting subcategory:', err.message);
+    }
+  }
+
+  // Feed into Learning Engine for future auto-categorisation
   try {
     const { learnFromCorrection } = await import('@/lib/learning-engine');
     await learnFromCorrection({
@@ -2242,9 +2352,60 @@ async function recategoriseTransaction(
   const merchant = txn.merchant_name ?? 'Unknown';
   const amt = fmt(Math.abs(Number(txn.amount)));
   const prevCategory = txn.user_category || txn.category || 'unknown';
+  const subLabel = subcategory?.trim() ? ` > ${subcategory.trim()}` : '';
   return {
-    text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}". The change is now reflected in your Money Hub dashboard.`,
+    text: `Recategorised *${merchant}* (${amt}) from "${prevCategory}" to "${newCategory}${subLabel}". The change is now reflected in your Money Hub dashboard.`,
   };
+}
+
+// ============================================================
+// GET SUBCATEGORIES — Tier-2 subcategory lookup
+// ============================================================
+
+async function getSubcategories(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  parentCategory?: string,
+): Promise<ToolResult> {
+  const { data, error } = await supabase.rpc('get_user_subcategories', {
+    p_user_id: userId,
+    p_parent: parentCategory ?? null,
+  });
+
+  if (error) {
+    return { text: `Failed to retrieve subcategories: ${error.message}` };
+  }
+
+  if (!data || data.length === 0) {
+    const scope = parentCategory ? `"${parentCategory}"` : 'any category';
+    return {
+      text:
+        `No custom subcategories defined under ${scope} yet.\n\n` +
+        `You can create one by recategorising a transaction and adding a subcategory, e.g. ` +
+        `"recategorise Tesco as Groceries > Organic".`,
+    };
+  }
+
+  // Group by parent
+  const grouped: Record<string, Array<{ name: string; emoji?: string; count: number }>> = {};
+  for (const row of data) {
+    const parent = row.parent_category as string;
+    if (!grouped[parent]) grouped[parent] = [];
+    grouped[parent].push({ name: row.name, emoji: row.emoji, count: Number(row.usage_count) });
+  }
+
+  let text = `*Your custom subcategories:*\n\n`;
+  for (const [parent, subs] of Object.entries(grouped)) {
+    text += `*${CATEGORY_LABELS[parent] ?? parent}*\n`;
+    for (const s of subs) {
+      const ico = s.emoji ? `${s.emoji} ` : '• ';
+      const usage = s.count > 0 ? ` (${s.count} txn${s.count !== 1 ? 's' : ''})` : '';
+      text += `${ico}${s.name}${usage}\n`;
+    }
+    text += '\n';
+  }
+  text += `_To drill into spending by subcategory, ask e.g. "show my Groceries breakdown"._`;
+  return { text };
 }
 
 async function getUpcomingPayments(

@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { ChatTool } from './registry';
 import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCategoryOverride, resolveMoneyHubTransaction } from '@/lib/money-hub-classification';
 import { normaliseMerchantName, categoriseTransaction } from '@/lib/merchant-normalise';
+import { CATEGORY_LABELS as CANONICAL_LABELS } from '@/lib/categories';
 
 function getAdmin() {
   return createClient(
@@ -10,18 +11,8 @@ function getAdmin() {
   );
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
-  council_tax: 'Council Tax', energy: 'Energy', water: 'Water',
-  broadband: 'Broadband', mobile: 'Mobile', streaming: 'Streaming',
-  fitness: 'Fitness', groceries: 'Groceries', eating_out: 'Eating Out',
-  fuel: 'Fuel', shopping: 'Shopping', insurance: 'Insurance',
-  transport: 'Transport', gambling: 'Gambling', childcare: 'Childcare',
-  software: 'Software', tax: 'Tax (HMRC)', professional: 'Professional Services',
-  bills: 'Bills', transfers: 'Transfers', cash: 'Cash', fees: 'Fees',
-  income: 'Income', other: 'Other', motoring: 'Motoring', property_management: 'Property',
-  credit_monitoring: 'Credit Monitoring', charity: 'Charity',
-};
+// Use canonical labels from single source of truth in src/lib/categories.ts
+const CATEGORY_LABELS: Record<string, string> = { ...CANONICAL_LABELS };
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS);
 
