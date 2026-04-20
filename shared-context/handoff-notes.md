@@ -1,4 +1,45 @@
-# Handoff Notes — Last Updated 17 Apr 2026
+# Handoff Notes — Last Updated 20 Apr 2026
+
+## Session: Cowork Desktop — Canonical Category Taxonomy (20 Apr 2026)
+
+### What was done
+Implemented a canonical, two-tier category taxonomy across all of Paybacker. This is a ground-up fix for the inconsistent spending categories visible in the Money Hub dashboard ("professional", "property management", "bills", "Healthcare" — all mixed case and non-canonical).
+
+**Key decisions:**
+- Categories are stored as **lowercase snake_case IDs** (e.g. `bills`, `health`, `council_tax`). Display as **Title Case labels** (e.g. "Bills & Utilities", "Health & Fitness") via `CATEGORY_LABELS` in `categories.ts`. Do NOT store labels in the DB.
+- `transfers` and `income` are **SYSTEM** categories — excluded from spending analysis and not offered in user recategorisation UIs.
+- `professional` → maps to `fees` (Fees & Charges). Not a separate category — too vague.
+- `property management` / `property_management` → maps to `housing`.
+- `healthcare` → maps to `health`.
+
+**Files changed:**
+- `src/lib/categories.ts` — NEW single source of truth (31 IDs, labels, emoji, groups, aliases, TrueLayer map, helper functions).
+- `supabase/migrations/20260420100000_canonical_categories.sql` — Step 0 lowercases everything, Step 1 maps all aliases, Step 2 adds CHECK constraints (NOT VALID), Steps 3–7 add subcategory infrastructure.
+- `src/lib/detect-recurring.ts` — CATEGORY_KEYWORDS keys updated to canonical IDs, `normaliseCategory()` wraps returns.
+- `src/lib/money-hub-classification.ts` — normaliseCategory() delegates to categories.ts.
+- `src/lib/telegram/tools.ts` — all 4 recategorise tool enums use USER_SELECTABLE_IDS.
+- `src/lib/telegram/tool-handlers.ts` — validates + normalises before every DB write, optional subcategory param.
+- `src/lib/telegram/user-bot.ts` — system prompt dynamically includes full category list.
+- `src/app/api/chat/tools/money-hub.ts` — CATEGORY_LABELS from categories.ts.
+- `src/app/api/chat/tools/subscriptions.ts` — USER_SELECTABLE_IDS for enum lists.
+
+**Branch:** `feature/canonical-categories` — pushed. Not yet merged.
+
+### IMPORTANT — stale git lock files
+`.git/index.lock` and `.git/HEAD.lock` exist on the Mac filesystem and cannot be deleted from the sandbox (virtiofs FUSE restriction). The next time a developer opens this repo in a terminal on the Mac, they should run:
+```bash
+rm .git/index.lock .git/HEAD.lock
+```
+Without this, normal `git add` / `git commit` will fail. Commits in this session were made using git plumbing (`write-tree`, `commit-tree`) and direct ref-file writes.
+
+### Next steps
+1. On Mac: `rm .git/index.lock .git/HEAD.lock` to restore normal git operation.
+2. Create PR: `feature/canonical-categories` → `main`.
+3. After PR review + merge: `supabase db push` to apply migration.
+4. Verify Money Hub spending breakdown shows clean Title Case labels with no duplicates.
+5. Check Money Hub RPC filters out `transfers` and `income` from spending totals (grep for `get_monthly_spending_by_category`).
+
+---
 
 ## Session: Cowork Desktop — Agent Reality Audit + CLAUDE.md Correction (17 Apr 2026)
 
@@ -385,3 +426,33 @@ Table `google_sheets_connections` created with RLS. Migration applied 7 Apr 2026
 
 **Next steps:** 1. Fix MEDIUM: Subscriptions page upsell banner showing for Pro users (should be hidden). 2. Fix MEDIUM: April spending breakdown showing 100% as Other with merchant A/C — check categorisation pipeline for current month transactions. 3. Fix MEDIUM: Verify mobile responsive breakpoints — sidebar should collapse at mobile widths. 4. Fix LOW: Clean raw bank merchant descriptions (Baird Ct Cbaird-rm7, Painter P E Paul Landlord). 5. Fix LOW: Amman flight price volatility card should not show Claim Compensation button.
 >>>>>>> e521a01 (docs: session handoff 11 Apr — Telegram intelligence + Yapily status)
+
+
+
+---
+
+## 2026-04-20 — Homepage redesign handoff + 6 social posts
+
+**Context:** Paul uploaded Claude Design handoff zip (6-section homepage walkthrough: AI Disputes, Subs Tracker, Money Hub, Pocket Agent, Sheets Export, Stacked).
+
+**What went live today:**
+- 6 Facebook posts published to Paybacker FB page (all 6 with images, captioned per section).
+- Instagram drafts saved to `docs/social-posts-apr20/instagram-drafts.md` on branch `claude/new-homepage-apr20` (manual post pending Meta App Review).
+
+**What went to preview (NOT master):**
+- Branch: `claude/new-homepage-apr20`, PR: https://github.com/airpau/lifeadmin-ai/pull/105
+- Preview routes: `/preview/new-homepage` and `/preview/new-homepage/how-it-works`
+- Design HTML served from `/public/design-preview/` via iframe — no React port yet
+
+**Why preview-only:**
+Current `src/app/page.tsx` is 1200 lines with live dynamics (auth, founding banner, public stats, letter preview). Faithful port of 6 detailed sections + preservation of all dynamics too large to one-shot to master in one session. Paul agreed to preview-first approach after risk discussion.
+
+**Next session:**
+1. Confirm Paul signed off on preview URL design.
+2. Port 6 sections into `src/app/page.tsx` as real React + Tailwind, replacing Pillars + How-it-works blocks.
+3. Keep nav, hero, trust strip, stats, deals, pricing, testimonials, CTA, footer.
+4. Apply light/mint-wash layered palette.
+5. Run `npx tsc --noEmit` + tag master before deploy.
+6. Then: logged-in pages migration (Money Hub first — plan already exists in `Money-Hub-Redesign-Plan.docx`).
+
+**Note on FB post #1:** first AI Disputes post went text-only (fal.media URL failed FB fetch). Re-posted with image from raw.githubusercontent.com. Two AI Disputes posts live — Paul may want to delete the first text-only one from FB admin (post ID ending `...985435`, very first in batch).
