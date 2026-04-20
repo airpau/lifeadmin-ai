@@ -26,12 +26,53 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
  * same amount + same date + same merchant/description → keep only the first (newest sync).
  * This catches duplicates from overlapping TrueLayer/Yapily connections.
  */
+/**
+ * Deduplicates bank transactions, handling two distinct cases:
+ *
+ * Case 1 — Cross-connection duplicates (original):
+ *   Same amount + date + merchant from two bank connections after a
+ *   TrueLayer → Yapily migration.  Kept: the first occurrence (newest sync wins
+ *   after the DB-level deduplicate_bank_transactions RPC has already run).
+ *
+ * Case 2 — Pending → Settled duplicates (new):
+ *   TrueLayer assigns a different transaction_id to the pending vs settled
+ *   version of the same transaction.  The pending row has no merchant_name
+ *   (raw description only); the settled row has a cleaned merchant_name.  So
+ *   the `amount|date|merchant` key differs and both rows pass through the
+ *   original filter.  Fix: build a set of settled "fingerprints"
+ *   (amount + date + account_id) first, then skip any pending row whose
+ *   fingerprint matches a settled row — regardless of description differences.
+ *
+ * NOTE: The DB trigger trg_reconcile_pending_on_settle is the primary fix and
+ * should prevent Case 2 rows from ever reaching here.  This client-side
+ * guard is defence-in-depth for any rows that slipped through before the
+ * migration was applied, or during the same sync cycle before the trigger fires.
+ */
 function deduplicateTransactions(txns: any[]): any[] {
+  // Build settled fingerprints: amount + date + account_id
+  // A pending row that matches any settled fingerprint is the unsettled ghost.
+  const settledFingerprints = new Set<string>();
+  for (const txn of txns) {
+    if (!txn.is_pending) {
+      const date = (txn.timestamp || '').substring(0, 10);
+      const amt  = parseFloat(String(txn.amount)) || 0;
+      settledFingerprints.add(`${amt}|${date}|${txn.account_id || ''}`);
+    }
+  }
+
   const seen = new Map<string, boolean>();
   return txns.filter(txn => {
-    const date = (txn.timestamp || '').substring(0, 10); // YYYY-MM-DD
+    const date     = (txn.timestamp || '').substring(0, 10);
     const merchant = (txn.merchant_name || txn.description || '').toLowerCase().trim();
-    const amt = parseFloat(String(txn.amount)) || 0;
+    const amt      = parseFloat(String(txn.amount)) || 0;
+
+    // Case 2: skip pending rows that have a settled counterpart
+    if (txn.is_pending) {
+      const fingerprint = `${amt}|${date}|${txn.account_id || ''}`;
+      if (settledFingerprints.has(fingerprint)) return false;
+    }
+
+    // Case 1: skip exact duplicates (same amount + date + merchant string)
     const key = `${amt}|${date}|${merchant}`;
     if (seen.has(key)) return false;
     seen.set(key, true);
