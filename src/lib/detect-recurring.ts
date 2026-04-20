@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { normaliseCategory } from '@/lib/categories';
 
 const STRIP_SUFFIXES = /\b(ltd|limited|plc|llp|inc|corp|group|uk|co\.uk)\b/gi;
 const AMOUNT_VARIANCE = 0.10; // 10%
@@ -69,31 +70,40 @@ export function extractMerchantFromDescription(description: string): string | nu
   return cleaned.length >= 3 ? cleaned : null;
 }
 
+/**
+ * CATEGORY_KEYWORDS — maps canonical category IDs → keyword arrays.
+ * All keys MUST be canonical IDs from src/lib/categories.ts.
+ * Run `normaliseCategory()` on the return value of categoriseTransaction()
+ * as a safety net to catch any stale values after taxonomy changes.
+ */
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  mortgage: ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mortgage', 'nationwide bs', 'building society', 'paratus', 'paratus amc', 'pepper money', 'together money', 'shawbrook', 'kensington', 'bm solutions', 'molo', 'landbay'],
-  rent: ['rent', 'letting', 'openrent', 'estate agent'],
-  loan: ['auto finance', 'ca auto finance', 'car finance', 'natwest loan', 'santander loan', 'novuna', 'tesco bank', 'klarna', 'clearpay', 'afterpay', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'creation.co', 'creation financial'],
-  insurance: ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'zurich', 'legal & general'],
-  utility: ['energy', 'electric', 'gas', 'water', 'e.on', 'eon next', 'eon energy', 'british gas', 'octopus', 'ovo', 'edf', 'scottish power', 'thames water', 'severn trent', 'united utilities'],
-  broadband: ['broadband', 'bt broadband', 'bt fibre', 'sky broadband', 'virgin media', 'vodafone broadband', 'plusnet', 'talktalk', 'hyperoptic', 'communityfibre', 'community fibre'],
-  mobile: ['mobile', 'ee ', 'three', 'o2 ', 'giffgaff', 'id mobile', 'smarty', 'lebara', 'tesco mobile'],
-  streaming: ['netflix', 'spotify', 'disney', 'amazon prime', 'apple tv', 'paramount', 'now tv', 'youtube', 'dazn', 'crunchyroll', 'patreon'],
-  fitness: ['gym', 'fitness', 'puregym', 'david lloyd', 'nuffield', 'anytime fitness', 'the gym', 'whoop', 'peloton', 'strava', 'gym iq'],
-  software: ['adobe', 'microsoft', 'google', 'apple', 'icloud', 'dropbox', 'notion', 'slack', 'zoom', 'canva', 'openai', 'anthropic', 'github', 'figma', 'experian'],
-  council_tax: ['council tax', 'council'],
-  tax: ['hmrc', 'hm revenue', 'self assessment', 'paye', 'corporation tax', 'vat payment', 'tax payment'],
-  gambling: ['betfair', 'bet365', 'paddy power', 'william hill', 'coral', 'ladbrokes', 'sky bet', 'betway'],
-  food: ['deliveroo', 'just eat', 'uber eats', 'gousto', 'hello fresh', 'mindful chef'],
-  shopping: ['amazon', 'ebay', 'asos', 'next'],
-  childcare: ['childcare', 'nursery', 'school', 'bright horizons', 'kidsunlimited'],
-  transport: ['transport', 'tfl', 'oyster', 'rail', 'train', 'dvla'],
+  mortgage:     ['mortgage', 'lendinvest', 'skipton b.s', 'skipton bs', 'halifax mortgage', 'nationwide bs', 'building society', 'paratus', 'paratus amc', 'pepper money', 'together money', 'shawbrook', 'kensington', 'bm solutions', 'molo', 'landbay'],
+  housing:      ['rent', 'letting', 'openrent', 'estate agent'],            // was 'rent'
+  loans:        ['auto finance', 'ca auto finance', 'car finance', 'natwest loan', 'santander loan', 'novuna', 'tesco bank', 'klarna', 'clearpay', 'afterpay', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'funding circle', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'creation.co', 'creation financial'],  // was 'loan'
+  insurance:    ['insurance', 'aviva', 'direct line', 'admiral', 'axa', 'zurich', 'legal & general'],
+  energy:       ['e.on', 'eon next', 'eon energy', 'british gas', 'octopus energy', 'ovo', 'edf', 'scottish power', 'shell energy', 'bulb', 'so energy', 'affect energy', 'utilita'],
+  water:        ['thames water', 'severn trent', 'united utilities', 'anglian water', 'wessex water', 'south west water', 'yorkshire water', 'northumbrian water', 'dwr cymru', 'welsh water'],
+  bills:        ['electric', 'gas bill', 'utility'],                        // generic utility catch-all
+  broadband:    ['broadband', 'bt broadband', 'bt fibre', 'sky broadband', 'virgin media', 'vodafone broadband', 'plusnet', 'talktalk', 'hyperoptic', 'communityfibre', 'community fibre'],
+  mobile:       ['mobile', 'ee ', 'three', 'o2 ', 'giffgaff', 'id mobile', 'smarty', 'lebara', 'tesco mobile'],
+  streaming:    ['netflix', 'spotify', 'disney', 'amazon prime', 'apple tv', 'paramount', 'now tv', 'youtube premium', 'dazn', 'crunchyroll', 'patreon'],
+  health:       ['gym', 'fitness', 'puregym', 'david lloyd', 'nuffield', 'anytime fitness', 'the gym', 'whoop', 'peloton', 'strava', 'gym iq', 'bupa', 'vitality health', 'simply health'],  // was 'fitness'
+  software:     ['adobe', 'microsoft 365', 'google one', 'icloud', 'dropbox', 'notion', 'slack', 'zoom', 'canva', 'openai', 'anthropic', 'github', 'figma', 'experian'],
+  council_tax:  ['council tax', 'council'],
+  tax:          ['hmrc', 'hm revenue', 'self assessment', 'paye', 'corporation tax', 'vat payment', 'tax payment'],
+  gambling:     ['betfair', 'bet365', 'paddy power', 'william hill', 'coral', 'ladbrokes', 'sky bet', 'betway'],
+  eating_out:   ['deliveroo', 'just eat', 'uber eats', 'gousto', 'hello fresh', 'mindful chef'],  // was 'food'
+  shopping:     ['amazon', 'ebay', 'asos', 'next'],
+  family:       ['childcare', 'nursery', 'school fees', 'bright horizons', 'kidsunlimited'],       // was 'childcare'
+  transport:    ['tfl', 'oyster', 'national rail', 'trainline', 'dvla', 'vehicle tax'],
 };
 
 function categoriseTransaction(merchantName: string, description: string | null): string {
   const searchText = `${merchantName} ${description || ''}`.toLowerCase();
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     if (keywords.some((kw) => searchText.includes(kw))) {
-      return category;
+      // normaliseCategory() is a safety net — ensures we always return a canonical ID
+      return normaliseCategory(category);
     }
   }
   return 'other';

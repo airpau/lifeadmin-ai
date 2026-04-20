@@ -1,4 +1,29 @@
 import type { Tool } from '@anthropic-ai/sdk/resources/messages';
+import { USER_SELECTABLE_IDS } from '@/lib/categories';
+
+/**
+ * Canonical user-selectable category IDs — enforced in all recategorisation tools.
+ * Source of truth: src/lib/categories.ts → USER_SELECTABLE_IDS.
+ * Does NOT include 'income' or 'transfers' (system-managed).
+ */
+const CANONICAL_CATEGORIES = USER_SELECTABLE_IDS as unknown as string[];
+
+/**
+ * Shared subcategory parameter — added to all recategorise tools so the AI
+ * can optionally assign a user-defined Tier-2 subcategory alongside the
+ * canonical Tier-1 parent. The parent (new_category) is always required;
+ * subcategory is optional personal organisation.
+ */
+const SUBCATEGORY_PARAM = {
+  subcategory: {
+    type: 'string' as const,
+    description:
+      'Optional user-defined subcategory label (e.g. "Organic" under Groceries, ' +
+      '"Commute" under Transport, "PDF Tools" under Software & Apps). ' +
+      'Max 50 characters. If the user types a custom name, always confirm the ' +
+      'parent category first. Leave empty if the user only specified the top-level category.',
+  },
+};
 
 export const telegramTools: Tool[] = [
   // ============================================================
@@ -419,7 +444,11 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_transactions',
     description:
-      'Change the category of bank transactions matching a merchant name. For example, recategorise all "Costa" transactions from "other" to "food". Returns how many transactions were updated.',
+      'Change the category (and optionally a personal subcategory) of ALL bank transactions ' +
+      'matching a merchant name. E.g. recategorise all "Costa" transactions to eating_out, ' +
+      'or "Tesco" to groceries with subcategory "Weekly Shop". ' +
+      'When the user recategorises, FIRST offer the canonical parent categories. ' +
+      'If they want something more specific, ask which parent it falls under, then use subcategory.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -429,14 +458,10 @@ export const telegramTools: Tool[] = [
         },
         new_category: {
           type: 'string',
-          enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management', 'transfers',
-          ],
-          description: 'The category to assign to matching transactions.',
+          enum: CANONICAL_CATEGORIES,
+          description: 'The canonical parent category to assign. Must be one of the fixed list.',
         },
+        ...SUBCATEGORY_PARAM,
       },
       required: ['merchant_name', 'new_category'],
     },
@@ -444,19 +469,18 @@ export const telegramTools: Tool[] = [
   {
     name: 'set_budget',
     description:
-      'Create or update a monthly SPENDING LIMIT budget for a category. This limits how much the user wants to spend per month — it is NOT a savings goal. Use when the user says "set a budget for travel", "limit my groceries spending to £300", "budget £400 for eating out". If the user says "save for" or "savings goal" or "save £X towards Y", use create_savings_goal instead.',
+      'Create or update a monthly SPENDING LIMIT budget for a canonical parent category. ' +
+      'Budgets always operate at Tier-1 (parent category) level — not subcategories. ' +
+      'NOT a savings goal. Use when the user says "set a budget for travel", ' +
+      '"limit my groceries spending to £300". ' +
+      'For savings goals use create_savings_goal instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
         category: {
           type: 'string',
-          enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
-          ],
-          description: 'The spending category to set a budget for.',
+          enum: CANONICAL_CATEGORIES,
+          description: 'The canonical parent category to set a budget for.',
         },
         monthly_limit: {
           type: 'number',
@@ -469,7 +493,8 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_subscription',
     description:
-      'Change the category of a subscription/regular payment. Finds the subscription by provider name and updates its category.',
+      'Change the canonical category (and optionally a personal subcategory) of a ' +
+      'subscription/regular payment. Finds by provider name and updates its category.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -479,14 +504,10 @@ export const telegramTools: Tool[] = [
         },
         new_category: {
           type: 'string',
-          enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
-          ],
-          description: 'The new category for this subscription.',
+          enum: CANONICAL_CATEGORIES,
+          description: 'The canonical parent category for this subscription.',
         },
+        ...SUBCATEGORY_PARAM,
       },
       required: ['provider_name', 'new_category'],
     },
@@ -513,14 +534,10 @@ export const telegramTools: Tool[] = [
         },
         category: {
           type: 'string',
-          enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
-          ],
-          description: 'Category for the subscription. Optional — defaults to other.',
+          enum: CANONICAL_CATEGORIES,
+          description: 'Canonical parent category for the subscription. Optional — defaults to other.',
         },
+        ...SUBCATEGORY_PARAM,
       },
       required: ['provider_name', 'amount'],
     },
@@ -845,26 +862,46 @@ export const telegramTools: Tool[] = [
   {
     name: 'recategorise_transaction',
     description:
-      "Change the category of a specific bank transaction by its ID. The change is immediately reflected in the Money Hub dashboard (writes to user_category). First use list_transactions to find the transaction ID, then use this tool to change its category.",
+      'Change the canonical category (and optionally a personal subcategory) of a specific ' +
+      'bank transaction by its UUID. The change is immediately reflected in Money Hub. ' +
+      'First use list_transactions to find the full UUID, then use this tool. ' +
+      'FLOW: (1) offer canonical parent categories; (2) if user wants more granularity, ' +
+      'ask for a subcategory name and which parent it falls under.',
     input_schema: {
       type: 'object' as const,
       properties: {
         transaction_id: {
           type: 'string',
-          description: 'The unique ID of the transaction to recategorise (shown in list_transactions output).',
+          description: 'The full 36-character UUID of the transaction (shown in list_transactions output).',
         },
         new_category: {
           type: 'string',
-          enum: [
-            'broadband', 'council_tax', 'food', 'insurance', 'loan', 'mobile', 'mortgage',
-            'streaming', 'software', 'transport', 'utility', 'other', 'fitness', 'music',
-            'gaming', 'storage', 'healthcare', 'security', 'charity', 'education', 'pets',
-            'parking', 'travel', 'gambling', 'bills', 'fee', 'water', 'motoring', 'property_management',
-          ],
-          description: 'The new category for this transaction.',
+          enum: CANONICAL_CATEGORIES,
+          description: 'The canonical parent category. Must be one of the fixed list.',
         },
+        ...SUBCATEGORY_PARAM,
       },
       required: ['transaction_id', 'new_category'],
+    },
+  },
+
+  {
+    name: 'get_subcategories',
+    description:
+      "Get the user's personal subcategory definitions for a given parent category (or all parents). " +
+      'Use this before offering subcategory suggestions so you can show the ones they already have ' +
+      'defined (e.g. "You have: Organic, Weekly Shop under Groceries — pick one or create a new one"). ' +
+      'Also shows how many transactions are tagged with each subcategory.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        parent_category: {
+          type: 'string',
+          enum: CANONICAL_CATEGORIES,
+          description: 'Filter by parent category. Omit to return all subcategories across all parents.',
+        },
+      },
+      required: [],
     },
   },
 

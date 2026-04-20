@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { resolveProviderLogo } from '@/lib/logo-resolver';
 import { ChatTool } from './registry';
+import { USER_SELECTABLE_IDS, normaliseCategory } from '@/lib/categories';
 
 function getAdmin() {
   return createClient(
@@ -12,7 +13,7 @@ function getAdmin() {
 const listSubscriptions: ChatTool = {
   name: 'list_subscriptions',
   description:
-    'List the user\'s subscriptions. Optionally filter by status (active, cancelled, pending_cancellation) or category (streaming, software, fitness, energy, broadband, mobile, insurance, etc.).',
+    `List the user's subscriptions. Optionally filter by status (active, cancelled, pending_cancellation) or canonical category (${USER_SELECTABLE_IDS.join(', ')}).`,
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -22,7 +23,7 @@ const listSubscriptions: ChatTool = {
       },
       category: {
         type: 'string',
-        description: 'Filter by category: streaming, software, fitness, news, shopping, gaming, energy, broadband, mobile, insurance, mortgage, loan, council_tax, water, tv, other',
+        description: `Filter by canonical category. Valid values: ${USER_SELECTABLE_IDS.join(', ')}`,
       },
     },
     required: [],
@@ -267,7 +268,7 @@ const createSubscription: ChatTool = {
       },
       category: {
         type: 'string',
-        description: 'Category: streaming, software, fitness, news, shopping, gaming, energy, broadband, mobile, insurance, mortgage, loan, council_tax, water, tv, other',
+        description: `Canonical category. Valid values: ${USER_SELECTABLE_IDS.join(', ')}`,
       },
       billing_cycle: {
         type: 'string',
@@ -421,7 +422,7 @@ const dismissSubscription: ChatTool = {
 const recategoriseSubscription: ChatTool = {
   name: 'recategorise_subscription',
   description:
-    'Recategorise a subscription by provider name. Use when the user says things like "change Paratus to mortgage" or "HMRC should be under tax". Finds the subscription by name and updates its category. Available categories: mortgage, rent, loan, insurance, utility, broadband, mobile, streaming, fitness, software, council_tax, tax, gambling, food, shopping, childcare, transport, healthcare, charity, education, pets, parking, travel, water, motoring, property_management, credit_monitoring, other.',
+    `Recategorise a subscription by provider name. Use when the user says things like "change Paratus to mortgage" or "HMRC should be under tax". Finds the subscription by name and updates its category. Canonical categories: ${USER_SELECTABLE_IDS.join(', ')}.`,
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -439,6 +440,9 @@ const recategoriseSubscription: ChatTool = {
   handler: async (args: { provider_name: string; new_category: string }, userId: string) => {
     const admin = getAdmin();
 
+    // Normalise to canonical — resolves aliases e.g. "fitness" → "health"
+    const canonicalCategory = normaliseCategory(args.new_category);
+
     // 1. Update Subscriptions table
     const { data } = await admin
       .from('subscriptions')
@@ -453,7 +457,7 @@ const recategoriseSubscription: ChatTool = {
       for (const sub of data) {
         const { error } = await admin
           .from('subscriptions')
-          .update({ category: args.new_category })
+          .update({ category: canonicalCategory })
           .eq('id', sub.id)
           .eq('user_id', userId);
 
@@ -561,6 +565,9 @@ const recategoriseTransactions: ChatTool = {
   handler: async (args: { keyword: string; new_category: string }, userId: string) => {
     const admin = getAdmin();
 
+    // Normalise to canonical category
+    const canonicalCategory = normaliseCategory(args.new_category);
+
     // Count matching transactions
     const { data: matches } = await admin
       .from('bank_transactions')
@@ -575,7 +582,7 @@ const recategoriseTransactions: ChatTool = {
     // Update user_category for all matching transactions
     const { error } = await admin
       .from('bank_transactions')
-      .update({ user_category: args.new_category })
+      .update({ user_category: canonicalCategory })
       .eq('user_id', userId)
       .ilike('description', `%${args.keyword}%`);
 
@@ -589,9 +596,9 @@ const recategoriseTransactions: ChatTool = {
         user_id: userId,
         correction_type: 'category',
         original_value: null,
-        corrected_value: args.new_category,
+        corrected_value: canonicalCategory,
         merchant_pattern: args.keyword.toLowerCase().trim(),
-        context: `Recategorised ${matches.length} transaction(s) matching "${args.keyword}" to "${args.new_category}"`,
+        context: `Recategorised ${matches.length} transaction(s) matching "${args.keyword}" to "${canonicalCategory}"`,
       });
     } catch { /* non-critical */ }
 

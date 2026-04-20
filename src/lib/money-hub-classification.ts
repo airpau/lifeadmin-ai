@@ -1,5 +1,9 @@
 import { categoriseWithLearningSync } from '@/lib/learning-engine';
 import { isExcludedIncomeType, normalizeIncomeTypeKey } from '@/lib/income-normalise';
+import { normaliseCategory, CATEGORY_ALIASES, mapBankCategory } from '@/lib/categories';
+
+// Re-export mapBankCategory so bank sync code can import from one place
+export { mapBankCategory };
 
 const SOFT_SPENDING_CATEGORIES = new Set(['bills', 'shopping', 'other']);
 const CREDIT_BANK_CATEGORIES = new Set(['CREDIT', 'INTEREST']);
@@ -16,12 +20,9 @@ const REAL_INCOME_TYPES = new Set([
   'other',
 ]);
 
-const SPENDING_CATEGORY_ALIASES: Record<string, string> = {
-  fee: 'fees',
-  loan: 'loans',
-  utility: 'energy',
-  transport: 'travel',
-};
+// Alias map — sourced from src/lib/categories.ts (canonical single source of truth).
+// normaliseCategory() uses this automatically.
+const SPENDING_CATEGORY_ALIASES: Record<string, string> = CATEGORY_ALIASES;
 
 type OverrideMap = Map<string, string>;
 
@@ -49,11 +50,16 @@ export interface ResolvedMoneyHubTransaction {
   incomeType: string | null;
 }
 
+/**
+ * Normalise a raw category string to a canonical Paybacker category ID.
+ * Delegates to normaliseCategory() in src/lib/categories.ts — single source of truth.
+ * Returns '' for empty/null (so callers can test truthiness as before).
+ */
 export function normalizeSpendingCategoryKey(value: any): string {
   if (typeof value !== 'string') value = String(value || '');
   const key = value.toLowerCase().trim();
   if (!key) return '';
-  return SPENDING_CATEGORY_ALIASES[key] || key;
+  return normaliseCategory(key);
 }
 
 export function getMoneyHubMonthBounds(selectedMonth?: string | null, baseDate = new Date()) {
@@ -451,7 +457,7 @@ export function detectFallbackSpendingCategory(description: string): string | nu
   if (/\b(three mobile|o2|ee mobile|vodafone|giffgaff|tesco.*mobile|id.*mobile|smarty|lebara)\b/.test(d)) return 'mobile';
   if (/\b(aviva|direct.*line|admiral|lv=?|axa|zurich|legal.*general|royal.*london|bupa|vitality|simply.*health|pet plan)\b/.test(d) && !d.includes('refund')) return 'insurance';
   if (/\b(netflix|spotify|disney\+?|apple.*tv|amazon.*prime|now.*tv|youtube.*premium|crunchyroll|paramount\+?|dazn)\b/.test(d)) return 'streaming';
-  if (/\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first|anytime fitness|jd.*gym|better.*gym)\b/.test(d)) return 'fitness';
+  if (/\b(puregym|the.*gym|david.*lloyd|nuffield|fitness.*first|anytime fitness|jd.*gym|better.*gym)\b/.test(d)) return 'health'; // canonical: health (not fitness)
   if (/\b(adobe|microsoft 365|google one|dropbox|icloud|1password|notion|slack|zoom|canva|chatgpt|openai|patreon)\b/.test(d)) return 'software';
   // Groceries — must come before eating_out (e.g. tesco can be food or petrol, but we treat all tesco as groceries)
   if (/\b(tesco|sainsbury|asda|morrisons|aldi|lidl|waitrose|co.?op|one stop|spar|nisa|budgens|farmfood|marks.*spencer food|m&s food|iceland food|iceland grocery|costco|amazon.*fresh|amazon grocery|ocado|deliveroo|uber.*eat|just.*eat|juste\s*at)\b/.test(d)) return 'groceries';
@@ -470,7 +476,7 @@ export function detectFallbackSpendingCategory(description: string): string | nu
   if (/\b(uber|bolt |lyft|free now|cabify)\b/.test(d) && !/uber.*eat/.test(d)) return 'travel';
   // Generic transport (older category — alias handles mapping to 'travel')
   if (/\b(stagecoach|arriva|first.*bus|national.*express)\b/.test(d)) return 'travel';
-  if (/\b(dvla|vehicle.*tax|road.*tax)\b/.test(d)) return 'motoring';
+  if (/\b(dvla|vehicle.*tax|road.*tax)\b/.test(d)) return 'transport'; // canonical: transport (not motoring)
   if (/\b(amazon|ebay|argos|john lewis|next|asos|boohoo|primark|tk maxx|boots|superdrug|currys|very\.co|studio retail)\b/.test(d)) return 'shopping';
   if (/\b(charity|oxfam|red.*cross|cancer.*research|nspcc|rspca|unicef|wwf|amnesty|british heart)\b/.test(d)) return 'charity';
 
