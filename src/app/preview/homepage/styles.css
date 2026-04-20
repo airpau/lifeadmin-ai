@@ -1161,6 +1161,8 @@
   .m-v2-root .nav-signin { display: none; }
   .m-v2-root .nav-start { display: none; }
   .m-v2-root .nav-toggle { display: flex; }
+  /* With nav-links hidden, push toggle to the right end of the pill */
+  .m-v2-root .nav-pill { justify-content: space-between; }
 }
 
 @media (max-width: 860px) {
@@ -1177,12 +1179,91 @@
   .m-v2-root .pricing-grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
   .m-v2-root .category-grid { grid-template-columns: 1fr 1fr; }
   .m-v2-root .footer-grid { grid-template-columns: 1fr 1fr; }
+  /* On tablet, disputes stats collapse from 3 equal cols to 2+1 wrap */
+  .m-v2-root .disputes-stats { grid-template-columns: 1fr 1fr; }
 }
 
+/* ---------------------------------------------------------------
+   ≤ 560px  — covers iPhone 17 Pro Max (430px) and everything below
+   --------------------------------------------------------------- */
 @media (max-width: 560px) {
+  /* Tighter horizontal padding on small screens */
+  .m-v2-root .wrap { padding: 0 16px; }
+
+  /* Grids */
   .m-v2-root .why-stats { grid-template-columns: 1fr; }
   .m-v2-root .category-grid { grid-template-columns: 1fr; }
   .m-v2-root .footer-grid { grid-template-columns: 1fr; }
+  .m-v2-root .disputes-stats { grid-template-columns: 1fr 1fr; }
+
+  /* Trust strip */
   .m-v2-root .trust-row { gap: 16px; }
-  .m-v2-root .hero-cta-row { flex-direction: column; align-items: flex-start; }
+  .m-v2-root .trust-bar { font-size: 11px; line-height: 1.8; }
+
+  /* Hero CTA row — stack vertically and stretch buttons full-width */
+  .m-v2-root .hero-cta-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .m-v2-root .hero-cta-row .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Mini dispute-form: submit button full-width */
+  .m-v2-root .mini-form button {
+    align-self: stretch;
+    width: 100%;
+  }
+
+  /* Mini letter CTA (sign-up link below preview) full-width */
+  .m-v2-root .mini-letter-cta {
+    display: block;
+    text-align: center;
+    align-self: stretch;
+  }
+
+  /* Final CTA section: button full-width (capped so it doesn't look odd) */
+  .m-v2-root .fc-btn-row {
+    padding: 0 8px;
+  }
+  .m-v2-root .fc-btn-row .btn {
+    width: 100%;
+    max-width: 400px;
+    justify-content: center;
+  }
+
+  /* Section heads: tighten bottom margin */
+  .m-v2-root .section-head { margin-bottom: 36px; }
+
+  /* Footer bottom: stack on one column, centred */
+  .m-v2-root .footer-bottom {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+  }
+
+  /* Nav drawer: honour Dynamic Island / notch safe-area at top */
+  .m-v2-root .nav-drawer-panel {
+    padding-top: max(72px, calc(env(safe-area-inset-top) + 24px));
+  }
+
+  /* Reduce internal padding on dense cards to avoid cramped text */
+  .m-v2-root .how-step { padding: 22px 18px; }
+  .m-v2-root .price-card { padding: 26px 22px; }
+  .m-v2-root .stat-card { padding: 26px 22px; }
+  .m-v2-root .disputes-letter { padding: 22px 20px; }
+  .m-v2-root .pillar-card { padding: 22px 18px; }
+  .m-v2-root .agent-phone-body { padding: 12px; }
+
+  /* subs-list-head: allow amount to wrap beneath the label on very small content */
+  .m-v2-root .subs-list-head { flex-wrap: wrap; gap: 4px; }
+
+  /* Testimonial cards: narrower fixed width looks better in a scroll track */
+  .m-v2-root .t-card { width: 280px; }
+
+  /* Pricing: remove the 400px cap — let the card fill the container naturally */
+  .m-v2-root .pricing-grid { max-width: 100%; }
 }
