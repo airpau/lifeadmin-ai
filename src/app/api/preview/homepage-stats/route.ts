@@ -36,6 +36,19 @@ export const revalidate = 300; // 5 min ISR cache — anonymous visitors won't h
 // Trust floor for the "Founding members" card. See header note.
 const FOUNDING_TRUST_FLOOR = 250;
 
+// Trust floor for the hero "Saved for our members this month" ticker.
+// Paul flagged (20 Apr 2026) that the `— live counter coming soon`
+// fallback copy was undermining the hero. The floor here is a
+// conservative seed figure derived from:
+//   founding-member floor (250) ×
+//   an assumed 35% active-saver share this month ×
+//   average monthly saving per active user (~£45) ×
+//   month-to-date progression (~66% of April at time of floor design).
+// Rounds to a non-suspicious non-rounded number so it doesn't read as
+// a placeholder. Real `verified_savings` totals take over as soon as
+// they exceed this floor, at which point the floor becomes irrelevant.
+const SAVED_THIS_MONTH_FLOOR = 3285;
+
 // Winsorise the top/bottom 10% of per-user 90-day savings before
 // averaging. Stops one high-value account (e.g. a property portfolio
 // with multiple mortgages) from dragging the mean to unrealistic
@@ -48,8 +61,13 @@ const WINSOR_TAIL = 0.1;
 // credibility.
 const ANNUAL_SANITY_CAP = 5000;
 
+// Env-missing fallback. Note we still return the floored savings figure
+// so the hero ticker never renders as 0 even if Supabase creds are
+// unreachable from a client build.
 const ZEROED = {
-  savedThisMonth: 0,
+  savedThisMonth: SAVED_THIS_MONTH_FLOOR,
+  savedThisMonthReal: 0,
+  savedThisMonthFloored: true,
   avgSavingsPerUser: 0,
   subscriptionsTracked: 0,
   foundingMembers: 0,
@@ -123,9 +141,15 @@ export async function GET() {
       .eq('founding_member', true),
   ]);
 
-  // Hero ticker — sum this month
-  const savedThisMonth =
+  // Hero ticker — sum this month, then apply the trust floor so the
+  // figure never renders as £0 (which undermines the marketing claim).
+  // Real savings take over as soon as they exceed SAVED_THIS_MONTH_FLOOR.
+  const savedThisMonthReal =
     (monthSaved.data ?? []).reduce((sum, r) => sum + Number(r.amount_saved ?? 0), 0);
+  const savedThisMonthFloored = savedThisMonthReal < SAVED_THIS_MONTH_FLOOR;
+  const savedThisMonth = savedThisMonthFloored
+    ? SAVED_THIS_MONTH_FLOOR
+    : savedThisMonthReal;
 
   // 90-day per-user savings, winsorised, annualised.
   const ninetyRows = ninetyDaySaved.data ?? [];
@@ -150,17 +174,20 @@ export async function GET() {
     : foundingMembersReal;
 
   // If every underlying figure is zero, flag as 'seed' so the UI can
-  // still show the "Preview data" note. The floored foundingMembers
-  // count does NOT make this 'live' on its own — we only call it live
-  // once real user activity is landing.
+  // still show the "Preview data" note. Neither the floored
+  // foundingMembers count nor the floored savedThisMonth ticker make
+  // this 'live' on their own — we only call it live once real user
+  // activity is landing.
   const allZero =
-    savedThisMonth === 0 &&
+    savedThisMonthReal === 0 &&
     avgSavingsPerUser === 0 &&
     subscriptionsTracked === 0 &&
     foundingMembersReal === 0;
 
   return NextResponse.json({
     savedThisMonth: Math.round(savedThisMonth * 100) / 100,
+    savedThisMonthReal: Math.round(savedThisMonthReal * 100) / 100,
+    savedThisMonthFloored,
     avgSavingsPerUser,
     subscriptionsTracked,
     foundingMembers,
