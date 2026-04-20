@@ -1346,6 +1346,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
     const chatId = ctx.update.callback_query?.message?.chat?.id;
     if (!chatId) return;
     const supabase = getAdmin();
+    let categoryName = 'budget';
 
     try {
       const [alertRes, sessionRes] = await Promise.all([
@@ -1360,13 +1361,16 @@ Return JSON: { "subject": "...", "body": "..." }`;
         return;
       }
 
-      const category = alert.provider_name ?? 'other';
-      const result = await executeToolCall('get_budget_transactions', { category }, session.user_id);
-      await ctx.api.sendMessage(chatId, result.text, { parse_mode: 'Markdown' });
+      categoryName = alert.provider_name ?? 'other';
+      const result = await executeToolCall('get_budget_transactions', { category: categoryName }, session.user_id);
+      const chunks = splitMessage(result.text);
+      for (const chunk of chunks) {
+        await ctx.api.sendMessage(chatId, chunk, { parse_mode: 'Markdown' });
+      }
     } catch (err) {
       console.error('[UserBot] palert_txns_ error:', err);
       try {
-        await ctx.api.sendMessage(chatId, `Ask me: "Show my ${ctx.match[1] || 'budget'} transactions this month"`);
+        await ctx.api.sendMessage(chatId, `Ask me: "Show my ${categoryName} transactions this month"`);
       } catch { /* silent */ }
     }
   });

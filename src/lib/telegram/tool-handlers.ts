@@ -17,23 +17,35 @@ const CATEGORY_LABELS: Record<string, string> = {
   credit_monitoring: 'Credit Monitoring', charity: 'Charity', travel: 'Travel',
 };
 
+const PAGE_SIZE = 1000;
+
 /** Classify transactions using the same engine as the Money Hub dashboard */
 async function classifyTransactions(supabase: ReturnType<typeof getAdmin>, userId: string, startDate: string, endDate: string) {
-  const [{ data: txns }, { data: overrideRows }] = await Promise.all([
-    supabase.from('bank_transactions')
+  // Paginate in 1 000-row pages until a page returns fewer rows than PAGE_SIZE,
+  // so we never silently cap at an arbitrary limit.
+  const allTxns: any[] = [];
+  let offset = 0;
+  while (true) {
+    const { data: page } = await supabase.from('bank_transactions')
       .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
       .eq('user_id', userId)
       .gte('timestamp', startDate)
       .lt('timestamp', endDate)
       .order('timestamp', { ascending: false })
-      .limit(5000),
-    supabase.from('money_hub_category_overrides')
-      .select('merchant_pattern, transaction_id, user_category')
-      .eq('user_id', userId),
-  ]);
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (!page || page.length === 0) break;
+    allTxns.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+
+  const { data: overrideRows } = await supabase.from('money_hub_category_overrides')
+    .select('merchant_pattern, transaction_id, user_category')
+    .eq('user_id', userId);
+
   await loadLearnedRules();
   const overrides = buildMoneyHubOverrideMaps(overrideRows || []);
-  return (txns || []).map(txn => {
+  return allTxns.map(txn => {
     const overrideCategory = findMatchingCategoryOverride(txn, overrides.transactionOverrides, overrides.merchantOverrides);
     const resolved = resolveMoneyHubTransaction(txn, overrideCategory);
     return {
