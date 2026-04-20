@@ -74,12 +74,11 @@ async function ensureAccountTab(
   spreadsheetId: string,
   accountName: string,
   existingSheets: { title: string; sheetId: number }[]
-): Promise<void> {
+): Promise<boolean> {
   const exists = existingSheets.find(s => s.title === accountName)
-  if (exists) return
+  if (exists) return true
 
-  // Add the tab
-  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+  const addRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -89,9 +88,13 @@ async function ensureAccountTab(
       requests: [{ addSheet: { properties: { title: accountName } } }],
     }),
   })
+  if (!addRes.ok) {
+    const body = await addRes.text().catch(() => '')
+    console.error(`[sheets-export] addSheet "${accountName}" ${addRes.status}: ${body.slice(0, 300)}`)
+    return false
+  }
 
-  // Write headers on the new tab
-  await appendRows(token, spreadsheetId, accountName, [SHEET_HEADERS])
+  return appendRows(token, spreadsheetId, accountName, [SHEET_HEADERS])
 }
 
 async function appendRows(
@@ -99,10 +102,10 @@ async function appendRows(
   spreadsheetId: string,
   sheetName: string,
   rows: (string | number)[][]
-): Promise<void> {
-  if (rows.length === 0) return
+): Promise<boolean> {
+  if (rows.length === 0) return true
 
-  await fetch(
+  const res = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     {
       method: 'POST',
@@ -113,6 +116,12 @@ async function appendRows(
       body: JSON.stringify({ values: rows }),
     }
   )
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    console.error(`[sheets-export] appendRows "${sheetName}" (${rows.length} rows) ${res.status}: ${body.slice(0, 300)}`)
+    return false
+  }
+  return true
 }
 
 async function getExistingSheets(
@@ -206,6 +215,7 @@ export async function POST(req: NextRequest) {
 
       const existingSheets = await getExistingSheets(token, conn.spreadsheet_id)
       let totalRows = 0
+      let anyTabSkipped = false
 
       for (const bank of bankConns) {
         // Each account_id in the connection gets its own tab
@@ -226,6 +236,7 @@ export async function POST(req: NextRequest) {
             .eq('account_id', accountId)
             .eq('is_pending', false)
             .order('timestamp', { ascending: true })
+            .order('transaction_id', { ascending: true })
 
           // Incremental sync: only new transactions
           if (!full_export && conn.last_synced_timestamp) {
@@ -236,13 +247,22 @@ export async function POST(req: NextRequest) {
 
           if (!transactions?.length) continue
 
-          await ensureAccountTab(token, conn.spreadsheet_id, tabName, existingSheets)
+          const tabOk = await ensureAccountTab(token, conn.spreadsheet_id, tabName, existingSheets)
+          if (!tabOk) {
+            console.error(`[sheets-export] skipping "${tabName}" — could not ensure tab`)
+            anyTabSkipped = true
+            continue
+          }
 
           const rows = transactions.map(formatTransaction)
-          await appendRows(token, conn.spreadsheet_id, tabName, rows)
+          const appendOk = await appendRows(token, conn.spreadsheet_id, tabName, rows)
+          if (!appendOk) {
+            anyTabSkipped = true
+            continue
+          }
           totalRows += rows.length
 
-          // Track newest timestamp written
+          // Track newest timestamp written — only advanced if tab succeeded.
           const newestTs = transactions[transactions.length - 1].timestamp
           if (!conn.last_synced_timestamp || newestTs > conn.last_synced_timestamp) {
             conn.last_synced_timestamp = newestTs
@@ -250,14 +270,23 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Update sync metadata
+      // Update sync metadata. If any tab was skipped due to an error, do NOT advance
+      // last_synced_timestamp: those skipped tabs would permanently lose transactions
+      // that fell before the new watermark on the next incremental sync.
+      const syncUpdate: Record<string, string> = {
+        last_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      if (!anyTabSkipped) {
+        syncUpdate.last_synced_timestamp = conn.last_synced_timestamp
+      } else {
+        console.warn(
+          `[sheets-export] user=${conn.user_id} had tab errors — watermark NOT advanced to prevent data loss on next sync`
+        )
+      }
       await supabase
         .from('google_sheets_connections')
-        .update({
-          last_synced_at: new Date().toISOString(),
-          last_synced_timestamp: conn.last_synced_timestamp,
-          updated_at: new Date().toISOString(),
-        })
+        .update(syncUpdate)
         .eq('user_id', conn.user_id)
 
       results.push({ user_id: conn.user_id, rows_written: totalRows })
