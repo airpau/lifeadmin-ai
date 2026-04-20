@@ -104,6 +104,8 @@ export async function executeToolCall(
         merchant: toolInput.merchant as string | undefined,
         limit: toolInput.limit as number | undefined,
       });
+    case 'get_budget_transactions':
+      return getBudgetTransactions(supabase, userId, toolInput.category as string, toolInput.month as string | undefined);
     case 'get_subscriptions':
       return getSubscriptions(supabase, userId, toolInput.filter as string | undefined, toolInput.category as string | undefined, toolInput.provider as string | undefined);
     case 'get_disputes':
@@ -392,7 +394,9 @@ async function listTransactions(
 
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
-  const maxResults = params.limit ?? 25;
+  // When filtering by category, raise the default limit so all matching transactions
+  // are visible — not just the first 25 across the whole month.
+  const maxResults = params.limit ?? (params.category ? 200 : 25);
 
   // Use classification engine to get proper categories
   const classified = await classifyTransactions(supabase, userId, startDate, endDate);
@@ -469,6 +473,61 @@ async function listTransactions(
     text += `\n_Note: Bank connection expired — data may not be current. Reconnect at paybacker.co.uk/dashboard/money-hub_`;
   }
 
+  return { text };
+}
+
+/**
+ * Fetch ALL transactions for a single budget category in a given month.
+ * Uses the same classification engine as the Money Hub dashboard so the totals
+ * here will always match the budget totals shown in get_budget_status.
+ */
+async function getBudgetTransactions(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  category: string,
+  month?: string,
+): Promise<ToolResult> {
+  const now = new Date();
+  let year = now.getFullYear();
+  let mon = now.getMonth() + 1;
+  if (typeof month === 'string' && month.includes('-')) {
+    const parts = month.split('-').map(Number);
+    if (!isNaN(parts[0]) && !isNaN(parts[1])) {
+      year = parts[0];
+      mon = parts[1];
+    }
+  }
+  const startDate = new Date(year, mon - 1, 1).toISOString();
+  const endDate = new Date(year, mon, 1).toISOString();
+  const targetCategory = normalizeSpendingCategoryKey(category);
+  const catLabel = CATEGORY_LABELS[targetCategory] || targetCategory;
+  const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
+
+  const matching = classified.filter(t => {
+    if (t.resolved.kind !== 'spending') return false;
+    return normalizeSpendingCategoryKey(t.effectiveCategory) === targetCategory;
+  });
+
+  if (matching.length === 0) {
+    return { text: `No ${catLabel} transactions found for ${monthLabel}.` };
+  }
+
+  // -resolved.amount: spending is negative in Open Banking, so negate to get positive £
+  const totalSpent = matching.reduce((sum, t) => sum + (-t.resolved.amount), 0);
+
+  let text = `*${catLabel} — ${monthLabel}*\n`;
+  text += `${matching.length} transaction${matching.length !== 1 ? 's' : ''} · Total: *${fmt(totalSpent)}*\n\n`;
+
+  for (const t of matching) {
+    const contribution = -t.resolved.amount;
+    const date = new Date(t.timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+    const isRefund = contribution < 0;
+    text += `• ${date} · *${t.displayName}* · ${isRefund ? '+' : '-'}${fmt(Math.abs(contribution))}\n`;
+  }
+
+  text += `\n_To recategorise, say "recategorise [merchant] as [category]"_`;
   return { text };
 }
 
@@ -707,50 +766,50 @@ async function getBudgetStatus(
   const startDate = new Date(year, month - 1, 1).toISOString();
   const endDate = new Date(year, month, 1).toISOString();
 
-  const [budgets, spendingRpc] = await Promise.all([
-    supabase
-      .from('money_hub_budgets')
-      .select('category, monthly_limit')
-      .eq('user_id', userId),
-    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
-  ]);
+  const { data: budgetsData } = await supabase
+    .from('money_hub_budgets')
+    .select('category, monthly_limit')
+    .eq('user_id', userId);
 
-  if (!budgets.data || budgets.data.length === 0) {
+  if (!budgetsData || budgetsData.length === 0) {
     return {
       text: 'No budgets set up yet. Create budgets at paybacker.co.uk/dashboard/money-hub',
     };
   }
 
-  // Build spending map from RPC (uses user_category, excludes transfers/income)
+  // Use the same classification engine as the Money Hub dashboard and get_budget_transactions,
+  // so budget totals here are always consistent with transaction drill-downs.
+  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
+
   const spentByCategory: Record<string, number> = {};
-  for (const row of spendingRpc.data ?? []) {
-    spentByCategory[row.category] = Number(row.category_total);
+  for (const t of classified) {
+    if (t.resolved.kind === 'spending') {
+      const cat = normalizeSpendingCategoryKey(t.effectiveCategory);
+      if (cat !== 'transfers' && cat !== 'income') {
+        // -resolved.amount: spending is negative in Open Banking; negate to get positive £
+        spentByCategory[cat] = (spentByCategory[cat] || 0) + (-t.resolved.amount);
+      }
+    }
   }
 
-  const budgetCategories = budgets.data.map(b => b.category);
+  const budgetCategories = budgetsData.map(b => normalizeSpendingCategoryKey(b.category));
 
-  // Check if any budget category has no matched spending but there IS 'other' spending
+  // AI reclassification: if budget categories have no matching spend but there IS 'other'
+  // spending, ask Claude Haiku to classify 'other' merchants and persist them as overrides.
   const otherSpend = spentByCategory['other'] ?? 0;
   const unmatchedBudgets = budgetCategories.filter(cat => !(spentByCategory[cat] > 0));
 
   if (otherSpend > 0 && unmatchedBudgets.length > 0) {
-    // Fetch this month's 'other' transactions for AI categorization
-    const { data: otherTxns } = await supabase
-      .from('bank_transactions')
-      .select('id, merchant_name, description, amount, user_category')
-      .eq('user_id', userId)
-      .lt('amount', 0)
-      .gte('timestamp', startDate)
-      .lt('timestamp', endDate)
-      .in('user_category', ['other'])
-      .limit(200);
+    const otherTxns = classified.filter(t =>
+      t.resolved.kind === 'spending' &&
+      normalizeSpendingCategoryKey(t.effectiveCategory) === 'other'
+    );
 
-    if (otherTxns && otherTxns.length > 0) {
-      // Group by merchant name to batch the AI call
+    if (otherTxns.length > 0) {
       const merchantTotals: Record<string, number> = {};
       for (const t of otherTxns) {
         const merchant = t.merchant_name || t.description || 'Unknown';
-        merchantTotals[merchant] = (merchantTotals[merchant] ?? 0) + Math.abs(Number(t.amount));
+        merchantTotals[merchant] = (merchantTotals[merchant] ?? 0) + Math.abs(t.resolved.amount);
       }
 
       try {
@@ -789,17 +848,16 @@ Example: {"Tesco": "groceries", "National Rail": "travel"}`,
             const merchant = t.merchant_name || t.description || 'Unknown';
             const assignedCat = categoryMap[merchant];
             if (assignedCat && assignedCat !== 'other' && budgetCategories.includes(assignedCat)) {
-              const amt = Math.abs(Number(t.amount));
+              const amt = Math.abs(t.resolved.amount);
               spentByCategory['other'] = Math.max(0, (spentByCategory['other'] ?? 0) - amt);
               spentByCategory[assignedCat] = (spentByCategory[assignedCat] ?? 0) + amt;
             }
           }
 
-          // Persist merchant→category mappings so future syncs use them
+          // Persist merchant→category overrides so future calls classify them correctly
           for (const [merchant, cat] of Object.entries(categoryMap)) {
             if (cat !== 'other' && budgetCategories.includes(cat) && merchant !== 'Unknown') {
               const pattern = merchant.toLowerCase().slice(0, 50);
-              // Delete any existing pattern to avoid duplicates then insert fresh
               await supabase
                 .from('money_hub_category_overrides')
                 .delete()
@@ -813,7 +871,7 @@ Example: {"Tesco": "groceries", "National Rail": "travel"}`,
             }
           }
 
-          // Re-run auto_categorise so new overrides apply immediately
+          // Update user_category in bank_transactions so RPC-based paths also benefit
           await supabase.rpc('auto_categorise_transactions', { p_user_id: userId });
         }
       } catch {
@@ -825,21 +883,24 @@ Example: {"Tesco": "groceries", "National Rail": "travel"}`,
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   let text = `*Budget Status — ${monthLabel}*\n\n`;
 
-  for (const b of budgets.data) {
+  for (const b of budgetsData) {
+    const normalizedCat = normalizeSpendingCategoryKey(b.category);
     const limit = Number(b.monthly_limit);
-    const spentAmt = spentByCategory[b.category] ?? 0;
+    const spentAmt = spentByCategory[normalizedCat] ?? 0;
     const over = spentAmt > limit;
     const emoji = over ? '🔴' : spentAmt / limit > 0.8 ? '🟡' : '🟢';
     text += `${emoji} *${b.category}*\n`;
     text += `   ${blockBar(spentAmt, limit)} ${fmt(spentAmt)} / ${fmt(limit)}`;
     if (over) text += ` _(over by ${fmt(spentAmt - limit)})_`;
-    text += '\n';
+    text += `\n`;
   }
 
   const remainingOther = spentByCategory['other'] ?? 0;
   if (remainingOther > 0) {
     text += `\n_${fmt(remainingOther)} in uncategorised spending not yet assigned to a budget._`;
   }
+
+  text += `\n_Tap "Show transactions" or ask me to break down any category._`;
 
   return { text };
 }

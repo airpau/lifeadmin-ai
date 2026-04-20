@@ -127,6 +127,25 @@ export const telegramTools: Tool[] = [
     },
   },
   {
+    name: 'get_budget_transactions',
+    description:
+      "Fetch ALL bank transactions for a specific budget category in a given month. Use this — NOT list_transactions — whenever the user asks to see the transactions behind a budget total (e.g. 'what makes up my grocery spend?', 'show my food transactions', 'which payments count towards my broadband budget?', 'break down my energy spend'). Uses the same classification engine as the budget dashboard, so totals will always match. Returns every transaction in the category plus a count and grand total.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Budget category to drill into (e.g. "groceries", "food", "transport", "streaming", "energy"). Uses the same classification as the budget dashboard.',
+        },
+        month: {
+          type: 'string',
+          description: 'Month in YYYY-MM format (e.g. "2026-04"). Defaults to current month if omitted.',
+        },
+      },
+      required: ['category'],
+    },
+  },
+  {
     name: 'get_upcoming_renewals',
     description:
       'Get subscriptions and contracts expiring or auto-renewing within the next 30 days, so the user can act before being charged.',
