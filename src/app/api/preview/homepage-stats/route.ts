@@ -128,6 +128,15 @@ export async function GET() {
       .eq('founding_member', true),
   ]);
 
+  // Surface query errors early — any failure means we must not apply
+  // floors or present the numbers as trustworthy live data.
+  if (monthSaved.error) console.error('[homepage-stats] monthSaved query failed', monthSaved.error);
+  if (ninetyDaySaved.error) console.error('[homepage-stats] ninetyDaySaved query failed', ninetyDaySaved.error);
+  if (subs.error) console.error('[homepage-stats] subs query failed', subs.error);
+  if (founding.error) console.error('[homepage-stats] founding query failed', founding.error);
+
+  const anyQueryError = !!(monthSaved.error || ninetyDaySaved.error || subs.error || founding.error);
+
   // Hero ticker — extract scalar from the SQL-aggregate response.
   // PostgREST returns { amount_saved: { sum: "..." } } for .sum() aggregates.
   const savedThisMonth = Number(
@@ -150,22 +159,29 @@ export async function GET() {
 
   const subscriptionsTracked = subs.count ?? 0;
 
-  // Founding members — apply trust floor.
+  // Founding members — apply trust floor ONLY when the query succeeded.
+  // If founding.error is set, founding.count is null → treated as 0 →
+  // without the guard the floor would fire and return 250 as if it were
+  // live data, masking the real outage from consumers.
   const foundingMembersReal = founding.count ?? 0;
-  const foundingMembersFloored = foundingMembersReal < FOUNDING_TRUST_FLOOR;
-  const foundingMembers = foundingMembersFloored
-    ? FOUNDING_TRUST_FLOOR
-    : foundingMembersReal;
+  const foundingMembersFloored = !founding.error && foundingMembersReal < FOUNDING_TRUST_FLOOR;
+  const foundingMembers = foundingMembersFloored ? FOUNDING_TRUST_FLOOR : foundingMembersReal;
 
-  // If every underlying figure is zero, flag as 'seed' so the UI can
-  // still show the "Preview data" note. The floored foundingMembers
-  // count does NOT make this 'live' on its own — we only call it live
-  // once real user activity is landing.
+  // source values:
+  //   'live'  — real data from Supabase, queries all succeeded
+  //   'seed'  — all zeros (no users yet), queries all succeeded
+  //   'error' — one or more queries failed; numbers are unreliable
   const allZero =
     savedThisMonth === 0 &&
     avgSavingsPerUser === 0 &&
     subscriptionsTracked === 0 &&
     foundingMembersReal === 0;
+
+  const source = anyQueryError
+    ? ('error' as const)
+    : allZero
+      ? ('seed' as const)
+      : ('live' as const);
 
   return NextResponse.json({
     savedThisMonth: Math.round(savedThisMonth * 100) / 100,
@@ -175,6 +191,6 @@ export async function GET() {
     foundingMembersReal,
     foundingMembersFloored,
     asOf: now.toISOString(),
-    source: allZero ? ('seed' as const) : ('live' as const),
+    source,
   });
 }

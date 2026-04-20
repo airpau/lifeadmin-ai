@@ -47,7 +47,7 @@ type HomepageStats = {
   foundingMembersReal?: number;
   foundingMembersFloored?: boolean;
   asOf: string;
-  source: 'live' | 'seed' | 'fallback';
+  source: 'live' | 'seed' | 'fallback' | 'error';
 };
 
 // Maps the mini letter form's dropdown labels → category strings the
