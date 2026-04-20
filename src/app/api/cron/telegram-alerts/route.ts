@@ -389,6 +389,8 @@ export async function GET(request: NextRequest) {
           recommendation: followUpText.recommendation,
           amount_impact: null,
           issue_type: issue.issue_type,
+          // source_id is the disputes.id when source_type = 'dispute'
+          disputeId: issue.source_id ?? undefined,
         },
         showFollowUpButtons: true,
       });

@@ -79,6 +79,18 @@ export async function GET(request: NextRequest) {
       if (now.getTime() - lastSent < SEVEN_DAYS_MS) continue;
     }
 
+    // Skip if user has snoozed follow-up reminders for this dispute
+    const { data: disputeSnooze } = await supabase
+      .from('user_notification_snoozes')
+      .select('id')
+      .eq('user_id', dispute.user_id)
+      .eq('snooze_type', 'dispute_followup')
+      .eq('reference_key', dispute.id)
+      .gt('snoozed_until', now.toISOString())
+      .maybeSingle();
+
+    if (disputeSnooze) continue;
+
     const disputeAgeMs = now.getTime() - new Date(dispute.created_at).getTime();
     const isEscalation = disputeAgeMs >= THIRTY_DAYS_MS;
     const daysOld = Math.floor(disputeAgeMs / (24 * 60 * 60 * 1000));
@@ -138,6 +150,7 @@ export async function GET(request: NextRequest) {
             recommendation,
             amount_impact: dispute.disputed_amount ? Number(dispute.disputed_amount) : null,
             issue_type: isEscalation ? 'dispute_escalation_due' : 'dispute_no_response',
+            disputeId: dispute.id,
           },
           showFollowUpButtons: true,
         });
