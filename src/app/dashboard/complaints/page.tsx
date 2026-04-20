@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { isResolved } from '@/lib/disputes/statuses';
 import Link from 'next/link';
 import {
   FileText, Sparkles, Download, Copy, CheckCircle, Clock, History,
@@ -150,10 +151,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 // Active statuses that can be changed via the status dropdown
 const ACTIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
 
-// Check if a dispute is resolved/closed
-function isResolved(status: string): boolean {
-  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed', 'won', 'partial', 'lost', 'withdrawn'].includes(status);
-}
+// isResolved imported from @/lib/disputes/statuses — single source of truth
 
 // Dispute summary type
 interface DisputeSummary {

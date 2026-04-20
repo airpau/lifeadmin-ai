@@ -38,6 +38,11 @@ function fmt(amount: number): string {
   return `£${Math.abs(amount).toFixed(2)}`;
 }
 
+/** Escape special characters for Telegram Markdown (legacy mode). */
+function escapeMd(text: string): string {
+  return text.replace(/[_*`[]/g, '\\$&');
+}
+
 function fmtDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -426,7 +431,7 @@ export async function GET(request: NextRequest) {
 
       const cycle = sub.billing_cycle ?? 'monthly';
       const title = `${sub.provider_name} renews in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
-      const detail = `${fmt(Number(sub.amount))}/${cycle} will be charged on ${fmtDate(sub.next_billing_date)}.`;
+      const detail = `${fmt(Number(sub.amount))}/${escapeMd(cycle)} will be charged on ${fmtDate(sub.next_billing_date)}.`;
       const recommendation = null; // Cancellation email button handles this
 
       const { data: issue } = await supabase

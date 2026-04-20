@@ -4,6 +4,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { isResolved as isDisputeResolved, RESOLVED_STATUSES } from '@/lib/disputes/statuses';
+
+// Derived from the canonical RESOLVED_STATUSES constant — never edit this inline.
+const RESOLVED_IN = `(${RESOLVED_STATUSES.join(',')})` as const;
 import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
@@ -39,15 +43,18 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
-      const [letters, resolved, disputes] = await Promise.all([
+      // Use count-only head queries to avoid the 1000-row Supabase API cap.
+      // For money_recovered we still need the values — tasks are typically few.
+      const [lettersCount, activeCount, resolved] = await Promise.all([
         supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id)
+          .not('status', 'in', RESOLVED_IN),
         supabase.from('tasks').select('money_recovered').eq('user_id', user.id).eq('status', 'resolved'),
-        supabase.from('disputes').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'open'),
       ]);
-      setLettersWritten(letters.count || 0);
+      setLettersWritten(lettersCount.count || 0);
       const totalRecovered = (resolved.data || []).reduce((sum, t) => sum + (parseFloat(String(t.money_recovered)) || 0), 0);
       setMoneyRecovered(Math.max(totalRecovered, fallbackRecovered));
-      setActiveDisputes(disputes.count || 0);
+      setActiveDisputes(activeCount.count || 0);
       setLoaded(true);
     };
     load();
