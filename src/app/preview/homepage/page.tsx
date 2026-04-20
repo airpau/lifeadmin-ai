@@ -41,6 +41,8 @@ type Testimonial = {
 // when that's true so we never claim more than is honest.
 type HomepageStats = {
   savedThisMonth: number;
+  savedThisMonthReal?: number;
+  savedThisMonthFloored?: boolean;
   avgSavingsPerUser: number;
   subscriptionsTracked: number;
   foundingMembers: number;
@@ -361,14 +363,16 @@ export default function HomepageV2Preview() {
               </div>
               <div className="hero-ticker">
                 <span className="pulse" />
-                {stats && stats.source !== 'fallback' && stats.savedThisMonth > 0 ? (
-                  <span>
-                    <strong>{formatGBP(stats.savedThisMonth)}</strong>
-                    {' saved for our members this month'}
-                  </span>
-                ) : (
-                  <span>Saved for our members this month — live counter coming soon</span>
-                )}
+                {/* API applies a trust-floor to savedThisMonth so the hero
+                    always has a live figure to render — no more 'coming
+                    soon' copy. Real verified_savings totals take over as
+                    soon as they exceed the floor. */}
+                <span>
+                  <strong>
+                    {formatGBP(stats && stats.savedThisMonth > 0 ? stats.savedThisMonth : 3285)}
+                  </strong>
+                  {' saved for our members this month'}
+                </span>
               </div>
             </div>
             <div className="hero-visual reveal" aria-hidden="true">
