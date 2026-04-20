@@ -358,7 +358,7 @@ export default function LegalRefsAdminPage() {
       </div>
 
       <p className="text-slate-600 text-xs mt-4 text-center">
-        Verification runs automatically on the 1st of each month. Statutes are checked via legislation.gov.uk. Regulator rules are compared with Claude Haiku.
+        Verification runs automatically on the 1st of each month. Statutes are checked via legislation.gov.uk. Regulator rules are compared with our AI engine.
       </p>
     </div>
   );

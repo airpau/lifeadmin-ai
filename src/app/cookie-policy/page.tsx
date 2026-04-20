@@ -45,7 +45,7 @@ export default function CookiePolicyPage() {
             <h3 className="text-lg font-medium text-white mt-4 mb-2">Marketing cookies</h3>
             <p className="mb-2">Used for advertising and affiliate tracking. Only set with your consent.</p>
             <ul className="list-disc list-inside space-y-1 text-slate-400">
-              <li><strong className="text-slate-300">Meta Pixel</strong> — measures ad effectiveness and enables retargeting. Pixel ID: 722806327584909</li>
+              <li><strong className="text-slate-300">Meta Pixel</strong> — measures ad effectiveness and enables retargeting</li>
               <li><strong className="text-slate-300">Meta Conversions API</strong> — server-side event tracking for ad optimisation</li>
               <li><strong className="text-slate-300">Awin</strong> — affiliate tracking for partner deals</li>
             </ul>
