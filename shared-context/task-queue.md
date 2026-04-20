@@ -13,7 +13,7 @@
 - [x] daily-ceo-report updated — Now includes open GitHub PRs and sprint completions (needs GITHUB_TOKEN)
 
 ## URGENT - Email Spam Fix
-- [ ] Implement global email rate limiter (max 2 emails per user per day)
+- [~PR#99] Implement global email rate limiter (max 2 emails per user per day) — rate limiter exists in email-rate-limit.ts; PR#99 fixes missing types (contract_expiry_alert, contract_end_alert, overcharge_alert) that were bypassing the cap (PR created 2026-04-20)
 - [ ] Consolidate deal alerts + targeted deals + price increases into single daily digest
 - [ ] Add user email preference settings (daily digest / weekly / off)
 - [ ] Audit and restructure all 11 email cron triggers (see email-audit below)
