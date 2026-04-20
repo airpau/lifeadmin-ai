@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendChurnEmail } from '@/lib/email/churn-prevention';
+import { normalizeTier, tierDisplayName } from '@/lib/tier-utils';
 import { canSendEmail } from '@/lib/email-rate-limit';
 
 export const runtime = 'nodejs';
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
     const userId = user.id;
     const email = user.email;
     const firstName = user.first_name || user.full_name?.split(' ')[0] || 'there';
-    const tier = user.subscription_tier || 'free';
+    const tier = normalizeTier(user.subscription_tier);
     const daysSinceCreated = Math.floor((now.getTime() - new Date(user.created_at).getTime()) / (1000 * 60 * 60 * 24));
 
     // Skip users created less than 7 days ago (they're in the onboarding sequence)
@@ -203,7 +204,7 @@ export async function GET(request: NextRequest) {
           );
 
           const sent = await sendChurnEmail(email, firstName, 'pre_renewal', {
-            tier: tier.charAt(0).toUpperCase() + tier.slice(1),
+            tier: tierDisplayName(tier),
             totalSaved,
             lettersGenerated: lettersCount || 0,
             subsTracked: subsCount || 0,
