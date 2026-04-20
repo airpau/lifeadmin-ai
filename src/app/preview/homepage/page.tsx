@@ -703,7 +703,7 @@ export default function HomepageV2Preview() {
                 color: 'var(--accent-mint-deep)',
               }}
             >
-              01 · AI Disputes Centre
+              AI Disputes Centre
             </span>
             <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
               Complaint letters in 30 seconds
@@ -955,7 +955,172 @@ export default function HomepageV2Preview() {
           </div>
         </div>
 
-        {/* 02 · Subscriptions Tracker */}
+        {/* 02 · Pocket Agent (dark) */}
+        <div
+          id="pocket-agent"
+          style={{
+            background: 'var(--surface-ink)',
+            color: 'var(--text-on-ink)',
+            paddingTop: '80px',
+            paddingBottom: '80px',
+            scrollMarginTop: '80px',
+          }}
+        >
+          <div className="wrap" style={{ paddingBottom: 0 }}>
+            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+              <span
+                className="eyebrow"
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: 'var(--accent-mint)',
+                }}
+              >
+                Pocket Agent
+              </span>
+              <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
+                Telegram chat-first agent
+              </h2>
+              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
+                Proactive hike alerts, draft rebuttals, action suggestions. Direct to your phone.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 420px',
+                gap: '40px',
+                alignItems: 'stretch',
+              }}
+            >
+              {/* Telegram iPhone */}
+              <div
+                style={{
+                  width: '360px',
+                  height: '740px',
+                  background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
+                  borderRadius: '52px',
+                  padding: '11px',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                }}
+                className="reveal"
+              >
+                <div style={{ width: '100%', height: '100%', background: '#000', borderRadius: '42px', padding: '3px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '39px', overflow: 'hidden', background: '#17212B', display: 'flex', flexDirection: 'column' }}>
+                    {/* Telegram header */}
+                    <div style={{ background: '#517DA2', padding: '12px 16px', color: '#fff', fontSize: '14px', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Paybacker Agent</span>
+                      <span>⋮</span>
+                    </div>
+
+                    {/* Messages */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
+                      {[
+                        { from: 'agent', text: 'Hey! Virgin Media just raised your bill by £12/month. Want me to draft a dispute letter?' },
+                        { from: 'user', text: 'Yeah please, do it' },
+                        { from: 'agent', text: 'Done! Letter sent to your inbox. I\'ll monitor the reply.', hasAction: true },
+                        { from: 'user', text: 'They replied' },
+                        { from: 'agent', text: 'Seen it. Drafting rebuttal now...' },
+                      ].map((msg, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            justifyContent: msg.from === 'agent' ? 'flex-start' : 'flex-end',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              maxWidth: '82%',
+                              padding: '12.5px',
+                              borderRadius: '12px',
+                              background: msg.from === 'agent' ? '#2B5278' : '#F0F7FD',
+                              color: msg.from === 'agent' ? '#fff' : '#0B1220',
+                              fontSize: '12.5px',
+                              lineHeight: '1.4',
+                            }}
+                          >
+                            {msg.text}
+                            {msg.hasAction && (
+                              <div
+                                style={{
+                                  marginTop: '8px',
+                                  padding: '8px 12px',
+                                  background: '#F0F7FD',
+                                  color: '#517DA2',
+                                  borderRadius: '6px',
+                                  fontSize: '10.5px',
+                                  fontWeight: 600,
+                                  display: 'inline-block',
+                                }}
+                              >
+                                📄 View rebuttal
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Input bar */}
+                    <div style={{ padding: '12px 16px', background: '#17212B', borderTop: '1px solid #2B5278' }}>
+                      <input
+                        type="text"
+                        placeholder="Type a message..."
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          border: '1px solid #2B5278',
+                          borderRadius: '6px',
+                          background: '#2B5278',
+                          color: '#fff',
+                          fontSize: '12px',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scenarios column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="reveal">
+                {[
+                  { q: 'Cancel my gym', a: 'Draft cancellation email citing Consumer Rights Act' },
+                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom\u2019s benchmark rates' },
+                  { q: 'Any hikes this week?', a: 'Scan inbox & flag price changes' },
+                  { q: 'Monitor Virgin\u2019s reply', a: 'Watch thread & draft rebuttal' },
+                  { q: 'Switch to a better deal?', a: 'Show verified partner offers' },
+                  { q: 'What\u2019s my total spend?', a: 'Pull from Money Hub + subs' },
+                ].map((scenario, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid #1F2A44',
+                      borderRadius: '12px',
+                      padding: '16px',
+                    }}
+                  >
+                    <div style={{ fontStyle: 'italic', fontSize: '13px', color: '#D1D5DB', marginBottom: '6px' }}>
+                      {scenario.q}
+                    </div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-mint)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span>→</span>
+                      {scenario.a}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 03 · Subscriptions Tracker */}
         <div
           style={{
             background: 'var(--accent-mint-wash)',
@@ -975,7 +1140,7 @@ export default function HomepageV2Preview() {
                   color: 'var(--accent-mint-deep)',
                 }}
               >
-                02 · SUBSCRIPTIONS TRACKER
+                Subscriptions Tracker
               </span>
               <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
                 Auto-tagged recurring charges
@@ -1255,7 +1420,7 @@ export default function HomepageV2Preview() {
           </div>
         </div>
 
-        {/* 03 · Money Hub */}
+        {/* 04 · Money Hub */}
         <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
           <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
             <span
@@ -1268,7 +1433,7 @@ export default function HomepageV2Preview() {
                 color: 'var(--accent-mint-deep)',
               }}
             >
-              03 · MONEY HUB
+              Money Hub
             </span>
             <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
               Daily dashboard + Emma comparison
@@ -1494,169 +1659,6 @@ export default function HomepageV2Preview() {
           </div>
         </div>
 
-        {/* 04 · Pocket Agent (dark) */}
-        <div
-          style={{
-            background: 'var(--surface-ink)',
-            color: 'var(--text-on-ink)',
-            paddingTop: '80px',
-            paddingBottom: '80px',
-          }}
-        >
-          <div className="wrap" style={{ paddingBottom: 0 }}>
-            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
-              <span
-                className="eyebrow"
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '14px',
-                  fontWeight: 700,
-                  letterSpacing: '0.1em',
-                  color: 'var(--accent-mint)',
-                }}
-              >
-                04 · POCKET AGENT
-              </span>
-              <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
-                Telegram chat-first agent
-              </h2>
-              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
-                Proactive hike alerts, draft rebuttals, action suggestions. Direct to your phone.
-              </p>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 420px',
-                gap: '40px',
-                alignItems: 'stretch',
-              }}
-            >
-              {/* Telegram iPhone */}
-              <div
-                style={{
-                  width: '360px',
-                  height: '740px',
-                  background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
-                  borderRadius: '52px',
-                  padding: '11px',
-                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
-                }}
-                className="reveal"
-              >
-                <div style={{ width: '100%', height: '100%', background: '#000', borderRadius: '42px', padding: '3px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '39px', overflow: 'hidden', background: '#17212B', display: 'flex', flexDirection: 'column' }}>
-                    {/* Telegram header */}
-                    <div style={{ background: '#517DA2', padding: '12px 16px', color: '#fff', fontSize: '14px', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Paybacker Agent</span>
-                      <span>⋮</span>
-                    </div>
-
-                    {/* Messages */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
-                      {[
-                        { from: 'agent', text: 'Hey! Virgin Media just raised your bill by £12/month. Want me to draft a dispute letter?' },
-                        { from: 'user', text: 'Yeah please, do it' },
-                        { from: 'agent', text: 'Done! Letter sent to your inbox. I\'ll monitor the reply.', hasAction: true },
-                        { from: 'user', text: 'They replied' },
-                        { from: 'agent', text: 'Seen it. Drafting rebuttal now...' },
-                      ].map((msg, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex',
-                            justifyContent: msg.from === 'agent' ? 'flex-start' : 'flex-end',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          <div
-                            style={{
-                              maxWidth: '82%',
-                              padding: '12.5px',
-                              borderRadius: '12px',
-                              background: msg.from === 'agent' ? '#2B5278' : '#F0F7FD',
-                              color: msg.from === 'agent' ? '#fff' : '#0B1220',
-                              fontSize: '12.5px',
-                              lineHeight: '1.4',
-                            }}
-                          >
-                            {msg.text}
-                            {msg.hasAction && (
-                              <div
-                                style={{
-                                  marginTop: '8px',
-                                  padding: '8px 12px',
-                                  background: '#F0F7FD',
-                                  color: '#517DA2',
-                                  borderRadius: '6px',
-                                  fontSize: '10.5px',
-                                  fontWeight: 600,
-                                  display: 'inline-block',
-                                }}
-                              >
-                                📄 View rebuttal
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Input bar */}
-                    <div style={{ padding: '12px 16px', background: '#17212B', borderTop: '1px solid #2B5278' }}>
-                      <input
-                        type="text"
-                        placeholder="Type a message..."
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: '1px solid #2B5278',
-                          borderRadius: '6px',
-                          background: '#2B5278',
-                          color: '#fff',
-                          fontSize: '12px',
-                          outline: 'none',
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Scenarios column */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="reveal">
-                {[
-                  { q: 'Cancel my gym', a: 'Draft cancellation email citing Consumer Rights Act' },
-                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom\u2019s benchmark rates' },
-                  { q: 'Any hikes this week?', a: 'Scan inbox & flag price changes' },
-                  { q: 'Monitor Virgin\u2019s reply', a: 'Watch thread & draft rebuttal' },
-                  { q: 'Switch to a better deal?', a: 'Show verified partner offers' },
-                  { q: 'What\u2019s my total spend?', a: 'Pull from Money Hub + subs' },
-                ].map((scenario, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid #1F2A44',
-                      borderRadius: '12px',
-                      padding: '16px',
-                    }}
-                  >
-                    <div style={{ fontStyle: 'italic', fontSize: '13px', color: '#D1D5DB', marginBottom: '6px' }}>
-                      {scenario.q}
-                    </div>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-mint)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span>→</span>
-                      {scenario.a}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* 05 · Google Sheets Export */}
         <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
           <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
@@ -1670,7 +1672,7 @@ export default function HomepageV2Preview() {
                 color: 'var(--accent-mint-deep)',
               }}
             >
-              05 · GOOGLE SHEETS EXPORT
+              Google Sheets Export
             </span>
             <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
               Live sync + Paybacker-enriched columns
@@ -1954,7 +1956,7 @@ export default function HomepageV2Preview() {
                   color: 'var(--accent-mint)',
                 }}
               >
-                06 · STACKED
+                Stacked
               </span>
               <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
                 Architecture + competitor comparison
@@ -2252,7 +2254,7 @@ export default function HomepageV2Preview() {
             </div>
           </div>
           <p className="compare-link">
-            <a href="/pricing#feature-matrix">See the full feature comparison →</a>
+            <a href="/pricing">See the full feature comparison →</a>
           </p>
         </div>
       </section>
@@ -2326,8 +2328,8 @@ export default function HomepageV2Preview() {
                   Your data is <strong>never sold</strong>, never shared with third-party
                   advertisers, and never used to train AI models outside your own account. Full
                   detail in our{' '}
-                  <a href="/privacy">Privacy Policy</a> and{' '}
-                  <a href="/terms">Terms of Service</a>.
+                  <a href="/privacy-policy">Privacy Policy</a> and{' '}
+                  <a href="/terms-of-service">Terms of Service</a>.
                 </p>
               </div>
             </details>
