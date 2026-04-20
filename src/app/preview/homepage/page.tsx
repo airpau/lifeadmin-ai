@@ -1628,11 +1628,11 @@ export default function HomepageV2Preview() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="reveal">
                 {[
                   { q: 'Cancel my gym', a: 'Draft cancellation email citing Consumer Rights Act' },
-                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom's benchmark rates' },
+                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom\u2019s benchmark rates' },
                   { q: 'Any hikes this week?', a: 'Scan inbox & flag price changes' },
-                  { q: 'Monitor Virgin's reply', a: 'Watch thread & draft rebuttal' },
+                  { q: 'Monitor Virgin\u2019s reply', a: 'Watch thread & draft rebuttal' },
                   { q: 'Switch to a better deal?', a: 'Show verified partner offers' },
-                  { q: 'What's my total spend?', a: 'Pull from Money Hub + subs' },
+                  { q: 'What\u2019s my total spend?', a: 'Pull from Money Hub + subs' },
                 ].map((scenario, i) => (
                   <div
                     key={i}
