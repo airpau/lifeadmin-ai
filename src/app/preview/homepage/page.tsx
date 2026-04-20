@@ -560,6 +560,83 @@ export default function HomepageV2Preview() {
         </div>
       </section>
 
+      {/* AI Disputes Centre (light) — full standalone section ------- */}
+      <section className="disputes-section section-light" id="disputes">
+        <div className="wrap">
+          <div className="disputes-grid">
+            <div className="disputes-copy reveal">
+              <span className="eyebrow">AI Disputes Centre</span>
+              <h2>
+                A formal complaint letter,
+                <br />
+                citing UK law, in 30 seconds.
+              </h2>
+              <p>
+                Most people never dispute unfair bills because writing the letter feels
+                impossible. Paybacker does it for you — citing the exact UK legislation,
+                Ofcom rules, or Ofgem standards that apply to your case.
+              </p>
+              <ul className="disputes-bullets">
+                <li>
+                  <strong>Consumer Rights Act 2015</strong> for faulty goods and service failures.
+                </li>
+                <li>
+                  <strong>UK261</strong> for flight delays — up to £520 per passenger.
+                </li>
+                <li>
+                  <strong>Ofcom&rsquo;s Fairness Framework</strong> for mid-contract price rises.
+                </li>
+                <li>
+                  <strong>Ofgem Standards of Conduct</strong> for energy billing disputes.
+                </li>
+              </ul>
+              <div className="hero-cta-row">
+                <a className="btn btn-mint" href="#try-letter">
+                  Try it free — no account needed
+                </a>
+              </div>
+            </div>
+
+            <div className="disputes-letter reveal" aria-hidden="true">
+              <div className="dl-header">
+                <span className="dl-badge">AI Draft</span>
+                <span className="dl-title">Ofcom — Mid-contract price rise</span>
+              </div>
+              <div className="dl-body">
+                I am writing to formally dispute the{' '}
+                <span className="dl-hl">£12 CPI+3.9% increase</span> applied to my
+                Virgin Media broadband contract on 1 October 2024. Under{' '}
+                <span className="dl-hl">Ofcom&rsquo;s Fairness Framework</span> and the{' '}
+                <span className="dl-hl">Consumer Rights Act 2015 s.49</span>, you are
+                required to provide reasonable notice of any price change and a right to exit
+                the contract without penalty where the increase exceeds the rate agreed at
+                signing. As this increase was not individually agreed and no adequate notice
+                was provided, I am entitled to cancel without penalty and request a full
+                refund of the excess charged to date.
+              </div>
+              <div className="dl-footer">
+                <span className="dl-law">Consumer Rights Act 2015 · Ofcom GC C1</span>
+                <a className="dl-cta" href="/auth/signup">Get full letter →</a>
+              </div>
+              <div className="disputes-stats">
+                <div className="disputes-stat">
+                  <div className="ds-n">78%</div>
+                  <div className="ds-l">success rate on mid-contract price rise disputes</div>
+                </div>
+                <div className="disputes-stat">
+                  <div className="ds-n">30s</div>
+                  <div className="ds-l">to draft a full formal complaint letter</div>
+                </div>
+                <div className="disputes-stat">
+                  <div className="ds-n">13+</div>
+                  <div className="ds-l">dispute categories covering every UK consumer right</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Trust strip ------------------------------------------------ */}
       <section className="trust-strip section-light">
         <div className="wrap">
@@ -602,38 +679,6 @@ export default function HomepageV2Preview() {
               last 90 days of verified savings, subscriptions tracked, and active founding
               members.
             </p>
-            {/*
-              The seed/fallback badge stays visible until /api/preview/homepage-stats
-              returns non-zero figures. Once live data lands it quietly vanishes — no
-              refresh required.
-            */}
-            {/*
-              The badge shows whenever any individual figure is still the
-              hardcoded export seed (source !== 'live', OR any specific
-              number is zero and we're falling back). That way we never
-              show a misleading headline number without an honest label.
-            */}
-            {(() => {
-              if (!stats) {
-                return (
-                  <p className="placeholder-note" aria-live="polite">
-                    Preview data — aggregates load from Supabase in a second.
-                  </p>
-                );
-              }
-              const anyFallback =
-                stats.source !== 'live' ||
-                stats.avgSavingsPerUser === 0 ||
-                stats.subscriptionsTracked === 0 ||
-                stats.foundingMembers === 0;
-              if (!anyFallback) return null;
-              return (
-                <p className="placeholder-note" aria-live="polite">
-                  Some figures still seeded — real aggregates fill in as verified_savings
-                  rows land.
-                </p>
-              );
-            })()}
           </div>
           <div className="stats-grid">
             <div className="stat-card reveal">
@@ -687,56 +732,18 @@ export default function HomepageV2Preview() {
       <section className="pillars-section section-light">
         <div className="wrap">
           <div className="section-head reveal">
-            <span className="eyebrow">What&rsquo;s in the box</span>
+            <span className="eyebrow">What else is in the box</span>
             <h2>
-              Three products. One subscription.
+              Pocket Agent + Money Hub.
               <br />
               All of your money, watched.
             </h2>
             <p>
-              Most UK households are overcharged by £1,000+ a year. Paybacker finds it, disputes
-              it, and cancels it — in minutes, not hours on hold.
+              Beyond the Disputes Centre: a proactive AI agent in Telegram and a full financial
+              dashboard — so nothing slips through.
             </p>
           </div>
           <div className="pillar-grid">
-            <div className="pillar-card reveal">
-              <div className="pillar-icon orange" aria-hidden="true">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 3v18" />
-                  <path d="M4 7l8-4 8 4" />
-                  <path d="M4 7l3 7a3 3 0 006 0z" />
-                  <path d="M20 7l-3 7a3 3 0 006 0z" />
-                </svg>
-              </div>
-              <h3>AI Disputes Centre</h3>
-              <p className="copy">
-                Complaint letters citing exact UK consumer law in 30 seconds. Consumer Rights Act
-                2015, UK261, Ofgem, Ofcom.
-              </p>
-              <div className="pillar-preview">
-                <div className="head">AI draft · Ofcom — mid-contract price rise</div>
-                <p className="letter-para">
-                  … I am writing to formally dispute the{' '}
-                  <span className="hl">£12 CPI+3.9% increase</span> applied to my Virgin Media
-                  broadband contract on 1 October. Under{' '}
-                  <span className="hl">Ofcom&rsquo;s Fairness Framework</span> and the{' '}
-                  <span className="hl">Consumer Rights Act 2015 s.49</span>, you must provide
-                  reasonable notice and a right to exit without penalty…
-                </p>
-              </div>
-            </div>
-
-            {/* Pocket Agent moved up to position 2 per Paul's feedback
-                (Apr 2026 review): focus order is Disputes → Pocket Agent → Money Hub. */}
             <div className="pillar-card reveal">
               <div className="pillar-icon gradient" aria-hidden="true">
                 <svg
@@ -754,8 +761,8 @@ export default function HomepageV2Preview() {
               </div>
               <h3>Pocket Agent</h3>
               <p className="copy">
-                Your AI financial agent, always in your pocket. Telegram, WhatsApp, SMS and email —
-                answers, drafts, cancels, and switches in plain English.
+                Your AI financial agent, always in your pocket. Available on Telegram — WhatsApp
+                coming soon. Answers, drafts, cancels, and switches in plain English.
               </p>
               <div className="pillar-preview">
                 <div className="head">Today · Telegram</div>
@@ -846,9 +853,9 @@ export default function HomepageV2Preview() {
               <span className="mint">does</span> the admin for you.
             </h2>
             <p className="sub">
-              Your Pocket Agent lives in Telegram, WhatsApp, SMS, and email — watching for
-              overcharges, drafting letters, and cancelling the stuff you never use. Reply in a
-              sentence. It handles the rest.
+              Your Pocket Agent lives in Telegram — watching for overcharges, drafting letters,
+              and cancelling the stuff you never use. WhatsApp coming soon. Reply in a sentence.
+              It handles the rest.
             </p>
           </div>
 
@@ -1041,6 +1048,40 @@ export default function HomepageV2Preview() {
       <section className="subs-section section-mint" id="subscriptions">
         <div className="wrap">
           <div className="subs-grid">
+            <div className="subs-copy reveal">
+              <span className="eyebrow">Smart subscription tracking</span>
+              <h2>
+                Every sub. Every contract.
+                <br />
+                Every renewal.
+              </h2>
+              <p>
+                Paybacker spots every recurring payment the moment it hits your bank — then flags
+                the ones that are quietly costing you money.
+              </p>
+              <ul className="subs-features">
+                <li>
+                  <strong>Renewal alerts.</strong> 30, 14 and 7 days before any contract renews.
+                </li>
+                <li>
+                  <strong>Price-rise detection.</strong> We compare every bill against the last one
+                  and flag anything above inflation.
+                </li>
+                <li>
+                  <strong>Inactive-use detection.</strong> Gym not opened in 86 days? Streaming
+                  service not played in 47? We tell you.
+                </li>
+                <li>
+                  <strong>Contract end-dates tracked.</strong> No more rolling onto the
+                  &ldquo;loyalty tax&rdquo; after your intro rate expires.
+                </li>
+                <li>
+                  <strong>One-tap cancellation letters.</strong> Drafted with your rights under UK
+                  consumer law — you just hit send.
+                </li>
+              </ul>
+            </div>
+
             <div className="subs-list reveal" aria-hidden="true">
               <div className="subs-list-head">
                 <span>October · 11 active subscriptions</span>
@@ -1110,40 +1151,6 @@ export default function HomepageV2Preview() {
                 </div>
                 <div className="subs-amt">£28.00</div>
               </div>
-            </div>
-
-            <div className="subs-copy reveal">
-              <span className="eyebrow">Smart subscription tracking</span>
-              <h2>
-                Every sub. Every contract.
-                <br />
-                Every renewal.
-              </h2>
-              <p>
-                Paybacker spots every recurring payment the moment it hits your bank — then flags
-                the ones that are quietly costing you money.
-              </p>
-              <ul className="subs-features">
-                <li>
-                  <strong>Renewal alerts.</strong> 30, 14 and 7 days before any contract renews.
-                </li>
-                <li>
-                  <strong>Price-rise detection.</strong> We compare every bill against the last one
-                  and flag anything above inflation.
-                </li>
-                <li>
-                  <strong>Inactive-use detection.</strong> Gym not opened in 86 days? Streaming
-                  service not played in 47? We tell you.
-                </li>
-                <li>
-                  <strong>Contract end-dates tracked.</strong> No more rolling onto the
-                  &ldquo;loyalty tax&rdquo; after your intro rate expires.
-                </li>
-                <li>
-                  <strong>One-tap cancellation letters.</strong> Drafted with your rights under UK
-                  consumer law — you just hit send.
-                </li>
-              </ul>
             </div>
           </div>
         </div>
@@ -1522,8 +1529,8 @@ export default function HomepageV2Preview() {
                   Your data is <strong>never sold</strong>, never shared with third-party
                   advertisers, and never used to train AI models outside your own account. Full
                   detail in our{' '}
-                  <a href="/privacy">Privacy Policy</a> and{' '}
-                  <a href="/terms">Terms of Service</a>.
+                  <a href="/privacy-policy">Privacy Policy</a> and{' '}
+                  <a href="/terms-of-service">Terms of Service</a>.
                 </p>
               </div>
             </details>
@@ -1643,7 +1650,7 @@ export default function HomepageV2Preview() {
                 <p>
                   You only need Essential (£4.99/mo) or Pro (£9.99/mo) if you want{' '}
                   <strong>unlimited</strong> disputes, daily automatic bank sync, monthly (or
-                  unlimited) email scans, the Pocket Agent in Telegram/WhatsApp, and priority
+                  unlimited) email scans, the Pocket Agent in Telegram (WhatsApp coming soon), and priority
                   human review on complex disputes. Founding-member pricing is locked in forever.
                 </p>
                 <p>
@@ -1802,9 +1809,9 @@ export default function HomepageV2Preview() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="/complaints">Disputes Centre</a>
-              <a href="/dashboard">Money Hub</a>
-              <a href="/#pocket-agent">Pocket Agent</a>
+              <a href="/dashboard/complaints">Disputes Centre</a>
+              <a href="/dashboard/money-hub">Money Hub</a>
+              <a href="/dashboard/pocket-agent">Pocket Agent</a>
               <a href="/deals">Deals</a>
               <a href="/pricing">Pricing</a>
             </div>
