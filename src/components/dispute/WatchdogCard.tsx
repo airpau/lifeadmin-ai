@@ -45,6 +45,13 @@ interface Candidate {
   reason: string;
 }
 
+interface EmailConnectionSummary {
+  id: string;
+  email_address: string;
+  provider_type: string;
+  status: string;
+}
+
 interface Props {
   disputeId: string;
   providerName: string;
@@ -66,11 +73,14 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   const [linked, setLinked] = useState<LinkedThread | null>(null);
   const [loadingLinked, setLoadingLinked] = useState(true);
 
+  const [emailConnections, setEmailConnections] = useState<EmailConnectionSummary[] | null>(null);
+
   const [pickerOpen, setPickerOpen] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
   const [needsEmailConnection, setNeedsEmailConnection] = useState(false);
+  const [searchErrors, setSearchErrors] = useState<Array<{ connectionId: string; message: string }>>([]);
 
   const [linking, setLinking] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -93,15 +103,39 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     }
   }, [disputeId]);
 
+  const loadEmailConnections = useCallback(async () => {
+    try {
+      const res = await fetch('/api/email/connections', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailConnections(data.connections ?? []);
+      } else {
+        setEmailConnections([]);
+      }
+    } catch {
+      setEmailConnections([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadLinked();
-  }, [loadLinked]);
+    loadEmailConnections();
+  }, [loadLinked, loadEmailConnections]);
+
+  const hasActiveEmail =
+    emailConnections === null
+      ? null
+      : emailConnections.some((c) => c.status === 'active');
+  const hasStaleEmail =
+    emailConnections !== null &&
+    emailConnections.some((c) => c.status === 'needs_reauth' || c.status === 'expired');
 
   const openPicker = async () => {
     setPickerOpen(true);
     setCandidates(null);
     setCandidatesError(null);
     setNeedsEmailConnection(false);
+    setSearchErrors([]);
     setLoadingCandidates(true);
     try {
       const res = await fetch(`/api/disputes/${disputeId}/suggest-threads`, { cache: 'no-store' });
@@ -123,6 +157,9 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
         return;
       }
       setCandidates(data.candidates ?? []);
+      if (Array.isArray(data.errors) && data.errors.length > 0) {
+        setSearchErrors(data.errors);
+      }
     } catch (e) {
       setCandidatesError(e instanceof Error ? e.message : 'Something went wrong');
       setCandidates([]);
@@ -306,13 +343,30 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               <Search className="h-4 w-4" /> Find thread
             </button>
           </div>
-          <p className="text-[11px] text-slate-500 mt-3 ml-6">
-            No email connected yet?{' '}
-            <a href="/dashboard/profile" className="text-mint-400 hover:text-mint-300 underline underline-offset-2">
-              Add Gmail or Outlook in Profile
-            </a>{' '}
-            first.
-          </p>
+          {hasActiveEmail === false && (
+            <p className="text-[11px] text-slate-500 mt-3 ml-6">
+              No email connected yet?{' '}
+              <a href="/dashboard/profile" className="text-mint-400 hover:text-mint-300 underline underline-offset-2">
+                Add Gmail or Outlook in Profile
+              </a>{' '}
+              first.
+            </p>
+          )}
+          {hasActiveEmail === true && hasStaleEmail && (
+            <p className="text-[11px] text-amber-400 mt-3 ml-6">
+              One of your email accounts needs re-authorising in{' '}
+              <a href="/dashboard/profile" className="underline underline-offset-2">
+                Profile
+              </a>
+              .
+            </p>
+          )}
+          {hasActiveEmail === true && emailConnections && emailConnections.length > 0 && (
+            <p className="text-[11px] text-slate-500 mt-3 ml-6">
+              Searching {emailConnections.filter((c) => c.status === 'active').length} connected email account
+              {emailConnections.filter((c) => c.status === 'active').length === 1 ? '' : 's'}.
+            </p>
+          )}
         </div>
       )}
 
@@ -381,9 +435,30 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                   <Mail className="h-10 w-10 text-slate-700 mx-auto mb-3" />
                   <p className="text-slate-300 font-semibold mb-1">No matching threads found</p>
                   <p className="text-slate-500 text-sm">
-                    We searched the last 180 days for mail from {providerName}. If the thread you want
-                    is older, please forward the most recent message to yourself first.
+                    We searched the last 365 days for mail mentioning {providerName}. If the thread
+                    is older, forward the most recent message to yourself first, then try again.
                   </p>
+                  {searchErrors.length > 0 && (
+                    <div className="mt-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-lg p-3 text-left text-xs">
+                      <p className="font-semibold mb-1">
+                        {searchErrors.length === 1
+                          ? 'One of your email accounts couldn\u2019t be searched:'
+                          : `${searchErrors.length} of your email accounts couldn\u2019t be searched:`}
+                      </p>
+                      <ul className="list-disc ml-4 space-y-0.5">
+                        {searchErrors.map((e, i) => (
+                          <li key={i} className="break-all">{e.message}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-2">
+                        Try{' '}
+                        <a href="/dashboard/profile" className="underline">
+                          re-connecting in Profile
+                        </a>
+                        .
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <ul className="space-y-2">

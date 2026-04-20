@@ -56,11 +56,14 @@ export async function GET(request: NextRequest) {
 
     const expiry = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-    // Delete any existing outlook connection for this user first
+    // Only clear the row with the SAME email address so reconnecting one
+    // Outlook account doesn't wipe other Outlook/Microsoft accounts the user
+    // has linked. Multi-account is supported.
     await admin.from('email_connections')
       .delete()
       .eq('user_id', user.id)
-      .eq('provider_type', 'outlook');
+      .eq('provider_type', 'outlook')
+      .eq('email_address', tokens.email);
 
     // Insert fresh connection
     const { error: insertError } = await admin.from('email_connections').insert({

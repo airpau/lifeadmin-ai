@@ -70,12 +70,15 @@ export async function GET(request: NextRequest) {
       console.error('[google-callback] gmail_tokens upsert error:', gmailErr);
     }
 
-    // 2. Save to email_connections (unified connection display on Scanner page)
-    // Delete any existing Google connection first
+    // 2. Save to email_connections (unified connection display).
+    // IMPORTANT: only clear a row with the SAME email address so that
+    // reconnecting account A doesn't wipe account B. Users can have any
+    // number of Gmail accounts linked simultaneously.
     await admin.from('email_connections')
       .delete()
       .eq('user_id', user.id)
-      .eq('provider_type', 'google');
+      .eq('provider_type', 'google')
+      .eq('email_address', tokens.email);
 
     const { error: connErr } = await admin.from('email_connections').insert({
       user_id: user.id,
