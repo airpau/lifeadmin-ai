@@ -22,19 +22,50 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
 
 /**
  * Client-side deduplication of bank transactions.
+ *
  * Matches the DB-level deduplicate_bank_transactions RPC logic:
- * same amount + same date + same merchant/description → keep only the first (newest sync).
- * This catches duplicates from overlapping TrueLayer/Yapily connections.
+ * same amount + same date + overlapping merchant/description → keep one.
+ *
+ * Key subtlety — pending vs settled fingerprints diverge:
+ *   settled:  merchant_name = "Airbnb",  description = "AIRBNB PAYMENTS UKLONDON..."
+ *   pending:  merchant_name = null,      description = "AIRBNB PAYMENTS UKLONDON..."
+ * A naïve full-string or fixed-slice comparison misses this pair.
+ *
+ * We normalise both strings to lowercase alphanumeric (max 15 chars) and
+ * treat them as matching if EITHER is a prefix/substring of the other.
+ * This is conservative enough to avoid false positives on short names
+ * (e.g. "tfl" vs "tflzone1") while catching the common settled/pending case.
  */
+function normMerchant(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15);
+}
+
+function merchantsMatch(a: string, b: string): boolean {
+  const na = normMerchant(a);
+  const nb = normMerchant(b);
+  if (!na || !nb) return na === nb;
+  // Match if either is a prefix of the other (handles settled-name ⊂ pending-description)
+  return na === nb || na.startsWith(nb) || nb.startsWith(na);
+}
+
 function deduplicateTransactions(txns: any[]): any[] {
-  const seen = new Map<string, boolean>();
+  // Build a list of (key, txn) where key = "amount|date|normMerchant"
+  // For each candidate, check if any already-kept transaction matches on
+  // amount + date + merchantsMatch. Using an array (not Map) for the
+  // merchant comparison step; the total count per day is small.
+  const kept: Array<{ amt: number; date: string; merchant: string }> = [];
+
   return txns.filter(txn => {
     const date = (txn.timestamp || '').substring(0, 10); // YYYY-MM-DD
-    const merchant = (txn.merchant_name || txn.description || '').toLowerCase().trim();
+    const rawMerchant = txn.merchant_name || txn.description || '';
     const amt = parseFloat(String(txn.amount)) || 0;
-    const key = `${amt}|${date}|${merchant}`;
-    if (seen.has(key)) return false;
-    seen.set(key, true);
+
+    const isDuplicate = kept.some(
+      k => k.amt === amt && k.date === date && merchantsMatch(k.merchant, rawMerchant)
+    );
+    if (isDuplicate) return false;
+
+    kept.push({ amt, date, merchant: rawMerchant });
     return true;
   });
 }

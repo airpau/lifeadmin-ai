@@ -262,15 +262,49 @@ export async function GET(request: NextRequest) {
           throw new Error('No bank accounts available to sync');
         }
 
-        // Determine the earliest date we may query for this connection.
-        // NatWest and other UK banks often restrict transaction history to on or after
-        // the consent / reconnection date. Requesting older dates returns HTTP 400.
-        // We use connected_at as the floor and cap at 90 days for safety.
+        // ── From-date strategy ──────────────────────────────────────────────────
+        // connected_at is now the ORIGINAL connection date (never overwritten on
+        // reconnect). NatWest and some other UK banks restrict history to on/after
+        // the most-recent consent date — if they return HTTP 400 that is caught
+        // per-account below and the sync continues for other accounts.
+        //
+        // Gap-fill safety net: if last_synced_at is older than connected_at it
+        // means either (a) the reconnect callback's initial sync failed and we
+        // need the cron to retry the backfill, or (b) this is a brand-new row
+        // being synced for the first time via cron. In both cases we use the
+        // earlier of the two dates as the floor so no gap is silently skipped.
         const connectedAtDate = connection.connected_at
           ? new Date(connection.connected_at)
           : ninetyDaysAgo;
         connectedAtDate.setHours(0, 0, 0, 0);
-        const fromDate = connectedAtDate > ninetyDaysAgo ? connectedAtDate : ninetyDaysAgo;
+
+        // Use last_synced_at as an alternative floor when it predates connected_at
+        // (gap scenario: callback sync failed after a reconnect).
+        const lastSyncedDate = connection.last_synced_at
+          ? new Date(connection.last_synced_at)
+          : null;
+        if (lastSyncedDate) lastSyncedDate.setHours(0, 0, 0, 0);
+
+        const earliestKnownDate =
+          lastSyncedDate && lastSyncedDate < connectedAtDate
+            ? lastSyncedDate
+            : connectedAtDate;
+
+        // Cap at 90 days (hard TrueLayer API limit)
+        const fromDate = earliestKnownDate > ninetyDaysAgo ? earliestKnownDate : ninetyDaysAgo;
+
+        if (lastSyncedDate && lastSyncedDate < connectedAtDate) {
+          // Gap detected: the callback sync after the last reconnect may have
+          // failed or been partial. Log it so it's visible in server logs.
+          const gapDays = Math.round(
+            (connectedAtDate.getTime() - lastSyncedDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          console.warn(
+            `Bank sync: gap backfill triggered for conn=${connection.id} ` +
+            `(last_synced_at=${connection.last_synced_at} < connected_at=${connection.connected_at}, ` +
+            `gap=${gapDays}d, fetching from=${fromDate.toISOString().split('T')[0]})`
+          );
+        }
 
         // Sync transactions for each account
         for (const accountId of accountIds) {
