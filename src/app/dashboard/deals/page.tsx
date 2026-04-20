@@ -62,7 +62,6 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'talkmobile', provider: 'Talkmobile', headline: 'Low-cost SIM plans on the Vodafone network', saving: 'Save up to £180/yr', awinMid: '2351', providerUrl: 'https://www.talkmobile.co.uk/sim-only-deals', category: 'Mobile' },
     { id: 'asda-mobile', provider: 'Asda Mobile', headline: 'Budget-friendly SIM bundles', saving: 'Save up to £160/yr', awinMid: '6250', providerUrl: 'https://mobile.asda.com/bundles', category: 'Mobile' },
     { id: 'honest-mobile', provider: 'Honest Mobile', headline: 'Ethical mobile - plants trees with every plan', saving: 'Save up to £140/yr', awinMid: '20890', providerUrl: 'https://www.honestmobile.co.uk/plans', category: 'Mobile' },
-    { id: 'ee-payg', provider: 'EE Pay As You Go', headline: 'UK largest 5G network - no contract needed', saving: 'Flexible top-ups', awinMid: '118459', providerUrl: 'https://shop.ee.co.uk/pay-as-you-go', category: 'Mobile' },
     { id: 'o2-mobile', provider: 'O2', headline: 'Priority rewards and flexible plans', saving: 'Save up to £200/yr', awinMid: '3235', providerUrl: 'https://www.o2.co.uk/shop/sim-cards', category: 'Mobile' },
     { id: 'vodafone', provider: 'Vodafone', headline: 'Award-winning 5G network with extras', saving: 'Save up to £220/yr', awinMid: '1257', providerUrl: 'https://www.vodafone.co.uk/mobile/sim-only', category: 'Mobile' },
     { id: 'three-mobile', provider: 'Three', headline: '5G at no extra cost on all plans', saving: 'Save up to £200/yr', awinMid: '10210', providerUrl: 'https://www.three.co.uk', category: 'Mobile' },
@@ -99,7 +98,12 @@ const DEALS: Record<string, Deal[]> = {
     { id: 'carwow-finance', provider: 'Carwow', headline: 'Compare car finance deals - PCP, HP, and personal loans', saving: 'Save on car finance', awinMid: '18621', providerUrl: 'https://www.carwow.co.uk/car-finance', category: 'Car Finance' },
     { id: 'zuto', provider: 'Zuto', headline: 'Car finance comparison - all credit scores welcome', saving: 'Rates from 6.9% APR', awinMid: '16944', providerUrl: 'https://www.zuto.com', category: 'Car Finance' },
   ],
-  Water: [],
+  Water: [
+    { id: 'ccw-water', provider: 'Consumer Council for Water', headline: 'Free advice on cutting your water bill and disputing charges', saving: 'Free bill review', awinMid: '0', providerUrl: 'https://www.ccw.org.uk/help-and-advice/save-money-on-your-water-bills/', awinUrl: 'https://www.ccw.org.uk/help-and-advice/save-money-on-your-water-bills/', category: 'Water' },
+    { id: 'water-meter', provider: 'Water Meter Savings', headline: 'Request a free water meter and pay only for what you use', saving: 'Save up to £300/yr', awinMid: '0', providerUrl: 'https://www.ccw.org.uk/water-meters/', awinUrl: 'https://www.ccw.org.uk/water-meters/', category: 'Water' },
+    { id: 'mse-water', provider: 'MoneySavingExpert', headline: 'Cut your water bill - 25+ money-saving tips and checks', saving: 'Save up to £200/yr', awinMid: '0', providerUrl: 'https://www.moneysavingexpert.com/utilities/cut-your-water-bills/', awinUrl: 'https://www.moneysavingexpert.com/utilities/cut-your-water-bills/', category: 'Water' },
+    { id: 'watersure', provider: 'WaterSure Scheme', headline: 'Cap your water bill if you claim benefits or have high usage', saving: 'Fixed-rate cap', awinMid: '0', providerUrl: 'https://www.ccw.org.uk/help-and-advice/help-with-paying-your-bill/watersure/', awinUrl: 'https://www.ccw.org.uk/help-and-advice/help-with-paying-your-bill/watersure/', category: 'Water' },
+  ],
 };
 
 // Map provider_type (from contract tracking) to deal categories
@@ -160,9 +164,6 @@ function shortenBadge(text: string): string {
     .replace(/^17% insurance savings$/i, 'Save 17%')
     .replace(/^Rates from /i, 'From ');
 }
-
-// Categories that have real verified affiliate deals in the database
-const CATEGORIES_WITH_VERIFIED_DEALS = new Set(['broadband', 'mobile', 'energy']);
 
 // Categories that should never show deal suggestions (non-switchable or no real deals)
 const EXCLUDED_DEAL_CATEGORIES = new Set([
@@ -756,8 +757,6 @@ export default function DealsPage() {
           const affiliatePlans = verifiedDeals
             .filter(d => d.category === catLower);
 
-          const hasVerifiedDeals = CATEGORIES_WITH_VERIFIED_DEALS.has(catLower);
-
           // Sort by savings if user has spend data, otherwise by price
           const userSpend = categoryUserSpend[category];
           if (userSpend) {
@@ -772,19 +771,18 @@ export default function DealsPage() {
             affiliatePlans.sort((a, b) => (a.price_promotional || a.price_monthly) - (b.price_promotional || b.price_monthly));
           }
 
-          // Only show hardcoded generic deal cards for categories WITH verified deals
-          // For other categories, show a "coming soon" message instead
+          // Always surface hardcoded generic deal cards from DEALS, deduplicated
+          // against any live verified affiliate providers for the same category.
           const affiliateProviderNames = new Set(affiliatePlans.map(d => d.provider.toLowerCase()));
-          const genericDeals = hasVerifiedDeals
-            ? (DEALS[category] || [])
-                .filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()))
-                .filter(d => !dismissedDeals.has(d.id))
-            : [];
+          const genericDeals = (DEALS[category] || [])
+            .filter(d => !affiliateProviderNames.has(d.provider.toLowerCase()))
+            .filter(d => !dismissedDeals.has(d.id));
 
           const activeAffiliatePlans = affiliatePlans.filter(d => !dismissedDeals.has(d.id));
 
-          // For categories without verified deals and no generic deals, show coming soon
-          if (!hasVerifiedDeals && activeAffiliatePlans.length === 0) {
+          // If a category truly has nothing to show, render a friendly placeholder
+          // instead of collapsing the section silently.
+          if (activeAffiliatePlans.length === 0 && genericDeals.length === 0) {
             return (
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
@@ -800,8 +798,6 @@ export default function DealsPage() {
               </section>
             );
           }
-
-          if (activeAffiliatePlans.length === 0 && genericDeals.length === 0) return null;
 
           // Find user subscriptions matching this category
           const matchingSubs = categoryToUserSubs[category] || [];
