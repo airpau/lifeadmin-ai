@@ -1671,7 +1671,7 @@ export default function HomepageV2Preview() {
                   letterSpacing: '-0.01em',
                 }}
               >
-                vs Emma
+                Money Hub vs. Emma
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--divider)', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-tertiary)' }}>
                 <span>Feature</span>
@@ -1803,46 +1803,57 @@ export default function HomepageV2Preview() {
               </span>
             </div>
 
-            {/* Spreadsheet grid */}
+            {/* Spreadsheet grid — transcribed from Claude Design handoff */}
             <div style={{ padding: '0', background: '#fff' }}>
               <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
                   fontSize: '12px',
+                  fontFamily: "'Inter', sans-serif",
                 }}
               >
                 <thead>
-                  <tr style={{ background: '#F3F4F6', borderBottom: '1px solid var(--divider)' }}>
-                    {['#', 'Date', 'Merchant', 'Category', 'Amount', 'Flag', 'Paybacker tag'].map((col, i) => (
+                  <tr>
+                    {[
+                      { label: '', w: '28px' },
+                      { label: 'A — Date' },
+                      { label: 'B — Merchant' },
+                      { label: 'C — Category' },
+                      { label: 'D — Amount', num: true },
+                      { label: 'E — Flag' },
+                      { label: 'F — Paybacker tag' },
+                    ].map((col, i) => (
                       <th
                         key={i}
                         style={{
-                          padding: '8px 12px',
-                          textAlign: 'left',
-                          fontWeight: 700,
+                          padding: '7px 10px',
+                          textAlign: col.num ? 'right' : 'left',
+                          fontWeight: 600,
                           fontSize: '11px',
-                          color: 'var(--text-tertiary)',
-                          borderRight: i < 6 ? '1px solid var(--divider)' : 'none',
+                          color: 'var(--text-secondary)',
+                          background: '#F8F9FA',
+                          border: '1px solid #E5E7EB',
+                          width: col.w,
                         }}
                       >
-                        {col}
+                        {col.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { date: '2026-04-20', merchant: 'Tesco', cat: 'Groceries', amt: '£52.30', tag: null },
-                    { date: '2026-04-20', merchant: 'Acme Payroll', cat: 'Income', amt: '+£3,200', tag: null, highlight: 'income' },
-                    { date: '2026-04-20', merchant: 'Virgin Media', cat: 'Broadband', amt: '£65.99', tag: 'HIKE', highlight: 'hike' },
-                    { date: '2026-04-19', merchant: 'Deliveroo', cat: 'Dining', amt: '£28.50', tag: null },
-                    { date: '2026-04-19', merchant: 'Octopus Energy', cat: 'Utilities', amt: '£124.30', tag: 'SWITCHED', highlight: 'new' },
-                    { date: '2026-04-19', merchant: 'Spotify', cat: 'Subs', amt: '£11.99', tag: null },
-                    { date: '2026-04-18', merchant: 'Twitch', cat: 'Subs', amt: '£10.99', tag: 'DUPLICATE', highlight: 'dup' },
-                    { date: '2026-04-18', merchant: 'TfL', cat: 'Transport', amt: '£7.50', tag: null },
-                    { date: '2026-04-18', merchant: 'Netflix', cat: 'Subs', amt: '£12.99', tag: null },
-                    { date: '2026-04-17', merchant: 'Waterstones', cat: 'Other', amt: '£34.00', tag: null },
+                    { date: '2025-10-14', merchant: 'Tesco Express', cat: 'Groceries', amt: '-£23.40', flag: '', tag: '' },
+                    { date: '2025-10-14', merchant: 'Acme Ltd · Payroll', cat: 'Income', amt: '+£3,284.00', flag: '', tag: '', income: true },
+                    { date: '2025-10-14', merchant: 'Virgin Media', cat: 'Broadband', amt: '-£49.00', flag: 'HIKE +£12', tag: 'dispute-ready', highlight: 'hike' },
+                    { date: '2025-10-13', merchant: 'Deliveroo', cat: 'Dining', amt: '-£18.50', flag: '', tag: '' },
+                    { date: '2025-10-13', merchant: 'Octopus Energy', cat: 'Energy', amt: '-£94.12', flag: 'SWITCHED', tag: 'saves £287/yr', highlight: 'new' },
+                    { date: '2025-10-12', merchant: 'Spotify', cat: 'Subscriptions', amt: '-£17.99', flag: '', tag: '' },
+                    { date: '2025-10-12', merchant: 'Twitch Turbo', cat: 'Subscriptions', amt: '-£8.99', flag: 'DUPLICATE', tag: 'cancel-ready', highlight: 'dup' },
+                    { date: '2025-10-11', merchant: 'TfL · Oyster', cat: 'Transport', amt: '-£12.80', flag: '', tag: '' },
+                    { date: '2025-10-11', merchant: 'Netflix Premium', cat: 'Subscriptions', amt: '-£17.99', flag: 'UNUSED 62d', tag: 'cancel-ready', highlight: 'unused' },
+                    { date: '2025-10-10', merchant: 'Waterstones', cat: 'Shopping', amt: '-£14.99', flag: '', tag: '' },
                   ].map((row, i) => (
                     <tr
                       key={i}
@@ -1852,45 +1863,78 @@ export default function HomepageV2Preview() {
                             ? '#FEF3C7'
                             : row.highlight === 'dup'
                               ? '#FEE2E2'
-                              : row.highlight === 'new' || row.highlight === 'income'
+                              : row.highlight === 'new'
                                 ? '#D1FAE5'
-                                : '#fff',
-                        borderBottom: '1px solid var(--divider)',
+                                : row.highlight === 'unused'
+                                  ? '#FEE2E2'
+                                  : '#fff',
                       }}
                     >
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px' }}>{i + 1}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px' }}>{row.date}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontWeight: 500 }}>{row.merchant}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px', color: 'var(--text-secondary)' }}>{row.cat}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{row.amt}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)' }}>
-                        {row.tag && (
+                      <td
+                        style={{
+                          padding: '7px 10px',
+                          border: '1px solid #E5E7EB',
+                          background: '#F8F9FA',
+                          color: 'var(--text-tertiary)',
+                          textAlign: 'center',
+                          fontWeight: 500,
+                          width: '28px',
+                        }}
+                      >
+                        {i + 1}
+                      </td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>{row.date}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>{row.merchant}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>{row.cat}</td>
+                      <td
+                        style={{
+                          padding: '7px 10px',
+                          border: '1px solid #E5E7EB',
+                          textAlign: 'right',
+                          fontVariantNumeric: 'tabular-nums',
+                          color: row.income ? 'var(--accent-mint-deep)' : 'inherit',
+                          fontWeight: row.income ? 700 : 400,
+                        }}
+                      >
+                        {row.amt}
+                      </td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>
+                        {row.flag && (
                           <span
                             style={{
                               fontSize: '10px',
                               fontWeight: 700,
                               padding: '2px 6px',
                               borderRadius: '4px',
+                              letterSpacing: '0.04em',
                               background:
-                                row.tag === 'HIKE'
+                                row.flag.startsWith('HIKE')
                                   ? '#FEF3C7'
-                                  : row.tag === 'DUPLICATE'
+                                  : row.flag === 'DUPLICATE' || row.flag.startsWith('UNUSED')
                                     ? '#FEE2E2'
                                     : '#D1FAE5',
                               color:
-                                row.tag === 'HIKE'
+                                row.flag.startsWith('HIKE')
                                   ? '#D97706'
-                                  : row.tag === 'DUPLICATE'
+                                  : row.flag === 'DUPLICATE' || row.flag.startsWith('UNUSED')
                                     ? '#B91C1C'
                                     : '#059669',
                             }}
                           >
-                            {row.tag}
+                            {row.flag}
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        {row.tag && <span style={{ fontSize: '10px', color: 'var(--accent-mint-deep)' }}>Paybacker</span>}
+                      <td
+                        style={{
+                          padding: '7px 10px',
+                          border: '1px solid #E5E7EB',
+                          fontSize: '11px',
+                          color: 'var(--accent-mint-deep)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {row.tag}
                       </td>
                     </tr>
                   ))}
@@ -2081,34 +2125,35 @@ export default function HomepageV2Preview() {
               </div>
             </div>
 
-            {/* Competitor comparison table */}
+            {/* Competitor comparison table — transcribed from Claude Design handoff (.power-table) */}
             <div
               className="reveal"
               style={{
                 overflowX: 'auto',
+                marginTop: '24px',
               }}
             >
               <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
-                  fontSize: '12px',
                   minWidth: '100%',
                 }}
               >
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #1F2A44' }}>
+                  <tr>
                     {['Feature', 'Emma', 'Snoop', 'Lunchflow', 'Resolver', 'Which?', 'Paybacker'].map((col, i) => (
                       <th
                         key={i}
                         style={{
-                          padding: '12px',
+                          padding: '14px 16px',
                           textAlign: 'left',
                           fontWeight: 700,
                           fontSize: '11px',
-                          color: i === 5 ? 'var(--accent-mint)' : '#9CA3AF',
-                          background: i === 5 ? 'rgba(52, 211, 153, 0.05)' : 'transparent',
-                          letterSpacing: '0.05em',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: i === 6 ? 'var(--accent-mint)' : '#9CA3AF',
+                          borderBottom: '1px solid #1F2A44',
                         }}
                       >
                         {col}
@@ -2118,54 +2163,59 @@ export default function HomepageV2Preview() {
                 </thead>
                 <tbody>
                   {[
-                    { feat: 'Bank sync (Open Banking)', emma: '✓', snoop: '✓', lunch: '✓', resolver: '—', which: '—', pb: '✓' },
-                    { feat: 'Subscription flagging (hike/dup/unused)', emma: 'Basic', snoop: 'Basic', lunch: '—', resolver: '—', which: '—', pb: 'Full' },
-                    { feat: 'Legal-grade dispute letters', emma: '—', snoop: '—', lunch: '—', resolver: 'Templates', which: 'Guide', pb: 'AI + law' },
-                    { feat: 'UK consumer law library cited', emma: '—', snoop: '—', lunch: '—', resolver: 'Partial', which: 'Partial', pb: '5+ statutes' },
-                    { feat: 'Telegram / chat agent', emma: '—', snoop: '—', lunch: '—', resolver: '—', which: '—', pb: '✓' },
-                    { feat: 'Live Google Sheets export', emma: 'CSV only', snoop: '—', lunch: '✓', resolver: '—', which: '—', pb: '✓ two-way' },
-                    { feat: 'Switch-deals that beat your bill', emma: 'Generic ads', snoop: 'Generic', lunch: '—', resolver: '—', which: 'Guide only', pb: 'Personalised' },
-                    { feat: 'User in control (no auto-sent emails)', emma: '✓', snoop: '✓', lunch: '✓', resolver: 'Semi', which: '✓', pb: '✓' },
-                  ].map((row, i) => {
-                    const competitors = [row.emma, row.snoop, row.lunch, row.resolver, row.which];
-                    return (
-                      <tr
-                        key={i}
+                    // kind per cell: 'us' = product has it (mint), 'them' = doesn't / partial (muted)
+                    { feat: 'Bank sync (Open Banking)',           cells: [{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'them',t:'—'},{k:'them',t:'—'}],            pb: '✓' },
+                    { feat: 'Subscription flagging (hike/dup/unused)', cells: [{k:'them',t:'Basic'},{k:'them',t:'Basic'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'}], pb: 'Full' },
+                    { feat: 'Legal-grade dispute letters',         cells: [{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'Templates'},{k:'them',t:'Guide'}], pb: 'AI + law' },
+                    { feat: 'UK consumer law library cited',       cells: [{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'Partial'},{k:'them',t:'Partial'}], pb: '5+ statutes' },
+                    { feat: 'Telegram / chat agent',               cells: [{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'}],         pb: '✓' },
+                    { feat: 'Live Google Sheets export',           cells: [{k:'them',t:'CSV only'},{k:'them',t:'—'},{k:'us',t:'✓'},{k:'them',t:'—'},{k:'them',t:'—'}],  pb: '✓ two-way' },
+                    { feat: 'Switch-deals that beat your bill',    cells: [{k:'them',t:'Generic ads'},{k:'them',t:'Generic'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'Guide only'}], pb: 'Personalised' },
+                    { feat: 'User in control (no auto-sent emails)', cells: [{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'them',t:'Semi'},{k:'us',t:'✓'}],         pb: '✓' },
+                  ].map((row, i) => (
+                    <tr
+                      key={i}
+                      style={{
+                        borderBottom: '1px solid #1F2A44',
+                      }}
+                    >
+                      <td
                         style={{
-                          borderBottom: '1px solid #1F2A44',
+                          padding: '14px 16px',
+                          fontWeight: 600,
+                          fontSize: '14px',
+                          color: '#E5E7EB',
                         }}
                       >
-                        <td style={{ padding: '12px', fontWeight: 500, color: '#D1D5DB' }}>{row.feat}</td>
-                        {competitors.map((val, j) => (
-                          <td
-                            key={j}
-                            style={{
-                              padding: '12px',
-                              textAlign: 'center',
-                              color: val === '✓' ? 'var(--accent-mint)' : '#6B7280',
-                              fontWeight: val === '✓' ? 700 : 400,
-                              fontSize: '11px',
-                              background: 'transparent',
-                            }}
-                          >
-                            {val}
-                          </td>
-                        ))}
+                        {row.feat}
+                      </td>
+                      {row.cells.map((cell, j) => (
                         <td
+                          key={j}
                           style={{
-                            padding: '12px',
-                            textAlign: 'center',
-                            color: row.pb === '✓' || row.pb.includes('✓') ? 'var(--accent-mint)' : '#D1D5DB',
-                            fontWeight: row.pb === '✓' || row.pb.includes('✓') ? 700 : 500,
-                            fontSize: '11px',
-                            background: 'rgba(52, 211, 153, 0.05)',
+                            padding: '14px 16px',
+                            textAlign: 'left',
+                            fontSize: '14px',
+                            fontWeight: cell.k === 'us' ? 700 : 400,
+                            color: cell.k === 'us' ? 'var(--accent-mint)' : '#9CA3AF',
                           }}
                         >
-                          {row.pb}
+                          {cell.t}
                         </td>
-                      </tr>
-                    );
-                  })}
+                      ))}
+                      <td
+                        style={{
+                          padding: '14px 16px',
+                          textAlign: 'left',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: 'var(--accent-mint)',
+                        }}
+                      >
+                        {row.pb}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
