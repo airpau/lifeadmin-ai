@@ -1092,7 +1092,6 @@ export default function HomepageV2Preview() {
                 <div className="subs-meta">
                   <div className="subs-name">Netflix Premium</div>
                   <div className="subs-tags">
-                    <span className="subs-tag tag-orange">Unused 47 days</span>
                     <span className="subs-tag">Renews in 14 days</span>
                   </div>
                 </div>
@@ -1114,7 +1113,7 @@ export default function HomepageV2Preview() {
                 <div className="subs-meta">
                   <div className="subs-name">Spotify Family</div>
                   <div className="subs-tags">
-                    <span className="subs-tag">Active · 4 profiles</span>
+                    <span className="subs-tag">Active</span>
                   </div>
                 </div>
                 <div className="subs-amt">£19.99</div>
@@ -1124,7 +1123,6 @@ export default function HomepageV2Preview() {
                 <div className="subs-meta">
                   <div className="subs-name">PureGym Plus</div>
                   <div className="subs-tags">
-                    <span className="subs-tag tag-orange">Inactive 86 days</span>
                     <span className="subs-tag">Cancel draft ready</span>
                   </div>
                 </div>
@@ -1135,7 +1133,7 @@ export default function HomepageV2Preview() {
                 <div className="subs-meta">
                   <div className="subs-name">Audible UK</div>
                   <div className="subs-tags">
-                    <span className="subs-tag">Active · 3 credits unused</span>
+                    <span className="subs-tag">Active</span>
                   </div>
                 </div>
                 <div className="subs-amt">£7.99</div>
