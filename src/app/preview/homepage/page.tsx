@@ -402,7 +402,7 @@ export default function HomepageV2Preview() {
 
               <div className="dash-card float">
                 <div className="dash-header">
-                  <div className="title">Money Hub — October</div>
+                  <div className="title">Money Hub</div>
                   <div>●●●</div>
                 </div>
                 <div className="dash-body">
