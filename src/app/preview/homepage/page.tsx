@@ -402,7 +402,7 @@ export default function HomepageV2Preview() {
 
               <div className="dash-card float">
                 <div className="dash-header">
-                  <div className="title">Money Hub — October</div>
+                  <div className="title">Money Hub</div>
                   <div>●●●</div>
                 </div>
                 <div className="dash-body">
@@ -627,12 +627,7 @@ export default function HomepageV2Preview() {
                 stats.subscriptionsTracked === 0 ||
                 stats.foundingMembers === 0;
               if (!anyFallback) return null;
-              return (
-                <p className="placeholder-note" aria-live="polite">
-                  A few figures are illustrative while we&rsquo;re in founding-member mode. Real
-                  numbers will take over as more households join and verified savings land.
-                </p>
-              );
+              return null;
             })()}
           </div>
           <div className="stats-grid">
@@ -688,7 +683,7 @@ export default function HomepageV2Preview() {
       <section id="how" className="section-light">
         
         {/* 01 · AI Disputes Centre */}
-        <div className="wrap" style={{ paddingBottom: 0 }}>
+        <div id="disputes" className="wrap" style={{ paddingBottom: 0, scrollMarginTop: '80px' }}>
           <div
             className="section-head reveal"
             style={{ marginBottom: '48px' }}
@@ -703,7 +698,7 @@ export default function HomepageV2Preview() {
                 color: 'var(--accent-mint-deep)',
               }}
             >
-              01 · AI Disputes Centre
+              AI Disputes Centre
             </span>
             <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
               Complaint letters in 30 seconds
@@ -955,12 +950,179 @@ export default function HomepageV2Preview() {
           </div>
         </div>
 
-        {/* 02 · Subscriptions Tracker */}
+        {/* 02 · Pocket Agent (dark) */}
         <div
+          id="pocket-agent"
+          style={{
+            background: 'var(--surface-ink)',
+            color: 'var(--text-on-ink)',
+            paddingTop: '80px',
+            paddingBottom: '80px',
+            scrollMarginTop: '80px',
+          }}
+        >
+          <div className="wrap" style={{ paddingBottom: 0 }}>
+            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+              <span
+                className="eyebrow"
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: 'var(--accent-mint)',
+                }}
+              >
+                Pocket Agent
+              </span>
+              <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
+                Telegram chat-first agent
+              </h2>
+              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
+                Proactive hike alerts, draft rebuttals, action suggestions. Direct to your phone.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 420px',
+                gap: '40px',
+                alignItems: 'stretch',
+              }}
+            >
+              {/* Telegram iPhone */}
+              <div
+                style={{
+                  width: '360px',
+                  height: '740px',
+                  background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
+                  borderRadius: '52px',
+                  padding: '11px',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.1)',
+                }}
+                className="reveal"
+              >
+                <div style={{ width: '100%', height: '100%', background: '#000', borderRadius: '42px', padding: '3px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '39px', overflow: 'hidden', background: '#17212B', display: 'flex', flexDirection: 'column' }}>
+                    {/* Telegram header */}
+                    <div style={{ background: '#517DA2', padding: '12px 16px', color: '#fff', fontSize: '14px', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Paybacker Agent</span>
+                      <span>⋮</span>
+                    </div>
+
+                    {/* Messages */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
+                      {[
+                        { from: 'agent', text: 'Hey! Virgin Media just raised your bill by £12/month. Want me to draft a dispute letter?' },
+                        { from: 'user', text: 'Yeah please, do it' },
+                        { from: 'agent', text: 'Done! Letter sent to your inbox. I\'ll monitor the reply.', hasAction: true },
+                        { from: 'user', text: 'They replied' },
+                        { from: 'agent', text: 'Seen it. Drafting rebuttal now...' },
+                      ].map((msg, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            justifyContent: msg.from === 'agent' ? 'flex-start' : 'flex-end',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              maxWidth: '82%',
+                              padding: '12.5px',
+                              borderRadius: '12px',
+                              background: msg.from === 'agent' ? '#2B5278' : '#F0F7FD',
+                              color: msg.from === 'agent' ? '#fff' : '#0B1220',
+                              fontSize: '12.5px',
+                              lineHeight: '1.4',
+                            }}
+                          >
+                            {msg.text}
+                            {msg.hasAction && (
+                              <div
+                                style={{
+                                  marginTop: '8px',
+                                  padding: '8px 12px',
+                                  background: '#F0F7FD',
+                                  color: '#517DA2',
+                                  borderRadius: '6px',
+                                  fontSize: '10.5px',
+                                  fontWeight: 600,
+                                  display: 'inline-block',
+                                }}
+                              >
+                                📄 View rebuttal
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Input bar */}
+                    <div style={{ padding: '12px 16px', background: '#17212B', borderTop: '1px solid #2B5278' }}>
+                      <input
+                        type="text"
+                        placeholder="Type a message..."
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          border: '1px solid #2B5278',
+                          borderRadius: '6px',
+                          background: '#2B5278',
+                          color: '#fff',
+                          fontSize: '12px',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scenarios column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="reveal">
+                {[
+                  { q: 'Cancel my gym', a: 'Draft cancellation email citing Consumer Rights Act' },
+                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom\u2019s benchmark rates' },
+                  { q: 'Any hikes this week?', a: 'Scan inbox & flag price changes' },
+                  { q: 'Monitor Virgin\u2019s reply', a: 'Watch thread & draft rebuttal' },
+                  { q: 'Switch to a better deal?', a: 'Show verified partner offers' },
+                  { q: 'What\u2019s my total spend?', a: 'Pull from Money Hub + subs' },
+                ].map((scenario, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid #1F2A44',
+                      borderRadius: '12px',
+                      padding: '16px',
+                    }}
+                  >
+                    <div style={{ fontStyle: 'italic', fontSize: '13px', color: '#D1D5DB', marginBottom: '6px' }}>
+                      {scenario.q}
+                    </div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-mint)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span>→</span>
+                      {scenario.a}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 03 · Subscriptions Tracker */}
+        <div
+          id="subs"
           style={{
             background: 'var(--accent-mint-wash)',
             paddingTop: '80px',
             paddingBottom: '80px',
+            scrollMarginTop: '80px',
           }}
         >
           <div className="wrap" style={{ paddingBottom: 0 }}>
@@ -975,7 +1137,7 @@ export default function HomepageV2Preview() {
                   color: 'var(--accent-mint-deep)',
                 }}
               >
-                02 · SUBSCRIPTIONS TRACKER
+                Subscriptions Tracker
               </span>
               <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
                 Auto-tagged recurring charges
@@ -1001,7 +1163,7 @@ export default function HomepageV2Preview() {
                   background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
                   borderRadius: '52px',
                   padding: '11px',
-                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.1)',
                   position: 'relative',
                   transform: 'rotate(-4deg)',
                 }}
@@ -1056,7 +1218,7 @@ export default function HomepageV2Preview() {
                           borderRadius: '18px',
                         }}
                       />
-                      <span>🔋</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600 }}>●●● 100%</span>
                     </div>
 
                     {/* Subscriptions screen */}
@@ -1097,15 +1259,15 @@ export default function HomepageV2Preview() {
                         </div>
                       </div>
 
-                      {/* Subscription rows */}
+                      {/* Subscription rows — exact from handoff */}
                       {[
-                        { name: 'Netflix', price: '£12.99', tag: 'hike', tagText: '+£3 hike' },
-                        { name: 'Virgin Media', price: '£53.99', tag: 'hike', tagText: '+£12 hike' },
-                        { name: 'Audible', price: '£12.50', tag: null, tagText: null },
-                        { name: 'Twitch (duplicate)', price: '£10.99', tag: 'dup', tagText: 'Duplicate' },
-                        { name: 'Canva', price: '£14.99', tag: 'trial', tagText: 'Trial ends 3d' },
-                        { name: 'Spotify', price: '£11.99', tag: null, tagText: null },
-                        { name: 'PureGym', price: '£24.99', tag: 'renewal', tagText: 'Renews in 5d' },
+                        { name: 'Netflix Premium', price: '£17.99', meta: 'Monthly · Next: 14 Nov', logo: 'N', bg: '#E50914', tag: 'hike', tagText: '+£3 hike' },
+                        { name: 'Virgin Media', price: '£49.00', meta: 'Monthly · Next: 1 Nov', logo: 'V', bg: '#D9232A', tag: 'hike', tagText: '+£12 hike' },
+                        { name: 'Audible', price: '£7.99', meta: 'Monthly · Next: 18 Nov', logo: 'A', bg: '#00A693', tag: null, tagText: null },
+                        { name: 'Twitch Turbo', price: '£8.99', meta: 'You also have Prime', logo: 'T', bg: '#9146FF', tag: 'dup', tagText: 'Duplicate' },
+                        { name: 'Canva Pro', price: '£0.00', meta: 'Charges £12.99 on 15 Nov', logo: 'C', bg: '#FF6A00', tag: 'trial', tagText: 'Trial ends 3d' },
+                        { name: 'Spotify Family', price: '£17.99', meta: 'Monthly · Next: 22 Nov', logo: 'S', bg: '#1DB954', tag: null, tagText: null },
+                        { name: 'PureGym', price: '£34.99', meta: 'Monthly · Next: 5 Nov', logo: 'P', bg: '#0F9D58', tag: 'renewal', tagText: 'Renews in 5d' },
                       ].map((sub, i) => (
                         <div
                           key={i}
@@ -1122,7 +1284,7 @@ export default function HomepageV2Preview() {
                               width: '36px',
                               height: '36px',
                               borderRadius: '10px',
-                              background: i % 2 === 0 ? 'var(--accent-mint)' : 'var(--accent-orange)',
+                              background: sub.bg,
                               color: '#fff',
                               fontWeight: 800,
                               fontSize: '12px',
@@ -1131,10 +1293,10 @@ export default function HomepageV2Preview() {
                               flexShrink: 0,
                             }}
                           >
-                            {sub.name.charAt(0)}
+                            {sub.logo}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', lineHeight: 1.3 }}>
                               {sub.name}
                               {sub.tag && (
                                 <span
@@ -1150,22 +1312,28 @@ export default function HomepageV2Preview() {
                                         ? '#FEF3C7'
                                         : sub.tag === 'dup'
                                           ? '#FEE2E2'
-                                          : '#DBEAFE',
+                                          : sub.tag === 'trial'
+                                            ? '#DBEAFE'
+                                            : '#E5E7EB',
                                     color:
                                       sub.tag === 'hike'
                                         ? '#D97706'
                                         : sub.tag === 'dup'
                                           ? '#B91C1C'
-                                          : '#1E40AF',
+                                          : sub.tag === 'trial'
+                                            ? '#1E40AF'
+                                            : '#4B5563',
                                     whiteSpace: 'nowrap',
+                                    flexShrink: 0,
                                   }}
                                 >
                                   {sub.tagText}
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{sub.price}/month</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{sub.meta}</div>
                           </div>
+                          <div style={{ fontSize: '13px', fontWeight: 700, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{sub.price}</div>
                         </div>
                       ))}
                     </div>
@@ -1173,81 +1341,116 @@ export default function HomepageV2Preview() {
                 </div>
               </div>
 
-              {/* Right-side info panels */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} className="reveal">
+              {/* Right-side info panels — matches Claude Design handoff */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} className="reveal">
+                {/* Flagged this month card */}
                 <div
                   style={{
                     background: '#fff',
                     border: '1px solid var(--divider)',
                     borderRadius: '16px',
-                    padding: '24px',
+                    padding: '22px',
+                    boxShadow: 'var(--shadow-md)',
                   }}
                 >
                   <h4
                     style={{
-                      margin: '0 0 16px',
-                      fontSize: '14px',
-                      fontWeight: 700,
+                      margin: '0 0 12px',
+                      fontSize: '15px',
+                      fontWeight: 800,
                       letterSpacing: '-0.01em',
+                      color: 'var(--accent-orange-deep, #C2410C)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
                     }}
                   >
-                    Auto-tagged this month
+                    <span>⚠️</span> 4 flagged this month
                   </h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {['£38 hike detected', '1 subscription duplicate', 'Trial ending this week'].map((item, i) => (
-                      <li key={i} style={{ fontSize: '14px', color: 'var(--text-secondary)', paddingLeft: '26px', position: 'relative' }}>
-                        <span
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            color: 'var(--accent-mint-deep)',
-                            fontWeight: 800,
-                          }}
-                        >
-                          ✓
-                        </span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+                  <div style={{ fontSize: '13px', lineHeight: 1.5, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Netflix Premium</strong> — silently raised £3 this month. Fight or cancel?
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Virgin Media</strong> — mid-contract hike. Ofcom allows exit.
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Twitch Turbo</strong> — duplicate with Prime benefits.
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Canva trial</strong> — auto-renews in 3 days unless you act.
+                    </div>
+                  </div>
                 </div>
 
+                {/* One tap three outcomes card */}
                 <div
                   style={{
                     background: '#fff',
                     border: '1px solid var(--divider)',
                     borderRadius: '16px',
-                    padding: '24px',
+                    padding: '22px',
+                    boxShadow: 'var(--shadow-md)',
                   }}
                 >
                   <h4
                     style={{
-                      margin: '0 0 16px',
-                      fontSize: '14px',
-                      fontWeight: 700,
+                      margin: '0 0 14px',
+                      fontSize: '15px',
+                      fontWeight: 800,
                       letterSpacing: '-0.01em',
                     }}
                   >
                     One tap · three outcomes
                   </h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {['Cancel', 'Dispute', 'Switch'].map((action, i) => (
-                      <li key={i} style={{ fontSize: '14px', color: 'var(--text-secondary)', paddingLeft: '26px', position: 'relative' }}>
-                        <span
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            color: 'var(--accent-mint-deep)',
-                            fontWeight: 800,
-                          }}
-                        >
-                          ✓
-                        </span>
-                        {action}
-                      </li>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
+                    {[
+                      { action: '→ Cancel', detail: 'Deep-link to provider' },
+                      { action: '→ Dispute', detail: 'Hand-off to Disputes' },
+                      { action: '→ Switch', detail: 'Show cheaper deal' },
+                    ].map((row, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: i < 2 ? '10px' : 0, borderBottom: i < 2 ? '1px solid var(--divider)' : 'none' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{row.action}</span>
+                        <span style={{ color: 'var(--accent-mint-deep)', fontWeight: 700 }}>{row.detail}</span>
+                      </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* How to use it + Why it beats Emma/Snoop */}
+                <div
+                  style={{
+                    background: 'var(--accent-mint-wash)',
+                    border: '1px solid var(--accent-mint)',
+                    borderRadius: '16px',
+                    padding: '22px',
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: '0 0 10px',
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      color: 'var(--accent-mint-deep)',
+                    }}
+                  >
+                    Why it beats Emma / Snoop
+                  </h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    <li style={{ paddingLeft: '18px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, top: 0, color: 'var(--accent-mint-deep)', fontWeight: 800 }}>•</span>
+                      Emma shows subs. We flag <em>why</em> you should act.
+                    </li>
+                    <li style={{ paddingLeft: '18px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, top: 0, color: 'var(--accent-mint-deep)', fontWeight: 800 }}>•</span>
+                      Every row has a next-step action, not just a line item.
+                    </li>
+                    <li style={{ paddingLeft: '18px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, top: 0, color: 'var(--accent-mint-deep)', fontWeight: 800 }}>•</span>
+                      Direct hand-off to the AI Disputes Centre on hikes.
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -1255,8 +1458,8 @@ export default function HomepageV2Preview() {
           </div>
         </div>
 
-        {/* 03 · Money Hub */}
-        <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
+        {/* 04 · Money Hub */}
+        <div id="hub" className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px', scrollMarginTop: '80px' }}>
           <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
             <span
               className="eyebrow"
@@ -1268,7 +1471,7 @@ export default function HomepageV2Preview() {
                 color: 'var(--accent-mint-deep)',
               }}
             >
-              03 · MONEY HUB
+              Money Hub
             </span>
             <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
               Daily dashboard + Emma comparison
@@ -1294,7 +1497,7 @@ export default function HomepageV2Preview() {
                 background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
                 borderRadius: '52px',
                 padding: '11px',
-                boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.1)',
               }}
               className="reveal"
             >
@@ -1304,7 +1507,7 @@ export default function HomepageV2Preview() {
                   <div style={{ height: '52px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 28px 0', fontSize: '14px', fontWeight: 600, position: 'relative' }}>
                     <span>9:41</span>
                     <div style={{ position: 'absolute', left: '50%', top: '8px', transform: 'translateX(-50%)', width: '108px', height: '30px', background: '#000', borderRadius: '18px' }} />
-                    <span>🔋</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600 }}>●●● 100%</span>
                   </div>
 
                   {/* Money Hub content */}
@@ -1468,7 +1671,7 @@ export default function HomepageV2Preview() {
                   letterSpacing: '-0.01em',
                 }}
               >
-                vs Emma
+                Money Hub vs. Emma
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--divider)', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-tertiary)' }}>
                 <span>Feature</span>
@@ -1476,189 +1679,26 @@ export default function HomepageV2Preview() {
                 <span style={{ textAlign: 'right' }}>Paybacker</span>
               </div>
               {[
-                'Account sync',
-                'Subscriptions',
-                'Dispute engine',
-                'Bill hikes',
-                'Telegram agent',
-                'Sheets export',
-                'Switch deals',
-              ].map((feature, i) => (
+                { feat: 'Account sync', emma: '✓', pb: '✓' },
+                { feat: 'Subscriptions', emma: 'List only', pb: '+ action flags' },
+                { feat: 'Dispute engine', emma: '—', pb: '✓ Built-in' },
+                { feat: 'Bill-hike alerts', emma: 'Basic', pb: 'With law cited' },
+                { feat: 'Telegram agent', emma: '—', pb: '✓' },
+                { feat: 'Sheets export', emma: 'CSV', pb: '✓ Live sync' },
+                { feat: 'Switch deals', emma: 'Generic', pb: 'Beats your bill' },
+              ].map((row, i) => (
                 <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '12px', alignItems: 'center', padding: '10px 0', borderBottom: i < 6 ? '1px solid var(--divider)' : 'none', fontSize: '12px' }}>
-                  <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{feature}</div>
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: '11px', textAlign: 'right' }}>—</div>
-                  <div style={{ color: 'var(--accent-mint-deep)', fontWeight: 700, fontSize: '11px', textAlign: 'right' }}>✓</div>
+                  <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{row.feat}</div>
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: '11px', textAlign: 'right' }}>{row.emma}</div>
+                  <div style={{ color: 'var(--accent-mint-deep)', fontWeight: 700, fontSize: '11px', textAlign: 'right' }}>{row.pb}</div>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        {/* 04 · Pocket Agent (dark) */}
-        <div
-          style={{
-            background: 'var(--surface-ink)',
-            color: 'var(--text-on-ink)',
-            paddingTop: '80px',
-            paddingBottom: '80px',
-          }}
-        >
-          <div className="wrap" style={{ paddingBottom: 0 }}>
-            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
-              <span
-                className="eyebrow"
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '14px',
-                  fontWeight: 700,
-                  letterSpacing: '0.1em',
-                  color: 'var(--accent-mint)',
-                }}
-              >
-                04 · POCKET AGENT
-              </span>
-              <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
-                Telegram chat-first agent
-              </h2>
-              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
-                Proactive hike alerts, draft rebuttals, action suggestions. Direct to your phone.
-              </p>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 420px',
-                gap: '40px',
-                alignItems: 'stretch',
-              }}
-            >
-              {/* Telegram iPhone */}
-              <div
-                style={{
-                  width: '360px',
-                  height: '740px',
-                  background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
-                  borderRadius: '52px',
-                  padding: '11px',
-                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
-                }}
-                className="reveal"
-              >
-                <div style={{ width: '100%', height: '100%', background: '#000', borderRadius: '42px', padding: '3px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '39px', overflow: 'hidden', background: '#17212B', display: 'flex', flexDirection: 'column' }}>
-                    {/* Telegram header */}
-                    <div style={{ background: '#517DA2', padding: '12px 16px', color: '#fff', fontSize: '14px', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>Paybacker Agent</span>
-                      <span>⋮</span>
-                    </div>
-
-                    {/* Messages */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
-                      {[
-                        { from: 'agent', text: 'Hey! Virgin Media just raised your bill by £12/month. Want me to draft a dispute letter?' },
-                        { from: 'user', text: 'Yeah please, do it' },
-                        { from: 'agent', text: 'Done! Letter sent to your inbox. I\'ll monitor the reply.', hasAction: true },
-                        { from: 'user', text: 'They replied' },
-                        { from: 'agent', text: 'Seen it. Drafting rebuttal now...' },
-                      ].map((msg, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: 'flex',
-                            justifyContent: msg.from === 'agent' ? 'flex-start' : 'flex-end',
-                            marginBottom: '4px',
-                          }}
-                        >
-                          <div
-                            style={{
-                              maxWidth: '82%',
-                              padding: '12.5px',
-                              borderRadius: '12px',
-                              background: msg.from === 'agent' ? '#2B5278' : '#F0F7FD',
-                              color: msg.from === 'agent' ? '#fff' : '#0B1220',
-                              fontSize: '12.5px',
-                              lineHeight: '1.4',
-                            }}
-                          >
-                            {msg.text}
-                            {msg.hasAction && (
-                              <div
-                                style={{
-                                  marginTop: '8px',
-                                  padding: '8px 12px',
-                                  background: '#F0F7FD',
-                                  color: '#517DA2',
-                                  borderRadius: '6px',
-                                  fontSize: '10.5px',
-                                  fontWeight: 600,
-                                  display: 'inline-block',
-                                }}
-                              >
-                                📄 View rebuttal
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Input bar */}
-                    <div style={{ padding: '12px 16px', background: '#17212B', borderTop: '1px solid #2B5278' }}>
-                      <input
-                        type="text"
-                        placeholder="Type a message..."
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          border: '1px solid #2B5278',
-                          borderRadius: '6px',
-                          background: '#2B5278',
-                          color: '#fff',
-                          fontSize: '12px',
-                          outline: 'none',
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Scenarios column */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="reveal">
-                {[
-                  { q: 'Cancel my gym', a: 'Draft cancellation email citing Consumer Rights Act' },
-                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom\'s benchmark rates' },
-                  { q: 'Any hikes this week?', a: 'Scan inbox & flag price changes' },
-                  { q: 'Monitor Virgin\'s reply', a: 'Watch thread & draft rebuttal' },
-                  { q: 'Switch to a better deal?', a: 'Show verified partner offers' },
-                  { q: 'What\'s my total spend?', a: 'Pull from Money Hub + subs' },
-                ].map((scenario, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid #1F2A44',
-                      borderRadius: '12px',
-                      padding: '16px',
-                    }}
-                  >
-                    <div style={{ fontStyle: 'italic', fontSize: '13px', color: '#D1D5DB', marginBottom: '6px' }}>
-                      {scenario.q}
-                    </div>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-mint)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span>→</span>
-                      {scenario.a}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* 05 · Google Sheets Export */}
-        <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
+        <div id="sheets" className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px', scrollMarginTop: '80px' }}>
           <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
             <span
               className="eyebrow"
@@ -1670,7 +1710,7 @@ export default function HomepageV2Preview() {
                 color: 'var(--accent-mint-deep)',
               }}
             >
-              05 · GOOGLE SHEETS EXPORT
+              Google Sheets Export
             </span>
             <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
               Live sync + Paybacker-enriched columns
@@ -1763,46 +1803,57 @@ export default function HomepageV2Preview() {
               </span>
             </div>
 
-            {/* Spreadsheet grid */}
+            {/* Spreadsheet grid — transcribed from Claude Design handoff */}
             <div style={{ padding: '0', background: '#fff' }}>
               <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
                   fontSize: '12px',
+                  fontFamily: "'Inter', sans-serif",
                 }}
               >
                 <thead>
-                  <tr style={{ background: '#F3F4F6', borderBottom: '1px solid var(--divider)' }}>
-                    {['#', 'Date', 'Merchant', 'Category', 'Amount', 'Flag', 'Paybacker tag'].map((col, i) => (
+                  <tr>
+                    {[
+                      { label: '', w: '28px' },
+                      { label: 'A — Date' },
+                      { label: 'B — Merchant' },
+                      { label: 'C — Category' },
+                      { label: 'D — Amount', num: true },
+                      { label: 'E — Flag' },
+                      { label: 'F — Paybacker tag' },
+                    ].map((col, i) => (
                       <th
                         key={i}
                         style={{
-                          padding: '8px 12px',
-                          textAlign: 'left',
-                          fontWeight: 700,
+                          padding: '7px 10px',
+                          textAlign: col.num ? 'right' : 'left',
+                          fontWeight: 600,
                           fontSize: '11px',
-                          color: 'var(--text-tertiary)',
-                          borderRight: i < 6 ? '1px solid var(--divider)' : 'none',
+                          color: 'var(--text-secondary)',
+                          background: '#F8F9FA',
+                          border: '1px solid #E5E7EB',
+                          width: col.w,
                         }}
                       >
-                        {col}
+                        {col.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { date: '2026-04-20', merchant: 'Tesco', cat: 'Groceries', amt: '£52.30', tag: null },
-                    { date: '2026-04-20', merchant: 'Acme Payroll', cat: 'Income', amt: '+£3,200', tag: null, highlight: 'income' },
-                    { date: '2026-04-20', merchant: 'Virgin Media', cat: 'Broadband', amt: '£65.99', tag: 'HIKE', highlight: 'hike' },
-                    { date: '2026-04-19', merchant: 'Deliveroo', cat: 'Dining', amt: '£28.50', tag: null },
-                    { date: '2026-04-19', merchant: 'Octopus Energy', cat: 'Utilities', amt: '£124.30', tag: 'SWITCHED', highlight: 'new' },
-                    { date: '2026-04-19', merchant: 'Spotify', cat: 'Subs', amt: '£11.99', tag: null },
-                    { date: '2026-04-18', merchant: 'Twitch', cat: 'Subs', amt: '£10.99', tag: 'DUPLICATE', highlight: 'dup' },
-                    { date: '2026-04-18', merchant: 'TfL', cat: 'Transport', amt: '£7.50', tag: null },
-                    { date: '2026-04-18', merchant: 'Netflix', cat: 'Subs', amt: '£12.99', tag: null },
-                    { date: '2026-04-17', merchant: 'Waterstones', cat: 'Other', amt: '£34.00', tag: null },
+                    { date: '2025-10-14', merchant: 'Tesco Express', cat: 'Groceries', amt: '-£23.40', flag: '', tag: '' },
+                    { date: '2025-10-14', merchant: 'Acme Ltd · Payroll', cat: 'Income', amt: '+£3,284.00', flag: '', tag: '', income: true },
+                    { date: '2025-10-14', merchant: 'Virgin Media', cat: 'Broadband', amt: '-£49.00', flag: 'HIKE +£12', tag: 'dispute-ready', highlight: 'hike' },
+                    { date: '2025-10-13', merchant: 'Deliveroo', cat: 'Dining', amt: '-£18.50', flag: '', tag: '' },
+                    { date: '2025-10-13', merchant: 'Octopus Energy', cat: 'Energy', amt: '-£94.12', flag: 'SWITCHED', tag: 'saves £287/yr', highlight: 'new' },
+                    { date: '2025-10-12', merchant: 'Spotify', cat: 'Subscriptions', amt: '-£17.99', flag: '', tag: '' },
+                    { date: '2025-10-12', merchant: 'Twitch Turbo', cat: 'Subscriptions', amt: '-£8.99', flag: 'DUPLICATE', tag: 'cancel-ready', highlight: 'dup' },
+                    { date: '2025-10-11', merchant: 'TfL · Oyster', cat: 'Transport', amt: '-£12.80', flag: '', tag: '' },
+                    { date: '2025-10-11', merchant: 'Netflix Premium', cat: 'Subscriptions', amt: '-£17.99', flag: 'UNUSED 62d', tag: 'cancel-ready', highlight: 'unused' },
+                    { date: '2025-10-10', merchant: 'Waterstones', cat: 'Shopping', amt: '-£14.99', flag: '', tag: '' },
                   ].map((row, i) => (
                     <tr
                       key={i}
@@ -1812,45 +1863,78 @@ export default function HomepageV2Preview() {
                             ? '#FEF3C7'
                             : row.highlight === 'dup'
                               ? '#FEE2E2'
-                              : row.highlight === 'new' || row.highlight === 'income'
+                              : row.highlight === 'new'
                                 ? '#D1FAE5'
-                                : '#fff',
-                        borderBottom: '1px solid var(--divider)',
+                                : row.highlight === 'unused'
+                                  ? '#FEE2E2'
+                                  : '#fff',
                       }}
                     >
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px' }}>{i + 1}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px' }}>{row.date}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontWeight: 500 }}>{row.merchant}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px', color: 'var(--text-secondary)' }}>{row.cat}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{row.amt}</td>
-                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)' }}>
-                        {row.tag && (
+                      <td
+                        style={{
+                          padding: '7px 10px',
+                          border: '1px solid #E5E7EB',
+                          background: '#F8F9FA',
+                          color: 'var(--text-tertiary)',
+                          textAlign: 'center',
+                          fontWeight: 500,
+                          width: '28px',
+                        }}
+                      >
+                        {i + 1}
+                      </td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>{row.date}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>{row.merchant}</td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>{row.cat}</td>
+                      <td
+                        style={{
+                          padding: '7px 10px',
+                          border: '1px solid #E5E7EB',
+                          textAlign: 'right',
+                          fontVariantNumeric: 'tabular-nums',
+                          color: row.income ? 'var(--accent-mint-deep)' : 'inherit',
+                          fontWeight: row.income ? 700 : 400,
+                        }}
+                      >
+                        {row.amt}
+                      </td>
+                      <td style={{ padding: '7px 10px', border: '1px solid #E5E7EB' }}>
+                        {row.flag && (
                           <span
                             style={{
                               fontSize: '10px',
                               fontWeight: 700,
                               padding: '2px 6px',
                               borderRadius: '4px',
+                              letterSpacing: '0.04em',
                               background:
-                                row.tag === 'HIKE'
+                                row.flag.startsWith('HIKE')
                                   ? '#FEF3C7'
-                                  : row.tag === 'DUPLICATE'
+                                  : row.flag === 'DUPLICATE' || row.flag.startsWith('UNUSED')
                                     ? '#FEE2E2'
                                     : '#D1FAE5',
                               color:
-                                row.tag === 'HIKE'
+                                row.flag.startsWith('HIKE')
                                   ? '#D97706'
-                                  : row.tag === 'DUPLICATE'
+                                  : row.flag === 'DUPLICATE' || row.flag.startsWith('UNUSED')
                                     ? '#B91C1C'
                                     : '#059669',
                             }}
                           >
-                            {row.tag}
+                            {row.flag}
                           </span>
                         )}
                       </td>
-                      <td style={{ padding: '8px 12px' }}>
-                        {row.tag && <span style={{ fontSize: '10px', color: 'var(--accent-mint-deep)' }}>Paybacker</span>}
+                      <td
+                        style={{
+                          padding: '7px 10px',
+                          border: '1px solid #E5E7EB',
+                          fontSize: '11px',
+                          color: 'var(--accent-mint-deep)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {row.tag}
                       </td>
                     </tr>
                   ))}
@@ -1935,11 +2019,13 @@ export default function HomepageV2Preview() {
 
         {/* 06 · Stacked (dark) */}
         <div
+          id="stacked"
           style={{
             background: 'var(--surface-ink)',
             color: 'var(--text-on-ink)',
             paddingTop: '80px',
             paddingBottom: '80px',
+            scrollMarginTop: '80px',
           }}
         >
           <div className="wrap" style={{ paddingBottom: 0 }}>
@@ -1954,7 +2040,7 @@ export default function HomepageV2Preview() {
                   color: 'var(--accent-mint)',
                 }}
               >
-                06 · STACKED
+                Stacked
               </span>
               <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
                 Architecture + competitor comparison
@@ -1977,12 +2063,15 @@ export default function HomepageV2Preview() {
             >
               {/* Inputs column */}
               <div>
-                <h5 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent-orange)', marginBottom: '16px' }}>
-                  Inputs
+                <h5 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent-orange)', marginBottom: '16px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  INPUTS
                 </h5>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.6' }}>
-                  {['Bank accounts', 'Email inbox', 'Contracts', 'Partner APIs'].map((item, i) => (
-                    <li key={i}>• {item}</li>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.8', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {['UK banks via Yapily', 'Gmail / Outlook inbox scan', 'Manual subscription add', 'Telegram commands', 'Dispute form (web or chat)'].map((item, i) => (
+                    <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-mint)', flexShrink: 0 }} />
+                      {item}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -2000,62 +2089,71 @@ export default function HomepageV2Preview() {
               >
                 <h5
                   style={{
-                    fontSize: '18px',
+                    fontSize: '14px',
                     fontWeight: 700,
                     color: 'var(--accent-mint)',
                     margin: '0 0 16px',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
                   }}
                 >
                   Paybacker Core
                 </h5>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.6' }}>
-                  {['AI Disputes', 'Sub Detection', 'Hike Alerts', 'Auto Categorise'].map((item, i) => (
-                    <li key={i}>→ {item}</li>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.8', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {['Unified ledger — every txn, contract, hike', 'Classifier — Money Hub categorisation', 'Flag engine — hikes, duplicates, trials', 'Law library — CRA, Ofcom, Ofgem, UK261, FCA', 'Deals graph — 53+ UK partners'].map((item, i) => (
+                    <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-mint)', flexShrink: 0, marginTop: '5px' }} />
+                      <strong>{item.split(' — ')[0]}</strong> {item.split(' — ')[1]}
+                    </li>
                   ))}
                 </ul>
               </div>
 
               {/* Outputs column */}
               <div>
-                <h5 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent-mint)', marginBottom: '16px' }}>
-                  Outputs
+                <h5 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent-mint)', marginBottom: '16px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  OUTPUTS
                 </h5>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.6' }}>
-                  {['Complaint Letters', 'Telegram Chat', 'Sheets Export', 'Switch Deals'].map((item, i) => (
-                    <li key={i}>• {item}</li>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.8', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {['Web app — Money Hub + Disputes', 'Telegram Pocket Agent', 'Complaint letters (copy/email/PDF)', 'Google Sheets live sync', 'Deep-links to cancel / switch'].map((item, i) => (
+                    <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-mint)', flexShrink: 0 }} />
+                      {item}
+                    </li>
                   ))}
                 </ul>
               </div>
             </div>
 
-            {/* Competitor comparison table */}
+            {/* Competitor comparison table — transcribed from Claude Design handoff (.power-table) */}
             <div
               className="reveal"
               style={{
                 overflowX: 'auto',
+                marginTop: '24px',
               }}
             >
               <table
                 style={{
                   width: '100%',
                   borderCollapse: 'collapse',
-                  fontSize: '12px',
                   minWidth: '100%',
                 }}
               >
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #1F2A44' }}>
+                  <tr>
                     {['Feature', 'Emma', 'Snoop', 'Lunchflow', 'Resolver', 'Which?', 'Paybacker'].map((col, i) => (
                       <th
                         key={i}
                         style={{
-                          padding: '12px',
+                          padding: '14px 16px',
                           textAlign: 'left',
                           fontWeight: 700,
                           fontSize: '11px',
-                          color: i === 5 ? 'var(--accent-mint)' : '#9CA3AF',
-                          background: i === 5 ? 'rgba(52, 211, 153, 0.05)' : 'transparent',
-                          letterSpacing: '0.05em',
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: i === 6 ? 'var(--accent-mint)' : '#9CA3AF',
+                          borderBottom: '1px solid #1F2A44',
                         }}
                       >
                         {col}
@@ -2065,46 +2163,56 @@ export default function HomepageV2Preview() {
                 </thead>
                 <tbody>
                   {[
-                    'AI dispute letters citing UK law',
-                    'Open Banking subs + hike alerts',
-                    'Telegram pocket agent',
-                    'Google Sheets live export',
-                    '53+ verified switch deals',
-                    'Unlimited complaint letters',
-                    'Price-hike flag on transactions',
-                    '£4.99/mo pricing',
-                  ].map((feature, i) => (
+                    // kind per cell: 'us' = product has it (mint), 'them' = doesn't / partial (muted)
+                    { feat: 'Bank sync (Open Banking)',           cells: [{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'them',t:'—'},{k:'them',t:'—'}],            pb: '✓' },
+                    { feat: 'Subscription flagging (hike/dup/unused)', cells: [{k:'them',t:'Basic'},{k:'them',t:'Basic'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'}], pb: 'Full' },
+                    { feat: 'Legal-grade dispute letters',         cells: [{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'Templates'},{k:'them',t:'Guide'}], pb: 'AI + law' },
+                    { feat: 'UK consumer law library cited',       cells: [{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'Partial'},{k:'them',t:'Partial'}], pb: '5+ statutes' },
+                    { feat: 'Telegram / chat agent',               cells: [{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'—'}],         pb: '✓' },
+                    { feat: 'Live Google Sheets export',           cells: [{k:'them',t:'CSV only'},{k:'them',t:'—'},{k:'us',t:'✓'},{k:'them',t:'—'},{k:'them',t:'—'}],  pb: '✓ two-way' },
+                    { feat: 'Switch-deals that beat your bill',    cells: [{k:'them',t:'Generic ads'},{k:'them',t:'Generic'},{k:'them',t:'—'},{k:'them',t:'—'},{k:'them',t:'Guide only'}], pb: 'Personalised' },
+                    { feat: 'User in control (no auto-sent emails)', cells: [{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'us',t:'✓'},{k:'them',t:'Semi'},{k:'us',t:'✓'}],         pb: '✓' },
+                  ].map((row, i) => (
                     <tr
                       key={i}
                       style={{
                         borderBottom: '1px solid #1F2A44',
                       }}
                     >
-                      <td style={{ padding: '12px', fontWeight: 500, color: '#D1D5DB' }}>{feature}</td>
-                      {[0, 1, 2, 3, 4].map((compIdx) => (
+                      <td
+                        style={{
+                          padding: '14px 16px',
+                          fontWeight: 600,
+                          fontSize: '14px',
+                          color: '#E5E7EB',
+                        }}
+                      >
+                        {row.feat}
+                      </td>
+                      {row.cells.map((cell, j) => (
                         <td
-                          key={compIdx}
+                          key={j}
                           style={{
-                            padding: '12px',
-                            textAlign: 'center',
-                            color: '#6B7280',
-                            fontSize: '11px',
-                            background: 'transparent',
+                            padding: '14px 16px',
+                            textAlign: 'left',
+                            fontSize: '14px',
+                            fontWeight: cell.k === 'us' ? 700 : 400,
+                            color: cell.k === 'us' ? 'var(--accent-mint)' : '#9CA3AF',
                           }}
                         >
-                          —
+                          {cell.t}
                         </td>
                       ))}
                       <td
                         style={{
-                          padding: '12px',
-                          textAlign: 'center',
-                          color: 'var(--accent-mint)',
+                          padding: '14px 16px',
+                          textAlign: 'left',
+                          fontSize: '14px',
                           fontWeight: 700,
-                          background: 'rgba(52, 211, 153, 0.05)',
+                          color: 'var(--accent-mint)',
                         }}
                       >
-                        ✓
+                        {row.pb}
                       </td>
                     </tr>
                   ))}
@@ -2252,7 +2360,7 @@ export default function HomepageV2Preview() {
             </div>
           </div>
           <p className="compare-link">
-            <a href="/pricing#feature-matrix">See the full feature comparison →</a>
+            <a href="/pricing">See the full feature comparison →</a>
           </p>
         </div>
       </section>
@@ -2326,8 +2434,8 @@ export default function HomepageV2Preview() {
                   Your data is <strong>never sold</strong>, never shared with third-party
                   advertisers, and never used to train AI models outside your own account. Full
                   detail in our{' '}
-                  <a href="/privacy">Privacy Policy</a> and{' '}
-                  <a href="/terms">Terms of Service</a>.
+                  <a href="/privacy-policy">Privacy Policy</a> and{' '}
+                  <a href="/terms-of-service">Terms of Service</a>.
                 </p>
               </div>
             </details>
@@ -2607,10 +2715,10 @@ export default function HomepageV2Preview() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="/complaints">Disputes Centre</a>
-              <a href="/dashboard">Money Hub</a>
+              <a href="/#disputes">Disputes Centre</a>
+              <a href="/#hub">Money Hub</a>
               <a href="/#pocket-agent">Pocket Agent</a>
-              <a href="/deals">Deals</a>
+              <a href="/#deals">Deals</a>
               <a href="/pricing">Pricing</a>
             </div>
             <div className="footer-col">
