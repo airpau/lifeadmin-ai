@@ -684,803 +684,1437 @@ export default function HomepageV2Preview() {
       </section>
 
       {/* Pillars --------------------------------------------------- */}
-      <section className="pillars-section section-light">
-        <div className="wrap">
-          <div className="section-head reveal">
-            <span className="eyebrow">What&rsquo;s in the box</span>
-            <h2>
-              Three products. One subscription.
-              <br />
-              All of your money, watched.
+      {/* Six-Section Walkthrough (NEW DESIGN 20 APR 2026) --------- */}
+      <section id="how" className="section-light">
+        
+        {/* 01 · AI Disputes Centre */}
+        <div className="wrap" style={{ paddingBottom: 0 }}>
+          <div
+            className="section-head reveal"
+            style={{ marginBottom: '48px' }}
+          >
+            <span
+              className="eyebrow"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '14px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                color: 'var(--accent-mint-deep)',
+              }}
+            >
+              01 · AI Disputes Centre
+            </span>
+            <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
+              Complaint letters in 30 seconds
             </h2>
-            <p>
-              Most UK households are overcharged by £1,000+ a year. Paybacker finds it, disputes
-              it, and cancels it — in minutes, not hours on hold.
+            <p style={{ fontSize: '17px', margin: 0 }}>
+              Cite exact UK consumer law. Send from your inbox. AI monitors the reply thread.
             </p>
           </div>
-          <div className="pillar-grid">
-            <div className="pillar-card reveal">
-              <div className="pillar-icon orange" aria-hidden="true">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 3v18" />
-                  <path d="M4 7l8-4 8 4" />
-                  <path d="M4 7l3 7a3 3 0 006 0z" />
-                  <path d="M20 7l-3 7a3 3 0 006 0z" />
-                </svg>
-              </div>
-              <h3>AI Disputes Centre</h3>
-              <p className="copy">
-                Complaint letters citing exact UK consumer law in 30 seconds. Consumer Rights Act
-                2015, UK261, Ofgem, Ofcom.
-              </p>
-              <div className="pillar-preview">
-                <div className="head">AI draft · Ofcom — mid-contract price rise</div>
-                <p className="letter-para">
-                  … I am writing to formally dispute the{' '}
-                  <span className="hl">£12 CPI+3.9% increase</span> applied to my Virgin Media
-                  broadband contract on 1 October. Under{' '}
-                  <span className="hl">Ofcom&rsquo;s Fairness Framework</span> and the{' '}
-                  <span className="hl">Consumer Rights Act 2015 s.49</span>, you must provide
-                  reasonable notice and a right to exit without penalty…
+
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid var(--divider)',
+              borderRadius: 'var(--r-card)',
+              padding: '48px',
+              marginBottom: '40px',
+            }}
+            className="reveal"
+          >
+            {/* Letter preview + form summary grid */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.2fr 1fr',
+                gap: '24px',
+                alignItems: 'stretch',
+                marginBottom: '16px',
+              }}
+            >
+              {/* Letter preview card */}
+              <div
+                style={{
+                  background: '#FDFDF7',
+                  border: '1px solid var(--divider)',
+                  borderRadius: '12px',
+                  padding: '22px',
+                  fontFamily: 'Georgia, serif',
+                  fontSize: '14px',
+                  lineHeight: '1.55',
+                  color: 'var(--text-primary)',
+                  maxHeight: '360px',
+                  overflow: 'hidden',
+                  position: 'relative',
+                }}
+              >
+                <p style={{ margin: '0 0 12px' }}>
+                  Dear Sir/Madam,
                 </p>
-              </div>
-            </div>
-
-            {/* Pocket Agent moved up to position 2 per Paul's feedback
-                (Apr 2026 review): focus order is Disputes → Pocket Agent → Money Hub. */}
-            <div className="pillar-card reveal">
-              <div className="pillar-icon gradient" aria-hidden="true">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
-                </svg>
-              </div>
-              <h3>Pocket Agent</h3>
-              <p className="copy">
-                Your AI financial agent, always in your pocket. Telegram, WhatsApp, SMS and email —
-                answers, drafts, cancels, and switches in plain English.
-              </p>
-              <div className="pillar-preview">
-                <div className="head">Today · Telegram</div>
-                <div className="chat-preview">
-                  <div className="chat-bubble user">Is £68/mo fair for 100Mb broadband?</div>
-                  <div className="chat-bubble agent">
-                    Above UK median of £32. Two cheaper options on your postcode. Draft switch?
-                  </div>
-                  <div className="chat-bubble user">Yes please</div>
-                  <div className="chat-bubble agent">
-                    {'On it — you\u2019ll save '}
-                    <strong>£432/yr</strong>.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pillar-card reveal">
-              <div className="pillar-icon mint" aria-hidden="true">
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="6" width="18" height="13" rx="2" />
-                  <path d="M3 10h18" />
-                  <circle cx="17" cy="15" r="1.5" />
-                </svg>
-              </div>
-              <h3>Money Hub</h3>
-              <p className="copy">
-                Connect your bank via Open Banking (Yapily). Every subscription, direct debit, and
-                contract in one place. Daily sync.
-              </p>
-              <div className="pillar-preview">
-                <div className="head">Your October breakdown</div>
-                <div className="donut-mini">
-                  <div className="d" />
-                  <div className="nums">
-                    <div className="row">
-                      <span className="sw" style={{ background: 'var(--accent-mint)' }} />
-                      Essentials · £1,859
-                    </div>
-                    <div className="row">
-                      <span className="sw" style={{ background: 'var(--accent-orange)' }} />
-                      Subs · £1,174
-                    </div>
-                    <div className="row">
-                      <span className="sw" style={{ background: '#93C5FD' }} />
-                      Transport · £782
-                    </div>
-                    <div className="row">
-                      <span className="sw" style={{ background: '#E5E7EB' }} />
-                      Other · £489
-                    </div>
-                  </div>
-                </div>
+                <p style={{ margin: '0 0 12px' }}>
+                  I am writing to formally dispute the{' '}
+                  <span style={{ background: '#FEF3C7', padding: '0 3px', borderRadius: '2px' }}>
+                    £12 mid-contract price rise
+                  </span>{' '}
+                  applied to my broadband contract on 1 October. Under{' '}
+                  <span style={{ background: '#FEF3C7', padding: '0 3px', borderRadius: '2px' }}>
+                    Ofcom's Fairness Framework
+                  </span>{' '}
+                  and the{' '}
+                  <span style={{ background: '#FEF3C7', padding: '0 3px', borderRadius: '2px' }}>
+                    Consumer Rights Act 2015 s.49
+                  </span>
+                  , you must provide reasonable notice and a right to exit without penalty.
+                </p>
+                <p style={{ margin: 0 }}>
+                  I request an immediate reversal…
+                </p>
                 <div
                   style={{
-                    marginTop: '14px',
-                    paddingTop: '12px',
-                    borderTop: '1px dashed var(--divider)',
-                    fontSize: '12px',
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: '60px',
+                    background: 'linear-gradient(to bottom, transparent, #FDFDF7)',
+                  }}
+                />
+              </div>
+
+              {/* Form summary */}
+              <div
+                style={{
+                  background: '#fff',
+                  border: '1px solid var(--divider)',
+                  borderRadius: '16px',
+                  padding: '24px',
+                }}
+              >
+                <h4
+                  style={{
+                    margin: '0 0 16px',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
                     color: 'var(--text-tertiary)',
                   }}
                 >
-                  3 hikes flagged · 2 duplicates found
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Pocket Agent showcase (dark) — new in PR 3 ---------------- */}
-      <section className="agent-showcase section-ink" id="pocket-agent">
-        <div className="wrap">
-          <div className="section-head reveal">
-            <span className="eyebrow on-ink">Meet your Pocket Agent</span>
-            <h2>
-              An AI that actually
-              <br />
-              <span className="mint">does</span> the admin for you.
-            </h2>
-            <p className="sub">
-              Your Pocket Agent lives in Telegram, WhatsApp, SMS, and email — watching for
-              overcharges, drafting letters, and cancelling the stuff you never use. Reply in a
-              sentence. It handles the rest.
-            </p>
-          </div>
-
-          <div className="agent-showcase-grid">
-            <div className="agent-phone reveal" aria-hidden="true">
-              <div className="agent-phone-header">
-                <span className="dot-mint" />
-                <span>Pocket Agent · Telegram</span>
-                <span className="agent-phone-time">Today · 10:47</span>
-              </div>
-              <div className="agent-phone-body">
-                <div className="ap-bubble agent">
-                  {'Morning Paul \u2014 your British Gas bill just landed. It\u2019s up '}
-                  <strong>£41</strong>
-                  {' versus last month. Want me to check if that\u2019s fair?'}
-                </div>
-                <div className="ap-bubble user">Yes please, quickly.</div>
-                <div className="ap-bubble agent">
-                  {'Your unit rate jumped from 24.5p to 30.2p/kWh. That\u2019s above the current UK price cap for your tariff. Want me to draft an Ofgem dispute?'}
-                </div>
-                <div className="ap-bubble user">Yeah, go on.</div>
-                <div className="ap-bubble agent">
-                  {'Done \u2014 letter cites Ofgem\u2019s Standards of Conduct and the price cap rules. Sent to your inbox to sign.'}
-                  <span className="ap-link">Preview letter →</span>
-                </div>
-                <div className="ap-bubble user">Can you also cancel my Audible?</div>
-                <div className="ap-bubble agent">
-                  {'On it. Drafted a cancellation citing your 14-day cooling-off right under the Consumer Contracts Regulations. Confirm?'}
-                  <div className="ap-chips">
-                    <span className="ap-chip ap-chip-mint">✓ Confirm</span>
-                    <span className="ap-chip">Change wording</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="agent-features reveal">
-              <div className="agent-feature">
-                <div className="af-icon">⚡</div>
-                <div>
-                  <h4>Instant answers</h4>
-                  <p>
-                    &ldquo;Is £68 fair for broadband?&rdquo; &ldquo;Can I claim for this flight
-                    delay?&rdquo; Ask in plain English — get a straight answer with the UK law
-                    cited.
-                  </p>
-                </div>
-              </div>
-              <div className="agent-feature">
-                <div className="af-icon">✍️</div>
-                <div>
-                  <h4>One-tap dispute letters</h4>
-                  <p>
-                    Drafts formal complaints, cancellations, or refund requests in 30 seconds —
-                    citing Consumer Rights Act 2015, UK261, Ofgem, Ofcom or the relevant rule.
-                  </p>
-                </div>
-              </div>
-              <div className="agent-feature">
-                <div className="af-icon">🔔</div>
-                <div>
-                  <h4>Proactive alerts</h4>
-                  <p>
-                    Pings you when a bill jumps, a free trial is about to convert, a contract is
-                    ending, or a flight delay qualifies for compensation. No more missed deadlines.
-                  </p>
-                </div>
-              </div>
-              <div className="agent-feature">
-                <div className="af-icon">💷</div>
-                <div>
-                  <h4>Verified switches</h4>
-                  <p>
-                    Compares your current bill against 53+ UK partners. Only suggests a switch if
-                    it genuinely beats what you&rsquo;re on — in pounds and pence.
-                  </p>
-                </div>
-              </div>
-              <div className="agent-feature">
-                <div className="af-icon">🔒</div>
-                <div>
-                  <h4>Bank-grade security</h4>
-                  <p>
-                    Read-only Open Banking via Yapily (FCA-authorised). Never stores passwords.
-                    Encrypted end-to-end. UK data residency only.
-                  </p>
-                </div>
-              </div>
-              <div className="agent-feature">
-                <div className="af-icon">🧠</div>
-                <div>
-                  <h4>Remembers context</h4>
-                  <p>
-                    Knows your postcode, your contracts, your renewal dates, and your loyalty
-                    preferences. Doesn&rsquo;t re-ask the same question twice.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* How to connect — added April 2026.
-              Paul flagged that the Pocket Agent section was light on
-              *how it actually works*. This block spells out the
-              three-step onboarding so users know it's a chat, not an
-              app download. */}
-          <div className="agent-setup reveal">
-            <div className="agent-setup-head">
-              <span className="eyebrow on-ink">Getting started</span>
-              <h3>
-                No new app. You chat with Paybacker in the apps
-                <br /> you <span className="mint">already</span> use.
-              </h3>
-            </div>
-            <ol className="agent-setup-steps">
-              <li>
-                <span className="num">1</span>
-                <div>
-                  <h4>Sign up free at paybacker.co.uk</h4>
-                  <p>
-                    Takes 30 seconds. No card. You land on the dashboard and link whichever
-                    channels you want the Pocket Agent to use.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span className="num">2</span>
-                <div>
-                  <h4>Link Telegram, WhatsApp, SMS or email</h4>
-                  <p>
-                    One-tap verification in each. Telegram and WhatsApp are the most popular —
-                    you add <code>@PaybackerBot</code> on Telegram or scan a QR for WhatsApp and
-                    say hi. SMS and email work with any phone or mailbox.
-                  </p>
-                </div>
-              </li>
-              <li>
-                <span className="num">3</span>
-                <div>
-                  <h4>Chat like you would with a smart friend</h4>
-                  <p>
-                    Ask a question, forward a bill, paste a PDF. The agent reads it, checks it
-                    against UK law and your connected accounts, and replies in seconds. Nothing
-                    is sent on your behalf without a &ldquo;Confirm&rdquo; tap.
-                  </p>
-                </div>
-              </li>
-            </ol>
-            <div className="agent-setup-examples">
-              <span className="agent-setup-examples-label">Try saying:</span>
-              <span className="ase-chip">&ldquo;Is £68/mo fair for 100Mb broadband?&rdquo;</span>
-              <span className="ase-chip">&ldquo;Cancel Audible citing the 14-day rule&rdquo;</span>
-              <span className="ase-chip">&ldquo;Draft a flight-delay claim for BA2491&rdquo;</span>
-              <span className="ase-chip">&ldquo;What renews next month?&rdquo;</span>
-            </div>
-            <p className="agent-setup-privacy">
-              <span aria-hidden="true">🔒</span> Private by default. Your chat history lives in
-              your Paybacker account only — Telegram, WhatsApp and your mobile carrier never see
-              the AI&rsquo;s analysis of your finances. Disconnect any channel in one tap.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* AI Financial Assistant (light) — recategorisation convo --- */}
-      <section className="assistant-section section-light" id="assistant">
-        <div className="wrap">
-          <div className="assistant-grid">
-            <div className="assistant-copy reveal">
-              <span className="eyebrow">AI Financial Assistant</span>
-              <h2>
-                Ask your money anything.
-                <br />
-                It actually answers.
-              </h2>
-              <p>
-                Every transaction, subscription, contract, and bill — categorised in real time.
-                When it gets something wrong, just tell it. The assistant learns how
-                <em> your </em>
-                spending works, not the average household&rsquo;s.
-              </p>
-              <ul className="assistant-bullets">
-                <li>
-                  <strong>Instant recategorisation.</strong> One sentence fixes every past and
-                  future match.
-                </li>
-                <li>
-                  <strong>Category drill-down.</strong> &ldquo;What did I spend on takeaways in
-                  March?&rdquo; — see the list in seconds.
-                </li>
-                <li>
-                  <strong>Dynamic charts.</strong> Ask for a pie chart of utilities or a 6-month
-                  bar for dining — rendered in the chat.
-                </li>
-                <li>
-                  <strong>Budget links.</strong> Every category connects to a budget limit and
-                  renewal alerts.
-                </li>
-              </ul>
-            </div>
-
-            <div className="assistant-chat reveal">
-              <div className="ac-header">Money Hub · AI Assistant</div>
-              <div className="ac-body">
-                <div className="ac-bubble user">
-                  My OneStream direct debit keeps appearing as Bills &amp; Utilities, but it&rsquo;s
-                  broadband. Can you fix it?
-                </div>
-                <div className="ac-bubble assistant">
-                  {'Done. I\u2019ve moved all 14 OneStream transactions (Jan \u2013 Oct) into '}
-                  <strong>Broadband</strong>
-                  {'. Any future OneStream payments will land there automatically. Your monthly Broadband total is now '}
-                  <strong>£38.50</strong>
-                  {'.'}
-                </div>
-                <div className="ac-bubble user">Show me a pie chart of my subscription spend last month.</div>
-                <div className="ac-bubble assistant">
-                  <div className="ac-chart" aria-hidden="true">
-                    <div className="ac-pie">
-                      <div className="ac-slice ac-slice-1" />
-                      <div className="ac-slice ac-slice-2" />
-                      <div className="ac-slice ac-slice-3" />
-                      <div className="ac-slice ac-slice-4" />
-                    </div>
-                    <div className="ac-legend">
-                      <span>
-                        <i style={{ background: 'var(--accent-mint)' }} /> Broadband · £38.50
-                      </span>
-                      <span>
-                        <i style={{ background: 'var(--accent-orange)' }} /> Streaming · £27.97
-                      </span>
-                      <span>
-                        <i style={{ background: '#60A5FA' }} /> Gym · £34.99
-                      </span>
-                      <span>
-                        <i style={{ background: '#A78BFA' }} /> Software · £12.99
-                      </span>
+                  Details
+                </h4>
+                {[
+                  { label: 'Category', value: 'Mid-contract price rise' },
+                  { label: 'Provider', value: 'Virgin Media' },
+                  { label: 'Amount', value: '£12/month' },
+                  { label: 'Paybacker picked', value: 'Ofcom Fairness Framework', hasMint: true },
+                ].map((field, i) => (
+                  <div key={i} style={{ marginBottom: '14px' }}>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '11px',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        fontWeight: 700,
+                        color: 'var(--text-tertiary)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      {field.label}
+                    </label>
+                    <div
+                      style={{
+                        padding: '12px 14px',
+                        background: field.hasMint ? 'var(--accent-mint-wash)' : 'var(--surface-base)',
+                        border: '1px solid var(--divider)',
+                        borderRadius: '10px',
+                        fontSize: '14px',
+                        color: 'var(--text-primary)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>{field.value}</span>
+                      {field.hasMint && <span style={{ color: 'var(--accent-mint-deep)', fontSize: '16px' }}>✓</span>}
                     </div>
                   </div>
-                  {'Total subscription spend in September was '}
-                  <strong>£114.45</strong>
-                  {'. Want me to flag Netflix Premium (unused for 47 days) for cancellation?'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Smart Subscription Tracking (mint wash) ------------------- */}
-      <section className="subs-section section-mint" id="subscriptions">
-        <div className="wrap">
-          <div className="subs-grid">
-            <div className="subs-list reveal" aria-hidden="true">
-              <div className="subs-list-head">
-                <span>October · 11 active subscriptions</span>
-                <span className="subs-total">£143.92/mo</span>
-              </div>
-              <div className="subs-row">
-                <div className="subs-logo mint">N</div>
-                <div className="subs-meta">
-                  <div className="subs-name">Netflix Premium</div>
-                  <div className="subs-tags">
-                    <span className="subs-tag tag-orange">Unused 47 days</span>
-                    <span className="subs-tag">Renews in 14 days</span>
-                  </div>
-                </div>
-                <div className="subs-amt">£17.99</div>
-              </div>
-              <div className="subs-row">
-                <div className="subs-logo orange">V</div>
-                <div className="subs-meta">
-                  <div className="subs-name">Virgin Media Broadband</div>
-                  <div className="subs-tags">
-                    <span className="subs-tag tag-red">Price hike · +£12</span>
-                    <span className="subs-tag">Dispute drafted</span>
-                  </div>
-                </div>
-                <div className="subs-amt">£49.00</div>
-              </div>
-              <div className="subs-row">
-                <div className="subs-logo mint">S</div>
-                <div className="subs-meta">
-                  <div className="subs-name">Spotify Family</div>
-                  <div className="subs-tags">
-                    <span className="subs-tag">Active · 4 profiles</span>
-                  </div>
-                </div>
-                <div className="subs-amt">£19.99</div>
-              </div>
-              <div className="subs-row">
-                <div className="subs-logo orange">G</div>
-                <div className="subs-meta">
-                  <div className="subs-name">PureGym Plus</div>
-                  <div className="subs-tags">
-                    <span className="subs-tag tag-orange">Inactive 86 days</span>
-                    <span className="subs-tag">Cancel draft ready</span>
-                  </div>
-                </div>
-                <div className="subs-amt">£34.99</div>
-              </div>
-              <div className="subs-row">
-                <div className="subs-logo mint">A</div>
-                <div className="subs-meta">
-                  <div className="subs-name">Audible UK</div>
-                  <div className="subs-tags">
-                    <span className="subs-tag">Active · 3 credits unused</span>
-                  </div>
-                </div>
-                <div className="subs-amt">£7.99</div>
-              </div>
-              <div className="subs-row">
-                <div className="subs-logo orange">S</div>
-                <div className="subs-meta">
-                  <div className="subs-name">Sky Mobile</div>
-                  <div className="subs-tags">
-                    <span className="subs-tag">Contract ends 12 Dec</span>
-                    <span className="subs-tag tag-mint">Switch offer · save £168</span>
-                  </div>
-                </div>
-                <div className="subs-amt">£28.00</div>
+                ))}
               </div>
             </div>
 
-            <div className="subs-copy reveal">
-              <span className="eyebrow">Smart subscription tracking</span>
-              <h2>
-                Every sub. Every contract.
-                <br />
-                Every renewal.
-              </h2>
-              <p>
-                Paybacker spots every recurring payment the moment it hits your bank — then flags
-                the ones that are quietly costing you money.
-              </p>
-              <ul className="subs-features">
-                <li>
-                  <strong>Renewal alerts.</strong> 30, 14 and 7 days before any contract renews.
-                </li>
-                <li>
-                  <strong>Price-rise detection.</strong> We compare every bill against the last one
-                  and flag anything above inflation.
-                </li>
-                <li>
-                  <strong>Inactive-use detection.</strong> Gym not opened in 86 days? Streaming
-                  service not played in 47? We tell you.
-                </li>
-                <li>
-                  <strong>Contract end-dates tracked.</strong> No more rolling onto the
-                  &ldquo;loyalty tax&rdquo; after your intro rate expires.
-                </li>
-                <li>
-                  <strong>One-tap cancellation letters.</strong> Drafted with your rights under UK
-                  consumer law — you just hit send.
-                </li>
-              </ul>
+            {/* Clarity banner */}
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                marginTop: '16px',
+                padding: '14px 18px',
+                background: '#FEF3C7',
+                border: '1px solid var(--accent-orange)',
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontSize: '14px',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-orange)',
+                  color: '#fff',
+                  display: 'grid',
+                  placeItems: 'center',
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                📧
+              </div>
+              <span>
+                <strong>You send it.</strong> Paybacker AI watches your inbox and drafts rebuttals.
+              </span>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* How it works (dark) --------------------------------------- */}
-      <section className="how-section section-ink" id="how">
-        <div className="wrap">
-          <div className="section-head reveal">
-            <span className="eyebrow on-ink">How it works</span>
-            <h2>
-              Three steps. Ten minutes.
-              <br />
-              Usually four-figure savings.
-            </h2>
-            <p className="sub">
-              You don&rsquo;t have to connect anything to see it work. Try the Disputes Centre for
-              free — no account needed.
-            </p>
-          </div>
-
-          <div className="how-steps">
-            <div className="how-step reveal highlight-step" id="disputes-try">
-              <div className="num">01</div>
-              <span className="step-flag">AI Disputes Centre · try it live</span>
-              <h3>Describe your dispute, get a formal letter in 30 seconds.</h3>
-              <p>
-                Pick the category, type a sentence. We cite the exact UK law — Consumer Rights Act
-                2015, Ofcom, Ofgem, UK261 — and draft the letter, ready to send.
-              </p>
-              <form id="try-letter" className="mini-form" onSubmit={onDemoGenerate}>
-                <label htmlFor="mini-issue">What&rsquo;s the issue?</label>
-                <select
-                  id="mini-issue"
-                  name="issueType"
-                  defaultValue="Mid-contract price rise"
-                >
-                  <optgroup label="Telecoms &amp; broadband">
-                    <option>Mid-contract price rise</option>
-                    <option>Broadband speed under advertised (Ofcom)</option>
-                    <option>Early-termination fee dispute</option>
-                    <option>Mobile roaming / bill-shock charge</option>
-                  </optgroup>
-                  <optgroup label="Energy &amp; utilities">
-                    <option>Energy billing error (Ofgem)</option>
-                    <option>Back-bill older than 12 months (Ofgem Back-Billing Rule)</option>
-                    <option>Water bill / leak allowance dispute</option>
-                    <option>Smart-meter / direct-debit overcharge</option>
-                  </optgroup>
-                  <optgroup label="Travel">
-                    <option>Delayed or cancelled flight (UK261)</option>
-                    <option>Denied boarding / downgrade claim</option>
-                    <option>Rail delay repay</option>
-                    <option>Holiday / package refund (Package Travel Regs 2018)</option>
-                  </optgroup>
-                  <optgroup label="Goods &amp; services">
-                    <option>Faulty goods (CRA 2015)</option>
-                    <option>Poor workmanship / service not as described</option>
-                    <option>Online order not delivered (Consumer Contracts Regs)</option>
-                    <option>Gym / subscription cancellation refusal</option>
-                  </optgroup>
-                  <optgroup label="Finance &amp; credit">
-                    <option>Unfair bank charge / fee</option>
-                    <option>Debt-collection response (CCA 1974 s.77/78)</option>
-                    <option>Insurance claim unfairly declined</option>
-                    <option>Section 75 / chargeback claim</option>
-                  </optgroup>
-                  <optgroup label="Motoring &amp; parking">
-                    <option>Private parking charge notice (PCN) appeal</option>
-                    <option>Council PCN / penalty charge appeal</option>
-                    <option>Car-finance mis-selling complaint</option>
-                  </optgroup>
-                  <optgroup label="Housing &amp; council">
-                    <option>Deposit dispute (tenancy deposit scheme)</option>
-                    <option>Council tax band challenge</option>
-                    <option>Housing disrepair complaint</option>
-                  </optgroup>
-                  <optgroup label="Tax &amp; government">
-                    <option>HMRC tax rebate / overpayment</option>
-                    <option>DVLA fine or refund dispute</option>
-                    <option>NHS complaint / PHSO escalation</option>
-                  </optgroup>
-                </select>
-                <label htmlFor="mini-desc">Brief description</label>
-                <input
-                  id="mini-desc"
-                  name="description"
-                  type="text"
-                  placeholder="My Virgin bill jumped £12 without warning…"
-                  minLength={0}
-                  maxLength={280}
+            {/* Thread monitor */}
+            <div
+              style={{
+                marginTop: '32px',
+                paddingTop: '32px',
+                borderTop: '1px solid var(--divider)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '16px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <span
+                  style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    background: 'var(--accent-mint)',
+                    animation: 'pulse 2s infinite',
+                  }}
                 />
-                <button type="submit" disabled={letterBusy}>
-                  {letterLabel}
-                </button>
-                {letterPreview && (
-                  <div className="mini-letter-out" aria-live="polite">
-                    <div className="mini-letter-head">
-                      <span>AI draft &middot; opening paragraph</span>
-                      <span className="mini-letter-badge">Preview</span>
+                Live · Monitoring 1 thread
+              </div>
+              {[
+                { icon: '📤', label: 'Your message sent', meta: '10:42 today' },
+                { icon: '📥', label: 'Virgin Media replied', meta: '10:58 today' },
+                { icon: '⚠️', label: 'Paybacker AI flagged a reply', meta: '11:01 today', highlight: true },
+              ].map((row, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: '12px 16px',
+                    background: row.highlight ? '#FEF3C7' : 'var(--surface-base)',
+                    border: '1px solid ' + (row.highlight ? 'var(--accent-orange)' : 'var(--divider)'),
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginBottom: '8px',
+                    fontSize: '14px',
+                  }}
+                >
+                  <span style={{ fontSize: '18px' }}>{row.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.label}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{row.meta}</div>
+                  </div>
+                  {row.highlight && (
+                    <span
+                      style={{
+                        background: 'var(--accent-orange)',
+                        color: '#fff',
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ACT NOW
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 02 · Subscriptions Tracker */}
+        <div
+          style={{
+            background: 'var(--accent-mint-wash)',
+            paddingTop: '80px',
+            paddingBottom: '80px',
+          }}
+        >
+          <div className="wrap" style={{ paddingBottom: 0 }}>
+            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+              <span
+                className="eyebrow"
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: 'var(--accent-mint-deep)',
+                }}
+              >
+                02 · SUBSCRIPTIONS TRACKER
+              </span>
+              <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
+                Auto-tagged recurring charges
+              </h2>
+              <p style={{ fontSize: '17px', margin: 0 }}>
+                Hike alerts, duplicate detection, trial reminders, renewal notifications. One-tap actions.
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1.4fr',
+                gap: '40px',
+                alignItems: 'center',
+              }}
+            >
+              {/* iPhone mock - Subscriptions */}
+              <div
+                style={{
+                  width: '360px',
+                  height: '740px',
+                  background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
+                  borderRadius: '52px',
+                  padding: '11px',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                  position: 'relative',
+                  transform: 'rotate(-4deg)',
+                }}
+                className="reveal"
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    background: '#000',
+                    borderRadius: '42px',
+                    padding: '3px',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '39px',
+                      overflow: 'hidden',
+                      background: '#fff',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    {/* Status bar */}
+                    <div
+                      style={{
+                        height: '52px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '14px 28px 0',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        position: 'relative',
+                      }}
+                    >
+                      <span>9:41</span>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: '50%',
+                          top: '8px',
+                          transform: 'translateX(-50%)',
+                          width: '108px',
+                          height: '30px',
+                          background: '#000',
+                          borderRadius: '18px',
+                        }}
+                      />
+                      <span>🔋</span>
                     </div>
-                    <p className="mini-letter-body">{letterPreview}</p>
-                    {/* The rest of the letter is rendered faded + blurred
-                        underneath so users can see the full structure
-                        exists (citations, demand, deadline, sign-off) —
-                        then gated by the overlay CTA. Matches the old
-                        sign-up-to-unlock flow Paul asked us to restore. */}
-                    <div className="mini-letter-locked" aria-hidden="true">
-                      <p>
-                        Under the provisions cited above you are in breach of your statutory and regulatory obligations. I am therefore entitled to a full remedy — including (as appropriate) a refund of the disputed amount, contract termination without exit fees, and/or statutory compensation.
-                      </p>
-                      <p>
-                        I formally require a substantive response within <strong>14 working days</strong> of receipt of this letter, confirming the remedy you are willing to provide. Please treat this letter as the first stage of your internal complaints procedure.
-                      </p>
-                      <p>
-                        Should you fail to respond within that window, or should your response fall short of the remedy required, I will escalate this matter to the relevant regulator (Ofcom / Ofgem / FCA / Trading Standards) and, where eligible, to the Financial Ombudsman Service without further notice.
-                      </p>
-                      <p className="mini-letter-signoff">
-                        Yours faithfully,<br />
-                        [Your name]
-                      </p>
-                    </div>
-                    <div className="mini-letter-gate">
-                      <div className="mini-letter-gate-text">
-                        <span className="lock-icon" aria-hidden="true">🔒</span>
-                        <span>
-                          <strong>Sign up free</strong> to see the full letter, personalise it with your details,
-                          save it to your Disputes Centre, and send it straight from Paybacker.
-                        </span>
-                      </div>
-                      <a
-                        className="mini-letter-gate-cta"
-                        href="/auth/signup"
-                        rel="noopener"
+
+                    {/* Subscriptions screen */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px 16px' }}>
+                      <div
+                        style={{
+                          padding: '8px 8px 14px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'baseline',
+                          fontSize: '20px',
+                          fontWeight: 800,
+                        }}
                       >
-                        Unlock &amp; send &rarr;
-                      </a>
+                        <span>Subscriptions</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>18 active</span>
+                      </div>
+
+                      {/* Monthly spend hero */}
+                      <div
+                        style={{
+                          margin: '4px 8px 18px',
+                          padding: '14px',
+                          borderRadius: '14px',
+                          background: 'linear-gradient(135deg, #0B1220, #111A2E)',
+                          color: '#fff',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <div style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.6, fontWeight: 700, marginBottom: '4px' }}>
+                          Monthly spend
+                        </div>
+                        <div style={{ fontSize: '32px', fontWeight: 800, letterSpacing: '-0.02em', margin: '4px 0 2px' }}>
+                          £284.16
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--accent-mint)' }}>
+                          ↗ £38 vs last month, 4 need review
+                        </div>
+                      </div>
+
+                      {/* Subscription rows */}
+                      {[
+                        { name: 'Netflix', price: '£12.99', tag: 'hike', tagText: '+£3 hike' },
+                        { name: 'Virgin Media', price: '£53.99', tag: 'hike', tagText: '+£12 hike' },
+                        { name: 'Audible', price: '£12.50', tag: null, tagText: null },
+                        { name: 'Twitch (duplicate)', price: '£10.99', tag: 'dup', tagText: 'Duplicate' },
+                        { name: 'Canva', price: '£14.99', tag: 'trial', tagText: 'Trial ends 3d' },
+                        { name: 'Spotify', price: '£11.99', tag: null, tagText: null },
+                        { name: 'PureGym', price: '£24.99', tag: 'renewal', tagText: 'Renews in 5d' },
+                      ].map((sub, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '12px',
+                            borderBottom: i < 6 ? '1px solid var(--divider)' : 'none',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '10px',
+                              background: i % 2 === 0 ? 'var(--accent-mint)' : 'var(--accent-orange)',
+                              color: '#fff',
+                              fontWeight: 800,
+                              fontSize: '12px',
+                              display: 'grid',
+                              placeItems: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {sub.name.charAt(0)}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {sub.name}
+                              {sub.tag && (
+                                <span
+                                  style={{
+                                    fontSize: '9px',
+                                    fontWeight: 800,
+                                    letterSpacing: '0.06em',
+                                    padding: '1px 6px',
+                                    borderRadius: '999px',
+                                    textTransform: 'uppercase',
+                                    background:
+                                      sub.tag === 'hike'
+                                        ? '#FEF3C7'
+                                        : sub.tag === 'dup'
+                                          ? '#FEE2E2'
+                                          : '#DBEAFE',
+                                    color:
+                                      sub.tag === 'hike'
+                                        ? '#D97706'
+                                        : sub.tag === 'dup'
+                                          ? '#B91C1C'
+                                          : '#1E40AF',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {sub.tagText}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{sub.price}/month</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                )}
-              </form>
-              {/* Promoted from a plain bullet list into a 3-card row.
-                  Paul's feedback: email-thread integration and letter
-                  tracking are the two things that separate us from a
-                  generic letter generator — they need real visual
-                  weight, not just a bullet. */}
-              <div className="dispute-extras">
-                <div className="dispute-extra-card">
-                  <div className="dex-icon" aria-hidden="true">📨</div>
-                  <h4>Email-thread analysis</h4>
-                  <p>
-                    Forward the whole back-and-forth with your provider. We extract every
-                    claim, tariff, and date, cite the exact law that applies, and drop the reply
-                    straight into the thread.
-                  </p>
-                  <div className="dex-mini-thread" aria-hidden="true">
-                    <div className="dex-mt-row"><span className="dex-mt-from">Virgin Media</span><span className="dex-mt-tag">Quoted £12 rise</span></div>
-                    <div className="dex-mt-row"><span className="dex-mt-from">You</span><span className="dex-mt-tag dex-mt-muted">&ldquo;Didn&rsquo;t agree to this&rdquo;</span></div>
-                    <div className="dex-mt-row"><span className="dex-mt-from">Paybacker AI</span><span className="dex-mt-tag dex-mt-mint">Reply drafted · CRA s.49</span></div>
-                  </div>
                 </div>
-                <div className="dispute-extra-card">
-                  <div className="dex-icon" aria-hidden="true">🎯</div>
-                  <h4>Letter tracking — won / partial / lost</h4>
-                  <p>
-                    We watch the provider&rsquo;s inbox reply for you. Status flips automatically
-                    when a resolution lands, so you always know which letters are still live and
-                    which have paid out.
-                  </p>
-                  <div className="dex-status-row">
-                    <span className="dex-chip dex-chip-won">Won · £412 refunded</span>
-                    <span className="dex-chip dex-chip-part">Partial · fee waived</span>
-                    <span className="dex-chip dex-chip-pend">Awaiting reply · 7d</span>
-                  </div>
+              </div>
+
+              {/* Right-side info panels */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} className="reveal">
+                <div
+                  style={{
+                    background: '#fff',
+                    border: '1px solid var(--divider)',
+                    borderRadius: '16px',
+                    padding: '24px',
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: '0 0 16px',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    Auto-tagged this month
+                  </h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {['£38 hike detected', '1 subscription duplicate', 'Trial ending this week'].map((item, i) => (
+                      <li key={i} style={{ fontSize: '14px', color: 'var(--text-secondary)', paddingLeft: '26px', position: 'relative' }}>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            color: 'var(--accent-mint-deep)',
+                            fontWeight: 800,
+                          }}
+                        >
+                          ✓
+                        </span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <div className="dispute-extra-card">
-                  <div className="dex-icon" aria-hidden="true">📊</div>
-                  <h4>Google Sheets &amp; CSV export</h4>
-                  <p>
-                    Every dispute, subscription and saving exports in one click on Pro — so you
-                    keep your own audit trail and can hand it to an accountant or regulator if
-                    things escalate.
-                  </p>
-                  <div className="dex-export-row">
-                    <span className="dex-file">disputes-oct-2026.csv</span>
-                    <span className="dex-file dex-file-alt">savings-q4.xlsx</span>
+
+                <div
+                  style={{
+                    background: '#fff',
+                    border: '1px solid var(--divider)',
+                    borderRadius: '16px',
+                    padding: '24px',
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: '0 0 16px',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    One tap · three outcomes
+                  </h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {['Cancel', 'Dispute', 'Switch'].map((action, i) => (
+                      <li key={i} style={{ fontSize: '14px', color: 'var(--text-secondary)', paddingLeft: '26px', position: 'relative' }}>
+                        <span
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            color: 'var(--accent-mint-deep)',
+                            fontWeight: 800,
+                          }}
+                        >
+                          ✓
+                        </span>
+                        {action}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 03 · Money Hub */}
+        <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
+          <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+            <span
+              className="eyebrow"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '14px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                color: 'var(--accent-mint-deep)',
+              }}
+            >
+              03 · MONEY HUB
+            </span>
+            <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
+              Daily dashboard + Emma comparison
+            </h2>
+            <p style={{ fontSize: '17px', margin: 0 }}>
+              Open Banking sync. Auto-categorised transactions. Spending intelligence.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 340px',
+              gap: '40px',
+              alignItems: 'stretch',
+            }}
+          >
+            {/* iPhone Money Hub */}
+            <div
+              style={{
+                width: '360px',
+                height: '740px',
+                background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
+                borderRadius: '52px',
+                padding: '11px',
+                boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+              }}
+              className="reveal"
+            >
+              <div style={{ width: '100%', height: '100%', background: '#000', borderRadius: '42px', padding: '3px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ width: '100%', height: '100%', borderRadius: '39px', overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+                  {/* Status bar */}
+                  <div style={{ height: '52px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 28px 0', fontSize: '14px', fontWeight: 600, position: 'relative' }}>
+                    <span>9:41</span>
+                    <div style={{ position: 'absolute', left: '50%', top: '8px', transform: 'translateX(-50%)', width: '108px', height: '30px', background: '#000', borderRadius: '18px' }} />
+                    <span>🔋</span>
+                  </div>
+
+                  {/* Money Hub content */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px' }}>
+                    <div style={{ padding: '8px 8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.01em' }}>Money Hub</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 600 }}>This month</span>
+                    </div>
+
+                    {/* Net card */}
+                    <div
+                      style={{
+                        margin: '0 8px 14px',
+                        padding: '18px',
+                        borderRadius: '16px',
+                        background: 'linear-gradient(135deg, var(--accent-mint-wash), #D1FAE5)',
+                        border: '1px solid #A7F3D0',
+                      }}
+                    >
+                      <div style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--accent-mint-deep)', marginBottom: '6px' }}>
+                        Net this month
+                      </div>
+                      <div style={{ fontSize: '36px', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, margin: '6px 0 2px', color: 'var(--text-primary)' }}>
+                        £2,847.12
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--accent-mint-deep)', fontWeight: 600 }}>↗ £312 vs Sep</div>
+                    </div>
+
+                    {/* Donut + legend */}
+                    <div style={{ display: 'flex', gap: '10px', margin: '0 8px 12px', alignItems: 'center' }}>
+                      <div
+                        style={{
+                          width: '86px',
+                          height: '86px',
+                          borderRadius: '50%',
+                          background:
+                            'conic-gradient(var(--accent-mint) 0 38%, var(--accent-orange) 38% 62%, #60A5FA 62% 78%, #A78BFA 78% 90%, #E5E7EB 90% 100%)',
+                          position: 'relative',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: '14px',
+                            background: '#fff',
+                            borderRadius: '50%',
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: 'relative',
+                            zIndex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '9px',
+                            color: 'var(--text-tertiary)',
+                          }}
+                        >
+                          <strong style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: 800 }}>38%</strong>
+                          <span>Essential</span>
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
+                        {[
+                          { label: 'Essentials', pct: '38%', color: 'var(--accent-mint)' },
+                          { label: 'Subs', pct: '24%', color: 'var(--accent-orange)' },
+                          { label: 'Transport', pct: '16%', color: '#60A5FA' },
+                          { label: 'Dining', pct: '12%', color: '#A78BFA' },
+                          { label: 'Other', pct: '10%', color: '#E5E7EB' },
+                        ].map((row, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: row.color, marginRight: '6px' }} />
+                            <span>{row.label}</span>
+                            <span style={{ fontWeight: 700, marginLeft: '4px' }}>{row.pct}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Transaction list */}
+                    <div style={{ padding: '10px 8px 6px', fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                      This week
+                    </div>
+                    {[
+                      { icon: 'T', name: 'Tesco', amt: '£52.30', type: 'out' },
+                      { icon: 'V', name: 'Virgin Media HIKE', amt: '£65.99', type: 'out', tag: 'HIKE' },
+                      { icon: 'S', name: 'Spotify', amt: '£11.99', type: 'out' },
+                    ].map((tx, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 8px' }}>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: tx.type === 'in' ? 'var(--accent-mint-wash)' : '#F3F4F6',
+                            display: 'grid',
+                            placeItems: 'center',
+                            fontSize: '11px',
+                            color: '#000',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {tx.icon}
+                        </div>
+                        <div style={{ flex: 1, fontSize: '12px', fontWeight: 500 }}>
+                          {tx.name}
+                          {tx.tag && (
+                            <span
+                              style={{
+                                marginLeft: '6px',
+                                fontSize: '9px',
+                                background: '#FEF3C7',
+                                color: '#D97706',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 700,
+                              }}
+                            >
+                              {tx.tag}
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: tx.type === 'in' ? 'var(--accent-mint-deep)' : 'var(--text-primary)',
+                          }}
+                        >
+                          {tx.amt}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="how-step reveal">
-              <div className="num">02</div>
-              <h3>Connect your bank and email to surface every hidden cost.</h3>
-              <p>
-                Open Banking via Yapily (FCA-authorised, read-only). Gmail and Outlook scans run
-                in-browser with revocable tokens — nothing is stored longer than needed.
+            {/* Compare pane */}
+            <div
+              className="reveal"
+              style={{
+                background: '#fff',
+                border: '1px solid var(--divider)',
+                borderRadius: '16px',
+                padding: '24px',
+                height: 'fit-content',
+              }}
+            >
+              <h4
+                style={{
+                  margin: '0 0 16px',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                vs Emma
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--divider)', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-tertiary)' }}>
+                <span>Feature</span>
+                <span style={{ textAlign: 'right' }}>Emma</span>
+                <span style={{ textAlign: 'right' }}>Paybacker</span>
+              </div>
+              {[
+                'Account sync',
+                'Subscriptions',
+                'Dispute engine',
+                'Bill hikes',
+                'Telegram agent',
+                'Sheets export',
+                'Switch deals',
+              ].map((feature, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: '12px', alignItems: 'center', padding: '10px 0', borderBottom: i < 6 ? '1px solid var(--divider)' : 'none', fontSize: '12px' }}>
+                  <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{feature}</div>
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: '11px', textAlign: 'right' }}>—</div>
+                  <div style={{ color: 'var(--accent-mint-deep)', fontWeight: 700, fontSize: '11px', textAlign: 'right' }}>✓</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 04 · Pocket Agent (dark) */}
+        <div
+          style={{
+            background: 'var(--surface-ink)',
+            color: 'var(--text-on-ink)',
+            paddingTop: '80px',
+            paddingBottom: '80px',
+          }}
+        >
+          <div className="wrap" style={{ paddingBottom: 0 }}>
+            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+              <span
+                className="eyebrow"
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: 'var(--accent-mint)',
+                }}
+              >
+                04 · POCKET AGENT
+              </span>
+              <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
+                Telegram chat-first agent
+              </h2>
+              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
+                Proactive hike alerts, draft rebuttals, action suggestions. Direct to your phone.
               </p>
-              <div className="bank-list">
-                <div className="bank-row">
-                  <span className="n">Monzo &middot; main</span>
-                  <span className="v">Connected</span>
-                </div>
-                <div className="bank-row">
-                  <span className="n">Barclays &middot; joint</span>
-                  <span className="v">Connected</span>
-                </div>
-                <div className="bank-row">
-                  <span className="n">Chase &middot; savings</span>
-                  <span className="v">Connected</span>
-                </div>
-                <div className="bank-row">
-                  <span className="n">Gmail &middot; inbox scan</span>
-                  <span className="v orange">3 hikes</span>
-                </div>
-                <div className="bank-row">
-                  <span className="n">Outlook &middot; work</span>
-                  <span className="v orange">1 duplicate</span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 420px',
+                gap: '40px',
+                alignItems: 'stretch',
+              }}
+            >
+              {/* Telegram iPhone */}
+              <div
+                style={{
+                  width: '360px',
+                  height: '740px',
+                  background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
+                  borderRadius: '52px',
+                  padding: '11px',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                }}
+                className="reveal"
+              >
+                <div style={{ width: '100%', height: '100%', background: '#000', borderRadius: '42px', padding: '3px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '39px', overflow: 'hidden', background: '#17212B', display: 'flex', flexDirection: 'column' }}>
+                    {/* Telegram header */}
+                    <div style={{ background: '#517DA2', padding: '12px 16px', color: '#fff', fontSize: '14px', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Paybacker Agent</span>
+                      <span>⋮</span>
+                    </div>
+
+                    {/* Messages */}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
+                      {[
+                        { from: 'agent', text: 'Hey! Virgin Media just raised your bill by £12/month. Want me to draft a dispute letter?' },
+                        { from: 'user', text: 'Yeah please, do it' },
+                        { from: 'agent', text: 'Done! Letter sent to your inbox. I\'ll monitor the reply.', hasAction: true },
+                        { from: 'user', text: 'They replied' },
+                        { from: 'agent', text: 'Seen it. Drafting rebuttal now...' },
+                      ].map((msg, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            justifyContent: msg.from === 'agent' ? 'flex-start' : 'flex-end',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              maxWidth: '82%',
+                              padding: '12.5px',
+                              borderRadius: '12px',
+                              background: msg.from === 'agent' ? '#2B5278' : '#F0F7FD',
+                              color: msg.from === 'agent' ? '#fff' : '#0B1220',
+                              fontSize: '12.5px',
+                              lineHeight: '1.4',
+                            }}
+                          >
+                            {msg.text}
+                            {msg.hasAction && (
+                              <div
+                                style={{
+                                  marginTop: '8px',
+                                  padding: '8px 12px',
+                                  background: '#F0F7FD',
+                                  color: '#517DA2',
+                                  borderRadius: '6px',
+                                  fontSize: '10.5px',
+                                  fontWeight: 600,
+                                  display: 'inline-block',
+                                }}
+                              >
+                                📄 View rebuttal
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Input bar */}
+                    <div style={{ padding: '12px 16px', background: '#17212B', borderTop: '1px solid #2B5278' }}>
+                      <input
+                        type="text"
+                        placeholder="Type a message..."
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          border: '1px solid #2B5278',
+                          borderRadius: '6px',
+                          background: '#2B5278',
+                          color: '#fff',
+                          fontSize: '12px',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-              {/* A scan-result summary anchors the bottom of the card and
-                  gives Step 2 visual parity with Step 1's letter preview —
-                  otherwise the bank-list on its own left the card feeling
-                  short and gappy beside the taller Disputes step. */}
-              <div className="scan-summary">
-                <div className="scan-summary-head">
-                  <span className="scan-dot" aria-hidden="true"></span>
-                  <span>Scan complete &middot; 2,147 transactions reviewed</span>
-                </div>
-                <ul className="scan-summary-list">
-                  <li><span className="ss-label">Recurring payments found</span><span className="ss-val">34</span></li>
-                  <li><span className="ss-label">Price hikes in last 90 days</span><span className="ss-val orange">3</span></li>
-                  <li><span className="ss-label">Forgotten / inactive subs</span><span className="ss-val orange">4</span></li>
-                  <li><span className="ss-label">Savings opportunities</span><span className="ss-val mint">£1,247/yr</span></li>
+
+              {/* Scenarios column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="reveal">
+                {[
+                  { q: 'Cancel my gym', a: 'Draft cancellation email citing Consumer Rights Act' },
+                  { q: 'Is £68 fair for 100Mb broadband?', a: 'Compare to Ofcom's benchmark rates' },
+                  { q: 'Any hikes this week?', a: 'Scan inbox & flag price changes' },
+                  { q: 'Monitor Virgin's reply', a: 'Watch thread & draft rebuttal' },
+                  { q: 'Switch to a better deal?', a: 'Show verified partner offers' },
+                  { q: 'What's my total spend?', a: 'Pull from Money Hub + subs' },
+                ].map((scenario, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid #1F2A44',
+                      borderRadius: '12px',
+                      padding: '16px',
+                    }}
+                  >
+                    <div style={{ fontStyle: 'italic', fontSize: '13px', color: '#D1D5DB', marginBottom: '6px' }}>
+                      {scenario.q}
+                    </div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-mint)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span>→</span>
+                      {scenario.a}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 05 · Google Sheets Export */}
+        <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
+          <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+            <span
+              className="eyebrow"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '14px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                color: 'var(--accent-mint-deep)',
+              }}
+            >
+              05 · GOOGLE SHEETS EXPORT
+            </span>
+            <h2 style={{ margin: '12px 0 10px', fontSize: '36px' }}>
+              Live sync + Paybacker-enriched columns
+            </h2>
+            <p style={{ fontSize: '17px', margin: 0 }}>
+              Auto-categorised transactions with Flag, Hike, Duplicate, and Switch tags.
+            </p>
+          </div>
+
+          {/* Sheets frame */}
+          <div
+            className="reveal"
+            style={{
+              background: '#fff',
+              border: '1px solid var(--divider)',
+              borderRadius: '14px',
+              overflow: 'hidden',
+              boxShadow: '0 40px 80px -30px rgba(0,0,0,0.25)',
+              maxWidth: '960px',
+              margin: '0 auto 40px',
+            }}
+          >
+            {/* Browser bar */}
+            <div
+              style={{
+                background: '#F3F4F6',
+                padding: '10px 14px',
+                display: 'flex',
+                gap: '10px',
+                alignItems: 'center',
+                borderBottom: '1px solid var(--divider)',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {['#FF5F56', '#FFBD2E', '#27C93F'].map((color, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      width: '11px',
+                      height: '11px',
+                      borderRadius: '50%',
+                      background: color,
+                    }}
+                  />
+                ))}
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  background: '#fff',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '6px',
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '10px' }}>🔒</span>
+                docs.google.com/spreadsheets/...
+              </div>
+            </div>
+
+            {/* Sheets toolbar */}
+            <div style={{ background: '#fff', padding: '10px 14px', borderBottom: '1px solid var(--divider)', display: 'flex', gap: '8px', alignItems: 'center', fontSize: '12px' }}>
+              <span style={{ display: 'inline-block', width: '16px', height: '16px', background: '#0F9D58', borderRadius: '2px' }} />
+              Paybacker Transactions
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px', fontSize: '16px' }}>
+                📊 🔧 ⋮
+              </div>
+            </div>
+
+            {/* Formula bar */}
+            <div
+              style={{
+                background: '#F9FAFB',
+                padding: '8px 14px',
+                borderBottom: '1px solid var(--divider)',
+                fontSize: '12px',
+                fontFamily: "'JetBrains Mono', monospace",
+                color: 'var(--text-secondary)',
+              }}
+            >
+              fx{' '}
+              <span style={{ color: '#0B1220' }}>
+                =SUMIFS(transactions!D:D, transactions!B:B, "subscription")
+              </span>
+            </div>
+
+            {/* Spreadsheet grid */}
+            <div style={{ padding: '0', background: '#fff' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '12px',
+                }}
+              >
+                <thead>
+                  <tr style={{ background: '#F3F4F6', borderBottom: '1px solid var(--divider)' }}>
+                    {['#', 'Date', 'Merchant', 'Category', 'Amount', 'Flag', 'Paybacker tag'].map((col, i) => (
+                      <th
+                        key={i}
+                        style={{
+                          padding: '8px 12px',
+                          textAlign: 'left',
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          color: 'var(--text-tertiary)',
+                          borderRight: i < 6 ? '1px solid var(--divider)' : 'none',
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { date: '2026-04-20', merchant: 'Tesco', cat: 'Groceries', amt: '£52.30', tag: null },
+                    { date: '2026-04-20', merchant: 'Acme Payroll', cat: 'Income', amt: '+£3,200', tag: null, highlight: 'income' },
+                    { date: '2026-04-20', merchant: 'Virgin Media', cat: 'Broadband', amt: '£65.99', tag: 'HIKE', highlight: 'hike' },
+                    { date: '2026-04-19', merchant: 'Deliveroo', cat: 'Dining', amt: '£28.50', tag: null },
+                    { date: '2026-04-19', merchant: 'Octopus Energy', cat: 'Utilities', amt: '£124.30', tag: 'SWITCHED', highlight: 'new' },
+                    { date: '2026-04-19', merchant: 'Spotify', cat: 'Subs', amt: '£11.99', tag: null },
+                    { date: '2026-04-18', merchant: 'Twitch', cat: 'Subs', amt: '£10.99', tag: 'DUPLICATE', highlight: 'dup' },
+                    { date: '2026-04-18', merchant: 'TfL', cat: 'Transport', amt: '£7.50', tag: null },
+                    { date: '2026-04-18', merchant: 'Netflix', cat: 'Subs', amt: '£12.99', tag: null },
+                    { date: '2026-04-17', merchant: 'Waterstones', cat: 'Other', amt: '£34.00', tag: null },
+                  ].map((row, i) => (
+                    <tr
+                      key={i}
+                      style={{
+                        background:
+                          row.highlight === 'hike'
+                            ? '#FEF3C7'
+                            : row.highlight === 'dup'
+                              ? '#FEE2E2'
+                              : row.highlight === 'new' || row.highlight === 'income'
+                                ? '#D1FAE5'
+                                : '#fff',
+                        borderBottom: '1px solid var(--divider)',
+                      }}
+                    >
+                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px' }}>{i + 1}</td>
+                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px' }}>{row.date}</td>
+                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontWeight: 500 }}>{row.merchant}</td>
+                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontSize: '11px', color: 'var(--text-secondary)' }}>{row.cat}</td>
+                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{row.amt}</td>
+                      <td style={{ padding: '8px 12px', borderRight: '1px solid var(--divider)' }}>
+                        {row.tag && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background:
+                                row.tag === 'HIKE'
+                                  ? '#FEF3C7'
+                                  : row.tag === 'DUPLICATE'
+                                    ? '#FEE2E2'
+                                    : '#D1FAE5',
+                              color:
+                                row.tag === 'HIKE'
+                                  ? '#D97706'
+                                  : row.tag === 'DUPLICATE'
+                                    ? '#B91C1C'
+                                    : '#059669',
+                            }}
+                          >
+                            {row.tag}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 12px' }}>
+                        {row.tag && <span style={{ fontSize: '10px', color: 'var(--accent-mint-deep)' }}>Paybacker</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Export flow */}
+          <div
+            className="reveal"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '24px',
+              fontSize: '13px',
+              fontWeight: 600,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>🏦</span>
+              <span>UK banks</span>
+            </div>
+            <div
+              style={{
+                width: '40px',
+                height: '2px',
+                background: 'var(--accent-mint)',
+                position: 'relative',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  left: '-6px',
+                  top: '-4px',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-mint)',
+                }}
+              />
+            </div>
+            <div
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                background: 'var(--accent-mint-wash)',
+                color: 'var(--accent-mint-deep)',
+                fontWeight: 700,
+              }}
+            >
+              Paybacker
+            </div>
+            <div
+              style={{
+                width: '40px',
+                height: '2px',
+                background: 'var(--accent-mint)',
+                position: 'relative',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  right: '-6px',
+                  top: '-4px',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: 'var(--accent-mint)',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px' }}>📊</span>
+              <span>Google Sheets</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 06 · Stacked (dark) */}
+        <div
+          style={{
+            background: 'var(--surface-ink)',
+            color: 'var(--text-on-ink)',
+            paddingTop: '80px',
+            paddingBottom: '80px',
+          }}
+        >
+          <div className="wrap" style={{ paddingBottom: 0 }}>
+            <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
+              <span
+                className="eyebrow"
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  color: 'var(--accent-mint)',
+                }}
+              >
+                06 · STACKED
+              </span>
+              <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: 'var(--text-on-ink)' }}>
+                Architecture + competitor comparison
+              </h2>
+              <p style={{ fontSize: '17px', margin: 0, color: '#9CA3AF' }}>
+                How Paybacker beats every single incumbent.
+              </p>
+            </div>
+
+            {/* Architecture diagram */}
+            <div
+              className="reveal"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1.3fr 1fr',
+                gap: '24px',
+                marginBottom: '48px',
+                alignItems: 'start',
+              }}
+            >
+              {/* Inputs column */}
+              <div>
+                <h5 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent-orange)', marginBottom: '16px' }}>
+                  Inputs
+                </h5>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.6' }}>
+                  {['Bank accounts', 'Email inbox', 'Contracts', 'Partner APIs'].map((item, i) => (
+                    <li key={i}>• {item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Core column */}
+              <div
+                style={{
+                  background: 'rgba(52, 211, 153, 0.1)',
+                  border: '2px solid var(--accent-mint)',
+                  borderRadius: 'var(--r-card)',
+                  padding: '32px',
+                  textAlign: 'center',
+                  boxShadow: '0 20px 60px -20px rgba(52, 211, 153, 0.3)',
+                }}
+              >
+                <h5
+                  style={{
+                    fontSize: '18px',
+                    fontWeight: 700,
+                    color: 'var(--accent-mint)',
+                    margin: '0 0 16px',
+                  }}
+                >
+                  Paybacker Core
+                </h5>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.6' }}>
+                  {['AI Disputes', 'Sub Detection', 'Hike Alerts', 'Auto Categorise'].map((item, i) => (
+                    <li key={i}>→ {item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Outputs column */}
+              <div>
+                <h5 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--accent-mint)', marginBottom: '16px' }}>
+                  Outputs
+                </h5>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '13px', color: '#D1D5DB', lineHeight: '1.6' }}>
+                  {['Complaint Letters', 'Telegram Chat', 'Sheets Export', 'Switch Deals'].map((item, i) => (
+                    <li key={i}>• {item}</li>
+                  ))}
                 </ul>
               </div>
             </div>
 
-            <div className="how-step reveal">
-              <div className="num">03</div>
-              <h3>Get personalised recommendations from 53+ verified UK partners.</h3>
-              <p>We only show deals that beat your current bill. No sponsored nonsense.</p>
-              <div style={{ marginTop: 'auto' }}>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Broadband</div>
-                    <div className="name">Fibre 150 · 24mo</div>
-                  </div>
-                  <div className="save">Save £432</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Energy</div>
-                    <div className="name">Octopus Tracker</div>
-                  </div>
-                  <div className="save">Save £287</div>
-                </div>
-                <div className="deal-row">
-                  <div>
-                    <div className="cat">Mobile</div>
-                    <div className="name">20GB 5G · SIM only</div>
-                  </div>
-                  <div className="save">Save £156</div>
-                </div>
-              </div>
+            {/* Competitor comparison table */}
+            <div
+              className="reveal"
+              style={{
+                overflowX: 'auto',
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '12px',
+                  minWidth: '100%',
+                }}
+              >
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #1F2A44' }}>
+                    {['Feature', 'Emma', 'Snoop', 'Lunchflow', 'Resolver', 'Which?', 'Paybacker'].map((col, i) => (
+                      <th
+                        key={i}
+                        style={{
+                          padding: '12px',
+                          textAlign: 'left',
+                          fontWeight: 700,
+                          fontSize: '11px',
+                          color: i === 5 ? 'var(--accent-mint)' : '#9CA3AF',
+                          background: i === 5 ? 'rgba(52, 211, 153, 0.05)' : 'transparent',
+                          letterSpacing: '0.05em',
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    'AI dispute letters citing UK law',
+                    'Open Banking subs + hike alerts',
+                    'Telegram pocket agent',
+                    'Google Sheets live export',
+                    '53+ verified switch deals',
+                    'Unlimited complaint letters',
+                    'Price-hike flag on transactions',
+                    '£4.99/mo pricing',
+                  ].map((feature, i) => (
+                    <tr
+                      key={i}
+                      style={{
+                        borderBottom: '1px solid #1F2A44',
+                      }}
+                    >
+                      <td style={{ padding: '12px', fontWeight: 500, color: '#D1D5DB' }}>{feature}</td>
+                      {[0, 1, 2, 3, 4].map((compIdx) => (
+                        <td
+                          key={compIdx}
+                          style={{
+                            padding: '12px',
+                            textAlign: 'center',
+                            color: '#6B7280',
+                            fontSize: '11px',
+                            background: 'transparent',
+                          }}
+                        >
+                          —
+                        </td>
+                      ))}
+                      <td
+                        style={{
+                          padding: '12px',
+                          textAlign: 'center',
+                          color: 'var(--accent-mint)',
+                          fontWeight: 700,
+                          background: 'rgba(52, 211, 153, 0.05)',
+                        }}
+                      >
+                        ✓
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <div className="how-cta-row">
-            <a className="btn btn-mint" href="#try-letter">
-              Try it free — no account needed
-            </a>
-          </div>
         </div>
-      </section>
 
+      </section>
       {/* Deals (mint wash) ----------------------------------------- */}
       <section className="deals-section section-mint" id="deals">
         <div className="wrap">
