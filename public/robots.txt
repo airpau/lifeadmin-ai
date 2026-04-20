@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
+Disallow: /design-preview/
 
 Sitemap: https://paybacker.co.uk/sitemap.xml
