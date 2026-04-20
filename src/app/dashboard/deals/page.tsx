@@ -800,7 +800,16 @@ export default function DealsPage() {
           }
 
           // Find user subscriptions matching this category
-          const matchingSubs = categoryToUserSubs[category] || [];
+          const allMatchingSubs = categoryToUserSubs[category] || [];
+
+          // Deduplicate by normalised provider name — one badge per distinct provider
+          const seenProviders = new Set<string>();
+          const matchingSubs = allMatchingSubs.filter((sub) => {
+            const key = normaliseMerchantName(sub.provider_name).toLowerCase();
+            if (seenProviders.has(key)) return false;
+            seenProviders.add(key);
+            return true;
+          });
 
           // Find best deal for this category
           const bestDeal = affiliatePlans.length > 0 ? findBestDeal(category, affiliatePlans) : null;

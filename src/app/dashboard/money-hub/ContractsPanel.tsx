@@ -1,15 +1,31 @@
 'use client';
 
+import { useState } from 'react';
 import { fmtNum } from '@/lib/format';
-import { Calendar, AlertTriangle, Lock, ExternalLink } from 'lucide-react';
+import { Calendar, AlertTriangle, Lock, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 
+function normaliseProvider(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 export default function ContractsPanel({ data, isPro }: { data: any, isPro: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const subscriptions = data.subscriptions || [];
-  const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
+  const rawActive = subscriptions.filter((s: any) => s.status === 'active');
+
+  // Deduplicate by normalised provider name + amount to remove identical duplicate rows
+  const seenKeys = new Set<string>();
+  const activeSubs = rawActive.filter((s: any) => {
+    const key = `${normaliseProvider(s.provider_name)}|${Math.abs(parseFloat(String(s.amount)) || 0)}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
   
-  // Calculate totals
-  const monthlyTotal = activeSubs.reduce((sum: number, s: any) => {
+  // Totals use the raw (pre-dedup) list so legitimately identical-priced
+  // subscriptions from the same provider are still counted in the spend figure.
+  const monthlyTotal = rawActive.reduce((sum: number, s: any) => {
     const amt = Math.abs(parseFloat(String(s.amount)) || 0);
     if (s.billing_cycle === 'yearly') return sum + amt / 12;
     if (s.billing_cycle === 'quarterly') return sum + amt / 3;
@@ -17,7 +33,7 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
   }, 0);
   
   const switchableCats = new Set(['energy', 'broadband', 'mobile', 'insurance', 'streaming']);
-  const switchableCount = activeSubs.filter((s: any) => switchableCats.has(s.category)).length;
+  const switchableCount = rawActive.filter((s: any) => switchableCats.has(s.category)).length;
 
   return (
     <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 flex flex-col h-full">
@@ -71,7 +87,7 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
           {activeSubs.length === 0 ? (
             <p className="text-sm text-slate-500 text-center py-6">No subscriptions tracked yet.</p>
           ) : (
-            activeSubs.slice(0, 6).map((sub: any) => {
+            activeSubs.slice(0, expanded ? undefined : 6).map((sub: any) => {
               let tag = null;
               if (sub.contract_end_date) {
                 const days = Math.ceil((new Date(sub.contract_end_date).getTime() - new Date().getTime()) / 86400000);
@@ -99,9 +115,14 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
             })
           )}
           {activeSubs.length > 6 && (
-            <Link href="/dashboard/money-hub/payments" className="block text-center text-xs text-slate-500 hover:text-mint-400 pt-1 transition-colors">
-              + {activeSubs.length - 6} more payments
-            </Link>
+            <button
+              onClick={() => setExpanded(prev => !prev)}
+              className="w-full text-center text-xs text-slate-500 hover:text-slate-300 transition-colors pt-1 flex items-center justify-center gap-1"
+            >
+              {expanded
+                ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</>
+                : <><ChevronDown className="h-3.5 w-3.5" /> + {activeSubs.length - 6} more payments</>}
+            </button>
           )}
         </div>
       )}

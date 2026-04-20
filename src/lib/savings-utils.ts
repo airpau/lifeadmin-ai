@@ -35,14 +35,13 @@ export function calculateTotalSavings(deals: any[], priceAlerts: any[]): number 
 
 export function parseComparisonDeals(data: any) {
   const dealsList: any[] = [];
-  let filteredSaving = 0;
-  let filteredCount = 0;
-  
+
   for (const sub of (data.subscriptions || [])) {
     if (!sub.comparisons?.length) continue;
-    
+
     const best = sub.comparisons[0];
     const deal = {
+      subscriptionId: sub.subscriptionId || '',
       subscriptionName: sub.subscriptionName || sub.providerName || 'Unknown',
       currentPrice: best.currentPrice,
       dealProvider: best.dealProvider,
@@ -51,13 +50,28 @@ export function parseComparisonDeals(data: any) {
       dealUrl: best.dealUrl,
       category: sub.category || '',
     };
-    
+
     if (isDealValid(deal)) {
-      filteredSaving += deal.annualSaving;
-      filteredCount++;
       dealsList.push(deal);
     }
   }
-  
-  return { saving: filteredSaving, count: filteredCount, deals: dealsList };
+
+  // Deduplicate by subscriptionId so two subscriptions to the same provider
+  // (e.g. EE broadband + EE mobile) are kept as separate entries.
+  // Deals without a valid subscriptionId are malformed — drop them before dedup.
+  const withId = dealsList.filter((d) => d.subscriptionId);
+  const byId = new Map<string, typeof dealsList[0]>();
+  for (const deal of withId) {
+    const existing = byId.get(deal.subscriptionId);
+    if (!existing || deal.annualSaving > existing.annualSaving) {
+      byId.set(deal.subscriptionId, deal);
+    }
+  }
+  const deduped = Array.from(byId.values());
+
+  return {
+    saving: deduped.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0),
+    count: deduped.length,
+    deals: deduped,
+  };
 }
