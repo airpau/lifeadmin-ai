@@ -49,14 +49,21 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
  * migration was applied, or during the same sync cycle before the trigger fires.
  */
 function deduplicateTransactions(txns: any[]): any[] {
-  // Build settled fingerprints: amount + date + account_id
-  // A pending row that matches any settled fingerprint is the unsettled ghost.
+  // Build settled fingerprints: amount + date + account_id + first-20-chars of merchant/description.
+  //
+  // P2 fix: the original fingerprint (amount|date|account_id) was too broad — two genuinely
+  // different transactions on the same day with the same amount (e.g. two £10 coffees) would
+  // both match the same fingerprint and one would be incorrectly dropped.
+  // Including the first 20 characters of the merchant/description string is enough to
+  // distinguish different merchants while still matching the pending raw description against
+  // the settled merchant name (both typically start with the same token, e.g. "airbnb").
   const settledFingerprints = new Set<string>();
   for (const txn of txns) {
     if (!txn.is_pending) {
-      const date = (txn.timestamp || '').substring(0, 10);
-      const amt  = parseFloat(String(txn.amount)) || 0;
-      settledFingerprints.add(`${amt}|${date}|${txn.account_id || ''}`);
+      const date     = (txn.timestamp || '').substring(0, 10);
+      const amt      = parseFloat(String(txn.amount)) || 0;
+      const merchant = (txn.merchant_name || txn.description || '').toLowerCase().slice(0, 20);
+      settledFingerprints.add(`${amt}|${date}|${txn.account_id || ''}|${merchant}`);
     }
   }
 
@@ -66,9 +73,14 @@ function deduplicateTransactions(txns: any[]): any[] {
     const merchant = (txn.merchant_name || txn.description || '').toLowerCase().trim();
     const amt      = parseFloat(String(txn.amount)) || 0;
 
-    // Case 2: skip pending rows that have a settled counterpart
+    // Case 2: skip pending rows that have a settled counterpart.
+    // Use the same fingerprint as the settled set above: amount+date+account_id+merchant[:20].
+    // The pending row uses its description (no merchant_name yet); the settled row has a
+    // merchant_name. Both typically share the same leading token (e.g. "airbnb", "ben rent"),
+    // so slicing to 20 chars gives enough overlap to match while avoiding false positives.
     if (txn.is_pending) {
-      const fingerprint = `${amt}|${date}|${txn.account_id || ''}`;
+      const merchant    = (txn.merchant_name || txn.description || '').toLowerCase().slice(0, 20);
+      const fingerprint = `${amt}|${date}|${txn.account_id || ''}|${merchant}`;
       if (settledFingerprints.has(fingerprint)) return false;
     }
 
