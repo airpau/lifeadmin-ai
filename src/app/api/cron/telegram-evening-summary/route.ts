@@ -162,6 +162,7 @@ export async function GET(request: NextRequest) {
   const todayStr = now.toISOString().split('T')[0];
   const sevenDaysStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
     .toISOString().split('T')[0];
+  const startOfMonthStr = new Date(Date.UTC(year, month - 1, 1)).toISOString();
 
   // For recent activity: look back 7 days to handle sync lag
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -193,11 +194,18 @@ export async function GET(request: NextRequest) {
       sections.push('*Here\'s your evening money wrap-up:*');
 
       // ------ 1. Month-to-date spending and income ------
-      const [spendingTotalResult, incomeTotalResult, spendingBreakdownResult] =
+      const [spendingTotalResult, incomeTotalResult, spendingBreakdownResult, billsRes, monthDebitsRes] =
         await Promise.all([
           supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: year, p_month: month }),
           supabase.rpc('get_monthly_income_total',   { p_user_id: userId, p_year: year, p_month: month }),
           supabase.rpc('get_monthly_spending',        { p_user_id: userId, p_year: year, p_month: month }),
+          supabase.rpc('get_expected_bills',          { p_user_id: userId, p_year: year, p_month: month }),
+          supabase
+            .from('bank_transactions')
+            .select('merchant_name, description, amount, user_category')
+            .eq('user_id', userId)
+            .lt('amount', 0)
+            .gte('timestamp', startOfMonthStr),
         ]);
 
       const monthlySpending = Number(spendingTotalResult.data ?? 0);
@@ -354,15 +362,93 @@ export async function GET(request: NextRequest) {
         sections.push(paymentSection);
       }
 
-      // ------ 8. Motivational close ------
-      const daysProjection = dayOfMonth > 0 ? Math.round((monthlySpending / dayOfMonth) * daysInMonth) : 0;
-      if (monthlySpending > 0 && daysProjection > 0) {
-        sections.push(
-          `\n\n\u2728 At this rate you're on track to spend *${fmt(daysProjection)}* this month.`,
+      // ------ 8. Intelligent spend forecast ------
+      // Uses known upcoming bills + variable daily rate to avoid naive linear over-projection.
+      // Formula: projected = spent_so_far + unpaid_bills + (daily_variable_rate × days_remaining)
+      try {
+        type ExpectedBill = {
+          provider_name: string;
+          expected_amount: string | number;
+          billing_day: number;
+          occurrence_count: number;
+        };
+
+        // Filter to bills seen at least twice (genuine recurrences, not one-offs)
+        const rawBills = ((billsRes.data ?? []) as ExpectedBill[]).filter(
+          (b) => b.occurrence_count >= 2 && b.occurrence_count <= 30,
         );
-      } else {
+
+        // Build merchant name list from this month's non-transfer debits for paid-bill detection.
+        // Filter out blank/very-short strings — an empty pm would make name.includes("") always
+        // true, falsely marking every expected bill as paid and zeroing unpaidBillsTotal.
+        const paidMerchants = ((monthDebitsRes.data ?? []) as Array<{
+          merchant_name?: string;
+          description?: string;
+          user_category?: string;
+        }>)
+          .filter((t) => !['transfers', 'income'].includes(t.user_category ?? ''))
+          .map((t) =>
+            (t.merchant_name || t.description || '').substring(0, 30).toLowerCase(),
+          )
+          .filter((pm) => pm.length >= 3);
+
+        let paidBillsTotal = 0;
+        let unpaidBillsTotal = 0;
+        let unpaidCount = 0;
+
+        for (const bill of rawBills) {
+          const amount = Math.abs(Number(bill.expected_amount));
+          const name = (bill.provider_name || '').toLowerCase().substring(0, 15);
+          // Loose name match: bill name appears in a transaction or vice-versa.
+          // Guard the reverse-substring check so it only runs when pm is long enough
+          // to avoid spurious matches on very short strings.
+          const isPaid = paidMerchants.some(
+            (pm) => pm.includes(name) || (pm.length >= 8 && name.includes(pm.substring(0, 8))),
+          );
+          if (isPaid) {
+            paidBillsTotal += amount;
+          } else {
+            unpaidBillsTotal += amount;
+            unpaidCount++;
+          }
+        }
+
+        // Variable spend rate: strip out identified fixed bills so one-off large
+        // transactions don't inflate the daily rate.
+        const variableSpent = Math.max(0, monthlySpending - paidBillsTotal);
+        const dailyVariableRate = dayOfMonth > 0 ? variableSpent / dayOfMonth : 0;
+        const projectedVariable = dailyVariableRate * daysRemaining;
+        const projectedTotal = monthlySpending + unpaidBillsTotal + projectedVariable;
+
+        if (rawBills.length > 0 && monthlySpending > 0) {
+          let forecastSection = `\n\n\u2728 *Month Forecast: ${fmt(projectedTotal)}*`;
+          forecastSection += `\n  \u2705 Spent so far: *${fmt(monthlySpending)}*`;
+          if (unpaidBillsTotal > 0) {
+            forecastSection += `\n  \ud83d\udcb3 Known upcoming: *${fmt(unpaidBillsTotal)}* (${unpaidCount} bill${unpaidCount !== 1 ? 's' : ''} remaining)`;
+          }
+          if (daysRemaining > 0) {
+            forecastSection += `\n  \ud83d\udcc8 Est. variable: *${fmt(projectedVariable)}* (${daysRemaining} days \xd7 ${fmt(dailyVariableRate)}/day)`;
+          }
+          sections.push(forecastSection);
+        } else if (monthlySpending > 0 && dayOfMonth > 0) {
+          // No recurring bill data yet — fall back to linear projection
+          const naiveProjection = Math.round((monthlySpending / dayOfMonth) * daysInMonth);
+          sections.push(
+            `\n\n\u2728 At this rate you're on track to spend *${fmt(naiveProjection)}* this month.`,
+          );
+        } else {
+          sections.push(
+            '\n\n\u2728 *Paybacker is working hard to find savings and dispute unfair charges for you.*',
+          );
+        }
+      } catch {
+        // Forecast failed — degrade gracefully to simple linear projection
+        const naiveProjection =
+          dayOfMonth > 0 ? Math.round((monthlySpending / dayOfMonth) * daysInMonth) : 0;
         sections.push(
-          '\n\n\u2728 *Paybacker is working hard to find savings and dispute unfair charges for you.*',
+          naiveProjection > 0
+            ? `\n\n\u2728 At this rate you're on track to spend *${fmt(naiveProjection)}* this month.`
+            : '\n\n\u2728 *Paybacker is working hard to find savings and dispute unfair charges for you.*',
         );
       }
 
