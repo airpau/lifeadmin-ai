@@ -683,7 +683,7 @@ export default function HomepageV2Preview() {
       <section id="how" className="section-light">
         
         {/* 01 · AI Disputes Centre */}
-        <div className="wrap" style={{ paddingBottom: 0 }}>
+        <div id="disputes" className="wrap" style={{ paddingBottom: 0, scrollMarginTop: '80px' }}>
           <div
             className="section-head reveal"
             style={{ marginBottom: '48px' }}
@@ -1117,10 +1117,12 @@ export default function HomepageV2Preview() {
 
         {/* 03 · Subscriptions Tracker */}
         <div
+          id="subs"
           style={{
             background: 'var(--accent-mint-wash)',
             paddingTop: '80px',
             paddingBottom: '80px',
+            scrollMarginTop: '80px',
           }}
         >
           <div className="wrap" style={{ paddingBottom: 0 }}>
@@ -1457,7 +1459,7 @@ export default function HomepageV2Preview() {
         </div>
 
         {/* 04 · Money Hub */}
-        <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
+        <div id="hub" className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px', scrollMarginTop: '80px' }}>
           <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
             <span
               className="eyebrow"
@@ -1696,7 +1698,7 @@ export default function HomepageV2Preview() {
         </div>
 
         {/* 05 · Google Sheets Export */}
-        <div className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px' }}>
+        <div id="sheets" className="wrap" style={{ paddingTop: '80px', paddingBottom: '80px', scrollMarginTop: '80px' }}>
           <div className="section-head reveal" style={{ marginBottom: '48px', textAlign: 'center' }}>
             <span
               className="eyebrow"
@@ -1973,11 +1975,13 @@ export default function HomepageV2Preview() {
 
         {/* 06 · Stacked (dark) */}
         <div
+          id="stacked"
           style={{
             background: 'var(--surface-ink)',
             color: 'var(--text-on-ink)',
             paddingTop: '80px',
             paddingBottom: '80px',
+            scrollMarginTop: '80px',
           }}
         >
           <div className="wrap" style={{ paddingBottom: 0 }}>
@@ -2661,10 +2665,10 @@ export default function HomepageV2Preview() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="/complaints">Disputes Centre</a>
-              <a href="/dashboard">Money Hub</a>
+              <a href="/#disputes">Disputes Centre</a>
+              <a href="/#hub">Money Hub</a>
               <a href="/#pocket-agent">Pocket Agent</a>
-              <a href="/deals">Deals</a>
+              <a href="/#deals">Deals</a>
               <a href="/pricing">Pricing</a>
             </div>
             <div className="footer-col">
