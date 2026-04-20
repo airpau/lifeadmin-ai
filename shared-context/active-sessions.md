@@ -1,4 +1,16 @@
-# Active Sessions — Last Updated 11 Apr 2026 13:20 UTC
+# Active Sessions — Last Updated 20 Apr 2026 18:00 UTC
+
+## Latest: Business Monitor — 20 Apr 2026 (evening)
+- 4 PRs merged to production today:
+  - #100: Homepage hero live saved-this-month figure (no more "coming soon")
+  - #101: Google Sheets export tab live, parallelised dashboard overview
+  - #103: Sheets Sync Now button + first-sync backfill
+  - #104: Sheets DB query pagination + dedup by transaction_id (idempotent)
+- 3 new PRs opened: #99 (email rate limit types), #102 (gmail scan guard), #105 (homepage redesign preview)
+- 30 open PRs in queue — review backlog building
+- Evening Telegram check-in sent to Paul
+
+
 
 ## Latest: Cowork Session — 11 Apr 2026
 - Fixed Telegram bot (was dead — fire-and-forget root cause)
