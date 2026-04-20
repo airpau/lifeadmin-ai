@@ -68,16 +68,19 @@ async function sendTelegramMessage(
   token: string,
   chatId: number,
   text: string,
+  replyMarkup?: object,
 ): Promise<boolean> {
   const chunks = splitMessage(text);
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1;
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: chunk,
+        text: chunks[i],
         parse_mode: 'Markdown',
+        ...(isLast && replyMarkup ? { reply_markup: replyMarkup } : {}),
       }),
     });
     const data = (await res.json()) as { ok: boolean };
@@ -368,7 +371,12 @@ export async function GET(request: NextRequest) {
 
       // ------ Build and send ------
       const message = sections.join('');
-      const ok = await sendTelegramMessage(token, Number(chatId), message);
+      const snoozeKeyboard = {
+        inline_keyboard: [[
+          { text: 'Snooze budget alerts 7 days ⏰', callback_data: 'budget_snooze:7d' },
+        ]],
+      };
+      const ok = await sendTelegramMessage(token, Number(chatId), message, snoozeKeyboard);
 
       if (ok) {
         sent++;

@@ -13,6 +13,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normaliseMerchant } from './normalise-merchant';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,16 +97,28 @@ export function buildActionButtons(
   alertType: string,
   affiliateUrl: string | null,
   amountChange: number | null,
+  providerName?: string | null,
 ): TgButton[][] {
   switch (alertType) {
-    case 'price_increase':
+    case 'price_increase': {
+      const norm = normaliseMerchant(providerName ?? '');
+      if (!norm) {
+        // No merchant context — can't scope ack/snooze safely; show dispute + dismiss only
+        return [
+          [
+            { text: 'Raise Dispute 🔴', callback_data: `palert_draft_${alertId}` },
+            { text: '🔕 Dismiss',        callback_data: `palert_dismiss_${alertId}` },
+          ],
+        ];
+      }
       return [
         [
-          { text: '⚡ Draft dispute letter', callback_data: `palert_draft_${alertId}` },
-          { text: '✅ Accept increase',       callback_data: `palert_accept_${alertId}` },
+          { text: 'Raise Dispute 🔴', callback_data: `palert_draft_${alertId}` },
+          { text: 'Looks right ✅',   callback_data: `price_action:ack:${norm}` },
         ],
-        [{ text: '🔕 Dismiss', callback_data: `palert_dismiss_${alertId}` }],
+        [{ text: 'Snooze 7 days ⏰', callback_data: `price_action:snooze:${norm}` }],
       ];
+    }
 
     case 'subscription_detected':
       return [
@@ -245,7 +258,7 @@ export async function sendBatchedDigest(
         chat_id:      chatId,
         text,
         parse_mode:   'Markdown',
-        reply_markup: { inline_keyboard: buildActionButtons(a.id, a.alert_type, a.affiliate_url, a.amount_change) },
+        reply_markup: { inline_keyboard: buildActionButtons(a.id, a.alert_type, a.affiliate_url, a.amount_change, a.provider_name) },
       }),
     }).then(r => r.json() as Promise<{ ok: boolean }>);
 

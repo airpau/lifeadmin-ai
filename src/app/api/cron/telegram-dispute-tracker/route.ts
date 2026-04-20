@@ -30,11 +30,21 @@ function fmtDate(dateStr: string): string {
   });
 }
 
-async function sendTelegramMessage(token: string, chatId: number, text: string): Promise<boolean> {
+async function sendTelegramMessage(
+  token: string,
+  chatId: number,
+  text: string,
+  replyMarkup?: object,
+): Promise<boolean> {
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: 'Markdown',
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
   });
   const data = (await res.json()) as { ok: boolean };
   return data.ok;
@@ -154,6 +164,18 @@ export async function GET(request: NextRequest) {
 
         if (recentAlert) continue; // Already sent this week
 
+        // Skip if user has snoozed follow-up reminders for this specific dispute
+        const { data: disputeSnooze } = await supabase
+          .from('user_notification_snoozes')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('snooze_type', 'dispute_followup')
+          .eq('reference_key', dispute.id)
+          .gt('snoozed_until', now.toISOString())
+          .maybeSingle();
+
+        if (disputeSnooze) continue;
+
         let message: string;
 
         if (isPastDeadline) {
@@ -183,7 +205,17 @@ export async function GET(request: NextRequest) {
             `_Ask me to "draft a follow-up letter to ${dispute.provider_name}" to escalate_`;
         }
 
-        const ok = await sendTelegramMessage(token, Number(chatId), message);
+        const disputeKeyboard = {
+          inline_keyboard: [
+            [
+              { text: 'Draft Follow-up ✍️', callback_data: `dispute_followup:draft:${dispute.id}` },
+              { text: 'View Dispute →',    callback_data: `dispute_followup:view:${dispute.id}` },
+            ],
+            [{ text: 'Snooze 7 days ⏰', callback_data: `dispute_followup:snooze:${dispute.id}` }],
+          ],
+        };
+
+        const ok = await sendTelegramMessage(token, Number(chatId), message, disputeKeyboard);
         if (ok) {
           sent++;
           await supabase.from('notification_log').insert({

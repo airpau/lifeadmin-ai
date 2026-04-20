@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { normaliseMerchant } from '@/lib/telegram/normalise-merchant';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -143,11 +144,12 @@ export async function GET(request: NextRequest) {
 
       if (issue) {
         const annualImpact = Number(alert.annual_impact);
+        const merchantNorm = normaliseMerchant(alert.merchant_name ?? '');
         if (annualImpact > 240) {
           // > £20/mo: send immediately
           const { ok, messageId } = await sendProactiveAlert({
             chatId: Number(chatId),
-            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualImpact, issue_type: 'price_increase' },
+            issue: { id: issue.id, title, detail, recommendation, amount_impact: annualImpact, issue_type: 'price_increase', merchantNorm },
           });
           if (ok && messageId) {
             await supabase
@@ -166,7 +168,7 @@ export async function GET(request: NextRequest) {
             providerName: alert.merchant_name ?? undefined,
             amount:      Number(alert.new_amount),
             amountChange: Number(alert.new_amount) - Number(alert.old_amount),
-            referenceKey: `alerts_price_${String(alert.merchant_name ?? 'unknown').toLowerCase().replace(/\s+/g, '_')}_${monthStr}`,
+            referenceKey: `alerts_price_${normaliseMerchant(alert.merchant_name ?? 'unknown')}_${monthStr}`,
             sourceId:    issue.id,
             metadata:    { detected_issue_id: issue.id, source: 'telegram_alerts' },
           });
@@ -387,6 +389,8 @@ export async function GET(request: NextRequest) {
           recommendation: followUpText.recommendation,
           amount_impact: null,
           issue_type: issue.issue_type,
+          // source_id is the disputes.id when source_type = 'dispute'
+          disputeId: issue.source_id ?? undefined,
         },
         showFollowUpButtons: true,
       });

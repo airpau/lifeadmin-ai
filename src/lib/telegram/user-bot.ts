@@ -1226,7 +1226,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const text = `📋 *${buildAlertLine(alert)}*\n\n${alert.metadata?.detail as string ?? ''}`.trim();
       await ctx.api.sendMessage(chatId, text, {
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: buildActionButtons(alert.id, alert.alert_type, alert.affiliate_url, alert.amount_change) as any },
+        reply_markup: { inline_keyboard: buildActionButtons(alert.id, alert.alert_type, alert.affiliate_url, alert.amount_change, alert.provider_name) as any },
       });
     } catch (err) {
       console.error('[UserBot] palert_expand_ error:', err);
@@ -1452,6 +1452,353 @@ Return JSON: { "subject": "...", "body": "..." }`;
       try {
         await ctx.api.sendMessage(chatId, `Sorry, couldn't generate the letter. Ask me: "Write a complaint to [provider name]"`);
       } catch { /* silent */ }
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: dispute_followup:draft:{disputeId}
+  // Generate a chaser / escalation letter for an existing dispute.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^dispute_followup:draft:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Generating follow-up letter...' });
+    const disputeId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+
+    const supabase = getAdmin();
+    const [disputeRes, sessionRes] = await Promise.all([
+      supabase
+        .from('disputes')
+        .select('id, user_id, provider_name, issue_type, issue_summary, disputed_amount, created_at, status')
+        .eq('id', disputeId)
+        .single(),
+      supabase
+        .from('telegram_sessions')
+        .select('user_id')
+        .eq('telegram_chat_id', chatId)
+        .eq('is_active', true)
+        .single(),
+    ]);
+
+    const dispute = disputeRes.data;
+    const session = sessionRes.data;
+
+    if (!dispute || !session || session.user_id !== dispute.user_id) {
+      await ctx.api.sendMessage(chatId, 'Could not find this dispute. Try asking me: "Draft a follow-up letter to [provider]"');
+      return;
+    }
+
+    await ctx.api.sendMessage(chatId, '📝 Generating your follow-up letter... This takes about 15 seconds.');
+
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, first_name, last_name')
+        .eq('id', session.user_id)
+        .single();
+
+      const fullName =
+        profile?.full_name ??
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
+        'Customer';
+
+      const daysOld = Math.floor((Date.now() - new Date(dispute.created_at).getTime()) / (1000 * 60 * 60 * 24));
+      const amountStr = dispute.disputed_amount ? ` regarding £${Number(dispute.disputed_amount).toFixed(2)}` : '';
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+      const chaserPrompt = `Write a formal follow-up chaser letter from a UK consumer to ${dispute.provider_name}.
+
+Customer name: ${fullName}
+Today's date: ${today}
+Original complaint filed: ${daysOld} days ago
+Original issue: ${dispute.issue_summary ?? 'Consumer complaint'}${amountStr}
+
+Context: Under UK consumer law and FCA rules, companies must acknowledge complaints within 5 working days and provide a final response within 8 weeks. This chaser is for a complaint filed ${daysOld} days ago with no adequate response.
+
+Rules:
+- Formal, professional tone — reads as intelligent human writing, not AI
+- Reference that the original complaint was sent ${daysOld} days ago with no response
+- Cite the 8-week FCA/ombudsman deadline
+- State that if no response within 14 days the consumer will escalate to the relevant ombudsman
+- Name the specific ombudsman (Energy Ombudsman for energy, Ombudsman Services for telecoms, Financial Ombudsman for banking)
+- Under 350 words
+- Start with "Dear ${dispute.provider_name} Customer Services,"`;
+
+      const letterResponse = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: chaserPrompt }],
+      });
+
+      const letterText = letterResponse.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+
+      await supabase.from('correspondence').insert({
+        dispute_id: disputeId,
+        user_id: session.user_id,
+        entry_type: 'ai_letter',
+        title: `Follow-up letter to ${dispute.provider_name}`,
+        content: letterText,
+        entry_date: new Date().toISOString(),
+      });
+
+      await ctx.api.sendMessage(
+        chatId,
+        `✅ *Follow-up letter saved to your Disputes*\n\nHere's your chaser — copy and send to ${dispute.provider_name}:`,
+        { parse_mode: 'Markdown' },
+      );
+
+      const MAX_CHUNK = 4000;
+      let pos = 0;
+      while (pos < letterText.length) {
+        let end = Math.min(pos + MAX_CHUNK, letterText.length);
+        if (end < letterText.length) {
+          const nl = letterText.lastIndexOf('\n', end);
+          if (nl > pos + MAX_CHUNK / 2) end = nl + 1;
+        }
+        await ctx.api.sendMessage(chatId, letterText.slice(pos, end));
+        pos = end;
+      }
+    } catch (err) {
+      console.error('[UserBot] dispute_followup:draft error:', err);
+      await ctx.api.sendMessage(
+        chatId,
+        `Sorry, I couldn't generate the letter right now. Try asking me: "Draft a follow-up letter to ${dispute.provider_name}"`,
+      );
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: dispute_followup:snooze:{disputeId}
+  // Suppress follow-up reminders for this dispute for 7 days.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^dispute_followup:snooze:(.+)$/, async (ctx) => {
+    const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const snoozeLabel = snoozeUntil.toLocaleDateString('en-GB');
+    await ctx.answerCallbackQuery({ text: `Snoozed until ${snoozeLabel}` });
+    const disputeId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId  = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+
+    const supabase = getAdmin();
+    const { data: session } = await supabase
+      .from('telegram_sessions')
+      .select('user_id')
+      .eq('telegram_chat_id', chatId)
+      .eq('is_active', true)
+      .single();
+    if (!session) return;
+
+    try {
+      await supabase.from('user_notification_snoozes').upsert(
+        {
+          user_id:       session.user_id,
+          snooze_type:   'dispute_followup',
+          reference_key: disputeId,
+          snoozed_until: snoozeUntil.toISOString(),
+        },
+        { onConflict: 'user_id,snooze_type,reference_key' },
+      );
+      await safeEdit(bot.api, chatId, msgId, `⏰ Follow-up reminders for this dispute snoozed until ${snoozeLabel}. I'll remind you again then.`);
+    } catch (err) {
+      console.error('[UserBot] dispute_followup:snooze error:', err);
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: dispute_followup:view:{disputeId}
+  // Send the dashboard link for this dispute.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^dispute_followup:view:(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const disputeId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+
+    const url = `https://paybacker.co.uk/dashboard/complaints?id=${disputeId}`;
+    await ctx.api.sendMessage(chatId, `🔗 [View your dispute on Paybacker](${url})`, { parse_mode: 'Markdown' });
+  });
+
+  // -------------------------------------------------------
+  // Callback: price_action:ack:{merchantNorm}
+  // User confirms the price increase looks correct — log so cron won't re-alert this month.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^price_action:ack:(.*)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Got it — noted ✅' });
+    const merchantNorm = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId  = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+
+    const supabase = getAdmin();
+    const { data: session } = await supabase
+      .from('telegram_sessions')
+      .select('user_id')
+      .eq('telegram_chat_id', chatId)
+      .eq('is_active', true)
+      .single();
+    if (!session) return;
+    const { user_id: userId } = session;
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    try {
+      // Log to notification_log to prevent re-alerting this month
+      await supabase.from('notification_log').upsert(
+        { user_id: userId, notification_type: 'price_increase', reference_key: `${merchantNorm}_${monthStr}` },
+        { onConflict: 'user_id,notification_type,reference_key', ignoreDuplicates: true },
+      );
+
+      // Dismiss any active detected_issues matching this merchant
+      if (merchantNorm) {
+        const { data: issues } = await supabase
+          .from('detected_issues')
+          .select('id, title')
+          .eq('user_id', userId)
+          .eq('issue_type', 'price_increase')
+          .eq('status', 'active');
+
+        const searchTerm = merchantNorm.replace(/_/g, ' ').split(' ').filter(Boolean)[0] ?? '';
+        const matchingIds = (issues ?? [])
+          .filter(i => searchTerm && i.title.toLowerCase().includes(searchTerm))
+          .map(i => i.id);
+
+        if (matchingIds.length > 0) {
+          await supabase.from('detected_issues').update({ status: 'dismissed' }).in('id', matchingIds);
+        }
+
+        // Dismiss matching pending alerts
+        await supabase
+          .from('telegram_pending_alerts')
+          .update({ status: 'dismissed' })
+          .eq('user_id', userId)
+          .eq('alert_type', 'price_increase')
+          .eq('status', 'pending')
+          .ilike('reference_key', `%${merchantNorm}%`);
+      }
+
+      const displayName = merchantNorm.replace(/_/g, ' ').trim();
+      const msg = displayName
+        ? `✅ Got it — the ${displayName} price change looks correct. I won't alert you about this again this month.`
+        : "✅ Got it — price increase acknowledged. I won't alert you about this again this month.";
+      await safeEdit(bot.api, chatId, msgId, msg);
+    } catch (err) {
+      console.error('[UserBot] price_action:ack error:', err);
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: price_action:snooze:{merchantNorm}
+  // Suppress this merchant's price-increase alerts for 7 days.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^price_action:snooze:(.*)$/, async (ctx) => {
+    const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const snoozeLabel = snoozeUntil.toLocaleDateString('en-GB');
+    await ctx.answerCallbackQuery({ text: `Snoozed until ${snoozeLabel}` });
+    const merchantNorm = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId  = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+
+    const supabase = getAdmin();
+    const { data: session } = await supabase
+      .from('telegram_sessions')
+      .select('user_id')
+      .eq('telegram_chat_id', chatId)
+      .eq('is_active', true)
+      .single();
+    if (!session) return;
+    const { user_id: userId } = session;
+
+    try {
+      await supabase.from('user_notification_snoozes').upsert(
+        {
+          user_id:       userId,
+          snooze_type:   'price_merchant',
+          reference_key: merchantNorm,
+          snoozed_until: snoozeUntil.toISOString(),
+        },
+        { onConflict: 'user_id,snooze_type,reference_key' },
+      );
+
+      if (merchantNorm) {
+        // Snooze any active detected_issues for this merchant
+        const { data: issues } = await supabase
+          .from('detected_issues')
+          .select('id, title')
+          .eq('user_id', userId)
+          .eq('issue_type', 'price_increase')
+          .eq('status', 'active');
+
+        const searchTerm = merchantNorm.replace(/_/g, ' ').split(' ').filter(Boolean)[0] ?? '';
+        const matchingIds = (issues ?? [])
+          .filter(i => searchTerm && i.title.toLowerCase().includes(searchTerm))
+          .map(i => i.id);
+
+        if (matchingIds.length > 0) {
+          await supabase.from('detected_issues')
+            .update({ status: 'snoozed', snooze_until: snoozeUntil.toISOString() })
+            .in('id', matchingIds);
+        }
+
+        // Suppress matching pending alerts
+        await supabase
+          .from('telegram_pending_alerts')
+          .update({ status: 'dismissed' })
+          .eq('user_id', userId)
+          .eq('alert_type', 'price_increase')
+          .eq('status', 'pending')
+          .ilike('reference_key', `%${merchantNorm}%`);
+      }
+
+      const displayName = merchantNorm.replace(/_/g, ' ').trim();
+      const msg = displayName
+        ? `⏰ ${displayName} price alerts snoozed until ${snoozeLabel}. I'll remind you again then.`
+        : `⏰ Price alerts snoozed until ${snoozeLabel}.`;
+      await safeEdit(bot.api, chatId, msgId, msg);
+    } catch (err) {
+      console.error('[UserBot] price_action:snooze error:', err);
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: budget_snooze:7d
+  // Suppress all budget-overspend alerts for 7 days.
+  // -------------------------------------------------------
+  bot.callbackQuery('budget_snooze:7d', async (ctx) => {
+    const snoozeUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const snoozeLabel = snoozeUntil.toLocaleDateString('en-GB');
+    await ctx.answerCallbackQuery({ text: `Budget alerts snoozed until ${snoozeLabel}` });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId  = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+
+    const supabase = getAdmin();
+    const { data: session } = await supabase
+      .from('telegram_sessions')
+      .select('user_id')
+      .eq('telegram_chat_id', chatId)
+      .eq('is_active', true)
+      .single();
+    if (!session) return;
+
+    try {
+      await supabase.from('user_notification_snoozes').upsert(
+        {
+          user_id:       session.user_id,
+          snooze_type:   'budget_alerts',
+          reference_key: 'all',
+          snoozed_until: snoozeUntil.toISOString(),
+        },
+        { onConflict: 'user_id,snooze_type,reference_key' },
+      );
+      await safeEdit(bot.api, chatId, msgId, `⏰ Budget alerts snoozed until ${snoozeLabel}. I'll resume them then.`);
+    } catch (err) {
+      console.error('[UserBot] budget_snooze:7d error:', err);
     }
   });
 
@@ -1709,6 +2056,8 @@ export async function sendProactiveAlert(params: {
     recommendation?: string | null;
     amount_impact?: number | null;
     issue_type: string;
+    merchantNorm?: string;
+    disputeId?: string;
   };
   showFollowUpButtons?: boolean;
 }): Promise<{ messageId?: number; ok: boolean }> {
@@ -1727,28 +2076,50 @@ export async function sendProactiveAlert(params: {
   let replyMarkup: object;
 
   if (showFollowUpButtons) {
-    // Follow-up: did the complaint get resolved?
-    replyMarkup = {
-      inline_keyboard: [
-        [
-          { text: 'Yes, resolved ✅', callback_data: `confirm_saving_${issue.id}` },
-          { text: 'Not yet — snooze', callback_data: `snooze_${issue.id}` },
-        ],
-        [
-          { text: 'Dismiss', callback_data: `dismiss_${issue.id}` },
-        ],
-      ],
-    };
+    const dId = issue.disputeId;
+    replyMarkup = dId
+      ? {
+          inline_keyboard: [
+            [
+              { text: 'Draft Follow-up ✍️', callback_data: `dispute_followup:draft:${dId}` },
+              { text: 'Yes, resolved ✅',   callback_data: `confirm_saving_${issue.id}` },
+            ],
+            [
+              { text: 'Snooze 7 days ⏰',  callback_data: `dispute_followup:snooze:${dId}` },
+              { text: 'View Dispute →',    callback_data: `dispute_followup:view:${dId}` },
+            ],
+          ],
+        }
+      : {
+          // Legacy path: no dispute ID — show generic resolution buttons
+          inline_keyboard: [
+            [
+              { text: 'Yes, resolved ✅', callback_data: `confirm_saving_${issue.id}` },
+              { text: 'Not yet — snooze', callback_data: `snooze_${issue.id}` },
+            ],
+            [{ text: 'Dismiss', callback_data: `dismiss_${issue.id}` }],
+          ],
+        };
   } else if (issue.issue_type === 'price_increase') {
-    replyMarkup = {
-      inline_keyboard: [
-        [
-          { text: '⚡ Draft dispute letter', callback_data: `draft_dispute_${issue.id}` },
-          { text: '✅ Accept increase',       callback_data: `accept_increase_${issue.id}` },
-        ],
-        [{ text: '🔕 Dismiss', callback_data: `dismiss_${issue.id}` }],
-      ],
-    };
+    const mNorm = (issue.merchantNorm ?? '').slice(0, 48);
+    replyMarkup = mNorm
+      ? {
+          inline_keyboard: [
+            [
+              { text: 'Raise Dispute 🔴', callback_data: `draft_dispute_${issue.id}` },
+              { text: 'Looks right ✅',   callback_data: `price_action:ack:${mNorm}` },
+            ],
+            [{ text: 'Snooze 7 days ⏰', callback_data: `price_action:snooze:${mNorm}` }],
+          ],
+        }
+      : {
+          inline_keyboard: [
+            [
+              { text: 'Raise Dispute 🔴', callback_data: `draft_dispute_${issue.id}` },
+              { text: '🔕 Dismiss',        callback_data: `dismiss_${issue.id}` },
+            ],
+          ],
+        };
   } else if (issue.issue_type === 'contract_expiring') {
     replyMarkup = {
       inline_keyboard: [
@@ -1768,14 +2139,16 @@ export async function sendProactiveAlert(params: {
     };
   } else {
     // budget_overrun, unused_subscription, etc.
-    replyMarkup = {
-      inline_keyboard: [
-        [
-          { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
-          { text: '🔕 Dismiss',    callback_data: `dismiss_${issue.id}` },
-        ],
+    const rows: Array<Array<{ text: string; callback_data: string }>> = [
+      [
+        { text: 'Snooze 7 days', callback_data: `snooze_${issue.id}` },
+        { text: '🔕 Dismiss',    callback_data: `dismiss_${issue.id}` },
       ],
-    };
+    ];
+    if (issue.issue_type === 'budget_overrun') {
+      rows.push([{ text: 'Snooze budget alerts 7 days ⏰', callback_data: 'budget_snooze:7d' }]);
+    }
+    replyMarkup = { inline_keyboard: rows };
   }
 
   const res = await fetch(`${TELEGRAM_API}/sendMessage`, {

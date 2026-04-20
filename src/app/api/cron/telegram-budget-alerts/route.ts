@@ -26,11 +26,21 @@ function fmt(amount: number): string {
   return `£${Math.abs(amount).toFixed(2)}`;
 }
 
-async function sendTelegramMessage(token: string, chatId: number, text: string): Promise<boolean> {
+async function sendTelegramMessage(
+  token: string,
+  chatId: number,
+  text: string,
+  replyMarkup?: object,
+): Promise<boolean> {
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: 'Markdown',
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
   });
   const data = (await res.json()) as { ok: boolean };
   return data.ok;
@@ -108,6 +118,18 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      // Skip if the user has snoozed budget alerts
+      const { data: budgetSnooze } = await supabase
+        .from('user_notification_snoozes')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('snooze_type', 'budget_alerts')
+        .eq('reference_key', 'all')
+        .gt('snoozed_until', new Date().toISOString())
+        .maybeSingle();
+
+      if (budgetSnooze) continue;
+
       // Get user's budget limits
       const { data: budgets } = await supabase
         .from('money_hub_budgets')
@@ -173,7 +195,12 @@ export async function GET(request: NextRequest) {
           `${statusText}\n\n` +
           `_Ask me "show my budget status" for a full overview_`;
 
-        const ok = await sendTelegramMessage(token, Number(chatId), message);
+        const snoozeKeyboard = {
+          inline_keyboard: [[
+            { text: 'Snooze budget alerts 7 days ⏰', callback_data: 'budget_snooze:7d' },
+          ]],
+        };
+        const ok = await sendTelegramMessage(token, Number(chatId), message, snoozeKeyboard);
         if (ok) {
           sent++;
           // Log the alert to prevent duplicates
