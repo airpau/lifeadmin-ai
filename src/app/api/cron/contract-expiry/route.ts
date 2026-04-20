@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendContractEndAlert } from '@/lib/email/contract-end-alerts';
 import { canSendEmail } from '@/lib/email-rate-limit';
+// NOTE: we must insert into `tasks` after every successful send so that
+// canSendEmail()'s query correctly counts this send toward the daily cap.
 
 export const maxDuration = 60;
 
@@ -211,6 +213,14 @@ export async function GET(request: NextRequest) {
             .eq('user_id', userId)
             .eq('alert_type', alertType)
             .eq('alert_channel', 'email');
+          // Record the send so canSendEmail() counts it toward today's cap
+          await supabase.from('tasks').insert({
+            user_id: userId,
+            type: 'contract_end_alert',
+            title: `Contract end alert: ${sub.provider_name} (${window}d)`,
+            description: `${window}d contract end alert sent for ${sub.provider_name} — £${monthlyAmount.toFixed(2)}/mo`,
+            status: 'completed',
+          });
           emailsSent++;
         }
       }
