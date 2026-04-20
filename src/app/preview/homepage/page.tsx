@@ -999,7 +999,7 @@ export default function HomepageV2Preview() {
                   background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
                   borderRadius: '52px',
                   padding: '11px',
-                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.1)',
                 }}
                 className="reveal"
               >
@@ -1161,7 +1161,7 @@ export default function HomepageV2Preview() {
                   background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
                   borderRadius: '52px',
                   padding: '11px',
-                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                  boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.1)',
                   position: 'relative',
                   transform: 'rotate(-4deg)',
                 }}
@@ -1339,81 +1339,116 @@ export default function HomepageV2Preview() {
                 </div>
               </div>
 
-              {/* Right-side info panels */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} className="reveal">
+              {/* Right-side info panels — matches Claude Design handoff */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} className="reveal">
+                {/* Flagged this month card */}
                 <div
                   style={{
                     background: '#fff',
                     border: '1px solid var(--divider)',
                     borderRadius: '16px',
-                    padding: '24px',
+                    padding: '22px',
+                    boxShadow: 'var(--shadow-md)',
                   }}
                 >
                   <h4
                     style={{
-                      margin: '0 0 16px',
-                      fontSize: '14px',
-                      fontWeight: 700,
+                      margin: '0 0 12px',
+                      fontSize: '15px',
+                      fontWeight: 800,
                       letterSpacing: '-0.01em',
+                      color: 'var(--accent-orange-deep, #C2410C)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
                     }}
                   >
-                    Auto-tagged this month
+                    <span>⚠️</span> 4 flagged this month
                   </h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {['£38 hike detected', '1 subscription duplicate', 'Trial ending this week'].map((item, i) => (
-                      <li key={i} style={{ fontSize: '14px', color: 'var(--text-secondary)', paddingLeft: '26px', position: 'relative' }}>
-                        <span
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            color: 'var(--accent-mint-deep)',
-                            fontWeight: 800,
-                          }}
-                        >
-                          ✓
-                        </span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+                  <div style={{ fontSize: '13px', lineHeight: 1.5, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Netflix Premium</strong> — silently raised £3 this month. Fight or cancel?
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Virgin Media</strong> — mid-contract hike. Ofcom allows exit.
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Twitch Turbo</strong> — duplicate with Prime benefits.
+                    </div>
+                    <div>
+                      <strong style={{ color: 'var(--text-primary)' }}>Canva trial</strong> — auto-renews in 3 days unless you act.
+                    </div>
+                  </div>
                 </div>
 
+                {/* One tap three outcomes card */}
                 <div
                   style={{
                     background: '#fff',
                     border: '1px solid var(--divider)',
                     borderRadius: '16px',
-                    padding: '24px',
+                    padding: '22px',
+                    boxShadow: 'var(--shadow-md)',
                   }}
                 >
                   <h4
                     style={{
-                      margin: '0 0 16px',
-                      fontSize: '14px',
-                      fontWeight: 700,
+                      margin: '0 0 14px',
+                      fontSize: '15px',
+                      fontWeight: 800,
                       letterSpacing: '-0.01em',
                     }}
                   >
                     One tap · three outcomes
                   </h4>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {['Cancel', 'Dispute', 'Switch'].map((action, i) => (
-                      <li key={i} style={{ fontSize: '14px', color: 'var(--text-secondary)', paddingLeft: '26px', position: 'relative' }}>
-                        <span
-                          style={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            color: 'var(--accent-mint-deep)',
-                            fontWeight: 800,
-                          }}
-                        >
-                          ✓
-                        </span>
-                        {action}
-                      </li>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
+                    {[
+                      { action: '→ Cancel', detail: 'Deep-link to provider' },
+                      { action: '→ Dispute', detail: 'Hand-off to Disputes' },
+                      { action: '→ Switch', detail: 'Show cheaper deal' },
+                    ].map((row, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: i < 2 ? '10px' : 0, borderBottom: i < 2 ? '1px solid var(--divider)' : 'none' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{row.action}</span>
+                        <span style={{ color: 'var(--accent-mint-deep)', fontWeight: 700 }}>{row.detail}</span>
+                      </div>
                     ))}
+                  </div>
+                </div>
+
+                {/* How to use it + Why it beats Emma/Snoop */}
+                <div
+                  style={{
+                    background: 'var(--accent-mint-wash)',
+                    border: '1px solid var(--accent-mint)',
+                    borderRadius: '16px',
+                    padding: '22px',
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: '0 0 10px',
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      color: 'var(--accent-mint-deep)',
+                    }}
+                  >
+                    Why it beats Emma / Snoop
+                  </h4>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    <li style={{ paddingLeft: '18px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, top: 0, color: 'var(--accent-mint-deep)', fontWeight: 800 }}>•</span>
+                      Emma shows subs. We flag <em>why</em> you should act.
+                    </li>
+                    <li style={{ paddingLeft: '18px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, top: 0, color: 'var(--accent-mint-deep)', fontWeight: 800 }}>•</span>
+                      Every row has a next-step action, not just a line item.
+                    </li>
+                    <li style={{ paddingLeft: '18px', position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 0, top: 0, color: 'var(--accent-mint-deep)', fontWeight: 800 }}>•</span>
+                      Direct hand-off to the AI Disputes Centre on hikes.
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -1460,7 +1495,7 @@ export default function HomepageV2Preview() {
                 background: 'linear-gradient(140deg, #4a4a4a 0%, #6b6b6b 25%, #2a2a2a 70%, #4a4a4a 100%)',
                 borderRadius: '52px',
                 padding: '11px',
-                boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4)',
+                boxShadow: '0 50px 100px -30px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,0,0,0.1)',
               }}
               className="reveal"
             >
@@ -1470,7 +1505,7 @@ export default function HomepageV2Preview() {
                   <div style={{ height: '52px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 28px 0', fontSize: '14px', fontWeight: 600, position: 'relative' }}>
                     <span>9:41</span>
                     <div style={{ position: 'absolute', left: '50%', top: '8px', transform: 'translateX(-50%)', width: '108px', height: '30px', background: '#000', borderRadius: '18px' }} />
-                    <span>🔋</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600 }}>●●● 100%</span>
                   </div>
 
                   {/* Money Hub content */}
