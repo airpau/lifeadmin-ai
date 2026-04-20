@@ -209,33 +209,38 @@ async function syncTransactionsForConnection(
   const { fetchTransactions } = await import('@/lib/truelayer');
 
   // ── From-date strategy ─────────────────────────────────────────────────────
-  // TrueLayer enforces a strict 90-day window (from → to must be ≤ 90 days,
-  // and `to` is always set to tomorrow). We use an 89-day cap to stay safely
-  // within that limit.
+  // TrueLayer enforces a strict 90-day window (from → to ≤ 90 days; `to` is
+  // always tomorrow). We use an 89-day cap to stay within that limit.
   //
-  // On FIRST connect: fetch the full 89 days — this is the maximum available.
+  // FIRST CONNECT  → always fetch the full 89 days (maximum available history)
+  // RECONNECT      → backfill from last_synced_at so the gap is covered; fall
+  //                  back to 89 days ago if last_synced_at is missing or older
+  //                  than 89 days.
   //
-  // On RECONNECT: we also fetch the full 89 days so that any gap period
-  // (transactions during the time the connection was expired) is backfilled.
-  // Banks like NatWest will silently restrict their response to on/after the
-  // new consent date — there is no way to retrieve those transactions — but
-  // for banks that do return history (Monzo, Starling, etc.) the backfill
-  // will cover the gap. Either way, fetching from 89 days ago is the safest
-  // approach.
-  //
-  // If connected_at is NEWER than 89 days ago we use connected_at as the
-  // floor instead — some banks reject date ranges that predate the consent.
+  // NOTE: we intentionally do NOT use connected_at as the floor here. Although
+  // connected_at is now preserved as the original date, using it would cause
+  // brand-new connections (connected_at = today) to only fetch today's
+  // transactions. The 89-day cap already limits how far back we can go.
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
   ninetyDaysAgo.setHours(0, 0, 0, 0);
 
-  // Use connected_at as floor if it's more recent than 89 days ago.
-  // (connected_at is now the ORIGINAL connection date, not the reconnect date,
-  // so for long-standing connections this floor will almost always be older
-  // than 89 days and ninetyDaysAgo will be used instead.)
-  const connectedAt = connection.connected_at ? new Date(connection.connected_at) : ninetyDaysAgo;
-  connectedAt.setHours(0, 0, 0, 0);
-  const fromDate = connectedAt > ninetyDaysAgo ? connectedAt : ninetyDaysAgo;
+  let fromDate: Date;
+  if (!reconnectMeta.isReconnect) {
+    // First connect: fetch maximum available history
+    fromDate = ninetyDaysAgo;
+  } else {
+    // Reconnect: backfill from the last known good sync date to cover the gap
+    const priorLastSynced = reconnectMeta.gapFromDate
+      ? new Date(reconnectMeta.gapFromDate)
+      : null;
+    if (priorLastSynced) priorLastSynced.setHours(0, 0, 0, 0);
+    // Cap at 89 days (TrueLayer's hard limit)
+    fromDate =
+      priorLastSynced && priorLastSynced > ninetyDaysAgo
+        ? priorLastSynced
+        : ninetyDaysAgo;
+  }
 
   console.log(
     `TrueLayer callback: ${reconnectMeta.isReconnect ? 're-connect' : 'first-connect'} ` +
