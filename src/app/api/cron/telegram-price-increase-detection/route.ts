@@ -47,6 +47,32 @@ function normaliseProviderName(name: string): string {
   return name.replace(/\s+\d+$/, '').trim();
 }
 
+// Maximum plausible monthly amount per subscription category.
+// Transactions above this ceiling are almost certainly mismatched (e.g. a
+// large loan DD sharing a keyword with a broadband sub) and must not be
+// treated as a price increase.
+const CATEGORY_MAX_AMOUNT: Record<string, number> = {
+  streaming:   50,
+  broadband:  150,
+  mobile:     150,
+  fitness:    150,
+  software:   200,
+  water:      200,
+  energy:     500,
+  insurance:  400,
+  council_tax:400,
+  credit:    1000,
+  loans:     2000,
+  mortgage:  5000,
+};
+const DEFAULT_MAX_AMOUNT = 300;
+
+// Only recurring payment categories are valid for price-increase comparison.
+// Comparing a DD against a bank transfer or one-off purchase produces false positives.
+const RECURRING_TX_CATEGORIES = new Set([
+  'DIRECT_DEBIT', 'STANDING_ORDER', 'direct_debit', 'standing_order',
+]);
+
 function namesMatch(a: string, b: string): boolean {
   const na = normaliseName(a);
   const nb = normaliseName(b);
@@ -139,18 +165,18 @@ export async function GET(request: NextRequest) {
 
       if (!subscriptions || subscriptions.length === 0) continue;
 
-      // Get transactions for both months
+      // Get transactions for both months (category included for payment-type guard)
       const [thisMonthRes, prevMonthRes] = await Promise.all([
         supabase
           .from('bank_transactions')
-          .select('merchant_name, description, amount')
+          .select('merchant_name, description, amount, category')
           .eq('user_id', userId)
           .lt('amount', 0)
           .gte('timestamp', thisMonthStart)
           .lt('timestamp', thisMonthEnd),
         supabase
           .from('bank_transactions')
-          .select('merchant_name, description, amount')
+          .select('merchant_name, description, amount, category')
           .eq('user_id', userId)
           .lt('amount', 0)
           .gte('timestamp', prevMonthStart)
@@ -170,12 +196,14 @@ export async function GET(request: NextRequest) {
       }> = [];
 
       for (const sub of subscriptions) {
+        // Only match Direct Debit / Standing Order transactions — comparing a DD
+        // against a one-off purchase or bank transfer produces false positives
         const thisSub = thisTxns
-          .filter((t) => namesMatch(sub.provider_name, t.merchant_name || t.description || ''))
+          .filter((t) => RECURRING_TX_CATEGORIES.has(t.category ?? '') && namesMatch(sub.provider_name, t.merchant_name || t.description || ''))
           .map((t) => Math.abs(Number(t.amount)));
 
         const prevSub = prevTxns
-          .filter((t) => namesMatch(sub.provider_name, t.merchant_name || t.description || ''))
+          .filter((t) => RECURRING_TX_CATEGORIES.has(t.category ?? '') && namesMatch(sub.provider_name, t.merchant_name || t.description || ''))
           .map((t) => Math.abs(Number(t.amount)));
 
         // Need at least one match in each month
@@ -187,6 +215,15 @@ export async function GET(request: NextRequest) {
 
         // Only alert if increase > £1
         if (increase <= 1) continue;
+
+        // Sanity: skip if the new amount exceeds the plausible ceiling for this category.
+        // A £480 DD matched to a broadband subscription is a mismatched transaction.
+        const maxPlausible = CATEGORY_MAX_AMOUNT[sub.category ?? ''] ?? DEFAULT_MAX_AMOUNT;
+        if (thisAmt > maxPlausible) continue;
+
+        // Sanity: skip if the increase is more than 100% (doubling in one month).
+        // Legitimate price rises are incremental; a 100%+ jump is a data anomaly.
+        if (prevAmt > 0 && increase / prevAmt > 1.0) continue;
 
         // Normalise away trailing digit suffixes banks use to disambiguate duplicate DDs
         // e.g. "Onestream Broadband 1" → "Onestream Broadband"
