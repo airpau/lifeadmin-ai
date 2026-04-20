@@ -20,6 +20,7 @@ import SpendingPanel from './SpendingPanel';
 import GoalsAndBudgetsPanel from './GoalsAndBudgetsPanel';
 import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
+import TransactionSearchPanel from './TransactionSearchPanel';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -117,7 +118,7 @@ export default function MoneyHubPage() {
     try {
       const targetMonth = month ?? selectedMonth;
       const url = targetMonth ? `/api/money-hub?month=${targetMonth}` : '/api/money-hub';
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       const d = await res.json();
       if (!d.error) { setData(d); setError(null); }
       else setError(d.error);
@@ -718,6 +719,12 @@ export default function MoneyHubPage() {
 
       {/* Spending Intelligence */}
       <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+
+      {/* Transaction Search */}
+      <TransactionSearchPanel
+        selectedMonth={selectedMonth || data.selectedMonth || ''}
+        refreshData={refreshData}
+      />
 
       {/* Expected Bills (for the selected month) */}
       {expectedBills.length > 0 && (

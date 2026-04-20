@@ -10,7 +10,7 @@ interface CategoryDrillDownModalProps {
   incomeType?: string | null;
   searchQuery?: string | null;
   selectedMonth: string;
-  onRecategorised: () => void;
+  onRecategorised: (fromCategory: string, toCategory: string, amount: number) => void;
 }
 
 const ALL_CATEGORIES = [
@@ -55,7 +55,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     setLoading(false);
   };
 
-  const handleRecategorise = async (merchantPattern: string, newCategory: string) => {
+  const handleRecategorise = async (merchantPattern: string, newCategory: string, movedAmount?: number) => {
     setRecatLoading(true);
     try {
       await fetch('/api/money-hub/recategorise', {
@@ -69,7 +69,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
         body: JSON.stringify({ rawName: merchantPattern, category: newCategory }),
       });
       await loadData();
-      onRecategorised();
+      onRecategorised(category || incomeType || 'other', newCategory, movedAmount ?? 0);
     } catch {
       // silent
     }
@@ -143,7 +143,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                             {ALL_CATEGORIES.map(c => (
                               <button
                                 key={c}
-                                onClick={() => handleRecategorise(m.merchant, c)}
+                                onClick={() => handleRecategorise(m.merchant, c, m.total)}
                                 disabled={recatLoading}
                                 className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
                               >
@@ -187,7 +187,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                               {ALL_CATEGORIES.map(c => (
                                 <button
                                   key={c}
-                                  onClick={() => handleRecategorise(cleanMerchantName(txn.description || ''), c)}
+                                  onClick={() => handleRecategorise(cleanMerchantName(txn.description || ''), c, Math.abs(txn.amount))}
                                   disabled={recatLoading}
                                   className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
                                 >
