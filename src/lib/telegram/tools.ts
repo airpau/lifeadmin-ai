@@ -1001,4 +1001,30 @@ export const telegramTools: Tool[] = [
       required: ['provider_name'],
     },
   },
+  {
+    name: 'generate_spending_chart',
+    description:
+      "Generate a visual spending chart (pie or bar) and send it as an image. Use when the user asks to 'show me', 'visualise', 'chart', 'graph', or 'pie/bar chart' their spending, subscriptions, or bills. Produces a real chart image — use this instead of get_spending_summary for any chart or visualisation request.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        chart_type: {
+          type: 'string',
+          enum: ['pie', 'bar'],
+          description: "Chart type. Use 'pie' for share/breakdown questions, 'bar' for comparison or ranked questions.",
+        },
+        period: {
+          type: 'string',
+          enum: ['this_month', 'last_month', 'last_3_months'],
+          description: "Time period for the chart. Defaults to 'this_month'.",
+        },
+        group_by: {
+          type: 'string',
+          enum: ['category', 'provider'],
+          description: "'category' groups bank transactions by spending category (groceries, streaming, broadband, etc.). 'provider' groups active tracked subscriptions by provider name (Netflix, Spotify, etc.).",
+        },
+      },
+      required: ['chart_type', 'group_by'],
+    },
+  },
 ];

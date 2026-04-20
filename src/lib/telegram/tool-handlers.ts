@@ -64,6 +64,7 @@ export interface PendingAction {
 export interface ToolResult {
   text: string;
   pendingAction?: PendingAction;
+  chartUrl?: string;
 }
 
 function fmt(amount: number | string | null | undefined): string {
@@ -244,6 +245,12 @@ export async function executeToolCall(
         amount: toolInput.amount as number | undefined,
         paid_date: toolInput.paid_date as string | undefined,
       });
+    case 'generate_spending_chart':
+      return generateSpendingChart(supabase, userId, {
+        chart_type: (toolInput.chart_type as 'pie' | 'bar') ?? 'pie',
+        period: (toolInput.period as string | undefined) ?? 'this_month',
+        group_by: (toolInput.group_by as 'category' | 'provider') ?? 'category',
+      });
     case 'get_loyalty_status':
       return getLoyaltyStatus(supabase, userId);
     case 'get_referral_link':
@@ -371,6 +378,160 @@ async function getSpendingSummary(
   }
 
   return { text };
+}
+
+// Colour palette for chart slices (brand gold first, then complementary colours)
+const CHART_PALETTE = [
+  '#f59e0b', // gold (brand)
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#f97316', // orange
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#ec4899', // pink
+  '#6366f1', // indigo
+  '#14b8a6', // teal
+  '#fb923c', // light orange
+];
+
+async function generateSpendingChart(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  params: { chart_type: 'pie' | 'bar'; period: string; group_by: 'category' | 'provider' },
+): Promise<ToolResult> {
+  const now = new Date();
+
+  // Resolve period to date range
+  let startDate: Date;
+  let endDate: Date;
+  let periodLabel: string;
+
+  if (params.period === 'last_month') {
+    startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    endDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    periodLabel = new Date(now.getFullYear(), now.getMonth() - 1)
+      .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  } else if (params.period === 'last_3_months') {
+    startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    periodLabel = 'Last 3 Months';
+  } else {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    periodLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  }
+
+  let labels: string[];
+  let values: number[];
+  let total: number;
+  let chartTitle: string;
+  let summaryLines: string[];
+
+  if (params.group_by === 'provider') {
+    // Use tracked subscriptions for provider-level chart
+    const { data: subs } = await supabase
+      .from('subscriptions')
+      .select('provider_name, amount, billing_cycle')
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (!subs || subs.length === 0) {
+      return { text: 'No active subscriptions found. Add subscriptions at paybacker.co.uk/dashboard/subscriptions to track your recurring payments.' };
+    }
+
+    const monthly = subs
+      .map((s) => ({
+        name: s.provider_name as string,
+        monthly:
+          s.billing_cycle === 'yearly' ? Number(s.amount) / 12 :
+          s.billing_cycle === 'weekly' ? Number(s.amount) * 4.33 :
+          Number(s.amount),
+      }))
+      .filter((s) => s.monthly > 0)
+      .sort((a, b) => b.monthly - a.monthly)
+      .slice(0, 15);
+
+    labels = monthly.map((s) => s.name);
+    values = monthly.map((s) => parseFloat(s.monthly.toFixed(2)));
+    total = values.reduce((a, b) => a + b, 0);
+    chartTitle = 'Monthly Subscription Spend';
+    summaryLines = monthly.map((s) => `${s.name}: ${fmt(s.monthly)}/mo`);
+  } else {
+    // Use classified bank transactions for category chart
+    const classified = await classifyTransactions(
+      supabase, userId,
+      startDate.toISOString(),
+      endDate.toISOString(),
+    );
+
+    const spending = classified.filter(
+      (t) => t.resolved.kind === 'spending' && t.effectiveCategory !== 'transfers',
+    );
+
+    if (spending.length === 0) {
+      return { text: `No spending data found for ${periodLabel}. Connect a bank account at paybacker.co.uk/dashboard/money-hub to start tracking.` };
+    }
+
+    const totals: Record<string, number> = {};
+    spending.forEach((t) => {
+      const cat = t.effectiveCategory;
+      totals[cat] = (totals[cat] ?? 0) + (-Number(t.amount));
+    });
+
+    const sorted = Object.entries(totals)
+      .sort(([, a], [, b]) => b - a)
+      .filter(([, v]) => v > 0)
+      .slice(0, 12);
+
+    labels = sorted.map(([cat]) => CATEGORY_LABELS[cat] || cat);
+    values = sorted.map(([, v]) => parseFloat(v.toFixed(2)));
+    total = values.reduce((a, b) => a + b, 0);
+    chartTitle = `Spending — ${periodLabel}`;
+    summaryLines = sorted.map(([cat, v]) => `${CATEGORY_LABELS[cat] || cat}: ${fmt(v)}`);
+  }
+
+  // Build Chart.js config for QuickChart.io
+  const horizontal = params.chart_type === 'bar' && labels.length > 6;
+  const chartConfig =
+    params.chart_type === 'pie'
+      ? {
+          type: 'pie',
+          data: {
+            labels,
+            datasets: [{ data: values, backgroundColor: CHART_PALETTE.slice(0, labels.length) }],
+          },
+          options: {
+            plugins: {
+              title: { display: true, text: chartTitle, font: { size: 16 } },
+              legend: { position: 'bottom' },
+            },
+          },
+        }
+      : {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{ label: 'Spend (£)', data: values, backgroundColor: '#f59e0b' }],
+          },
+          options: {
+            ...(horizontal ? { indexAxis: 'y' } : {}),
+            plugins: {
+              title: { display: true, text: chartTitle, font: { size: 16 } },
+              legend: { display: false },
+            },
+          },
+        };
+
+  const h = horizontal ? Math.max(350, labels.length * 30 + 100) : 400;
+  const chartUrl = `https://quickchart.io/chart?w=600&h=${h}&bkg=white&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;
+
+  const dataText =
+    `Chart generated: ${chartTitle}\nTotal: ${fmt(total)}\n` +
+    summaryLines.join('\n');
+
+  return { text: dataText, chartUrl };
 }
 
 async function listTransactions(
