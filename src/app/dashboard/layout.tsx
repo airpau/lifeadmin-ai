@@ -26,6 +26,7 @@ import {
   BookOpen,
   FolderLock,
   MessageCircle,
+  Download,
   Loader2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -39,6 +40,7 @@ const navItems = [
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
+  { name: 'Export', href: '/dashboard/export', icon: Download },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 

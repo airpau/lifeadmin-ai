@@ -184,12 +184,20 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Get all user's bank accounts (one tab per account)
+      // Get all user's bank accounts (one tab per account).
+      //
+      // Status filter: include both 'active' and 'token_expired'. We are only
+      // READING cached transactions out of bank_transactions here — we never
+      // call the bank's API — so an expired refresh token doesn't matter.
+      // Excluding token_expired previously meant a user whose bank reconnect
+      // had lapsed got an empty sheet, even though months of cached
+      // transactions were sitting in the DB. Revoked stays excluded
+      // (the user actively disconnected and presumably wants the data gone).
       const { data: bankConns } = await supabase
         .from('bank_connections')
         .select('id, bank_name, account_ids, account_display_names')
         .eq('user_id', conn.user_id)
-        .eq('status', 'active')
+        .in('status', ['active', 'token_expired'])
 
       if (!bankConns?.length) {
         results.push({ user_id: conn.user_id, rows_written: 0 })
