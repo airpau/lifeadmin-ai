@@ -5,11 +5,26 @@
  * dispute counters, and fans out notifications (in-app + Telegram).
  *
  * Plan ref: docs/DISPUTE_EMAIL_SYNC_PLAN.md §6
+ *
+ * Intelligence layer (added 2026-04-20):
+ *   Each newly-imported supplier reply is classified via Claude before we
+ *   notify the user. The classification decides (a) whether the notification
+ *   title leads with "Action needed" vs "FYI: holding reply", (b) the emoji
+ *   and urgency colour, and (c) a one-sentence rationale we surface in-app.
+ *   See src/lib/dispute-sync/reply-classifier.ts — flagged by
+ *   WATCHDOG_CLASSIFIER_ENABLED and safe to fail (falls back to neutral copy).
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { fetchNewMessages } from './fetchers';
 import type { EmailConnection } from './types';
+import {
+  classifyReply,
+  categoryLabel,
+  categoryEmoji,
+  CLASSIFIER_VERSION,
+  type ReplyClassification,
+} from './reply-classifier';
 
 function admin() {
   return createClient(
@@ -40,7 +55,7 @@ export async function syncLinkedThread(
 
   const { data: link, error: linkErr } = await db
     .from('dispute_watchdog_links')
-    .select('*, disputes(provider_name), email_connections(*)')
+    .select('*, disputes(provider_name, provider_type, issue_type, issue_summary), email_connections(*)')
     .eq('id', linkId)
     .maybeSingle();
 
@@ -75,8 +90,35 @@ export async function syncLinkedThread(
     return { linkId, disputeId: link.dispute_id, imported: 0, error: message };
   }
 
-  const providerName = (link.disputes as { provider_name?: string } | null)?.provider_name ?? 'supplier';
+  const disputeRow = link.disputes as {
+    provider_name?: string;
+    provider_type?: string;
+    issue_type?: string;
+    issue_summary?: string;
+  } | null;
+  const providerName = disputeRow?.provider_name ?? 'supplier';
+  const disputeTitle = disputeRow?.issue_summary ?? null;
+  const disputeCategory = disputeRow?.issue_type ?? disputeRow?.provider_type ?? null;
   const linkUrl = `/dashboard/complaints?dispute=${link.dispute_id}`;
+
+  // Pull the user's most recent letter to this supplier (if any) so the
+  // classifier can reason about whether the reply answers what the user asked.
+  let userLast5Letters = '';
+  try {
+    const { data: recentLetters } = await db
+      .from('correspondence')
+      .select('content, entry_date')
+      .eq('dispute_id', link.dispute_id)
+      .in('entry_type', ['ai_letter', 'user_note'])
+      .order('entry_date', { ascending: false })
+      .limit(1);
+    const latest = recentLetters?.[0];
+    if (latest?.content) {
+      userLast5Letters = String(latest.content).slice(0, 1500);
+    }
+  } catch {
+    // Non-fatal — classifier will just work without the letter context.
+  }
 
   let imported = 0;
   for (const m of messages) {
@@ -112,32 +154,71 @@ export async function syncLinkedThread(
     imported++;
 
     // Bump dispute counters atomically
-    const { error: rpcError } = await db.rpc('record_dispute_reply', {
+    await db.rpc('record_dispute_reply', {
       p_dispute_id: link.dispute_id,
       p_received_at: m.receivedAt.toISOString(),
     });
-    if (rpcError) {
-      console.warn(`[watchdog] record_dispute_reply failed for ${m.messageId}:`, rpcError.message);
+
+    // --- Intelligence layer -----------------------------------------------
+    // Classify the reply so the notification can tell the user whether they
+    // need to act, and why. All failures degrade gracefully to neutral copy.
+    let classification: ReplyClassification | null = null;
+    try {
+      classification = await classifyReply({
+        disputeTitle,
+        disputeProvider: providerName,
+        disputeCategory,
+        userLast5Letters,
+        supplierSubject: m.subject,
+        supplierFromName: m.fromName,
+        supplierFromAddress: m.fromAddress,
+        supplierBody: m.body,
+        supplierReceivedAt: m.receivedAt,
+      });
+
+      await db
+        .from('correspondence')
+        .update({
+          ai_category: classification.category,
+          ai_respond_needed: classification.respondNeeded,
+          ai_urgency: classification.urgency,
+          ai_rationale: classification.rationale,
+          ai_suggested_reply_context: classification.suggestedContext || null,
+          ai_classified_at: new Date().toISOString(),
+          ai_classifier_version: CLASSIFIER_VERSION,
+        })
+        .eq('id', inserted.id);
+    } catch (err) {
+      console.warn(
+        '[watchdog] classification failed:',
+        err instanceof Error ? err.message : err,
+      );
     }
 
     if (options.sendNotifications !== false) {
+      const notifCopy = buildNotificationCopy({
+        providerName,
+        snippet: m.snippet,
+        classification,
+      });
+
       // In-app notification
-      const { error: notifError } = await db.from('user_notifications').insert({
+      await db.from('user_notifications').insert({
         user_id: link.user_id,
-        type: 'dispute_reply',
-        title: `New reply from ${providerName}`,
-        body: m.snippet,
+        type: classification?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
+        title: notifCopy.title,
+        body: notifCopy.body,
         link_url: linkUrl,
         dispute_id: link.dispute_id,
         metadata: {
           subject: m.subject,
           from: m.fromAddress,
           messageId: m.messageId,
+          ai_category: classification?.category ?? null,
+          ai_urgency: classification?.urgency ?? null,
+          ai_respond_needed: classification?.respondNeeded ?? null,
         },
       });
-      if (notifError) {
-        console.warn(`[watchdog] notification insert failed for ${m.messageId}:`, notifError.message);
-      }
 
       // Telegram alert — fire-and-forget. Import lazily so the module graph stays light.
       sendTelegramSafely({
@@ -147,6 +228,7 @@ export async function syncLinkedThread(
         subject: m.subject,
         snippet: m.snippet,
         linkUrl,
+        classification,
       }).catch((err) =>
         console.warn('[watchdog] telegram send failed:', err instanceof Error ? err.message : err),
       );
@@ -168,6 +250,34 @@ export async function syncLinkedThread(
 }
 
 /**
+ * Craft the in-app notification title/body given the classification.
+ * Designed to be readable at a glance in the bell dropdown.
+ */
+function buildNotificationCopy(args: {
+  providerName: string;
+  snippet: string;
+  classification: ReplyClassification | null;
+}): { title: string; body: string } {
+  const { providerName, snippet, classification } = args;
+
+  if (!classification || classification.category === 'other') {
+    return {
+      title: `New reply from ${providerName}`,
+      body: snippet,
+    };
+  }
+
+  const emoji = categoryEmoji(classification.category, classification.urgency);
+  const label = categoryLabel(classification.category);
+  const actionFlag = classification.respondNeeded ? ' · action needed' : '';
+
+  return {
+    title: `${emoji} ${providerName} — ${label}${actionFlag}`,
+    body: classification.rationale || snippet,
+  };
+}
+
+/**
  * Fire a Telegram alert if the user has Watchdog alerts enabled.
  * Kept isolated so its failure can't break the sync.
  */
@@ -178,6 +288,7 @@ async function sendTelegramSafely(args: {
   snippet: string;
   linkUrl: string;
   disputeId: string;
+  classification: ReplyClassification | null;
 }): Promise<void> {
   const db = admin();
 
@@ -205,13 +316,28 @@ async function sendTelegramSafely(args: {
     ? args.snippet.slice(0, 200) + '…'
     : args.snippet;
 
+  const c = args.classification;
+  const emoji = c ? categoryEmoji(c.category, c.urgency) : '🔔';
+  const label = c ? categoryLabel(c.category) : 'New reply';
+  const actionLine = c?.respondNeeded
+    ? '\n\n⚠️ *Action needed* — reply *draft* below to generate your response.'
+    : c?.category === 'holding_reply'
+      ? '\n\n_No action needed — they\'re still looking into it._'
+      : c?.category === 'resolution'
+        ? '\n\n_Looks resolved — confirm with a 👍 if you\'re happy._'
+        : '';
+
+  const aiLine = c?.rationale
+    ? `\n\n🧠 *Paybacker read:* ${c.rationale}`
+    : '';
+
   await sendProactiveAlert({
     chatId: Number(session.telegram_chat_id),
     issue: {
       id: args.disputeId,
-      title: `🔔 New reply from ${args.providerName}`,
-      detail: `*Subject:* ${args.subject}\n\n_${preview}_\n\nTap below to open in Paybacker, or reply *draft* to generate your next letter.`,
-      issue_type: 'dispute_reply',
+      title: `${emoji} ${args.providerName} — ${label}`,
+      detail: `*Subject:* ${args.subject}\n\n_${preview}_${aiLine}${actionLine}`,
+      issue_type: c?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
     },
     showFollowUpButtons: false,
   });
