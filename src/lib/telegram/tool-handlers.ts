@@ -415,7 +415,7 @@ async function generateSpendingChart(
       .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   } else if (params.period === 'last_3_months') {
     startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    endDate = new Date();
     periodLabel = 'Last 3 Months';
   } else {
     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -446,6 +446,7 @@ async function generateSpendingChart(
         name: s.provider_name as string,
         monthly:
           s.billing_cycle === 'yearly' ? Number(s.amount) / 12 :
+          s.billing_cycle === 'quarterly' ? Number(s.amount) / 3 :
           s.billing_cycle === 'weekly' ? Number(s.amount) * 4.33 :
           Number(s.amount),
       }))
