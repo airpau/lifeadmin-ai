@@ -58,13 +58,13 @@ export function parseComparisonDeals(data: any) {
 
   // Deduplicate by subscriptionId so two subscriptions to the same provider
   // (e.g. EE broadband + EE mobile) are kept as separate entries.
+  // Deals without a valid subscriptionId are malformed — drop them before dedup.
+  const withId = dealsList.filter((d) => d.subscriptionId);
   const byId = new Map<string, typeof dealsList[0]>();
-  for (let i = 0; i < dealsList.length; i++) {
-    const deal = dealsList[i];
-    const key = deal.subscriptionId || `_idx_${i}`;
-    const existing = byId.get(key);
+  for (const deal of withId) {
+    const existing = byId.get(deal.subscriptionId);
     if (!existing || deal.annualSaving > existing.annualSaving) {
-      byId.set(key, deal);
+      byId.set(deal.subscriptionId, deal);
     }
   }
   const deduped = Array.from(byId.values());

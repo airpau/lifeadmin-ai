@@ -1073,15 +1073,14 @@ export default function MoneyHubPage() {
                 category: sub.category || '',
               };
             }).filter(Boolean);
-            // Filter invalid deals FIRST so valid alternatives are never shadowed by invalid ones
-            const validFirst = dealsPerSub.filter((d: any) => isDealValid(d));
-            // Then deduplicate by subscriptionId (keeps same-provider-different-subscription pairs)
+            // Filter invalid deals FIRST so valid alternatives are never shadowed by invalid ones.
+            // Also drop any deals without a subscriptionId — they're malformed and would bypass dedup.
+            const validFirst = dealsPerSub.filter((d: any) => d.subscriptionId && isDealValid(d));
+            // Deduplicate by subscriptionId (keeps same-provider-different-subscription pairs)
             const byId = new Map<string, any>();
-            for (let i = 0; i < validFirst.length; i++) {
-              const deal = validFirst[i];
-              const key = deal.subscriptionId || `_idx_${i}`;
-              const existing = byId.get(key);
-              if (!existing || deal.annualSaving > existing.annualSaving) byId.set(key, deal);
+            for (const deal of validFirst) {
+              const existing = byId.get(deal.subscriptionId);
+              if (!existing || deal.annualSaving > existing.annualSaving) byId.set(deal.subscriptionId, deal);
             }
             const validDeals = Array.from(byId.values());
             const filteredTotal = validDeals.reduce((sum: number, d: any) => sum + (d.annualSaving || 0), 0);
