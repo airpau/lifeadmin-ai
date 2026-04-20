@@ -161,9 +161,8 @@ export async function fetchCardTransactions(
   fromDate: Date
 ): Promise<TrueLayerTransaction[]> {
   const from = fromDate.toISOString().split('T')[0];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const to = tomorrow.toISOString().split('T')[0];
+  // See fetchTransactions — 'to' in the future is now rejected by TrueLayer.
+  const to = new Date().toISOString().split('T')[0];
 
   try {
     const url = `${TRUELAYER_API_URL}/data/v1/cards/${cardId}/transactions?from=${from}&to=${to}`;
@@ -207,10 +206,12 @@ export async function fetchTransactions(
   fromDate: Date
 ): Promise<TrueLayerTransaction[]> {
   const from = fromDate.toISOString().split('T')[0];
-  // TrueLayer 'to' is exclusive — add +1 day to include today's transactions
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const to = tomorrow.toISOString().split('T')[0];
+  // TrueLayer treats 'to=YYYY-MM-DD' as end-of-day (23:59:59Z) and rejects
+  // any value whose end-of-day would be in the future. Using tomorrow here
+  // worked historically but started returning 400 invalid_date_range around
+  // 15 Apr 2026. Pass today's date — end-of-today covers all same-day
+  // settled transactions; pending ones are picked up via the /pending endpoint.
+  const to = new Date().toISOString().split('T')[0];
 
   const url = `${TRUELAYER_API_URL}/data/v1/accounts/${accountId}/transactions?from=${from}&to=${to}`;
   const res = await fetch(url, {
