@@ -70,6 +70,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [needsEmailConnection, setNeedsEmailConnection] = useState(false);
 
   const [linking, setLinking] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -100,16 +101,23 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     setPickerOpen(true);
     setCandidates(null);
     setCandidatesError(null);
+    setNeedsEmailConnection(false);
     setLoadingCandidates(true);
     try {
       const res = await fetch(`/api/disputes/${disputeId}/suggest-threads`, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) {
-        setCandidatesError(data.error ?? 'Failed to find thread candidates');
+        if (data.error === 'no_email_connection') {
+          setNeedsEmailConnection(true);
+          setCandidatesError(data.message ?? 'Connect an email account first.');
+        } else {
+          setCandidatesError(data.error ?? 'Failed to find thread candidates');
+        }
         setCandidates([]);
         return;
       }
       if (data.error === 'no_email_connection') {
+        setNeedsEmailConnection(true);
         setCandidatesError(data.message ?? 'Connect an email account first.');
         setCandidates([]);
         return;
@@ -282,20 +290,29 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
           </div>
         </>
       ) : (
-        <div className="bg-navy-950 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-slate-300">
-              Link an email thread so we can auto-import {providerName}'s replies.
-            </p>
+        <div className="bg-navy-950 rounded-lg p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-slate-300">
+                Link an email thread so we can auto-import {providerName}'s replies.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openPicker}
+              className="flex items-center justify-center gap-2 px-3 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all flex-shrink-0"
+            >
+              <Search className="h-4 w-4" /> Find thread
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={openPicker}
-            className="flex items-center justify-center gap-2 px-3 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all flex-shrink-0"
-          >
-            <Search className="h-4 w-4" /> Find thread
-          </button>
+          <p className="text-[11px] text-slate-500 mt-3 ml-6">
+            No email connected yet?{' '}
+            <a href="/dashboard/profile" className="text-mint-400 hover:text-mint-300 underline underline-offset-2">
+              Add Gmail or Outlook in Profile
+            </a>{' '}
+            first.
+          </p>
         </div>
       )}
 
@@ -335,10 +352,30 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                   <Loader2 className="h-5 w-5 animate-spin" /> Searching your inbox…
                 </div>
               ) : candidatesError ? (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-4 text-sm">
-                  <p className="font-semibold mb-1">Can't search your inbox</p>
-                  <p>{candidatesError}</p>
-                </div>
+                needsEmailConnection ? (
+                  <div className="bg-mint-400/10 border border-mint-400/20 rounded-lg p-4 text-sm">
+                    <div className="flex items-start gap-2 mb-3">
+                      <Mail className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-white mb-1">Connect an email first</p>
+                        <p className="text-slate-400">
+                          Watchdog needs to read your inbox to find replies from {providerName}. Connect Gmail or Outlook in your Profile — takes about 30 seconds.
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      href="/dashboard/profile"
+                      className="inline-flex items-center gap-2 px-3 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all"
+                    >
+                      <Link2 className="h-4 w-4" /> Go to Profile
+                    </a>
+                  </div>
+                ) : (
+                  <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg p-4 text-sm">
+                    <p className="font-semibold mb-1">Can't search your inbox</p>
+                    <p>{candidatesError}</p>
+                  </div>
+                )
               ) : !candidates || candidates.length === 0 ? (
                 <div className="text-center py-10">
                   <Mail className="h-10 w-10 text-slate-700 mx-auto mb-3" />
