@@ -20,6 +20,29 @@ import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { calculateTotalSavings, parseComparisonDeals } from '@/lib/savings-utils';
+import RotatingCaptionsLoader, { type LoaderCaption } from '@/components/RotatingCaptionsLoader';
+
+/**
+ * Caption decks for the different scans we run. Each deck has its own
+ * personality so the user gets a sense of what the system is actually doing.
+ */
+const INBOX_SCAN_CAPTIONS: LoaderCaption[] = [
+  { icon: '📬', text: 'Sifting through your inbox for bills and renewals...' },
+  { icon: '🔎', text: 'Hunting for hidden subscriptions...' },
+  { icon: '🧾', text: 'Reading the small print so you don\u2019t have to...' },
+  { icon: '💸', text: 'Looking for price hikes and overcharges...' },
+  { icon: '🛫', text: 'Checking for flight delays worth claiming...' },
+  { icon: '🧠', text: 'Matching emails to your subscriptions...' },
+  { icon: '✨', text: 'Almost there \u2014 lining up your opportunities...' },
+];
+
+const PRICE_DETECT_CAPTIONS: LoaderCaption[] = [
+  { icon: '🏦', text: 'Scanning your bank transactions...' },
+  { icon: '📈', text: 'Spotting direct debits that have quietly gone up...' },
+  { icon: '🧮', text: 'Comparing last month vs this month...' },
+  { icon: '🚨', text: 'Flagging any sneaky price increases...' },
+  { icon: '✨', text: 'Almost done \u2014 saving new alerts...' },
+];
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -42,6 +65,8 @@ export default function DashboardPage() {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
+  const [priceAlertsDetecting, setPriceAlertsDetecting] = useState(false);
+  const [priceAlertsLastDetected, setPriceAlertsLastDetected] = useState<string | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
@@ -202,6 +227,8 @@ export default function DashboardPage() {
     const fetchData = async () => {
       let hasBankConnection = false;
       let hasStoredAlerts = false;
+      let hasEmailConnectionOuter = false;
+      let lastScannedAtOuter: string | null = null;
 
       // Start deals loading in parallel immediately (non-blocking)
       const dealsPromise = (async () => {
@@ -239,7 +266,23 @@ export default function DashboardPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setLoading(false); return; }
 
-        const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
+        // Compute date windows upfront so we can run all queries in parallel.
+        // Previously these were derived mid-function which forced serial awaits.
+        const now = new Date();
+        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const todayIso = now.toISOString().split('T')[0];
+        const thirtyDaysIso = thirtyDays.toISOString().split('T')[0];
+
+        // One parallel round-trip for EVERY independent query the page needs on
+        // initial load. The previous implementation issued these sequentially,
+        // which meant 7 extra Supabase round-trips (~2-3s on a cold path) before
+        // the loader could hide. Keep this batch minimal per table and add
+        // conditional fallbacks below only when strictly required.
+        const [
+          profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks,
+          emailConnsRes, scanFindingsRes, subTotalRes, vaultExpiringRes,
+          priceAlertRes, anyAlertsRes,
+        ] = await Promise.all([
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
@@ -254,6 +297,23 @@ export default function DashboardPage() {
             .eq('user_id', user.id).eq('status', 'cancelled'),
           supabase.from('tasks').select('money_recovered')
             .eq('user_id', user.id).eq('status', 'resolved'),
+          supabase.from('email_connections')
+            .select('id, email_address, provider_type, status, last_scanned_at')
+            .eq('user_id', user.id).eq('status', 'active'),
+          supabase.from('email_scan_findings').select('*')
+            .eq('user_id', user.id).in('status', ['new', 'reviewing'])
+            .order('created_at', { ascending: false }).limit(30),
+          supabase.rpc('get_subscription_total', { p_user_id: user.id }),
+          supabase.from('contract_extractions').select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .not('contract_end_date', 'is', null)
+            .gte('contract_end_date', todayIso)
+            .lte('contract_end_date', thirtyDaysIso),
+          supabase.from('price_increase_alerts').select('*')
+            .eq('user_id', user.id).eq('status', 'active')
+            .order('annual_impact', { ascending: false }),
+          supabase.from('price_increase_alerts').select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id).in('status', ['active', 'dismissed', 'actioned']),
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
@@ -261,19 +321,17 @@ export default function DashboardPage() {
         setBankConnected(hasBankConnection);
         setBankAccounts(banks.data || []);
 
-        // Check email connection (Gmail or IMAP)
-        const { data: emailConns } = await supabase
-          .from('email_connections')
-          .select('id, email_address, provider_type, status, last_scanned_at')
-          .eq('user_id', user.id)
-          .eq('status', 'active');
+        // Email connection — prefer email_connections, fall back to legacy gmail_tokens ONLY if needed
+        const emailConns = emailConnsRes.data;
         if (emailConns && emailConns.length > 0) {
+          hasEmailConnectionOuter = true;
+          lastScannedAtOuter = emailConns[0].last_scanned_at;
           setEmailConnected(true);
           setEmailAddress(emailConns[0].email_address);
-          setEmailLastScanned(emailConns[0].last_scanned_at);
+          setEmailLastScanned(lastScannedAtOuter);
           setEmailAccounts(emailConns.map(e => ({ id: e.id, email_address: e.email_address, provider_type: e.provider_type })));
         } else {
-          // Also check gmail_tokens table as fallback
+          // Legacy fallback: gmail_tokens. Only queried when no email_connections row exists.
           const { data: gmailToken } = await supabase
             .from('gmail_tokens')
             .select('id, email')
@@ -281,20 +339,13 @@ export default function DashboardPage() {
             .limit(1)
             .maybeSingle();
           if (gmailToken) {
+            hasEmailConnectionOuter = true;
             setEmailConnected(true);
             setEmailAddress(gmailToken.email);
           }
         }
 
-        // Load saved email scan opportunities from the centralised email_scan_findings table
-        const { data: scanFindings } = await supabase
-          .from('email_scan_findings')
-          .select('*')
-          .eq('user_id', user.id)
-          .in('status', ['new', 'reviewing'])
-          .order('created_at', { ascending: false })
-          .limit(30);
-
+        const scanFindings = scanFindingsRes.data;
         if (scanFindings && scanFindings.length > 0) {
           const mapped = scanFindings.map((f: any) => {
             const meta = f.metadata || {};
@@ -394,13 +445,13 @@ export default function DashboardPage() {
         setSubscriptionCount(dedupedSubs.length);
         setActiveSubscriptions(subsList);
 
-        // Calculate monthly spend via RPC for consistency with subscriptions page
-        const { data: subTotal } = await supabase.rpc('get_subscription_total', { p_user_id: user.id });
+        // Monthly spend — use the RPC result from the parallel batch; fall back to
+        // client-side calc if the RPC returned null (e.g., first run, no data).
+        const subTotal = subTotalRes.data;
         if (subTotal) {
           setMonthlySpend(subTotal.subscriptions_monthly ?? 0);
           setSpendBreakdown(subTotal);
         } else {
-          // Fallback: client-side calculation
           const monthly = subsList.reduce((sum, s) => {
             const amt = parseFloat(String(s.amount)) || 0;
             if (s.billing_cycle === 'yearly') return sum + amt / 12;
@@ -410,47 +461,32 @@ export default function DashboardPage() {
           setMonthlySpend(monthly);
         }
 
-        // Count contracts expiring within 30 days (subscriptions + vault extractions)
-        const now = new Date();
-        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        // Count contracts expiring within 30 days (subscriptions + vault extractions).
+        // vaultExpiringCount comes from the parallel batch above.
         const expiringSubs = subsList.filter(s =>
           s.contract_end_date &&
           new Date(s.contract_end_date) >= now &&
           new Date(s.contract_end_date) <= thirtyDays
         ).length;
+        setExpiringContracts(expiringSubs + (vaultExpiringRes.count || 0));
 
-        const { count: vaultExpiringCount } = await supabase
-          .from('contract_extractions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .not('contract_end_date', 'is', null)
-          .gte('contract_end_date', now.toISOString().split('T')[0])
-          .lte('contract_end_date', thirtyDays.toISOString().split('T')[0]);
-
-        setExpiringContracts(expiringSubs + (vaultExpiringCount || 0));
-
-        // Fetch active price increase alerts for display
-        const { data: priceAlertData } = await supabase
-          .from('price_increase_alerts')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .order('annual_impact', { ascending: false });
+        // Price increase alerts (already fetched in parallel batch above)
+        const priceAlertData = priceAlertRes.data;
         setPriceAlerts(priceAlertData || []);
+        hasStoredAlerts = (anyAlertsRes.count || 0) > 0;
 
-        // Check if ANY alerts exist (active, dismissed, or actioned) to prevent
-        // re-running detection when all alerts have been dismissed by the user.
-        const { count: anyAlertsCount } = await supabase
-          .from('price_increase_alerts')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .in('status', ['active', 'dismissed', 'actioned']);
-        hasStoredAlerts = (anyAlertsCount || 0) > 0;
-
-        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
-          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-        }, 0);
+        // Seed the "last detected" timestamp from the most recent alert, if we
+        // have any. Users see a meaningful "Last scanned" line even before they
+        // click the Scan button. If there are no alerts, the field stays null
+        // and we fall back to a "scan now" prompt in the UI.
+        if (priceAlertData && priceAlertData.length > 0) {
+          const latest = priceAlertData
+            .map((a: any) => a.detected_at)
+            .filter(Boolean)
+            .sort()
+            .pop();
+          if (latest) setPriceAlertsLastDetected(latest);
+        }
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -458,9 +494,15 @@ export default function DashboardPage() {
         setLoading(false);
       }
 
-      // On-demand price increase detection: if the user has bank data but no
-      // stored alerts yet, run detection immediately rather than waiting for
-      // the 8 AM daily cron. Deduplication in the endpoint prevents double inserts.
+      // ── On-demand detection (non-blocking, runs after the loader hides) ──
+      //
+      // 1. Bank-side price detection: if the user has bank data but no stored
+      //    alerts yet, run the price-alerts detector now rather than waiting
+      //    for the 8 AM cron.
+      // 2. Inbox scan: if the user has an email connection but the inbox was
+      //    never scanned (or not scanned in the last 24h), kick off a scan in
+      //    the background so the Price Increase Alerts card shows fresh data
+      //    next time they land here. Fire-and-forget.
       if (hasBankConnection && !hasStoredAlerts) {
         try {
           const detectRes = await fetch('/api/price-alerts/detect', { method: 'POST' });
@@ -472,24 +514,59 @@ export default function DashboardPage() {
           }
         } catch {} // Non-critical
       }
+
+      // 2. Auto-scan the inbox on entry if we have an email connection and the
+      //    inbox has never been scanned (null) or the last scan is >24h old.
+      //    This ensures the Price Increase Alerts card shows reasonably fresh
+      //    data without the user having to click "Scan now" on every visit.
+      //    Fire-and-forget — we don't block on this and UI updates happen via
+      //    the scan's own finish path (email_scan_findings + price_increase_alerts).
+      if (hasEmailConnectionOuter) {
+        const SCAN_STALE_MS = 24 * 60 * 60 * 1000;
+        const isStale =
+          !lastScannedAtOuter ||
+          Date.now() - new Date(lastScannedAtOuter).getTime() > SCAN_STALE_MS;
+        if (isStale) {
+          // Use the same handler the "Scan now" button uses so state is
+          // consistent (loading spinner, refreshed alerts, updated timestamp).
+          scanInboxNow().catch(() => {}); // swallow — non-critical auto-trigger
+        }
+      }
     };
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
-  const handleEmailScan = async () => {
+  /**
+   * scanInboxNow
+   *
+   * Triggers a fresh Gmail/email scan and then refreshes every piece of
+   * dashboard state that depends on inbox data:
+   *  - email_scan_findings → emailOpportunities / emailScanResults
+   *  - price_increase_alerts (stored alerts are re-read after scan)
+   *  - email_connections.last_scanned_at → emailLastScanned
+   *
+   * Also used as the auto-trigger inside fetchData, so it must be safe to
+   * invoke without awaiting (callers may `.catch(() => {})`).
+   */
+  const scanInboxNow = async () => {
     setEmailScanning(true);
     try {
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const data = await res.json();
+
+      // Resolve user once for the follow-up reads.
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+
       if (data.error) {
         // Don't clear existing results on error
         if (emailOpportunities.length === 0) setEmailScanResults(0);
-      } else if (data.opportunities && data.opportunities.length > 0) {
-        // Reload from centralised email_scan_findings table so we stay in sync with scanner page
+      } else if (userId) {
+        // Reload from centralised email_scan_findings table so we stay in sync with scanner page.
         const { data: scanFindings } = await supabase
           .from('email_scan_findings')
           .select('*')
-          .eq('user_id', (await supabase.auth.getUser()).data.user!.id)
+          .eq('user_id', userId)
           .in('status', ['new', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(30);
@@ -515,6 +592,38 @@ export default function DashboardPage() {
           });
           setEmailOpportunities(mapped);
           setEmailScanResults(mapped.length);
+        } else if (emailOpportunities.length === 0) {
+          setEmailScanResults(0);
+        }
+
+        // Refresh stored price-increase alerts (a scan can surface new ones)
+        try {
+          const { data: freshAlerts } = await supabase
+            .from('price_increase_alerts')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .order('detected_at', { ascending: false });
+          if (freshAlerts) setPriceAlerts(freshAlerts);
+        } catch { /* non-fatal */ }
+
+        // Refresh last-scanned timestamp so the UI reflects "just now"
+        try {
+          const { data: conn } = await supabase
+            .from('email_connections')
+            .select('last_scanned_at')
+            .eq('user_id', userId)
+            .order('last_scanned_at', { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+          if (conn?.last_scanned_at) {
+            setEmailLastScanned(conn.last_scanned_at);
+          } else {
+            // If the scanner didn't persist a timestamp, at least use now()
+            setEmailLastScanned(new Date().toISOString());
+          }
+        } catch {
+          setEmailLastScanned(new Date().toISOString());
         }
       } else {
         if (emailOpportunities.length === 0) setEmailScanResults(0);
@@ -523,6 +632,43 @@ export default function DashboardPage() {
       if (emailOpportunities.length === 0) setEmailScanResults(0);
     } finally {
       setEmailScanning(false);
+    }
+  };
+
+  /**
+   * detectPriceAlertsNow
+   *
+   * Runs on-demand price-increase detection against the user's bank
+   * transactions. Normally runs from the 8am cron, but this gives the user a
+   * way to trigger it themselves (e.g. after reconnecting their bank).
+   */
+  const detectPriceAlertsNow = async () => {
+    setPriceAlertsDetecting(true);
+    try {
+      const res = await fetch('/api/price-alerts/detect', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.alerts)) {
+          setPriceAlerts(data.alerts);
+        } else {
+          // No alerts returned in body — re-read from DB so state is fresh.
+          const userId = (await supabase.auth.getUser()).data.user?.id;
+          if (userId) {
+            const { data: fresh } = await supabase
+              .from('price_increase_alerts')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('status', 'active')
+              .order('detected_at', { ascending: false });
+            if (fresh) setPriceAlerts(fresh);
+          }
+        }
+      }
+    } catch {
+      /* non-fatal */
+    } finally {
+      setPriceAlertsLastDetected(new Date().toISOString());
+      setPriceAlertsDetecting(false);
     }
   };
 
@@ -653,39 +799,11 @@ export default function DashboardPage() {
       {/* Savings Opportunity Widget */}
       {dealsLoading ? <SavingsSkeleton /> : <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />}
 
-      {/* Price Increase Alerts */}
-      {priceAlerts.length > 0 && (
-        <div id="price-alerts" className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            Price Increase Alerts ({priceAlerts.length})
-          </h2>
-          <div className="space-y-3">
-            {priceAlerts.map((alert) => (
-              <PriceIncreaseCard
-                key={alert.id}
-                alert={alert}
-                onDismiss={async (id) => {
-                  await fetch('/api/price-alerts', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, status: 'dismissed' }),
-                  });
-                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
-                }}
-                onAction={async (id) => {
-                  await fetch('/api/price-alerts', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, status: 'actioned' }),
-                  });
-                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Price Increase Alerts — rendered inside the consolidated Action Centre
+          below (see the "Action Centre" section). The section used to render
+          here but Paul found the page cluttered; the three action sections
+          (price alerts, email scanner, action items) are now grouped together
+          under a single heading with per-section scan controls. */}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -795,7 +913,7 @@ export default function DashboardPage() {
               </div>
               {emailConnected ? (
                 <button
-                  onClick={handleEmailScan}
+                  onClick={scanInboxNow}
                   disabled={emailScanning}
                   className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white"
                 >
@@ -982,37 +1100,139 @@ export default function DashboardPage() {
       )}
 
 
-      {/* Email Scan Card */}
-      {emailConnected ? (
-        <div className="mb-6">
-          <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Mail className="h-5 w-5 text-purple-400" />
+      {/* ===== Your Action Centre ===== */}
+      {/*
+        Consolidated section that groups the three "do something about this"
+        areas of the overview into one visual block with a shared header and
+        explanation. Each subsection below has its own mini-header with a
+        last-scanned timestamp and a scan trigger so the user always knows
+        where the data came from and how to refresh it.
+      */}
+      <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2 font-[family-name:var(--font-heading)]">
+              <Sparkles className="h-5 w-5 text-mint-400" />
+              Your Action Centre
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">
+              Everything we&apos;ve spotted that&apos;s worth a few minutes of your time. Each section below pulls from a different source &mdash; you can scan each one on demand.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Subsection 1: Price Increase Alerts (from bank transactions) ── */}
+        <div id="price-alerts" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+            <div>
+              <p className="text-white font-semibold text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-400" />
+                Price Increase Alerts {priceAlerts.length > 0 ? `(${priceAlerts.length})` : ''}
+              </p>
+              <p className="text-slate-400 text-xs mt-0.5">
+                Detected from your bank transactions &mdash; direct debits that have silently gone up.
+                {priceAlertsLastDetected && (
+                  <> Last scanned: <span className="text-slate-300">{new Date(priceAlertsLastDetected).toLocaleString()}</span></>
+                )}
+              </p>
+            </div>
+            {bankConnected && (
+              <button
+                onClick={detectPriceAlertsNow}
+                disabled={priceAlertsDetecting}
+                className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all whitespace-nowrap self-start sm:self-auto"
+              >
+                {priceAlertsDetecting ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
+                ) : (
+                  <><RefreshCw className="h-3.5 w-3.5" /> Scan bank</>
+                )}
+              </button>
+            )}
+          </div>
+
+          {priceAlertsDetecting && (
+            <RotatingCaptionsLoader
+              active={priceAlertsDetecting}
+              captions={PRICE_DETECT_CAPTIONS}
+              variant="inline"
+              className="mb-3"
+            />
+          )}
+
+          {priceAlerts.length > 0 ? (
+            <div className="space-y-3">
+              {priceAlerts.map((alert) => (
+                <PriceIncreaseCard
+                  key={alert.id}
+                  alert={alert}
+                  onDismiss={async (id) => {
+                    await fetch('/api/price-alerts', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id, status: 'dismissed' }),
+                    });
+                    setPriceAlerts(prev => prev.filter(a => a.id !== id));
+                  }}
+                  onAction={async (id) => {
+                    await fetch('/api/price-alerts', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id, status: 'actioned' }),
+                    });
+                    setPriceAlerts(prev => prev.filter(a => a.id !== id));
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-4 text-center">
+              <p className="text-slate-500 text-sm">
+                {bankConnected
+                  ? 'No price increases detected. Click "Scan bank" to check again.'
+                  : 'Connect your bank to detect price increases automatically.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Subsection 2: Email Scanner Opportunities (from inbox) ── */}
+        {emailConnected ? (
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
               <div>
-                <p className="text-white font-semibold text-sm">
-                  {emailScanning ? 'Scanning your emails...' : 'Email Scanner'}
+                <p className="text-white font-semibold text-sm flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-purple-400" />
+                  Email Scanner {emailOpportunities.length > 0 ? `(${emailOpportunities.length})` : ''}
                 </p>
-                <p className="text-slate-400 text-xs">
-                  {emailScanResults !== null
-                    ? `Found ${emailScanResults} opportunities`
-                    : emailAddress
-                      ? `Connected: ${emailAddress}${emailLastScanned ? ` \u00b7 Last scanned: ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
-                      : 'Scan your inbox to find bills, overcharges & savings'}
+                <p className="text-slate-400 text-xs mt-0.5">
+                  Subscriptions, bills, refunds and overcharges we&apos;ve found in your inbox.
+                  {emailLastScanned && (
+                    <> Last scanned: <span className="text-slate-300">{new Date(emailLastScanned).toLocaleString()}</span></>
+                  )}
                 </p>
               </div>
+              <button
+                onClick={scanInboxNow}
+                disabled={emailScanning}
+                className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all whitespace-nowrap self-start sm:self-auto"
+              >
+                {emailScanning ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
+                ) : (
+                  <><ScanSearch className="h-3.5 w-3.5" /> Scan inbox</>
+                )}
+              </button>
             </div>
-            <button
-              onClick={handleEmailScan}
-              disabled={emailScanning}
-              className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap ml-4"
-            >
-              {emailScanning ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
-              ) : (
-                <><ScanSearch className="h-4 w-4" /> Scan Emails</>
-              )}
-            </button>
-          </div>
+
+            {emailScanning && (
+              <RotatingCaptionsLoader
+                active={emailScanning}
+                captions={INBOX_SCAN_CAPTIONS}
+                variant="inline"
+                className="mb-3"
+              />
+            )}
 
           {/* Scan Results */}
           {emailOpportunities.length > 0 && (
@@ -1242,12 +1462,17 @@ export default function DashboardPage() {
         const displayTasks = showAllTasks ? filtered : filtered.slice(0, 5);
 
         return (
-          <div className="mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2 font-[family-name:var(--font-heading)]">
-                <Clock className="h-5 w-5 text-mint-400" />
-                Your Action Items ({filtered.length})
-              </h2>
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-3">
+              <div>
+                <p className="text-white font-semibold text-sm flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-mint-400" />
+                  Your Action Items ({filtered.length})
+                </p>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  A to-do list of disputes, deals, and subscriptions worth following up. Items here come from your last inbox scan and any bank-detected opportunities.
+                </p>
+              </div>
               <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide">
                 {['all', 'disputes', 'deals', 'subscriptions'].map(f => (
                   <button
@@ -1403,6 +1628,9 @@ export default function DashboardPage() {
           </div>
         );
       })()}
+
+      </div>
+      {/* ===== End of Your Action Centre ===== */}
 
       {/* Quick Actions */}
       <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
