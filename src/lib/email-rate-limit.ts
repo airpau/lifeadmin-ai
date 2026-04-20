@@ -30,6 +30,9 @@ const MARKETING_EMAIL_TYPES = [
   'founding_reminder',
   'weekly_money_digest',
   'onboarding_email',
+  'contract_expiry_alert',
+  'contract_end_alert',
+  'overcharge_alert',
 ];
 
 // These are transactional and bypass the limit
@@ -124,4 +127,25 @@ export async function getBlockedUsers(
   }
 
   return blocked;
+}
+
+/**
+ * Record that a marketing email was sent. Must be called after every successful
+ * send so canSendEmail / getBlockedUsers see it in the daily count.
+ */
+export async function markEmailSent(
+  supabase: SupabaseClient,
+  userId: string,
+  emailType: string,
+  title?: string,
+): Promise<void> {
+  const { error } = await supabase.from('tasks').insert({
+    user_id: userId,
+    type: emailType,
+    title: title ?? emailType.replace(/_/g, ' '),
+    status: 'completed',
+  });
+  if (error) {
+    console.error(`[email-rate-limit] markEmailSent failed for ${userId} type=${emailType}:`, error.message);
+  }
 }

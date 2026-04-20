@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendContractEndAlert } from '@/lib/email/contract-end-alerts';
-import { canSendEmail } from '@/lib/email-rate-limit';
+import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 
 export const maxDuration = 60;
 
@@ -212,6 +212,7 @@ export async function GET(request: NextRequest) {
           await updateFilter.eq('subscription_id', contract.subscriptionId);
         }
 
+        await markEmailSent(supabase, userId, 'contract_expiry_alert', `Contract expiry alert: ${contract.providerName}`);
         emailsSent++;
       }
     }

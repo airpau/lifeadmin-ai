@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { runAssessment } from '@/lib/overcharge-engine';
 import { sendOverchargeAlert } from '@/lib/email/overcharge-alerts';
-import { canSendEmail } from '@/lib/email-rate-limit';
+import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 
 export const maxDuration = 120;
 
@@ -94,14 +94,17 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (profile && ['essential', 'pro'].includes(profile.subscription_tier || '')) {
-        const allowed = await canSendEmail(supabase, userId, 'overcharge_alert');
-        if (allowed && highScore.length > 0) {
+        const rateCheck = await canSendEmail(supabase, userId, 'overcharge_alert');
+        if (rateCheck.allowed && highScore.length > 0) {
           const sent = await sendOverchargeAlert(
             profile.email,
             profile.name || 'there',
             assessments.filter(a => a.overchargeScore >= 40) // Include medium+ in email
           );
-          if (sent) totalEmails++;
+          if (sent) {
+            await markEmailSent(supabase, userId, 'overcharge_alert', 'Overcharge alert');
+            totalEmails++;
+          }
         }
       }
     } catch (err) {
