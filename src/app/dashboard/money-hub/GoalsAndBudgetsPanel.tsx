@@ -5,9 +5,11 @@ import { Target, Lock, Settings, Plus, PiggyBank } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import GoalsAndBudgetsModal from './GoalsAndBudgetsModal';
+import CategoryDrillDownModal from './CategoryDrillDownModal';
 
-export default function GoalsAndBudgetsPanel({ data, isPro, refreshData }: { data: any, isPro: boolean, refreshData: () => void }) {
+export default function GoalsAndBudgetsPanel({ data, isPro, refreshData, selectedMonth }: { data: any, isPro: boolean, refreshData: () => void, selectedMonth: string }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [drillCategory, setDrillCategory] = useState<string | null>(null);
   const budgets = data.budgets || [];
   const goals = data.goals || [];
 
@@ -53,23 +55,27 @@ export default function GoalsAndBudgetsPanel({ data, isPro, refreshData }: { dat
               <p className="text-sm text-slate-500">No budgets set. Add one to track spending limits.</p>
             ) : (
               budgets.slice(0, 4).map((b: any) => (
-                <div key={b.id} className="mb-3">
+                <button
+                  key={b.id}
+                  onClick={() => setDrillCategory(b.category)}
+                  className="mb-3 w-full text-left group hover:bg-navy-800/40 rounded-lg px-2 -mx-2 py-1 transition-colors"
+                >
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white capitalize">{(b.category || '').replace(/_/g, ' ')}</span>
+                    <span className="text-white capitalize group-hover:text-mint-400 transition-colors">{(b.category || '').replace(/_/g, ' ')}</span>
                     <span className={`text-xs font-medium ${b.status === 'over_budget' ? 'text-red-400' : b.status === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>
                       £{fmtNum(b.spent)} / £{fmtNum(b.monthly_limit)}
                     </span>
                   </div>
                   <div className="w-full bg-navy-800 rounded-full h-1.5">
-                    <div 
-                      className={`h-1.5 rounded-full transition-all ${b.status === 'over_budget' ? 'bg-red-400' : b.status === 'warning' ? 'bg-amber-400' : 'bg-green-400'}`} 
-                      style={{ width: `${Math.min(b.percentage, 100)}%` }} 
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${b.status === 'over_budget' ? 'bg-red-400' : b.status === 'warning' ? 'bg-amber-400' : 'bg-green-400'}`}
+                      style={{ width: `${Math.min(b.percentage, 100)}%` }}
                     />
                   </div>
                   {b.status === 'over_budget' && (
                     <p className="text-[10px] text-red-400 mt-0.5">Over by £{fmtNum(Math.abs(b.remaining))}</p>
                   )}
-                </div>
+                </button>
               ))
             )}
           </div>
@@ -114,11 +120,19 @@ export default function GoalsAndBudgetsPanel({ data, isPro, refreshData }: { dat
         </div>
       )}
       
-      <GoalsAndBudgetsModal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
+      <GoalsAndBudgetsModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
         data={data}
         onUpdated={() => { refreshData(); }}
+      />
+
+      <CategoryDrillDownModal
+        isOpen={!!drillCategory}
+        onClose={() => setDrillCategory(null)}
+        category={drillCategory}
+        selectedMonth={selectedMonth}
+        onRecategorised={refreshData}
       />
     </div>
   );
