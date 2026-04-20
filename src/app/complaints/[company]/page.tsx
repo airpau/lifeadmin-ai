@@ -244,7 +244,7 @@ export default async function CompanyPage({ params }: Props) {
             Paybacker
           </Link>{' '}
           ›{' '}
-          <Link href="/complaints" className="hover:text-slate-400 transition-colors">
+          <Link href="/#disputes" className="hover:text-slate-400 transition-colors">
             Complaints
           </Link>{' '}
           › {company.name}
