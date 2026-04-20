@@ -444,6 +444,14 @@ export async function POST(request: NextRequest) {
       opportunities = allNew;
     }
 
+    // Stamp last_scanned_at so the dashboard staleness check won't re-fire on the next page load.
+    // Scoped to provider_type=google so Outlook/IMAP connections are not incorrectly marked as scanned.
+    await admin.from('email_connections')
+      .update({ last_scanned_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('provider_type', 'google')
+      .eq('status', 'active');
+
     return NextResponse.json({
       opportunities,
       emailsFound: scanResult.emailsFound,

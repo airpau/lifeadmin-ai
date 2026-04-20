@@ -550,7 +550,11 @@ export default function DashboardPage() {
    * invoke without awaiting (callers may `.catch(() => {})`).
    */
   const scanInboxNow = async () => {
+    // Explicit manual re-scan: clear the session guard so auto-trigger bookkeeping stays accurate
+    sessionStorage.removeItem('gmailScanFired');
     setEmailScanning(true);
+    // Set guard immediately (before await) so any parallel auto-trigger sees the flag even while in-flight
+    sessionStorage.setItem('gmailScanFired', '1');
     try {
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const data = await res.json();
