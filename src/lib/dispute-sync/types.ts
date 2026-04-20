@@ -53,13 +53,21 @@ export interface ThreadCandidate {
 
 /**
  * Thin wrapper around email_connections rows used by the fetchers.
+ *
+ * provider_type values stored in DB (as set by the OAuth callbacks and the
+ * IMAP connect route):
+ *   'google'  - Gmail via Google OAuth
+ *   'outlook' - Microsoft Graph via Microsoft OAuth
+ *   'imap'    - Yahoo, iCloud, BT, Sky, etc. via app-password IMAP
+ *
+ * auth_method values: 'oauth' for the two OAuth providers, 'imap' for IMAP.
  */
 export interface EmailConnection {
   id: string;
   user_id: string;
   email_address: string;
-  provider_type: 'oauth' | 'imap';
-  auth_method: string; // 'gmail' | 'outlook' | 'imap-password' | 'imap-app-password'
+  provider_type: string; // 'google' | 'outlook' | 'imap' (plus legacy values)
+  auth_method: string;   // 'oauth' | 'imap' (plus legacy 'gmail'/'outlook')
   access_token: string | null;
   refresh_token: string | null;
   token_expiry: string | null;
@@ -77,10 +85,21 @@ export interface EmailConnection {
  *   gmail   -> Gmail threadId
  *   outlook -> Graph conversationId
  *   imap    -> Message-ID of the first message in the thread
+ *
+ * NOTE: provider_type is the source of truth — OAuth callbacks write
+ * provider_type='google'|'outlook' and auth_method='oauth'. We also handle
+ * the legacy shape (auth_method='gmail'|'outlook') for older rows.
  */
 export function providerFromConnection(conn: EmailConnection): EmailProvider {
-  if (conn.provider_type === 'imap') return 'imap';
-  if (conn.auth_method === 'gmail') return 'gmail';
-  if (conn.auth_method === 'outlook') return 'outlook';
+  const pt = (conn.provider_type ?? '').toLowerCase();
+  const am = (conn.auth_method ?? '').toLowerCase();
+
+  if (pt === 'imap' || am === 'imap' || am === 'imap-password' || am === 'imap-app-password') {
+    return 'imap';
+  }
+  if (pt === 'google' || pt === 'gmail' || am === 'gmail') return 'gmail';
+  if (pt === 'outlook' || pt === 'microsoft' || am === 'outlook' || am === 'microsoft') {
+    return 'outlook';
+  }
   throw new Error(`Unknown provider for connection ${conn.id}: ${conn.provider_type}/${conn.auth_method}`);
 }
