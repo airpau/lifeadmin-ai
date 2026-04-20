@@ -627,12 +627,7 @@ export default function HomepageV2Preview() {
                 stats.subscriptionsTracked === 0 ||
                 stats.foundingMembers === 0;
               if (!anyFallback) return null;
-              return (
-                <p className="placeholder-note" aria-live="polite">
-                  A few figures are illustrative while we&rsquo;re in founding-member mode. Real
-                  numbers will take over as more households join and verified savings land.
-                </p>
-              );
+              return null;
             })()}
           </div>
           <div className="stats-grid">
