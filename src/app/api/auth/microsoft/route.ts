@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   if (!process.env.MICROSOFT_CLIENT_ID) {
     return NextResponse.redirect(
-      new URL('/dashboard/scanner?error=outlook_not_configured', request.url)
+      new URL('/dashboard/profile?error=outlook_not_configured', request.url)
     );
   }
 

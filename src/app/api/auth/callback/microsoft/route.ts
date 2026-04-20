@@ -10,23 +10,24 @@ export async function GET(request: NextRequest) {
   const errorDesc = searchParams.get('error_description');
 
   const baseUrl = 'https://paybacker.co.uk';
+  const returnPath = '/dashboard/profile';
 
   if (error) {
     console.error('[outlook-callback] OAuth error:', error, errorDesc);
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Microsoft: ' + (errorDesc || error))}`
+      `${baseUrl}${returnPath}?error=${encodeURIComponent('Microsoft: ' + (errorDesc || error))}`
     );
   }
 
   if (!code) {
-    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=${encodeURIComponent('No authorization code received from Microsoft')}`);
+    return NextResponse.redirect(`${baseUrl}${returnPath}?error=${encodeURIComponent('No authorization code received from Microsoft')}`);
   }
 
   // Verify user is logged in
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Not logged in. Please log in and try again.')}`);
+    return NextResponse.redirect(`${baseUrl}${returnPath}?error=${encodeURIComponent('Not logged in. Please log in and try again.')}`);
   }
 
   // Step 1: Exchange code for tokens
@@ -36,13 +37,13 @@ export async function GET(request: NextRequest) {
   } catch (err: any) {
     console.error('[outlook-callback] Token exchange failed:', err.message);
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Token exchange failed: ' + err.message)}`
+      `${baseUrl}${returnPath}?error=${encodeURIComponent('Token exchange failed: ' + err.message)}`
     );
   }
 
   if (!tokens.email) {
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Could not get email address from Microsoft account')}`
+      `${baseUrl}${returnPath}?error=${encodeURIComponent('Could not get email address from Microsoft account')}`
     );
   }
 
@@ -76,15 +77,15 @@ export async function GET(request: NextRequest) {
     if (insertError) {
       console.error('[outlook-callback] DB insert error:', insertError);
       return NextResponse.redirect(
-        `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Database error: ' + insertError.message)}`
+        `${baseUrl}${returnPath}?error=${encodeURIComponent('Database error: ' + insertError.message)}`
       );
     }
 
-    return NextResponse.redirect(`${baseUrl}/dashboard/scanner?outlook_connected=true`);
+    return NextResponse.redirect(`${baseUrl}${returnPath}?outlook_connected=true`);
   } catch (err: any) {
     console.error('[outlook-callback] Save error:', err.message);
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/scanner?error=${encodeURIComponent('Save failed: ' + err.message)}`
+      `${baseUrl}${returnPath}?error=${encodeURIComponent('Save failed: ' + err.message)}`
     );
   }
 }

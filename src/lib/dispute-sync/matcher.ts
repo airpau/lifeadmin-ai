@@ -71,27 +71,43 @@ async function findGmailCandidates(
   const domains = domainsForProvider(dispute.provider_name);
   const explicit = hasExplicitDomains(dispute.provider_name);
 
-  // Build a Gmail search query that biases toward the provider
-  // e.g. "(from:onestream.co.uk OR subject:onestream) newer_than:180d"
+  // Cascading query strategy — start narrow, broaden if nothing found.
+  // This fixes the case where a supplier sends from an unexpected subdomain
+  // (e.g. noreply@billing.onestream-telecom.co.uk) or uses subjects without
+  // the brand name (e.g. "Your January invoice").
+  const providerPhrase = dispute.provider_name.trim();
+  const subjectTerm = providerPhrase.split(/\s+/)[0].toLowerCase();
   const fromClauses = domains.map((d) => `from:${d}`).join(' OR ');
-  const subjectTerm = dispute.provider_name.split(/\s+/)[0].toLowerCase();
-  const q = [
-    fromClauses ? `(${fromClauses} OR subject:${subjectTerm})` : `subject:${subjectTerm}`,
-    'newer_than:180d',
-  ].join(' ');
 
-  const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
-  listUrl.searchParams.set('q', q);
-  listUrl.searchParams.set('maxResults', '20');
-
-  const listRes = await fetch(listUrl.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!listRes.ok) {
-    const body = await listRes.text();
-    throw new Error(`Gmail threads.list failed (${listRes.status}): ${body.slice(0, 200)}`);
+  const queries: string[] = [];
+  if (fromClauses) {
+    queries.push(`(${fromClauses}) newer_than:365d`);
   }
-  const { threads = [] } = await listRes.json();
+  // Broad full-text: catches emails that mention the provider anywhere in
+  // headers/body, even if the from-domain isn't in our allowlist.
+  queries.push(`"${providerPhrase}" newer_than:365d`);
+  if (providerPhrase.toLowerCase() !== subjectTerm) {
+    queries.push(`"${subjectTerm}" newer_than:365d`);
+  }
+
+  let threads: Array<{ id: string }> = [];
+  for (const q of queries) {
+    const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
+    listUrl.searchParams.set('q', q);
+    listUrl.searchParams.set('maxResults', '20');
+    const listRes = await fetch(listUrl.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!listRes.ok) {
+      const body = await listRes.text();
+      throw new Error(`Gmail threads.list failed (${listRes.status}): ${body.slice(0, 200)}`);
+    }
+    const json = await listRes.json();
+    if (json.threads?.length) {
+      threads = json.threads;
+      break;
+    }
+  }
 
   const candidates: ThreadCandidate[] = [];
   for (const t of threads.slice(0, 10)) {
@@ -159,33 +175,48 @@ async function findOutlookCandidates(
   const token = await ensureFreshToken(conn, 'outlook');
   const domains = domainsForProvider(dispute.provider_name);
   const explicit = hasExplicitDomains(dispute.provider_name);
-  const subjectTerm = dispute.provider_name.split(/\s+/)[0];
+  const providerPhrase = dispute.provider_name.trim();
+  const subjectTerm = providerPhrase.split(/\s+/)[0];
 
-  // Graph search: use $search for full-text, fall back to $filter with domain
-  const searchQuery = domains.length
-    ? `"from:${domains[0]}" OR "${subjectTerm}"`
-    : `"${subjectTerm}"`;
-
-  const url = new URL('https://graph.microsoft.com/v1.0/me/messages');
-  url.searchParams.set('$search', `"${searchQuery}"`);
-  url.searchParams.set(
-    '$select',
-    'id,conversationId,subject,from,receivedDateTime,bodyPreview',
-  );
-  url.searchParams.set('$top', '25');
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      // $search requires ConsistencyLevel: eventual on Graph
-      ConsistencyLevel: 'eventual',
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Graph search failed (${res.status}): ${body.slice(0, 200)}`);
+  // Cascading Outlook search: full-text on provider phrase first, then domain
+  // fallback. Graph's $search does body+headers so it's more forgiving than
+  // Gmail's default which is why we lead with it here.
+  const searches: string[] = [`"${providerPhrase}"`];
+  if (domains.length) searches.push(`"${domains[0]}"`);
+  if (providerPhrase.toLowerCase() !== subjectTerm.toLowerCase()) {
+    searches.push(`"${subjectTerm}"`);
   }
-  const data = await res.json();
+
+  let data: { value?: Array<{
+    conversationId?: string;
+    subject?: string;
+    from?: { emailAddress?: { address?: string } };
+    receivedDateTime?: string;
+    bodyPreview?: string;
+  }> } = {};
+  for (const searchQuery of searches) {
+    const url = new URL('https://graph.microsoft.com/v1.0/me/messages');
+    url.searchParams.set('$search', `"${searchQuery}"`);
+    url.searchParams.set(
+      '$select',
+      'id,conversationId,subject,from,receivedDateTime,bodyPreview',
+    );
+    url.searchParams.set('$top', '25');
+
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // $search requires ConsistencyLevel: eventual on Graph
+        ConsistencyLevel: 'eventual',
+      },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Graph search failed (${res.status}): ${body.slice(0, 200)}`);
+    }
+    data = await res.json();
+    if (data.value?.length) break;
+  }
 
   // Group returned messages by conversationId
   interface ConvEntry {
@@ -204,7 +235,7 @@ async function findOutlookCandidates(
     };
     entry.messages.push({
       from: m.from?.emailAddress?.address ?? '',
-      date: new Date(m.receivedDateTime),
+      date: new Date(m.receivedDateTime ?? Date.now()),
       preview: m.bodyPreview ?? '',
     });
     byConv.set(cid, entry);
