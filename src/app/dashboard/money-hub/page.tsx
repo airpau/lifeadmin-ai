@@ -826,7 +826,7 @@ export default function MoneyHubPage() {
       </div>
 
       {/* Budgets & Savings Goals — above FAC for visibility */}
-      <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
+      <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
 
       {/* Financial Action Centre (Pro) */}
       {isPro && (
