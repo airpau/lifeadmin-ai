@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
   // Filter to Pro users
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, timezone')
     .in('id', sessions.map((s) => s.user_id));
 
   const proUserIds = new Set(
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
   );
 
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
+  const tzMap = new Map((profiles ?? []).map(p => [p.id, p.timezone ?? undefined]));
   if (proSessions.length === 0) return NextResponse.json({ ok: true, sent: 0 });
 
   // Check alert preferences
@@ -112,6 +114,10 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours(tzMap.get(userId))) {
+        console.log(`[telegram-payday-summary] quiet hours: suppressed message to chat ${chatId}`);
+        continue;
+      }
       // Look for salary/income transactions in the last 2 days
       // Income: positive amounts, categorised as income, or large credits
       const { data: incomeTxns } = await supabase

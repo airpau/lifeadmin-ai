@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendBatchedDigest } from '@/lib/telegram/queue';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
   const userIds = sessions.map((s) => s.user_id);
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, timezone')
     .in('id', userIds);
 
   const proUserIds = new Set(
@@ -135,7 +136,7 @@ export async function GET(request: NextRequest) {
   );
 
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
-
+  const tzMap = new Map((profiles ?? []).map(p => [p.id, p.timezone ?? undefined]));
   // Check alert preferences — skip users who disabled evening summary
   const { data: allPrefs } = await supabase
     .from('telegram_alert_preferences')
@@ -173,6 +174,11 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours(tzMap.get(userId))) {
+        console.log(`[telegram-evening-summary] quiet hours: suppressed message to chat ${chatId}`);
+        skipped++;
+        continue;
+      }
       // ── 0. Flush any pending alert queue first (separate message) ──────────
       // Batches all queued findings from email scans / detections into one
       // concise "daily money update" message with inline action buttons.

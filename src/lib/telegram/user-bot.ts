@@ -15,6 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
+import { isQuietHours } from './quiet-hours';
 
 // ============================================================
 // Supabase admin client
@@ -1711,9 +1712,14 @@ export async function sendProactiveAlert(params: {
     issue_type: string;
   };
   showFollowUpButtons?: boolean;
-}): Promise<{ messageId?: number; ok: boolean }> {
+}): Promise<{ messageId?: number; ok: boolean; suppressed?: boolean }> {
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
   if (!token) return { ok: false };
+
+  if (isQuietHours()) {
+    console.log(`[telegram] quiet hours: suppressed proactive alert to chat ${params.chatId}`);
+    return { ok: false, suppressed: true };
+  }
 
   const { chatId, issue, showFollowUpButtons } = params;
   const TELEGRAM_API = `https://api.telegram.org/bot${token}`;

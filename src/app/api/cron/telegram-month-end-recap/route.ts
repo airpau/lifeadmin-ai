@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isQuietHours } from '@/lib/telegram/quiet-hours';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
   // Filter to Pro users
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, timezone')
     .in('id', sessions.map((s) => s.user_id));
 
   const proUserIds = new Set(
@@ -132,6 +133,7 @@ export async function GET(request: NextRequest) {
   );
 
   const proSessions = sessions.filter((s) => proUserIds.has(s.user_id));
+  const tzMap = new Map((profiles ?? []).map(p => [p.id, p.timezone ?? undefined]));
   if (proSessions.length === 0) return NextResponse.json({ ok: true, sent: 0 });
 
   // Check alert preferences
@@ -150,6 +152,10 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
+      if (isQuietHours(tzMap.get(userId))) {
+        console.log(`[telegram-month-end-recap] quiet hours: suppressed message to chat ${chatId}`);
+        continue;
+      }
       // Parallel RPC calls — same RPCs as Money Hub dashboard
       const [prevSpendRes, prevPrevSpendRes, prevIncomeRes, prevBreakdownRes] = await Promise.all([
         supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevYear, p_month: prevMonth }),

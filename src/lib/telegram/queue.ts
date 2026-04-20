@@ -13,6 +13,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isQuietHours } from './quiet-hours';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -221,6 +222,11 @@ export async function sendBatchedDigest(
 ): Promise<{ sent: boolean; count: number }> {
   const token = process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return { sent: false, count: 0 };
+
+  if (isQuietHours()) {
+    console.log(`[telegram] quiet hours: suppressed batched digest to chat ${chatId}`);
+    return { sent: false, count: 0 };
+  }
 
   const { data: alerts, error } = await supabase
     .from('telegram_pending_alerts')
