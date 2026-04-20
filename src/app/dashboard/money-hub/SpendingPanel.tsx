@@ -3,8 +3,8 @@
 import { fmtNum } from '@/lib/format';
 import { Lock, FileText, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
-import { ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import CategoryDrillDownModal from './CategoryDrillDownModal';
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -51,6 +51,17 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
   const [searchInput, setSearchInput] = useState('');
   const [showAll, setShowAll] = useState(false);
 
+  // Debounce the cross-category search: open the drill-down modal after 400 ms
+  // of inactivity (only when the user has typed something meaningful).
+  useEffect(() => {
+    if (!searchInput.trim()) {
+      setSearchQuery(null);
+      return;
+    }
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const categories = data.spending.categories || [];
   const topMerchants = data.spending.topMerchants || [];
   const totalSpent = categories.reduce((s: number, c: any) => s + c.total, 0);
@@ -75,14 +86,18 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
           type="text"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && searchInput.trim()) {
-              setSearchQuery(searchInput.trim());
-            }
-          }}
-          placeholder="Search transactions..."
-          className="w-full bg-navy-950/50 border border-navy-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all font-medium"
+          placeholder="Search transactions…"
+          className="w-full bg-navy-950/50 border border-navy-700 rounded-xl pl-10 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all font-medium"
         />
+        {searchInput && (
+          <button
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-white transition-colors"
+            onClick={() => { setSearchInput(''); setSearchQuery(null); }}
+            aria-label="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
       
       <div className="space-y-4 flex-1">
@@ -160,13 +175,13 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
         </div>
       </div>
       
-      <CategoryDrillDownModal 
-        isOpen={!!drillCategory || !!searchQuery} 
-        onClose={() => { setDrillCategory(null); setSearchQuery(null); }} 
+      <CategoryDrillDownModal
+        isOpen={!!drillCategory || !!searchQuery}
+        onClose={() => { setDrillCategory(null); setSearchQuery(null); setSearchInput(''); }}
         category={drillCategory}
         searchQuery={searchQuery}
         selectedMonth={selectedMonth}
-        onRecategorised={() => { setDrillCategory(null); setSearchQuery(null); refreshData(); }}
+        onRecategorised={() => { setDrillCategory(null); setSearchQuery(null); setSearchInput(''); refreshData(); }}
       />
     </div>
   );
