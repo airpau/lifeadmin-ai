@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock, X, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, Trash2, Pencil, Save, MapPin, FileText, Loader2, Sparkles, Download, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
@@ -78,26 +78,12 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
   );
 }
 
-function ConnectedAccountsSection({ supabase, searchParams }: { supabase: ReturnType<typeof createClient>, searchParams: URLSearchParams }) {
+function ConnectedAccountsSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [bankConns, setBankConns] = useState<Array<{ id: string; bank_name: string | null; status: string; connected_at: string; account_display_names: string[] | null }>>([]);
   const [emailConns, setEmailConns] = useState<Array<{ id: string; email_address: string; provider_type: string; status: string }>>([]);
   const [loaded, setLoaded] = useState(false);
-  const [showConnectModal, setShowConnectModal] = useState(false);
-  const [connectEmail, setConnectEmail] = useState('');
-  const [connectPassword, setConnectPassword] = useState('');
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [imapMode, setImapMode] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get('connect_email') === 'true') {
-      setShowConnectModal(true);
-      // clean up URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
-    }
-
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoaded(true); return; }
@@ -110,119 +96,39 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
       setLoaded(true);
     };
     load();
-  }, [supabase, searchParams]);
+  }, [supabase]);
 
   const activeBanks = bankConns.filter(b => b.status === 'active');
   const activeEmails = emailConns.filter(e => e.status === 'active');
-
-  const detectProvider = (email: string): { name: string; note?: string } => {
-    const domain = email.split('@')[1]?.toLowerCase();
-    const providers: Record<string, { name: string; note?: string }> = {
-      'gmail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled. Go to myaccount.google.com > Security > App Passwords.' },
-      'googlemail.com': { name: 'Gmail', note: 'Requires an App Password if 2FA is enabled.' },
-      'outlook.com': { name: 'Outlook' },
-      'hotmail.com': { name: 'Outlook' },
-      'hotmail.co.uk': { name: 'Outlook' },
-      'live.com': { name: 'Outlook' },
-      'live.co.uk': { name: 'Outlook' },
-      'yahoo.com': { name: 'Yahoo', note: 'Yahoo requires an App Password (not your normal password). To generate one: go to login.yahoo.com → Account Security → Generate App Password → select "Other App" → copy the password and paste it here.' },
-      'yahoo.co.uk': { name: 'Yahoo', note: 'Yahoo requires an App Password (not your normal password). To generate one: go to login.yahoo.com → Account Security → Generate App Password → select "Other App" → copy the password and paste it here.' },
-      'icloud.com': { name: 'iCloud', note: 'iCloud requires an App-Specific Password. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate.' },
-      'me.com': { name: 'iCloud', note: 'iCloud requires an App-Specific Password. Go to appleid.apple.com → Sign-In and Security → App-Specific Passwords → Generate.' },
-      'btinternet.com': { name: 'BT' },
-      'sky.com': { name: 'Sky' },
-      'virginmedia.com': { name: 'Virgin Media' },
-      'aol.com': { name: 'AOL' },
-      'protonmail.com': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
-      'proton.me': { name: 'ProtonMail', note: 'Requires ProtonMail Bridge.' },
-    };
-    if (!domain) return { name: 'Email' };
-    return providers[domain] || { name: domain };
-  };
-
-  const detectedProvider = connectEmail ? detectProvider(connectEmail) : null;
-
-  const handleConnectEmail = async () => {
-    if (!connectEmail || !connectPassword) return;
-    setConnecting(true);
-    setConnectError(null);
-    try {
-      const res = await fetch('/api/email/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: connectEmail, password: connectPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setConnectError(data.error || 'Connection failed');
-        return;
-      }
-      setShowConnectModal(false);
-      setConnectEmail('');
-      setConnectPassword('');
-      setImapMode(false);
-      // Reload emails
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: emails } = await supabase.from('email_connections').select('id, email_address, provider_type, status').eq('user_id', user.id);
-        setEmailConns(emails || []);
-      }
-    } catch (err: any) {
-      setConnectError(err.message || 'Connection failed');
-    } finally {
-      setConnecting(false);
-    }
-  };
-
-  const handleDisconnectEmail = async (id: string) => {
-    try {
-      await fetch(`/api/email/connections?id=${id}`, { method: 'DELETE' });
-      setEmailConns((prev) => prev.filter((c) => c.id !== id));
-    } catch {}
-  };
+  const allEmails = emailConns; // Include all statuses for display
 
   return (
     <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-      <h2 className="text-xl font-bold text-white mb-6">Connected Accounts & Integrations</h2>
+      <h2 className="text-xl font-bold text-white mb-6">Connected Accounts</h2>
       <div className="space-y-4">
         {/* Email */}
-        <div className="p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
-                <Mail className="h-6 w-6 text-red-400" />
-              </div>
-              <div>
-                <h3 className="text-white font-semibold">Email Accounts</h3>
-                <p className="text-sm text-slate-400">
-                  {emailConns.length > 0
-                    ? `${emailConns.length} email account${emailConns.length !== 1 ? 's' : ''} connected`
-                    : 'Scan emails for bills and subscriptions'}
-                </p>
-              </div>
+        <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
+              <Mail className="h-6 w-6 text-red-400" />
             </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setShowConnectModal(true)} className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
-                {emailConns.length > 0 ? '+ Add Email' : 'Connect'}
-              </button>
+            <div>
+              <h3 className="text-white font-semibold">Email</h3>
+              <p className="text-sm text-slate-400">
+                {activeEmails.length > 0 ? activeEmails.map(e => e.email_address).join(', ') : 'Scan emails for bills and subscriptions'}
+              </p>
             </div>
           </div>
-          {emailConns.length > 0 && (
-            <div className="mt-3 ml-16 space-y-1.5">
-              {emailConns.map(e => (
-                <div key={e.id} className="flex items-center justify-between text-sm pr-2">
-                  <div className="flex items-center gap-2 text-sm z-10 w-full min-w-0 pr-4">
-                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'active' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                    <span className="text-slate-300 capitalize">{e.provider_type === 'google' ? 'Gmail' : e.provider_type === 'outlook' ? 'Outlook' : e.provider_type}</span>
-                    <span className="text-slate-500 truncate">· {e.email_address}</span>
-                  </div>
-                  <button onClick={() => handleDisconnectEmail(e.id)} className="text-slate-500 hover:text-red-400 text-xs shrink-0">
-                    Disconnect
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {activeEmails.length > 0 && (
+              <span className="text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/30 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+              </span>
+            )}
+            <a href="/dashboard/scanner" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+              {activeEmails.length > 0 ? '+ Add Email' : 'Connect'}
+            </a>
+          </div>
         </div>
 
         {/* Bank */}
@@ -275,147 +181,6 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
           )}
         </div>
       </div>
-
-      {/* Connect Email Modal */}
-      {showConnectModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
-          <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center">
-                <Mail className="h-5 w-5 text-mint-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Connect Email</h3>
-                <p className="text-slate-400 text-sm">Works with Gmail, Outlook, Yahoo, iCloud, and more</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Provider selector */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Choose your email provider</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                     onClick={() => { window.location.href = '/api/auth/google?returnPath=/dashboard/profile'; }}
-                    className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
-                  >
-                    <span className="text-xl">📧</span>
-                    <div>
-                      <p className="text-white text-sm font-medium">Gmail</p>
-                      <p className="text-slate-500 text-[10px]">One-click connect</p>
-                    </div>
-                  </button>
-                  <button
-                     onClick={() => { window.location.href = '/api/outlook/auth?returnPath=/dashboard/profile'; }}
-                    className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
-                  >
-                    <span className="text-xl">📬</span>
-                    <div>
-                      <p className="text-white text-sm font-medium">Outlook</p>
-                      <p className="text-slate-500 text-[10px]">One-click connect</p>
-                    </div>
-                  </button>
-                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
-                    <span className="text-xl">📨</span>
-                    <div>
-                      <p className="text-white text-sm font-medium">Yahoo Mail</p>
-                      <p className="text-slate-500 text-[10px]">App password required</p>
-                    </div>
-                  </button>
-                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
-                    <span className="text-xl">✉️</span>
-                    <div>
-                      <p className="text-white text-sm font-medium">Other</p>
-                      <p className="text-slate-500 text-[10px]">iCloud, BT, Sky, etc.</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* IMAP fields for Yahoo/Other */}
-              {imapMode && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
-                    <input
-                      type="email"
-                      value={connectEmail}
-                      onChange={(e) => setConnectEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
-                      autoFocus
-                    />
-                    {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && (
-                      <p className="text-xs text-mint-400 mt-1.5 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Detected: {detectedProvider.name}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1.5">Password or App Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={connectPassword}
-                        onChange={(e) => setConnectPassword(e.target.value)}
-                        placeholder="Your email password"
-                        className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 pr-10 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-                      >
-                         <Lock className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {detectedProvider?.note && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
-                      <p className="text-xs text-amber-400 leading-relaxed">{detectedProvider.note}</p>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleConnectEmail}
-                    disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword}
-                    className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
-                  >
-                    {connecting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
-                    ) : (
-                      <><Lock className="h-4 w-4" /> Connect Securely</>
-                    )}
-                  </button>
-                </>
-              )}
-
-              {connectError && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5">
-                  <p className="text-xs text-red-400">{connectError}</p>
-                </div>
-              )}
-
-              <div className="flex items-start gap-2 bg-navy-950/50 rounded-lg px-3 py-2">
-                <Sparkles className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-slate-500">
-                  Gmail and Outlook use secure OAuth (no password stored). Other providers use encrypted IMAP. Read-only access. We never send emails from your account.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -448,35 +213,13 @@ export default function ProfilePage() {
   const [savedReports, setSavedReports] = useState<Array<{ id: string; report_type: string; year: number; month: number | null; created_at: string }>>([]);
   const [showReport, setShowReport] = useState(false);
   const [telegramLinked, setTelegramLinked] = useState<boolean | null>(null);
-  
-  const [newPassword, setNewPassword] = useState('');
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword || newPassword.length < 8) {
-      setPasswordMessage({ type: 'error', text: 'Password must be at least 8 characters long.' });
-      return;
-    }
-    setPasswordLoading(true);
-    setPasswordMessage(null);
-    try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
-      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
-      setNewPassword('');
-      setTimeout(() => setPasswordMessage(null), 5000);
-    } catch (err: any) {
-      setPasswordMessage({ type: 'error', text: err.message || 'Failed to update password.' });
-    } finally {
-      setPasswordLoading(false);
-    }
-  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -491,8 +234,6 @@ export default function ProfilePage() {
             .single();
 
           if (data) {
-            const isTestUser = user.email?.toLowerCase() === 'sheva.tests.2026@outlook.com';
-            
             setProfile({
               email: data.email,
               full_name: data.full_name,
@@ -501,8 +242,8 @@ export default function ProfilePage() {
               phone: data.phone,
               address: data.address,
               postcode: data.postcode,
-              subscription_status: isTestUser ? 'active' : data.subscription_status,
-              subscription_tier: isTestUser ? 'pro' : data.subscription_tier,
+              subscription_status: data.subscription_status,
+              subscription_tier: data.subscription_tier,
               stripe_subscription_id: data.stripe_subscription_id,
               total_money_recovered: data.total_money_recovered || 0,
               total_tasks_completed: data.total_tasks_completed || 0,
@@ -647,6 +388,47 @@ export default function ProfilePage() {
     } catch {
       alert('Failed to delete account. Please contact support@paybacker.co.uk');
       setDeleting(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPwError(null);
+    setPwSuccess(false);
+
+    if (pwForm.next.length < 8) {
+      setPwError('New password must be at least 8 characters.');
+      return;
+    }
+    if (pwForm.next !== pwForm.confirm) {
+      setPwError('Passwords do not match.');
+      return;
+    }
+
+    setPwSaving(true);
+    try {
+      // Re-authenticate with current password first to verify identity
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.email) throw new Error('Could not get user email');
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: pwForm.current,
+      });
+      if (signInError) {
+        setPwError('Current password is incorrect.');
+        return;
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: pwForm.next });
+      if (error) throw error;
+
+      setPwSuccess(true);
+      setPwForm({ current: '', next: '', confirm: '' });
+      setTimeout(() => setPwSuccess(false), 4000);
+    } catch (err: any) {
+      setPwError(err.message || 'Failed to update password. Please try again.');
+    } finally {
+      setPwSaving(false);
     }
   };
 
@@ -853,7 +635,12 @@ export default function ProfilePage() {
               <input
                 type="tel"
                 value={editForm.phone}
-                onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                onChange={(e) => {
+                  // Allow digits, spaces, +, (, ), - only
+                  const filtered = e.target.value.replace(/[^0-9\s+\-()]/g, '');
+                  setEditForm({ ...editForm, phone: filtered });
+                }}
+                pattern="[0-9\s+\-()\+]*"
                 className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
                 placeholder="07xxx xxxxxx"
               />
@@ -923,37 +710,66 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Security Details */}
+      {/* Change Password */}
       <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-6">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-mint-400"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
-          Security
+        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+          <Lock className="h-5 w-5 text-mint-400" />
+          Change Password
         </h2>
-        
-        <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
+
+        {pwSuccess && (
+          <div className="mb-4 bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-green-400 text-sm flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            Password updated successfully.
+          </div>
+        )}
+
+        {pwError && (
+          <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-400 text-sm">
+            {pwError}
+          </div>
+        )}
+
+        <div className="space-y-4 max-w-sm">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">New Password <span className="text-slate-500 font-normal">(min 8 characters)</span></label>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Current password</label>
             <input
               type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              value={pwForm.current}
+              onChange={(e) => setPwForm({ ...pwForm, current: e.target.value })}
               className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
-              placeholder="••••••••"
-             />
+              placeholder="Your current password"
+            />
           </div>
-          {passwordMessage && (
-            <p className={`text-sm ${passwordMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-              {passwordMessage.text}
-            </p>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">New password</label>
+            <input
+              type="password"
+              value={pwForm.next}
+              onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })}
+              className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+              placeholder="Minimum 8 characters"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Confirm new password</label>
+            <input
+              type="password"
+              value={pwForm.confirm}
+              onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })}
+              className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+              placeholder="Repeat your new password"
+            />
+          </div>
           <button
-            type="submit"
-            disabled={passwordLoading || newPassword.length < 8}
-            className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
+            onClick={handleChangePassword}
+            disabled={pwSaving || !pwForm.current || !pwForm.next || !pwForm.confirm}
+            className="flex items-center gap-2 px-5 py-2.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
           >
-            {passwordLoading ? 'Updating...' : 'Update Password'}
+            <Save className="h-4 w-4" />
+            {pwSaving ? 'Updating...' : 'Update Password'}
           </button>
-        </form>
+        </div>
       </div>
 
       {/* Profile Completeness */}
@@ -1049,7 +865,7 @@ export default function ProfilePage() {
       })()}
 
       {/* Connected Accounts */}
-      <ConnectedAccountsSection supabase={supabase} searchParams={searchParams} />
+      <ConnectedAccountsSection supabase={supabase} />
 
       {/* Financial Reports */}
       <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">

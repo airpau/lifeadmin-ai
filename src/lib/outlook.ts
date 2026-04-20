@@ -7,7 +7,7 @@ const OUTLOOK_SCOPES = [
   'https://graph.microsoft.com/User.Read',
 ].join(' ');
 
-const REDIRECT_URI = 'https://paybacker.co.uk/api/auth/callback/microsoft';
+const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk'}/api/auth/callback/microsoft`;
 const TENANT = 'common'; // supports personal + work accounts
 
 export function getMicrosoftAuthUrl(state: string): string {

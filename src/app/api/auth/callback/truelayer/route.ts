@@ -152,17 +152,45 @@ async function syncTransactionsForConnection(
 ) {
   const { fetchTransactions } = await import('@/lib/truelayer');
 
-  // Enforce a hard 89-day cap so we never exceed TrueLayer's strict 90-day difference limits (since to=tomorrow).
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 89);
-  ninetyDaysAgo.setHours(0, 0, 0, 0);
+  // Many UK banks (e.g. NatWest via TrueLayer) only serve transactions on or after the
+  // consent / reconnection date. Requesting dates before that returns HTTP 400.
+  // We therefore never go further back than the connected_at date for this authorization.
+  const connectedAtDate = new Date(connection.connected_at);
+  connectedAtDate.setHours(0, 0, 0, 0); // start of that day
 
-  const earliestAllowed = ninetyDaysAgo;
+  // TrueLayer supports up to 12 months of history — fetch as far back as possible on
+  // initial connection so users see their full transaction picture immediately.
+  // (Ongoing cron syncs use a shorter window; this is the one-time initial pull.)
+  const twelveMonthsAgo = new Date();
+  twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+
+  // The earliest date we are allowed to query (whichever is more recent — some banks
+  // only serve data on/after the SCA consent date, so we never go before connected_at).
+  const earliestAllowed = connectedAtDate > twelveMonthsAgo ? connectedAtDate : twelveMonthsAgo;
 
   let fromDate: Date;
-  // FORCE 90-day backfill for this re-connection (overriding any existing lastTx constraints)
-  fromDate = earliestAllowed;
-  console.log(`TrueLayer callback: forcing 90 day backfill, syncing from ${fromDate.toISOString()}`);
+  const { data: lastTx } = await supabase
+    .from('bank_transactions')
+    .select('timestamp')
+    .eq('user_id', userId)
+    .in('account_id', connection.account_ids || [])
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (lastTx?.timestamp) {
+    // Start from the day of the last known transaction to pick up any new ones.
+    fromDate = new Date(lastTx.timestamp);
+    fromDate.setHours(0, 0, 0, 0);
+    // Never go before the authorization floor — that would cause TrueLayer 400.
+    if (fromDate < earliestAllowed) {
+      fromDate = earliestAllowed;
+    }
+    console.log(`TrueLayer callback: syncing from ${fromDate.toISOString()} (last tx or connected_at floor)`);
+  } else {
+    fromDate = earliestAllowed;
+    console.log(`TrueLayer callback: no prior transactions, syncing from ${fromDate.toISOString()}`);
+  }
 
   const accountIds = connection.account_ids || [];
   let totalSynced = 0;

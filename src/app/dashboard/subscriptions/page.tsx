@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { CreditCard, Calendar, TrendingDown, X, Mail, Copy, CheckCircle, Plus, Loader2, Inbox, Sparkles, Pencil, Building2, RefreshCw, Wifi, WifiOff, AlertTriangle, MoreHorizontal, FileText, Upload, Bell, CalendarClock, Shield, Phone, Trash2, MessageCircle } from 'lucide-react';
 import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
@@ -124,7 +124,6 @@ export default function SubscriptionsPage() {
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [addingSubscription, setAddingSubscription] = useState(false);
   const [detectingFromInbox, setDetectingFromInbox] = useState(false);
   const [cancellationError, setCancellationError] = useState<string | null>(null);
@@ -136,6 +135,7 @@ export default function SubscriptionsPage() {
   } | null>(null);
   const [detectedSubs, setDetectedSubs] = useState<any[]>([]);
   const [editSub, setEditSub] = useState<Subscription | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     provider_name: '',
     category: 'other',
@@ -188,7 +188,6 @@ export default function SubscriptionsPage() {
   const [bankLoading, setBankLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [connectionsCollapsed, setConnectionsCollapsed] = useState(true);
   const [bankToast, setBankToast] = useState<string | null>(null);
   const [bankTierInfo, setBankTierInfo] = useState<BankTierInfo>({
     tier: 'free',
@@ -1192,35 +1191,6 @@ export default function SubscriptionsPage() {
         providerName={shareModal.provider}
       />
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-navy-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-md p-6 relative">
-            <h3 className="text-xl font-bold text-white mb-2">Delete Subscription</h3>
-            <p className="text-slate-400 text-sm mb-6">Are you sure you want to delete this subscription? This action cannot be undone.</p>
-            <div className="flex gap-3 justify-end mt-4">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 hover:bg-navy-800 text-slate-300 rounded-lg transition-all text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (deleteConfirm) {
-                    handleDeleteSubscription(deleteConfirm);
-                  }
-                  setDeleteConfirm(null);
-                }}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-all text-sm"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Credit Score Warning Modal */}
       <CreditScoreWarning
         open={creditWarning.open}
@@ -1302,226 +1272,225 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* Bank connections — Compressed */}
+      {/* Bank connections */}
       {!bankLoading && (
-        <div className="mb-6 bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-4">
-          <button
-            onClick={() => setConnectionsCollapsed(!connectionsCollapsed)}
-            className="flex items-center justify-between w-full text-left"
-          >
-            <div className="flex items-center gap-3">
-              <Building2 className="h-5 w-5 text-blue-400" />
-              <div>
-                <h2 className="text-white font-semibold text-sm">Bank Connections</h2>
-                <p className="text-slate-400 text-xs">
-                 {bankConnections.length > 0
-                   ? `${bankConnections.length} bank${bankConnections.length === 1 ? '' : 's'} connected`
-                   : expiredBanks.length > 0
-                   ? 'Connection expired. Reconnection needed.'
-                   : 'Connect your bank to auto-detect subscriptions.'}
+        <div className="mb-8 space-y-3">
+          {/* Free-tier stale data banner */}
+          {bankTierInfo.tier === 'free' && bankConnections.length > 0 && (() => {
+            const conn = bankConnections[0];
+            if (!conn.last_synced_at) return null;
+            const daysSinceSync = Math.floor((Date.now() - new Date(conn.last_synced_at).getTime()) / 86_400_000);
+            if (daysSinceSync < 1) return null;
+            return (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
+                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-amber-300 text-sm">
+                  Your data was last synced {daysSinceSync} day{daysSinceSync !== 1 ? 's' : ''} ago. Essential members get daily updates.{' '}
+                  <a href="/dashboard/upgrade" className="underline hover:text-amber-200 transition-colors">Upgrade</a>
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-mint-400 font-medium">
-                {connectionsCollapsed ? 'Manage' : 'Hide'}
-              </span>
-              {connectionsCollapsed ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronUp className="h-4 w-4 text-slate-400" />}
-            </div>
-          </button>
+            );
+          })()}
 
-          {!connectionsCollapsed && (
-            <div className="mt-4 space-y-3 pt-4 border-t border-navy-700/50">
-              {/* Free-tier stale data banner */}
-              {bankTierInfo.tier === 'free' && bankConnections.length > 0 && (() => {
-                const conn = bankConnections[0];
-                if (!conn.last_synced_at) return null;
-                const daysSinceSync = Math.floor((Date.now() - new Date(conn.last_synced_at).getTime()) / 86_400_000);
-                if (daysSinceSync < 1) return null;
-                return (
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                    <p className="text-amber-300 text-xs">
-                      Your data was last synced {daysSinceSync} day{daysSinceSync !== 1 ? 's' : ''} ago. Essential members get daily updates.{' '}
-                      <a href="/dashboard/upgrade" className="underline hover:text-amber-200 transition-colors">Upgrade</a>
+          {/* Show each connected bank */}
+          {bankConnections.map((conn) => {
+            // Compute Pro cooldown state for this connection
+            const cooldownMs = bankTierInfo.manualSyncCooldownHours * 3_600_000;
+            const cooldownRemaining = conn.last_manual_sync_at
+              ? Math.max(0, new Date(conn.last_manual_sync_at).getTime() + cooldownMs - Date.now())
+              : 0;
+            const inCooldown = cooldownRemaining > 0;
+            const cooldownH = Math.floor(cooldownRemaining / 3_600_000);
+            const cooldownM = Math.floor((cooldownRemaining % 3_600_000) / 60_000);
+            const dailyLimitReached = bankTierInfo.manualSyncsToday >= bankTierInfo.manualSyncDailyLimit && bankTierInfo.manualSyncDailyLimit > 0;
+
+            // Determine sync button state
+            let syncBtnLabel = 'Sync Now';
+            let syncBtnDisabled = syncing;
+            let syncBtnTitle = '';
+            if (syncing) {
+              syncBtnLabel = 'Syncing...';
+            } else if (bankTierInfo.tier === 'free') {
+              syncBtnDisabled = true;
+              syncBtnTitle = 'Upgrade to Essential or Pro for more syncs';
+            } else if (bankTierInfo.tier === 'essential') {
+              syncBtnDisabled = true;
+              syncBtnLabel = 'Sync Now (Pro only)';
+              syncBtnTitle = 'Upgrade to Pro for on-demand sync';
+            } else if (dailyLimitReached) {
+              syncBtnDisabled = true;
+              syncBtnLabel = 'Daily limit reached';
+              syncBtnTitle = `${bankTierInfo.manualSyncDailyLimit} manual syncs used today. Resets at midnight.`;
+            } else if (inCooldown) {
+              syncBtnDisabled = true;
+              syncBtnLabel = `Available in ${cooldownH}h ${cooldownM}m`;
+              syncBtnTitle = `Cooldown: ${bankTierInfo.manualSyncCooldownHours}h between manual syncs`;
+            }
+
+            return (
+              <div key={conn.id} className="bg-navy-900 backdrop-blur-sm border border-green-500/30 rounded-2xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="bg-green-500/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                    <Wifi className="h-5 w-5 text-green-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-green-400 font-semibold text-sm">
+                        {conn.bank_name || 'Bank connected'}
+                      </span>
+                      <span className="text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded">Active</span>
+                      {conn.account_ids && conn.account_ids.length > 1 && (
+                        <span className="text-xs text-slate-500">{conn.account_ids.length} accounts</span>
+                      )}
+                    </div>
+                    <p className="text-slate-500 text-xs">
+                      {conn.account_display_names && conn.account_display_names.length > 0 && (
+                        <span>{conn.account_display_names.join(', ')} · </span>
+                      )}
+                      {conn.last_synced_at
+                        ? `Last synced: ${(() => {
+                            const diff = Date.now() - new Date(conn.last_synced_at).getTime();
+                            const mins = Math.floor(diff / 60000);
+                            if (mins < 1) return 'just now';
+                            if (mins < 60) return `${mins} min${mins > 1 ? 's' : ''} ago`;
+                            const hours = Math.floor(mins / 60);
+                            if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+                            const days = Math.floor(hours / 24);
+                            return `${days} day${days > 1 ? 's' : ''} ago`;
+                          })()}`
+                        : 'Never synced'}
                     </p>
                   </div>
-                );
-              })()}
-
-              {/* Show each connected bank */}
-              {bankConnections.map((conn) => {
-                // Compute Pro cooldown state for this connection
-                const cooldownMs = bankTierInfo.manualSyncCooldownHours * 3_600_000;
-                const cooldownRemaining = conn.last_manual_sync_at
-                  ? Math.max(0, new Date(conn.last_manual_sync_at).getTime() + cooldownMs - Date.now())
-                  : 0;
-                const inCooldown = cooldownRemaining > 0;
-                const cooldownH = Math.floor(cooldownRemaining / 3_600_000);
-                const cooldownM = Math.floor((cooldownRemaining % 3_600_000) / 60_000);
-                const dailyLimitReached = bankTierInfo.manualSyncsToday >= bankTierInfo.manualSyncDailyLimit && bankTierInfo.manualSyncDailyLimit > 0;
-
-                let syncBtnLabel = 'Sync Now';
-                let syncBtnDisabled = syncing;
-                let syncBtnTitle = '';
-                if (syncing) {
-                  syncBtnLabel = 'Syncing...';
-                } else if (bankTierInfo.tier === 'free') {
-                  syncBtnDisabled = true;
-                  syncBtnTitle = 'Upgrade to Essential or Pro for more syncs';
-                } else if (bankTierInfo.tier === 'essential') {
-                  syncBtnDisabled = true;
-                  syncBtnLabel = 'Sync Now (Pro only)';
-                  syncBtnTitle = 'Upgrade to Pro for on-demand sync';
-                } else if (dailyLimitReached) {
-                  syncBtnDisabled = true;
-                  syncBtnLabel = 'Daily limit reached';
-                  syncBtnTitle = `${bankTierInfo.manualSyncDailyLimit} manual syncs used today. Resets at midnight.`;
-                } else if (inCooldown) {
-                  syncBtnDisabled = true;
-                  syncBtnLabel = `Available in ${cooldownH}h ${cooldownM}m`;
-                  syncBtnTitle = `Cooldown: ${bankTierInfo.manualSyncCooldownHours}h between manual syncs`;
-                }
-
-                return (
-                  <div key={conn.id} className="bg-navy-950/50 backdrop-blur-sm border border-green-500/20 rounded-xl p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-green-500/10 w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
-                          <Wifi className="h-4 w-4 text-green-400" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-white font-medium text-sm">
-                              {conn.bank_name || 'Bank connected'}
-                            </span>
-                            <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded uppercase tracking-wider">Active</span>
-                          </div>
-                          <p className="text-slate-500 text-xs">
-                            {conn.last_synced_at
-                              ? `Last synced: ${(() => {
-                                  const diff = Date.now() - new Date(conn.last_synced_at).getTime();
-                                  const mins = Math.floor(diff / 60000);
-                                  if (mins < 1) return 'just now';
-                                  if (mins < 60) return `${mins} min${mins > 1 ? 's' : ''} ago`;
-                                  const hours = Math.floor(mins / 60);
-                                  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-                                  const days = Math.floor(hours / 24);
-                                  return `${days} day${days > 1 ? 's' : ''} ago`;
-                                })()}`
-                              : 'Never synced'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleSyncBank(conn.id)}
-                          disabled={syncBtnDisabled}
-                          title={syncBtnTitle}
-                          className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-xs border border-navy-600/50"
-                        >
-                          <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
-                          {syncBtnLabel}
-                        </button>
-                        <button
-                          onClick={() => handleDisconnectBank(conn.id)}
-                          disabled={disconnecting}
-                          className="flex items-center gap-1.5 text-slate-500 hover:text-red-400 px-2 py-1.5 transition-all text-xs"
-                        >
-                          <WifiOff className="h-3 w-3" />
-                          Unlink
-                        </button>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleSyncBank(conn.id)}
+                      disabled={syncBtnDisabled}
+                      title={syncBtnTitle}
+                      className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                      {syncBtnLabel}
+                    </button>
+                    <button
+                      onClick={() => handleDisconnectBank(conn.id)}
+                      disabled={disconnecting}
+                      className="flex items-center gap-2 text-slate-500 hover:text-red-400 disabled:opacity-50 text-sm transition-all"
+                    >
+                      <WifiOff className="h-4 w-4" />
+                      Disconnect
+                    </button>
                   </div>
-                );
-              })}
+                </div>
+              </div>
+            );
+          })}
 
-              {/* Expired bank connections */}
-              {expiredBanks.length > 0 && bankConnections.length === 0 && (
-                expiredBanks.map((conn) => (
-                  <div key={conn.id} className="bg-navy-950/50 backdrop-blur-sm border border-amber-500/20 rounded-xl p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-amber-500/10 w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
-                          <WifiOff className="h-4 w-4 text-amber-400" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-white font-medium text-sm">{conn.bank_name || 'Bank'}</span>
-                            <span className="text-[10px] bg-amber-400/10 text-amber-400 px-1.5 py-0.5 rounded uppercase tracking-wider">Expired</span>
-                          </div>
-                          <p className="text-slate-500 text-xs">
-                            Connection expired. Reconnect to resume sync.
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-                        className="flex items-center gap-1.5 bg-amber-400 hover:bg-amber-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs"
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                        Reconnect
-                      </button>
-                    </div>
+          {/* Expired bank connections */}
+          {expiredBanks.length > 0 && bankConnections.length === 0 && (
+            expiredBanks.map((conn) => (
+              <div key={conn.id} className="bg-navy-900 backdrop-blur-sm border border-mint-400/30 rounded-2xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                    <WifiOff className="h-5 w-5 text-mint-400" />
                   </div>
-                ))
-              )}
-
-              {/* Add another bank */}
-              {(() => {
-                const atLimit = bankTierInfo.maxConnections !== null && bankConnections.length >= bankTierInfo.maxConnections;
-                const isFirst = bankConnections.length === 0 && expiredBanks.length === 0;
-
-                if (atLimit) {
-                  return (
-                    <div className="bg-navy-950/50 backdrop-blur-sm border border-navy-700/50 rounded-xl p-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex text-sm text-slate-400 items-center gap-2">
-                          <Building2 className="h-4 w-4" />
-                          {bankTierInfo.tier === 'free' ? 'Upgrade to connect more accounts.' : 'Upgrade to Pro for unlimited bank connections.'}
-                        </div>
-                        <a href="/dashboard/upgrade" className="text-xs bg-amber-400 hover:bg-amber-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all">
-                          Upgrade
-                        </a>
-                      </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-mint-400 font-semibold text-sm">{conn.bank_name || 'Bank'}</span>
+                      <span className="text-xs bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded">Expired</span>
                     </div>
-                  );
-                }
-
-                if (isFirst && bankPromptDismissed) return null;
-
-                return (
-                  <div className="bg-navy-950/50 backdrop-blur-sm border border-blue-500/20 rounded-xl p-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-blue-500/10 w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
-                          <Building2 className="h-4 w-4 text-blue-400" />
-                        </div>
-                        <div>
-                          <p className="text-white font-medium text-sm">
-                            {isFirst ? 'Connect your bank' : 'Add another bank account'}
-                          </p>
-                          {isFirst && (
-                            <p className="text-slate-500 text-xs">
-                              Auto-detect subscriptions. Secure & read-only.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-all text-xs"
-                      >
-                        <Building2 className="h-3 w-3" />
-                        {isFirst ? 'Connect Bank' : 'Add Bank'}
-                      </button>
-                    </div>
+                    <p className="text-slate-500 text-xs">
+                      Connection expired. Your existing data is safe. Reconnect to resume auto-sync.
+                    </p>
                   </div>
-                );
-              })()}
-            </div>
+                  <button
+                    onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
+                    className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Reconnect
+                  </button>
+                </div>
+              </div>
+            ))
           )}
+
+          {/* Add another bank — tier-gated */}
+          {(() => {
+            const atLimit = bankTierInfo.maxConnections !== null && bankConnections.length >= bankTierInfo.maxConnections;
+            const isFirst = bankConnections.length === 0 && expiredBanks.length === 0;
+
+            if (atLimit) {
+              // Show locked state with upgrade prompt
+              const upgradeMsg = bankTierInfo.tier === 'free'
+                ? 'Upgrade to Essential (2 banks) or Pro (unlimited) to connect more accounts.'
+                : 'Upgrade to Pro for unlimited bank connections.';
+              return (
+                <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="bg-slate-700/30 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                      <Building2 className="h-6 w-6 text-slate-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-slate-400 font-semibold mb-1 flex items-center gap-2">
+                        Connect another bank account
+                        <span className="text-xs bg-amber-400/10 text-amber-400 border border-amber-400/30 px-2 py-0.5 rounded-full">
+                          {bankTierInfo.tier === 'free' ? 'Essential feature' : 'Pro feature'}
+                        </span>
+                      </h3>
+                      <p className="text-slate-500 text-sm">{upgradeMsg}</p>
+                    </div>
+                    <a
+                      href="/dashboard/upgrade"
+                      className="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-navy-950 font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+                    >
+                      Upgrade
+                    </a>
+                  </div>
+                </div>
+              );
+            }
+
+            if (isFirst && bankPromptDismissed) return null;
+
+            return (
+              <div className="relative bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+                {isFirst && (
+                  <button
+                    onClick={handleDismissBankPrompt}
+                    className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 transition-colors"
+                    title="Dismiss for 30 days"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="bg-blue-500/10 w-12 h-12 rounded-xl flex items-center justify-center shrink-0">
+                    <Building2 className="h-6 w-6 text-blue-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-white font-semibold mb-1">
+                      {isFirst ? 'Connect your bank for automatic detection' : 'Connect another bank account'}
+                    </h3>
+                    <p className="text-slate-400 text-sm mb-1">
+                      We use Yapily (FCA regulated) to securely read your transactions. We never store your credentials.
+                    </p>
+                    {isFirst && (
+                      <p className="text-slate-500 text-xs">
+                        Supported banks: Barclays, HSBC, Lloyds, NatWest, Santander, Monzo, Starling, and more
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3 rounded-xl transition-all text-sm shrink-0"
+                  >
+                    <Building2 className="h-4 w-4" />
+                    {isFirst ? 'Connect Bank Account' : 'Add Bank'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1677,7 +1646,7 @@ export default function SubscriptionsPage() {
             {detectingFromInbox
               ? <Loader2 className="h-4 w-4 animate-spin" />
               : <Inbox className="h-4 w-4" />}
-            {detectingFromInbox ? 'Scanning...' : 'Inbox Scan'}
+            {detectingFromInbox ? 'Scanning...' : 'Detect from Inbox'}
           </button>
           <button
             onClick={() => setShowAddForm(true)}
@@ -1710,7 +1679,7 @@ export default function SubscriptionsPage() {
         <div className="bg-mint-400/5 border border-mint-400/30 rounded-2xl p-6 mb-8">
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="h-5 w-5 text-mint-400" />
-            <h2 className="text-white font-semibold">Detected from Inbox Scan ({detectedSubs.length})</h2>
+            <h2 className="text-white font-semibold">Detected from your inbox ({detectedSubs.length})</h2>
           </div>
           <div className="space-y-3">
             {detectedSubs.map((s) => (
@@ -2172,7 +2141,7 @@ export default function SubscriptionsPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setDeleteConfirm(sub.id);
+                          setDeleteConfirmId(sub.id);
                         }}
                         className="text-slate-600 hover:text-red-400 transition-all p-1"
                         title="Delete"
@@ -2647,10 +2616,39 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
+      {/* Delete confirmation modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h2 className="text-lg font-bold text-white mb-2">Delete subscription?</h2>
+            <p className="text-slate-400 text-sm mb-6">
+              This will permanently remove this subscription from your account. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 px-4 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg transition-all text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleDeleteSubscription(deleteConfirmId);
+                  setDeleteConfirmId(null);
+                }}
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all text-sm font-semibold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit subscription modal */}
       {editSub && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Edit Subscription</h2>
               <button onClick={() => setEditSub(null)} className="text-slate-400 hover:text-white transition-all">
@@ -2677,7 +2675,6 @@ export default function SubscriptionsPage() {
                     type="number"
                     step="0.01"
                     min="0"
-                    max="999999"
                     required
                     value={editForm.amount}
                     onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
@@ -2904,7 +2901,7 @@ export default function SubscriptionsPage() {
       {/* Add subscription modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-slate-900 border border-navy-700/50 rounded-2xl p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">Add Subscription</h2>
               <button
@@ -2940,7 +2937,7 @@ export default function SubscriptionsPage() {
                     type="number"
                     step="0.01"
                     min="0"
-                    max="10000"
+                    max="99999"
                     required
                     value={newSub.amount}
                     onChange={(e) => setNewSub({ ...newSub, amount: e.target.value })}

@@ -5,14 +5,14 @@ import { fmtNum } from '@/lib/format';
 export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated }: { isOpen: boolean, onClose: () => void, data: any, onUpdated: () => void }) {
   const [activeTab, setActiveTab] = useState<'budgets' | 'goals'>('budgets');
   const [loading, setLoading] = useState(false);
-  
+  const [addProgressGoal, setAddProgressGoal] = useState<{ id: string; current: number } | null>(null);
+  const [addProgressAmount, setAddProgressAmount] = useState('');
+
   // Forms
   const [budgetCategory, setBudgetCategory] = useState('groceries');
   const [budgetAmount, setBudgetAmount] = useState('');
   
   const [goalForm, setGoalForm] = useState({ name: '', emoji: '🎯', targetAmount: '', currentAmount: '0' });
-  const [addFundGoal, setAddFundGoal] = useState<{ id: string, current: number } | null>(null);
-  const [addFundAmount, setAddFundAmount] = useState('');
 
   const { budgets = [], goals = [] } = data;
 
@@ -70,22 +70,20 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
     setLoading(false);
   };
 
-  const handleAddMoneyToGoal = (id: string, current: number) => {
-    setAddFundGoal({ id, current });
-    setAddFundAmount('');
-  };
-
-  const submitAddFunds = async () => {
-    if (!addFundGoal || !addFundAmount) return;
+  const handleAddMoneyToGoal = async () => {
+    if (!addProgressGoal || !addProgressAmount) return;
+    const parsed = parseFloat(addProgressAmount);
+    if (isNaN(parsed) || parsed <= 0) return;
     setLoading(true);
     try {
       await fetch('/api/money-hub/goals', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: addFundGoal.id, current_amount: addFundGoal.current + parseFloat(addFundAmount) }),
+        body: JSON.stringify({ id: addProgressGoal.id, current_amount: addProgressGoal.current + parsed }),
       });
+      setAddProgressGoal(null);
+      setAddProgressAmount('');
       onUpdated();
-      setAddFundGoal(null);
     } catch { /* silent */ }
     setLoading(false);
   };
@@ -94,6 +92,39 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
 
   return (
     <>
+    {/* Add Progress modal */}
+    {addProgressGoal && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-navy-950/80 backdrop-blur-sm" onClick={() => setAddProgressGoal(null)} />
+        <div className="relative bg-navy-900 border border-navy-700 rounded-2xl w-full max-w-xs shadow-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <PlusCircle className="h-5 w-5 text-mint-400" /> Add Progress
+          </h3>
+          <label className="block text-sm font-medium text-slate-300 mb-2">Amount to add (£)</label>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            autoFocus
+            value={addProgressAmount}
+            onChange={(e) => setAddProgressAmount(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAddMoneyToGoal(); }}
+            className="w-full mb-4 bg-navy-950 border border-navy-700 rounded-lg px-3 py-2.5 text-white focus:border-mint-400 focus:outline-none"
+            placeholder="e.g. 50"
+          />
+          <div className="flex gap-3">
+            <button onClick={() => setAddProgressGoal(null)} className="flex-1 px-4 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg text-sm font-medium transition-colors">Cancel</button>
+            <button
+              onClick={handleAddMoneyToGoal}
+              disabled={loading || !addProgressAmount || parseFloat(addProgressAmount) <= 0}
+              className="flex-1 px-4 py-2.5 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 text-navy-950 font-semibold rounded-lg text-sm transition-colors"
+            >
+              {loading ? 'Saving...' : 'Add'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-navy-950/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-navy-900 border border-navy-700 rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl">
@@ -155,7 +186,7 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
                       <p className="text-xs text-slate-500">Saved: £{fmtNum(g.current_amount)} / £{fmtNum(g.target_amount)}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => handleAddMoneyToGoal(g.id, g.current_amount)} className="text-mint-400 hover:text-mint-300 transition-colors flex items-center gap-1 text-xs font-semibold bg-mint-400/10 px-2 py-1 rounded-full"><PlusCircle className="h-3 w-3 " /> Add</button>
+                      <button onClick={() => { setAddProgressGoal({ id: g.id, current: g.current_amount }); setAddProgressAmount(''); }} className="text-mint-400 hover:text-mint-300 transition-colors flex items-center gap-1 text-xs font-semibold bg-mint-400/10 px-2 py-1 rounded-full"><PlusCircle className="h-3 w-3 " /> Add</button>
                       <button onClick={() => handleDeleteGoal(g.id)} disabled={loading} className="text-slate-500 hover:text-red-400"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </div>
@@ -166,30 +197,6 @@ export default function GoalsAndBudgetsModal({ isOpen, onClose, data, onUpdated 
         </div>
       </div>
     </div>
-    
-      {/* Add Funds Modal */}
-      {addFundGoal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAddFundGoal(null)} />
-          <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-2">Add Funds to Goal</h3>
-            <p className="text-sm text-slate-400 mb-4">How much would you like to add?</p>
-            <input 
-              type="number" 
-              step="0.01"
-              value={addFundAmount} 
-              onChange={e => setAddFundAmount(e.target.value)} 
-              className="w-full bg-navy-950 border border-navy-700 rounded-lg px-3 py-2 text-white focus:border-mint-400 focus:outline-none mb-4" 
-              placeholder="Amount (£)"
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <button disabled={loading} onClick={() => setAddFundGoal(null)} className="px-4 py-2 hover:bg-navy-800 text-slate-300 rounded-lg text-sm transition-colors">Cancel</button>
-              <button disabled={loading || !addFundAmount} onClick={submitAddFunds} className="px-4 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm disabled:opacity-50 transition-colors">Add Funds</button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

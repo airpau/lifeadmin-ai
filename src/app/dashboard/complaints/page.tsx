@@ -792,7 +792,7 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl"
+        className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl max-h-[85vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
           <div>
@@ -1682,6 +1682,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   const [upgradeModal, setUpgradeModal] = useState<{ open: boolean; used: number; limit: number; tier: string }>({
     open: false, used: 0, limit: 3, tier: 'free',
   });
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/complaints/usage')
@@ -1695,6 +1696,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.provider_name || !formData.issue_summary || !formData.desired_outcome) return;
+    if (formData.issue_summary.trim().length < 20) return;
 
     setSaving(true);
     try {
@@ -1917,10 +1919,24 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
               minLength={40}
               rows={4}
               value={formData.issue_summary}
-              onChange={(e) => setFormData({ ...formData, issue_summary: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              onChange={(e) => {
+                setFormData({ ...formData, issue_summary: e.target.value });
+                if (descriptionError && e.target.value.trim().length >= 20) {
+                  setDescriptionError(null);
+                }
+              }}
+              className={`w-full px-4 py-3 bg-navy-950 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-1 ${descriptionError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/30' : 'border-navy-700/50 focus:border-mint-400 focus:ring-mint-400'}`}
               placeholder="Explain what went wrong, when it happened, and any impact on you. Paste email content here too."
             />
+            {descriptionError ? (
+              <p className="mt-1.5 text-xs text-red-400">{descriptionError}</p>
+            ) : (
+              <p className="mt-1.5 text-xs text-slate-500">
+                {formData.issue_summary.trim().length > 0 && formData.issue_summary.trim().length < 20
+                  ? `${20 - formData.issue_summary.trim().length} more characters needed`
+                  : 'The more detail you give, the stronger your letter'}
+              </p>
+            )}
           </div>
 
           <div>
@@ -2022,6 +2038,11 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
               disabled={saving}
               onClick={() => {
                 if (formRef.current && !formRef.current.reportValidity()) return;
+                if (formData.issue_summary.trim().length < 20) {
+                  setDescriptionError('Please describe what happened in at least 20 characters so we can write an effective letter.');
+                  return;
+                }
+                setDescriptionError(null);
                 setShowPreviewModal(true);
               }}
               className="flex-1 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
