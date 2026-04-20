@@ -34,7 +34,7 @@ export async function POST(_req: NextRequest) {
   // Is a sheet connected? If so, decide full vs incremental.
   const { data: conn } = await supabase
     .from('google_sheets_connections')
-    .select('last_synced_at')
+    .select('last_synced_at, connected_at')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -56,7 +56,21 @@ export async function POST(_req: NextRequest) {
     )
   }
 
-  // First sync ever? Do a full history backfill. Otherwise incremental.
+  // Guard against duplicate backfill: if last_synced_at is null but connected_at
+  // is within the last 10 minutes, the OAuth callback's background export is still
+  // running. Return 409 rather than launching a second full export that would append
+  // duplicate rows (the export appends and does not deduplicate across runs).
+  if (conn.last_synced_at === null && conn.connected_at) {
+    const minutesSinceConnect = (Date.now() - new Date(conn.connected_at).getTime()) / 60_000
+    if (minutesSinceConnect < 10) {
+      return NextResponse.json(
+        { error: 'Initial sync in progress, please wait.' },
+        { status: 409 }
+      )
+    }
+  }
+
+  // First sync ever (and no in-progress initial export)? Full backfill. Otherwise incremental.
   const fullExport = conn.last_synced_at === null
 
   try {
@@ -82,6 +96,16 @@ export async function POST(_req: NextRequest) {
     }
 
     const data = await res.json()
+
+    // The export route returns HTTP 200 even on per-user failures; the real
+    // outcome is in results[0].error. Surface that as a 500 so the UI
+    // doesn't show a false "Synced" confirmation.
+    const exportError = data?.results?.[0]?.error
+    if (exportError) {
+      console.error('sync-now: export reported per-user error:', exportError)
+      return NextResponse.json({ error: exportError }, { status: 500 })
+    }
+
     const rows = data?.results?.[0]?.rows_written ?? 0
 
     return NextResponse.json({

@@ -235,6 +235,7 @@ async function fetchAllTransactions(
       .eq('account_id', accountId)
       .eq('is_pending', false)
       .order('timestamp', { ascending: true })
+      .order('transaction_id', { ascending: true })
       .range(from, from + DB_PAGE_SIZE - 1)
     if (sinceTimestamp) q = q.gte('timestamp', sinceTimestamp)
 
@@ -398,12 +399,21 @@ export async function POST(req: NextRequest) {
       // Update sync metadata. We only bump last_synced_timestamp forward, never
       // backwards — this is defensive against a partial-failure run where we
       // only wrote a subset of accounts.
+      // If any tab was skipped due to an error, do NOT advance last_synced_timestamp:
+      // those skipped tabs would permanently lose any transactions that fell before
+      // the new watermark on the next incremental sync.
       const updates: Record<string, string> = {
         last_synced_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
       if (latestTimestampWritten && latestTimestampWritten !== conn.last_synced_timestamp) {
-        updates.last_synced_timestamp = latestTimestampWritten
+        if (skippedTabs === 0) {
+          updates.last_synced_timestamp = latestTimestampWritten
+        } else {
+          console.warn(
+            `[sheets-export] user=${conn.user_id} skipped ${skippedTabs} tab(s) — watermark NOT advanced to prevent data loss on next sync`
+          )
+        }
       }
       await supabase
         .from('google_sheets_connections')
