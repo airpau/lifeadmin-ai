@@ -127,38 +127,120 @@ export const CATEGORIES_BY_GROUP: Record<string, typeof USER_SELECTABLE_CATEGORI
 // ────────────────────────────────────────────────────────────────────────────
 
 export const CATEGORY_ALIASES: Record<string, Category> = {
-  // Food aliases
-  food:              'groceries',
-  // Transport aliases
-  fuel:              'transport',
-  motoring:          'transport',
-  parking:           'transport',
-  // Health aliases
-  fitness:           'health',
-  healthcare:        'health',
-  // Finance aliases
-  loan:              'loans',
-  fee:               'fees',
-  // Utility aliases
-  utility:           'bills',
-  // Entertainment aliases
-  music:             'entertainment',
-  gaming:            'entertainment',
-  storage:           'software',
-  // Housing aliases
-  property_management: 'housing',
-  rent:              'housing',
-  // Security → other (too vague without further context)
-  security:          'other',
-  // Professional services → fees
-  professional:      'fees',
-  // Cash withdrawals
-  cash:              'other',
-  // transport (existing, keep)
-  transport:         'transport',
-  // transfers / income — keep as-is (already canonical)
-  transfers:         'transfers',
-  income:            'income',
+  // Food / groceries
+  food:                   'groceries',
+  supermarket:            'groceries',
+  supermarkets:           'groceries',
+
+  // Transport
+  fuel:                   'transport',
+  motoring:               'transport',
+  parking:                'transport',
+  vehicle:                'transport',
+
+  // Health & Fitness
+  fitness:                'health',
+  healthcare:             'health',
+  medical:                'health',
+  pharmacy:               'health',
+  gym:                    'health',
+
+  // Loans & Credit
+  loan:                   'loans',
+  credit:                 'loans',
+  debt:                   'loans',
+  finance:                'loans',
+
+  // Fees & Charges (professional services — too vague for its own category)
+  fee:                    'fees',
+  professional:           'fees',
+  'bank charge':          'fees',
+  'bank charges':         'fees',
+  charges:                'fees',
+  expenses:               'fees',
+
+  // Bills & Utilities (generic utility catch-all)
+  utility:                'bills',
+  utilities:              'bills',
+
+  // Entertainment
+  music:                  'entertainment',
+  gaming:                 'entertainment',
+  games:                  'entertainment',
+  cinema:                 'entertainment',
+  sport:                  'entertainment',
+  sports:                 'entertainment',
+
+  // Software & Apps
+  storage:                'software',
+  subscriptions:          'software',
+  apps:                   'software',
+
+  // Housing — both underscore and space variants
+  property_management:    'housing',
+  'property management':  'housing',
+  rent:                   'housing',
+  letting:                'housing',
+  landlord:               'housing',
+
+  // Transfers — singular form (TrueLayer raw, older data)
+  transfer:               'transfers',
+  'internal transfer':    'transfers',
+  'bank transfer':        'transfers',
+
+  // Eating Out — space and word variants
+  'eating out':           'eating_out',
+  restaurants:            'eating_out',
+  restaurant:             'eating_out',
+  takeaway:               'eating_out',
+  takeaways:              'eating_out',
+
+  // Council Tax — space variant
+  'council tax':          'council_tax',
+  council:                'council_tax',
+
+  // Personal Care — space variant
+  'personal care':        'personal_care',
+  beauty:                 'personal_care',
+  haircare:               'personal_care',
+
+  // Family & Childcare
+  childcare:              'family',
+  'child care':           'family',
+  children:               'family',
+  kids:                   'family',
+
+  // Tax & Government
+  hmrc:                   'tax',
+  vat:                    'tax',
+  'tax payment':          'tax',
+  'self assessment':      'tax',
+
+  // Shopping
+  retail:                 'shopping',
+  clothes:                'shopping',
+  clothing:               'shopping',
+  fashion:                'shopping',
+
+  // Travel & Holidays
+  holiday:                'travel',
+  holidays:               'travel',
+  flights:                'travel',
+  hotel:                  'travel',
+  hotels:                 'travel',
+  accommodation:          'travel',
+
+  // Other / catch-alls
+  security:               'other',
+  cash:                   'other',
+  misc:                   'other',
+  miscellaneous:          'other',
+  unknown:                'other',
+
+  // Identity mappings — already canonical, keep for safety
+  transport:              'transport',
+  transfers:              'transfers',
+  income:                 'income',
 };
 
 // ────────────────────────────────────────────────────────────────────────────

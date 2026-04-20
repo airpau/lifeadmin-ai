@@ -15,7 +15,6 @@ import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { telegramTools } from './tools';
 import { executeToolCall, type PendingAction } from './tool-handlers';
-import { categoryListFormatted } from '@/lib/categories';
 
 // ============================================================
 // Supabase admin client
@@ -97,13 +96,7 @@ async function safeEdit(
 const RATE_LIMIT_PER_HOUR = 200;
 const SESSION_EXPIRY_DAYS = 90;
 
-// SYSTEM_PROMPT is built at call-time so the canonical category list is always
-// up-to-date from src/lib/categories.ts without redeployment.
-function buildSystemPrompt(): string {
-  return SYSTEM_PROMPT_TEMPLATE.replace('{{CANONICAL_CATEGORIES}}', categoryListFormatted());
-}
-
-const SYSTEM_PROMPT_TEMPLATE = `You are Paybacker's Pocket Agent — a fully connected financial assistant for UK consumers. You have access to EVERYTHING the user can see on the Paybacker website. This includes Money Hub, Subscriptions, Contracts, Disputes, Scanner, Rewards, Profile, Tasks, and all financial data. Never say you can't access something — if there's a tool for it, use it.
+const SYSTEM_PROMPT = `You are Paybacker's Pocket Agent — a fully connected financial assistant for UK consumers. You have access to EVERYTHING the user can see on the Paybacker website. This includes Money Hub, Subscriptions, Contracts, Disputes, Scanner, Rewards, Profile, Tasks, and all financial data. Never say you can't access something — if there's a tool for it, use it.
 
 COMPLETE TOOL REFERENCE (always call the tool — never make up data or say "I can't"):
 
@@ -181,19 +174,6 @@ RULES:
 - When a user asks to change subscription frequency (e.g. "change to yearly"), call update_subscription.
 - mark_bill_paid stores a manual override — it shows as ✅ in expected bills for the current month only.
 - For dispute follow-ups: always mention the FCA 8-week deadline — it's the most powerful lever for UK consumers.
-
-CANONICAL CATEGORY TAXONOMY — TWO-TIER SYSTEM:
-Paybacker uses a fixed two-tier category system. You MUST use only these canonical parent categories (Tier 1) when calling any recategorise or set_budget tool. Never invent a new parent category.
-
-{{CANONICAL_CATEGORIES}}
-
-RECATEGORISATION FLOW (CRITICAL — follow this every time):
-1. When a user asks to recategorise, ALWAYS start by confirming the Tier-1 parent category. List options from the groups above and ask which fits best (keep it short — 3-5 options is fine).
-2. After the parent is confirmed, ask: "Would you like to add a more specific label? E.g. 'Groceries > Organic' or 'Transport > Commute'." If they say no, leave subcategory blank.
-3. If the user types a specific name directly (e.g. "change it to PDF Software"), infer the best parent (Software & Apps) and ask them to confirm: "I'll put that under *Software & Apps > PDF Software* — correct?"
-4. When calling get_subcategories before offering subcategory suggestions, show the user's previously defined ones so they can reuse them.
-5. Budget rules always operate at Tier-1 level. Subcategories are for personal drill-down only — never offer to set a budget for a subcategory.
-6. Tier-2 subcategories are stored per-user and never affect cross-user analysis. They're purely for that user's personal organisation.
 
 FINANCIAL INTELLIGENCE — CRITICAL:
 - get_expected_bills cross-references bank transaction data to determine paid/unpaid status. Trust its ✅/❌/⏳ indicators. ❌ means a bill was due but no matching payment was found in the bank — flag this clearly to the user.
@@ -308,7 +288,7 @@ async function callClaudeWithTools(
   let response = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
-    system: [{ type: 'text', text: buildSystemPrompt(), cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     tools: cachedTools,
     messages,
   });
@@ -364,7 +344,7 @@ async function callClaudeWithTools(
     response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 2048,
-      system: [{ type: 'text', text: buildSystemPrompt(), cache_control: { type: 'ephemeral' } }],
+      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       tools: cachedTools,
       messages,
     });
