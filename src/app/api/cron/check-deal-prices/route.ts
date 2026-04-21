@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-export const maxDuration = 60;
+export const runtime = 'nodejs';
+export const maxDuration = 300; // 5 minutes to cover ~40 deals at ~5s each
 
 function getAdmin() {
   return createClient(
@@ -10,12 +11,75 @@ function getAdmin() {
   );
 }
 
+interface PriceLookupResult {
+  price_monthly: number | null;
+  promo_price: number | null;
+  confidence: 'high' | 'medium' | 'low';
+  notes: string;
+}
+
+/**
+ * Ask Perplexity for the current headline monthly price for a single plan.
+ * Returns null if the API call fails or the response can't be parsed.
+ */
+async function lookupCurrentPrice(deal: {
+  provider: string;
+  plan_name: string | null;
+  destination_url: string | null;
+  category: string;
+}): Promise<PriceLookupResult | null> {
+  const perplexityKey = process.env.PERPLEXITY_API_KEY;
+  if (!perplexityKey) return null;
+
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const planLabel = deal.plan_name ? `their plan "${deal.plan_name}"` : 'their current headline plan';
+  const urlContext = deal.destination_url ? ` Check the live page at ${deal.destination_url}.` : '';
+  const prompt = `As of today (${today}), what is the current advertised monthly price in GBP (£) for UK provider ${deal.provider} for ${planLabel} in the ${deal.category} category?${urlContext} If there's a promotional/introductory price, also note the promo price. Return ONLY a JSON object with these exact keys: price_monthly (number, the headline or standard monthly price in £), promo_price (number or null, any introductory discounted price in £), confidence ("high" if you found the exact price on the provider's official site, "medium" if from a reputable comparison site, "low" if inferred), notes (short string about any caveats, e.g. "24-month contract", "first 3 months only"). No other text.`;
+
+  try {
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${perplexityKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'sonar',
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const price = parsed.price_monthly != null ? parseFloat(String(parsed.price_monthly)) : null;
+    const promo = parsed.promo_price != null && parsed.promo_price !== '' ? parseFloat(String(parsed.promo_price)) : null;
+    if (price == null || isNaN(price)) return null;
+
+    return {
+      price_monthly: price,
+      promo_price: promo != null && !isNaN(promo) ? promo : null,
+      confidence: ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'low',
+      notes: String(parsed.notes || '').slice(0, 500),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Daily deal price checker.
- * Fetches provider pages, extracts prices, compares to stored data.
- * Also accepts manual_prices body for admin overrides.
+ * Loops over every active, comparison-enabled deal in affiliate_deals,
+ * asks Perplexity for the current headline price, and updates the row
+ * if the price has moved. Logs every check to deal_price_checks and
+ * significant changes (>£1/month diff) to business_log.
  *
- * Schedule: Daily at 6am
+ * Schedule: daily at 6am (see vercel.json).
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -24,28 +88,152 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = getAdmin();
-  const results: any[] = [];
 
-  // Check TalkTalk
-  try {
-    const ttResult = await checkTalkTalk(supabase);
-    results.push(ttResult);
-  } catch (err: any) {
-    results.push({ provider: 'TalkTalk', status: 'error', error: err.message });
+  // Fetch every active comparison-enabled deal
+  const { data: deals, error } = await supabase
+    .from('affiliate_deals')
+    .select('id, provider, plan_name, category, price_monthly, price_promotional, destination_url')
+    .eq('is_active', true)
+    .eq('comparison_enabled', true);
+
+  if (error || !deals) {
+    return NextResponse.json({ error: 'Failed to load deals', details: error?.message }, { status: 500 });
   }
 
-  // Check Lebara
-  try {
-    const lbResult = await checkLebara(supabase);
-    results.push(lbResult);
-  } catch (err: any) {
-    results.push({ provider: 'Lebara', status: 'error', error: err.message });
+  const summary = {
+    scanned: 0,
+    updated: 0,
+    unchanged: 0,
+    skipped: 0,
+    failed: 0,
+    changes: [] as any[],
+  };
+
+  for (const deal of deals) {
+    summary.scanned++;
+
+    // Skip deals without a destination URL — nothing to verify against
+    if (!deal.destination_url) {
+      summary.skipped++;
+      await supabase.from('deal_price_checks').insert({
+        provider: deal.provider,
+        check_status: 'skipped',
+        plans_found: null,
+        changes_detected: null,
+        error_message: 'No destination_url',
+      });
+      continue;
+    }
+
+    const lookup = await lookupCurrentPrice({
+      provider: deal.provider,
+      plan_name: deal.plan_name,
+      destination_url: deal.destination_url,
+      category: deal.category,
+    });
+
+    if (!lookup || lookup.price_monthly == null) {
+      summary.failed++;
+      await supabase
+        .from('affiliate_deals')
+        .update({
+          price_scan_status: 'failed',
+          price_scan_source: 'perplexity',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', deal.id);
+      await supabase.from('deal_price_checks').insert({
+        provider: deal.provider,
+        check_status: 'error',
+        plans_found: null,
+        changes_detected: null,
+        error_message: 'Perplexity lookup failed or returned no price',
+      });
+      continue;
+    }
+
+    const storedPrice = deal.price_monthly != null ? parseFloat(String(deal.price_monthly)) : null;
+    const storedPromo = deal.price_promotional != null ? parseFloat(String(deal.price_promotional)) : null;
+    const newPrice = lookup.price_monthly;
+    const newPromo = lookup.promo_price;
+
+    const priceChanged = storedPrice == null || Math.abs(newPrice - storedPrice) >= 0.5;
+    const promoChanged = (storedPromo ?? null) !== (newPromo ?? null)
+      && (storedPromo == null || newPromo == null || Math.abs((newPromo ?? 0) - (storedPromo ?? 0)) >= 0.5);
+
+    const now = new Date().toISOString();
+
+    if (priceChanged || promoChanged) {
+      summary.updated++;
+      const change = {
+        deal_id: deal.id,
+        provider: deal.provider,
+        plan: deal.plan_name,
+        old_price: storedPrice,
+        new_price: newPrice,
+        old_promo: storedPromo,
+        new_promo: newPromo,
+        confidence: lookup.confidence,
+        notes: lookup.notes,
+      };
+      summary.changes.push(change);
+
+      await supabase
+        .from('affiliate_deals')
+        .update({
+          previous_price_monthly: storedPrice,
+          price_monthly: newPrice,
+          price_promotional: newPromo,
+          price_scan_status: 'updated',
+          price_scan_source: 'perplexity',
+          last_verified_at: now,
+          price_changed_at: now,
+          updated_at: now,
+        })
+        .eq('id', deal.id);
+
+      await supabase.from('deal_price_checks').insert({
+        provider: deal.provider,
+        check_status: 'changes_detected',
+        plans_found: [{ plan: deal.plan_name, price: newPrice, promo: newPromo }],
+        changes_detected: [change],
+        error_message: null,
+      });
+
+      // Log significant changes (>£1 move) so the founder can spot it in business_log
+      if (storedPrice == null || Math.abs(newPrice - (storedPrice || 0)) >= 1) {
+        await supabase.from('business_log').insert({
+          category: 'deals',
+          action: 'price_change_detected',
+          details: change,
+        });
+      }
+    } else {
+      summary.unchanged++;
+      await supabase
+        .from('affiliate_deals')
+        .update({
+          price_scan_status: 'verified',
+          price_scan_source: 'perplexity',
+          last_verified_at: now,
+          updated_at: now,
+        })
+        .eq('id', deal.id);
+
+      await supabase.from('deal_price_checks').insert({
+        provider: deal.provider,
+        check_status: 'verified',
+        plans_found: [{ plan: deal.plan_name, price: newPrice, promo: newPromo }],
+        changes_detected: null,
+        error_message: null,
+      });
+    }
   }
 
-  return NextResponse.json({ ok: true, results });
+  return NextResponse.json({ ok: true, ...summary });
 }
 
-// Manual override endpoint
+// Manual override endpoint — unchanged behaviour, lets admins push price fixes
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -65,6 +253,7 @@ export async function POST(request: NextRequest) {
             price_promotional: update.price_promotional || null,
             last_verified_at: new Date().toISOString(),
             price_changed_at: new Date().toISOString(),
+            price_scan_source: 'manual',
             updated_at: new Date().toISOString(),
           })
           .eq('id', update.id);
@@ -74,169 +263,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ error: 'Provide manual_prices array' }, { status: 400 });
-}
-
-async function checkTalkTalk(supabase: any) {
-  const { data: storedDeals } = await supabase
-    .from('affiliate_deals')
-    .select('*')
-    .eq('provider', 'TalkTalk')
-    .eq('is_active', true);
-
-  let fetchError = null;
-  let pricesFound: any[] = [];
-  let changes: any[] = [];
-
-  try {
-    const res = await fetch('https://www.talktalk.co.uk/broadband/compare-deals', {
-      headers: { 'User-Agent': 'Paybacker-PriceChecker/1.0 (hello@paybacker.co.uk)' },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-
-    // Extract prices using patterns like £24, £30, £36
-    // TalkTalk typically shows prices in their plan cards
-    const priceMatches = html.match(/£(\d+(?:\.\d{2})?)\s*(?:\/mo|per month|a month)/gi);
-    if (priceMatches) {
-      pricesFound = [...new Set(priceMatches.map(m => {
-        const num = m.match(/£(\d+(?:\.\d{2})?)/);
-        return num ? parseFloat(num[1]) : null;
-      }).filter(Boolean))];
-    }
-
-    // Compare against stored — if any stored price doesn't appear in found prices, flag it
-    if (pricesFound.length > 0) {
-      for (const deal of storedDeals || []) {
-        const storedPrice = parseFloat(deal.price_monthly);
-        if (!pricesFound.includes(storedPrice)) {
-          changes.push({
-            plan: deal.plan_name,
-            old_price: storedPrice,
-            note: `Price £${storedPrice} not found on page. Found: ${pricesFound.map(p => `£${p}`).join(', ')}`,
-          });
-        }
-      }
-    }
-  } catch (err: any) {
-    fetchError = err.message;
-  }
-
-  // Log the check
-  await supabase.from('deal_price_checks').insert({
-    provider: 'TalkTalk',
-    check_status: fetchError ? 'error' : changes.length > 0 ? 'changes_detected' : 'verified',
-    plans_found: pricesFound,
-    changes_detected: changes.length > 0 ? changes : null,
-    error_message: fetchError,
-  });
-
-  // If no error and no changes, mark as verified
-  if (!fetchError && changes.length === 0) {
-    await supabase
-      .from('affiliate_deals')
-      .update({ last_verified_at: new Date().toISOString() })
-      .eq('provider', 'TalkTalk')
-      .eq('is_active', true);
-  }
-
-  // If changes detected, log to business_log for admin alert
-  if (changes.length > 0) {
-    await supabase.from('business_log').insert({
-      category: 'deals',
-      action: 'price_change_detected',
-      details: { provider: 'TalkTalk', changes },
-    });
-  }
-
-  return {
-    provider: 'TalkTalk',
-    status: fetchError ? 'error' : changes.length > 0 ? 'changes_detected' : 'verified',
-    prices_found: pricesFound.length,
-    changes: changes.length,
-    error: fetchError,
-  };
-}
-
-async function checkLebara(supabase: any) {
-  const { data: storedDeals } = await supabase
-    .from('affiliate_deals')
-    .select('*')
-    .eq('provider', 'Lebara')
-    .eq('is_active', true);
-
-  let fetchError = null;
-  let pricesFound: any[] = [];
-  let changes: any[] = [];
-
-  try {
-    const res = await fetch('https://www.lebara.co.uk/en/best-sim-only-deals.html', {
-      headers: { 'User-Agent': 'Paybacker-PriceChecker/1.0 (hello@paybacker.co.uk)' },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-
-    // Extract prices — Lebara uses patterns like £5, £10, £2.50
-    const priceMatches = html.match(/£(\d+(?:\.\d{2})?)/g);
-    if (priceMatches) {
-      pricesFound = [...new Set(priceMatches.map(m => {
-        const num = m.match(/£(\d+(?:\.\d{2})?)/);
-        return num ? parseFloat(num[1]) : null;
-      }).filter(Boolean))].sort((a: any, b: any) => a - b);
-    }
-
-    // Compare stored prices against found
-    if (pricesFound.length > 0) {
-      for (const deal of storedDeals || []) {
-        const storedPrice = parseFloat(deal.price_monthly);
-        const promoPrice = deal.price_promotional ? parseFloat(deal.price_promotional) : null;
-        const anyMatch = pricesFound.includes(storedPrice) || (promoPrice && pricesFound.includes(promoPrice));
-        if (!anyMatch) {
-          changes.push({
-            plan: deal.plan_name,
-            old_price: storedPrice,
-            old_promo: promoPrice,
-            note: `Neither £${storedPrice} nor promo £${promoPrice} found on page`,
-          });
-        }
-      }
-    }
-  } catch (err: any) {
-    fetchError = err.message;
-  }
-
-  await supabase.from('deal_price_checks').insert({
-    provider: 'Lebara',
-    check_status: fetchError ? 'error' : changes.length > 0 ? 'changes_detected' : 'verified',
-    plans_found: pricesFound,
-    changes_detected: changes.length > 0 ? changes : null,
-    error_message: fetchError,
-  });
-
-  if (!fetchError && changes.length === 0) {
-    await supabase
-      .from('affiliate_deals')
-      .update({ last_verified_at: new Date().toISOString() })
-      .eq('provider', 'Lebara')
-      .eq('is_active', true);
-  }
-
-  if (changes.length > 0) {
-    await supabase.from('business_log').insert({
-      category: 'deals',
-      action: 'price_change_detected',
-      details: { provider: 'Lebara', changes },
-    });
-  }
-
-  return {
-    provider: 'Lebara',
-    status: fetchError ? 'error' : changes.length > 0 ? 'changes_detected' : 'verified',
-    prices_found: pricesFound.length,
-    changes: changes.length,
-    error: fetchError,
-  };
 }
