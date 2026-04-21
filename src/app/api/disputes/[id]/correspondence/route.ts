@@ -29,7 +29,7 @@ export async function POST(
     return NextResponse.json({ error: 'Missing required fields: entry_type, content' }, { status: 400 });
   }
 
-  const validTypes = ['company_email', 'company_letter', 'phone_call', 'user_note', 'company_response'];
+  const validTypes = ['company_email', 'company_letter', 'phone_call', 'user_note', 'company_response', 'action_taken'];
   if (!validTypes.includes(body.entry_type)) {
     return NextResponse.json({ error: `entry_type must be one of: ${validTypes.join(', ')}` }, { status: 400 });
   }

@@ -170,6 +170,7 @@ const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: typeof FileText; 
   phone_call: { label: 'Phone call', icon: Phone, className: 'border-blue-400/30 bg-blue-400/5' },
   user_note: { label: 'Your note', icon: StickyNote, className: 'border-slate-400/30 bg-slate-400/5' },
   company_response: { label: 'Their response', icon: MessageSquare, className: 'border-orange-400/30 bg-orange-400/5' },
+  action_taken: { label: 'Action taken', icon: CheckCircle, className: 'border-blue-400/30 bg-blue-400/5' },
 };
 
 function formatDate(d: string) {
@@ -315,31 +316,61 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
 // ============================================================
 // Add Correspondence Modal
 // ============================================================
+// Add / Edit Update Modal
+// ============================================================
 function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   disputeId: string;
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [entryType, setEntryType] = useState('company_email');
+  // Default to 'user_note' so the "Add note" path is always one click away
+  const [entryType, setEntryType] = useState('user_note');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
   const [saving, setSaving] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
+  // Three clear buckets — simpler than 5 granular types
   const typeOptions = [
-    { value: 'company_email', label: 'Email from the company', icon: Mail },
-    { value: 'company_letter', label: 'Letter from the company', icon: FileText },
-    { value: 'company_response', label: 'Other response from company', icon: MessageSquare },
-    { value: 'phone_call', label: 'Phone call summary', icon: Phone },
-    { value: 'user_note', label: 'Your own note', icon: StickyNote },
+    {
+      value: 'user_note',
+      label: 'My note',
+      desc: 'Your own private notes or thoughts',
+      icon: StickyNote,
+    },
+    {
+      value: 'company_response',
+      label: 'Company response',
+      desc: 'Email, letter, or message from them',
+      icon: MessageSquare,
+    },
+    {
+      value: 'action_taken',
+      label: 'Action taken',
+      desc: 'Something you did — called, sent a letter, escalated…',
+      icon: CheckCircle,
+    },
   ];
+
+  const contentLabel: Record<string, string> = {
+    user_note: 'Your notes',
+    company_response: 'Paste what they sent',
+    action_taken: 'Describe what you did',
+  };
+  const contentPlaceholder: Record<string, string> = {
+    user_note: 'Add any notes for yourself about this dispute — reference numbers, what was agreed, next steps…',
+    company_response: 'Paste the email, letter or message content here…',
+    action_taken: "e.g. Called customer service, spoke to John. They said they'd escalate within 5 days. Ref: CS-12345.",
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
     setSaving(true);
+    setSaveError('');
     try {
       // Upload file first if attached
       let attachments: any[] = [];
@@ -360,19 +391,23 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entry_type: entryType,
-          title: title || null,
-          content,
+          title: title.trim() || null,
+          content: content.trim(),
           attachments,
           entry_date: new Date(entryDate).toISOString(),
         }),
       });
-      if (!res.ok) throw new Error('Failed to save');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save');
+      }
       onAdded();
       onClose();
-    } catch {
-      alert('Failed to save. Please try again.');
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to save. Please try again.');
     } finally {
       setSaving(false);
+      setUploading(false);
     }
   };
 
@@ -381,123 +416,133 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-navy-900 border border-navy-700/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-2xl" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
-        <div className="flex items-center justify-between p-5 border-b border-navy-700/50 flex-shrink-0">
-          <h2 className="text-lg font-bold text-white">Add to your dispute</h2>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
-          style={{ WebkitOverflowScrolling: 'touch' as any }}>
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">What are you adding?</label>
-            <div className="grid grid-cols-1 gap-2">
-              {typeOptions.map((opt) => {
-                const Icon = opt.icon;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setEntryType(opt.value)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all ${
-                      entryType === opt.value
-                        ? 'bg-mint-400/10 border border-mint-400/30 text-white'
-                        : 'bg-navy-950 border border-navy-700/50 text-slate-400 hover:border-navy-600'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 flex-shrink-0" />
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="flex items-center justify-between p-5 border-b border-navy-700/50 flex-shrink-0">
+            <h2 className="text-lg font-bold text-white">Add an update</h2>
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
           </div>
+          <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
+            style={{ WebkitOverflowScrolling: 'touch' as any }}>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Title <span className="text-slate-500 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-              placeholder={entryType === 'phone_call' ? 'e.g. Spoke to customer service' : 'e.g. Their response to my complaint'}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              {entryType === 'phone_call' ? 'What happened on the call?' : 'Paste or type the content'} *
-            </label>
-            <textarea
-              required
-              rows={6}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-              placeholder={
-                entryType === 'phone_call'
-                  ? 'Summarise the phone call - who you spoke to, what they said, any reference numbers...'
-                  : entryType === 'user_note'
-                  ? 'Add any notes for yourself about this dispute...'
-                  : 'Paste the email or letter content here...'
-              }
-            />
-          </div>
-
-          {/* File attachment */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Attach a file <span className="text-slate-500 font-normal">(optional - screenshot, scan, or photo)</span>
-            </label>
-            {attachedFile ? (
-              <div className="flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Paperclip className="h-4 w-4 text-mint-400" />
-                  <span className="text-mint-400 text-xs font-medium truncate max-w-[200px]">{attachedFile.name}</span>
-                </div>
-                <button type="button" onClick={() => setAttachedFile(null)} className="text-slate-500 hover:text-white text-xs">Remove</button>
+            {/* Type selector */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">What are you adding?</label>
+              <div className="grid grid-cols-1 gap-2">
+                {typeOptions.map((opt) => {
+                  const Icon = opt.icon;
+                  const selected = entryType === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setEntryType(opt.value)}
+                      className={`flex items-start gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all ${
+                        selected
+                          ? 'bg-mint-400/10 border border-mint-400/30 text-white'
+                          : 'bg-navy-950 border border-navy-700/50 text-slate-400 hover:border-navy-600'
+                      }`}
+                    >
+                      <Icon className={`h-4 w-4 flex-shrink-0 mt-0.5 ${selected ? 'text-mint-400' : ''}`} />
+                      <div>
+                        <div className="font-medium">{opt.label}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">{opt.desc}</div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            ) : (
-              <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
-                <Paperclip className="h-4 w-4 text-mint-400" />
-                <span>Upload a screenshot, scan or photo</span>
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.heic,.heif"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
-                      setAttachedFile(file);
-                    }
-                    e.target.value = '';
-                  }}
-                />
+            </div>
+
+            {/* Title */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Title <span className="text-slate-500 font-normal">(optional)</span>
               </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                placeholder={
+                  entryType === 'action_taken' ? 'e.g. Phoned customer services' :
+                  entryType === 'company_response' ? 'e.g. Their rejection letter' :
+                  'e.g. Important detail to remember'
+                }
+              />
+            </div>
+
+            {/* Content */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                {contentLabel[entryType] || 'Content'} *
+              </label>
+              <textarea
+                required
+                rows={6}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                placeholder={contentPlaceholder[entryType] || ''}
+              />
+            </div>
+
+            {/* File attachment */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Attach a file <span className="text-slate-500 font-normal">(optional)</span>
+              </label>
+              {attachedFile ? (
+                <div className="flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Paperclip className="h-4 w-4 text-mint-400" />
+                    <span className="text-mint-400 text-xs font-medium truncate max-w-[200px]">{attachedFile.name}</span>
+                  </div>
+                  <button type="button" onClick={() => setAttachedFile(null)} className="text-slate-500 hover:text-white text-xs">Remove</button>
+                </div>
+              ) : (
+                <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
+                  <Paperclip className="h-4 w-4 text-mint-400" />
+                  <span>Upload a screenshot, scan or photo</span>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,.heic,.heif"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 10 * 1024 * 1024) { alert('File too large. Maximum 10MB.'); return; }
+                        setAttachedFile(file);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Date */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">When did this happen?</label>
+              <input
+                type="date"
+                value={entryDate}
+                onChange={(e) => setEntryDate(e.target.value)}
+                className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              />
+            </div>
+
+          </div>
+          <div className="p-5 pt-3 border-t border-navy-700/50 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
+            {saveError && (
+              <p className="text-red-400 text-sm mb-3">{saveError}</p>
             )}
+            <button
+              type="submit"
+              disabled={saving || uploading || !content.trim()}
+              className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
+            >
+              {uploading ? 'Uploading file…' : saving ? 'Saving…' : 'Save update'}
+            </button>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">When did this happen?</label>
-            <input
-              type="date"
-              value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-            />
-          </div>
-
-        </div>
-        <div className="p-5 pt-3 border-t border-navy-700/50 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
-          <button
-            type="submit"
-            disabled={saving || uploading || !content.trim()}
-            className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
-          >
-            {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
-          </button>
-        </div>
         </form>
       </div>
     </div>
@@ -880,6 +925,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [justExtracted, setJustExtracted] = useState(false);
   const [providerInfo, setProviderInfo] = useState<any>(null);
 
+  // Inline edit state
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  // Delete confirm state
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
+
   const fetchDispute = async () => {
     try {
       const res = await fetch(`/api/disputes/${disputeId}`);
@@ -990,6 +1044,62 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       alert(error.message || 'Failed to generate letter. Please try again.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const startEditing = (entry: Correspondence) => {
+    setEditingEntryId(entry.id);
+    setEditContent(entry.content);
+    setEditTitle(entry.title || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingEntryId(null);
+    setEditContent('');
+    setEditTitle('');
+  };
+
+  const handleEditSave = async (entryId: string) => {
+    if (!editContent.trim()) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/disputes/${disputeId}/correspondence/${entryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: editContent.trim(),
+          title: editTitle.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save');
+      }
+      cancelEditing();
+      fetchDispute();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDelete = async (entryId: string) => {
+    setDeleteInProgress(true);
+    try {
+      const res = await fetch(`/api/disputes/${disputeId}/correspondence/${entryId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to delete');
+      }
+      setDeleteConfirmId(null);
+      fetchDispute();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete entry. Please try again.');
+    } finally {
+      setDeleteInProgress(false);
     }
   };
 
@@ -1224,7 +1334,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 onClick={() => setShowAddModal(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg text-sm transition-all"
               >
-                <Plus className="h-4 w-4" /> Add their response
+                <Plus className="h-4 w-4" /> Add an update
               </button>
               <button
                 onClick={generateFollowUp}
@@ -1244,16 +1354,23 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               const Icon = config.icon;
               const isAiLetter = entry.entry_type === 'ai_letter';
               const isFromCompany = ['company_email', 'company_letter', 'company_response'].includes(entry.entry_type);
+              const isAutoImported = !!entry.detected_from_email;
+              // Auto-imported entries: edit allowed, delete blocked
+              // AI letters: neither edit nor delete
+              const canEdit = !isAiLetter;
+              const canDelete = !isAiLetter && !isAutoImported;
+              const isEditing = editingEntryId === entry.id;
+              const isDeleteConfirm = deleteConfirmId === entry.id;
 
               return (
                 <div
                   ref={index === (dispute.correspondence?.length || 0) - 1 ? latestLetterRef : null}
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
-                    isAiLetter ? 'cursor-pointer hover:border-mint-400/50' : ''
+                    isAiLetter && !isEditing ? 'cursor-pointer hover:border-mint-400/50' : ''
                   }`}
                   onClick={() => {
-                    if (isAiLetter) {
+                    if (isAiLetter && !isEditing) {
                       setLetterModal({
                         content: entry.content,
                         title: entry.title || 'Your letter',
@@ -1263,31 +1380,33 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     }
                   }}
                 >
+                  {/* ── Entry header ── */}
                   <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Icon className={`h-4 w-4 ${isFromCompany ? 'text-orange-400' : isAiLetter ? 'text-mint-400' : 'text-slate-400'}`} />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Icon className={`h-4 w-4 flex-shrink-0 ${isFromCompany ? 'text-orange-400' : isAiLetter ? 'text-mint-400' : 'text-slate-400'}`} />
                       <span className={`text-sm font-medium ${isFromCompany ? 'text-orange-300' : isAiLetter ? 'text-mint-300' : 'text-slate-300'}`}>
                         {config.label}
                       </span>
-                      {entry.title && (
+                      {!isEditing && entry.title && (
                         <span className="text-slate-500 text-sm">— {entry.title}</span>
                       )}
-                      {entry.detected_from_email && (
+                      {isAutoImported && (
                         <span className="text-[10px] bg-mint-400/15 text-mint-400 border border-mint-400/20 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide">
                           Auto-imported
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       <span className="text-slate-600 text-xs flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {formatDate(entry.entry_date)}
                       </span>
-                      {entry.detected_from_email && (
+                      {/* Move button — only for auto-imported entries */}
+                      {isAutoImported && !isEditing && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const target = prompt('Move this reply to a different dispute.\n\nPaste the dispute ID you want to move it to (you can copy it from the URL of the other dispute).');
+                            const target = prompt('Move this reply to a different dispute.\n\nPaste the dispute ID (copy it from the URL of the other dispute).');
                             if (!target) return;
                             fetch(`/api/disputes/${dispute.id}/correspondence/${entry.id}`, {
                               method: 'PATCH',
@@ -1295,39 +1414,111 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                               body: JSON.stringify({ move_to_dispute_id: target.trim() }),
                             })
                               .then(async (r) => {
-                                if (r.ok) {
-                                  fetchDispute();
-                                } else {
+                                if (r.ok) { fetchDispute(); }
+                                else {
                                   const err = await r.json().catch(() => ({}));
                                   alert(err.error ?? 'Failed to move reply');
                                 }
                               })
                               .catch(() => alert('Failed to move reply'));
                           }}
-                          className="text-slate-600 hover:text-mint-400 transition-colors p-0.5"
+                          className="text-slate-600 hover:text-mint-400 transition-colors p-1 rounded"
                           title="Move to a different dispute"
                         >
                           <ArrowRight className="h-3 w-3" />
                         </button>
                       )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Remove this entry from the dispute history? This will also remove it from the AI context for future letters.')) {
-                            fetch(`/api/correspondence/${entry.id}`, { method: 'DELETE' })
-                              .then(r => { if (r.ok) fetchDispute(); })
-                              .catch(() => {});
-                          }
-                        }}
-                        className="text-slate-700 hover:text-red-400 transition-colors p-0.5"
-                        title="Remove from history"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      {/* Edit button */}
+                      {canEdit && !isEditing && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startEditing(entry); }}
+                          className="text-slate-600 hover:text-slate-300 transition-colors p-1 rounded"
+                          title="Edit this entry"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                      {/* Delete button — hidden for auto-imported and AI letters */}
+                      {canDelete && !isEditing && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(entry.id); }}
+                          className="text-slate-700 hover:text-red-400 transition-colors p-1 rounded"
+                          title="Remove this update"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  {isAiLetter ? (
+                  {/* ── Delete confirmation banner ── */}
+                  {isDeleteConfirm && (
+                    <div
+                      className="mb-3 flex items-center justify-between gap-3 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <p className="text-sm text-red-300">Remove this update?</p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deleteInProgress}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(entry.id); }}
+                          className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          {deleteInProgress ? 'Removing…' : 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Inline edit form ── */}
+                  {isEditing ? (
+                    <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Title (optional)</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full px-3 py-2 bg-navy-950 border border-navy-700/50 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                          placeholder="Title (optional)"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">Content *</label>
+                        <textarea
+                          rows={5}
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full px-3 py-2 bg-navy-950 border border-navy-700/50 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400 resize-y"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={cancelEditing}
+                          className="px-3 py-1.5 text-sm text-slate-400 hover:text-white bg-navy-800 hover:bg-navy-700 rounded-lg transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={editSaving || !editContent.trim()}
+                          onClick={() => handleEditSave(entry.id)}
+                          className="px-4 py-1.5 text-sm bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {editSaving ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : isAiLetter ? (
                     <>
                       <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed line-clamp-6">
                         {entry.content}
@@ -1399,8 +1590,8 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     <p className="text-sm text-slate-300 whitespace-pre-wrap">{entry.content}</p>
                   )}
 
-                  {/* Draft response button — shown on company responses */}
-                  {isFromCompany && !isResolved(dispute.status) && (
+                  {/* Draft response button — shown on company responses when not editing */}
+                  {isFromCompany && !isResolved(dispute.status) && !isEditing && (
                     <div className="mt-3 pt-3 border-t border-navy-700/30">
                       <button
                         onClick={(e) => {
@@ -1435,7 +1626,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 onClick={() => setShowAddModal(true)}
                 className="flex items-center justify-center gap-2 px-5 py-3 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-xl text-sm transition-all flex-1"
               >
-                <Plus className="h-4 w-4" /> Add their response
+                <Plus className="h-4 w-4" /> Add an update
               </button>
               <button
                 onClick={() => setShowResolveModal(true)}
