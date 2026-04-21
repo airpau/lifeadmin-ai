@@ -26,7 +26,6 @@ import {
   BookOpen,
   FolderLock,
   MessageCircle,
-  Download,
   Plug,
   Loader2,
 } from 'lucide-react';
@@ -41,8 +40,7 @@ const navItems = [
   { name: 'Deals', href: '/dashboard/deals', icon: Tag },
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
-  { name: 'Export', href: '/dashboard/export', icon: Download },
-  { name: 'Claude Desktop', href: '/dashboard/settings/mcp', icon: Plug },
+  { name: 'Paybacker Assistant', href: '/dashboard/settings/mcp', icon: Plug },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
