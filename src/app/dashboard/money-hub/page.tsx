@@ -828,6 +828,56 @@ export default function MoneyHubPage() {
         <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
       </div>
 
+      {/* Ask Claude about your money — MCP prompt strip */}
+      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="min-w-0">
+            <h3 className="text-white font-semibold text-lg flex items-center gap-2 flex-wrap">
+              <MessageCircle className="h-5 w-5 text-mint-400" />
+              Ask Claude about your money
+              <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-mint-400 bg-mint-400/10 border border-mint-400/30">
+                Pro
+              </span>
+            </h3>
+            <p className="text-slate-400 text-sm mt-1">
+              Connect Paybacker to Claude Desktop and ask plain-English questions about your own transactions, subscriptions, budgets, and disputes. Read-only — Claude can&apos;t move money or change anything.
+            </p>
+          </div>
+          <Link
+            href={isPro ? '/dashboard/settings/mcp' : '/docs/claude-desktop'}
+            className="whitespace-nowrap text-xs bg-mint-500/10 border border-mint-400/30 text-mint-400 hover:bg-mint-500/20 hover:text-mint-300 px-3 py-1.5 rounded-full transition-colors"
+          >
+            {isPro ? 'Generate token →' : 'Setup guide →'}
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {[
+            'How much did I spend on food and drink last month?',
+            'Which subscriptions have I paid for but not used?',
+            'Am I over budget on anything this month?',
+            'How close am I to my holiday savings goal?',
+            'Did I pay British Gas twice in March?',
+            'List every open dispute and the total amount I\u2019m trying to recover.',
+          ].map((q) => (
+            <div
+              key={q}
+              className="bg-navy-950/50 border border-navy-800 rounded-xl px-3 py-2 text-sm text-slate-200"
+            >
+              &ldquo;{q}&rdquo;
+            </div>
+          ))}
+        </div>
+        {!isPro && (
+          <p className="text-xs text-slate-500 mt-4">
+            The Claude Desktop MCP is a Pro feature.{' '}
+            <Link href="/pricing" className="text-mint-400 hover:text-mint-300">
+              Upgrade for £9.99/mo
+            </Link>{' '}
+            to unlock it.
+          </p>
+        )}
+      </div>
+
       {/* Financial Action Centre (Pro) */}
       {isPro && (
         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
