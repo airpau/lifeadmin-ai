@@ -17,7 +17,7 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 
-const BASE_URL = process.env.PAYBACKER_API_URL ?? 'https://lifeadmin-ai.vercel.app';
+const BASE_URL = process.env.PAYBACKER_API_URL ?? 'https://paybacker.co.uk';
 const TOKEN = process.env.PAYBACKER_TOKEN;
 const VERSION = '0.1.0';
 
