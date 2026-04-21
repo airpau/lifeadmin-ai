@@ -522,10 +522,14 @@ async function getSubscriptions(
     return FINANCE_KEYWORDS.some(kw => lower.includes(kw));
   };
 
-  // Deduplicate by normalised provider name (same as website)
+  // Deduplicate by normalised provider name + amount band (mirrors website logic).
+  // Two separate subscriptions at the same provider but different amounts
+  // (e.g. two council-tax DDs for different properties) are kept distinct.
   const seen = new Set<string>();
   const deduped = data.filter(s => {
-    const key = s.provider_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normName = s.provider_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
+    const key = `${normName}|${band}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

@@ -374,14 +374,18 @@ export default function SubscriptionsPage() {
   };
 
   // Subscriptions = everything except loans, mortgages, credit cards
-  // Also deduplicate by normalised name (e.g. "LBH" and "L.B.Hounslow" are the same)
+  // Deduplicate by normalised name + amount band (e.g. "LBH" and "L.B.Hounslow"
+  // collapse to one, but two separate council-tax DDs at different amounts stay
+  // as distinct entries).
   const baseSubscriptions = (() => {
     const filtered = subscriptions.filter(s => !isFinancePayment(s.provider_name));
     const seen = new Map<string, boolean>();
     return filtered.filter(s => {
       const normName = cleanMerchantName(s.provider_name).toLowerCase();
-      if (seen.has(normName)) return false;
-      seen.set(normName, true);
+      const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
+      const key = `${normName}|${band}`;
+      if (seen.has(key)) return false;
+      seen.set(key, true);
       return true;
     });
   })();
