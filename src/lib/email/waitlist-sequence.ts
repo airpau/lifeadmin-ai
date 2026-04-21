@@ -57,8 +57,8 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
       <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT YOU GET AS AN EARLY MEMBER</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
         <li>Early access invite before public launch</li>
-        <li>3 months free on any paid plan</li>
-        <li>Locked-in pricing — your rate never increases</li>
+        <li>14-day free trial of Paybacker Pro</li>
+        <li>Founding member pricing — permanently locked-in</li>
         <li>Direct input on which features we build next</li>
       </ul>
     </div>
@@ -219,9 +219,9 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <div style="${box}">
       <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:15px;">YOUR EARLY ACCESS BENEFITS</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
-        <li>✅ <strong style="color:#e2e8f0;">3 months free</strong> on any paid plan</li>
+        <li>✅ <strong style="color:#e2e8f0;">14-day free trial</strong> of Paybacker Pro</li>
         <li>✅ <strong style="color:#e2e8f0;">Founding member</strong> — locked-in pricing forever</li>
-        <li>✅ <strong style="color:#e2e8f0;">Direct input</strong> on which agents we build next</li>
+        <li>✅ <strong style="color:#e2e8f0;">Direct input</strong> on which features we build next</li>
       </ul>
     </div>
 
@@ -266,32 +266,29 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
   {
     id: 'day28_upgrade',
     dayOffset: 28,
-    subject: "Early access is open — your first month is on us",
+    subject: "Early access is open — 14-day free Pro trial",
     html: (name) => `
 <div style="${wrap}">
   <div style="${header}">${Logo()}</div>
   <div style="${body}">
-    <h1 style="${h1}">Early access is open, ${name} — your first month is free</h1>
-    <p style="${p}">Paybacker is now in early access. As a waitlist member, your first month is free on any paid plan.</p>
+    <h1 style="${h1}">Early access is open, ${name} — 14-day free Pro trial</h1>
+    <p style="${p}">Paybacker is now in early access. As a waitlist member, you get a 14-day free trial of Paybacker Pro.</p>
 
     <div style="${box}">
       <p style="color:#34d399;font-weight:700;margin:0 0 12px;font-size:15px;">WHAT YOU GET FROM DAY ONE</p>
       <ul style="color:#94a3b8;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
         <li>Connect your bank account to detect all subscriptions instantly</li>
-        <li>Track every contract with renewal dates and alerts</li>
-        <li>Generate complaint letters citing Consumer Rights Act 2015</li>
+        <li>Unlimited email and bank scans</li>
+        <li>Generate unlimited complaint letters citing UK consumer law</li>
         <li>AI cancellation emails for every unwanted subscription</li>
-        <li>Full spending intelligence dashboard</li>
+        <li>Full spending intelligence dashboard with transaction analysis</li>
+        <li>Contract tracking with renewal reminders</li>
       </ul>
     </div>
 
-    <p style="${p}">Essential is £4.99/month — less than most forgotten subscriptions we find in the first scan.</p>
+    <p style="${p}">Pro is £9.99/month — and you've already got 14 days to see everything it can do for free.</p>
 
-    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Claim your free month →</a>
-
-    <p style="color:#64748b;font-size:13px;margin-top:16px;">
-      Use code <strong style="color:#34d399;">WAITLIST</strong> at checkout for your free first month.
-    </p>
+    <a href="https://paybacker.co.uk/auth/signup" style="${cta}">Start your free trial →</a>
   </div>
   ${Footer()}
 </div>`,
