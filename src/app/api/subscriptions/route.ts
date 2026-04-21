@@ -19,32 +19,56 @@ export async function GET() {
 
     if (error) throw error;
 
-    // Auto-advance next_billing_date if in the past
+    // Deduplicate on the server side as a safety net —
+    // prevents duplicate cron entries from leaking to the client.
+    // Key includes amount band so that two legitimately separate subscriptions
+    // to the same provider at different amounts are NOT collapsed (e.g. two
+    // council-tax DDs for different properties, two gym memberships, etc.).
+    const amountBand = (amount: number) => {
+      if (amount <= 0) return 0;
+      return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
+    };
+    const seen = new Map<string, boolean>();
+    const deduped = (data || []).filter((sub: any) => {
+      const band = amountBand(Math.abs(parseFloat(String(sub.amount)) || 0));
+      const key = `${(sub.provider_name || '').toLowerCase().trim()}|${sub.billing_cycle}|${sub.status}|${band}`;
+      if (seen.has(key)) return false;
+      seen.set(key, true);
+      return true;
+    });
+
+    // Auto-advance next_billing_date if in the past (only run on small batches to avoid timeout)
     const now = new Date();
-    for (const sub of data || []) {
-      if (sub.next_billing_date && sub.status === 'active') {
-        const billDate = new Date(sub.next_billing_date);
-        if (billDate < now) {
-          // Advance based on billing cycle
-          const newDate = new Date(billDate);
-          while (newDate < now) {
-            if (sub.billing_cycle === 'monthly') newDate.setMonth(newDate.getMonth() + 1);
-            else if (sub.billing_cycle === 'quarterly') newDate.setMonth(newDate.getMonth() + 3);
-            else if (sub.billing_cycle === 'yearly') newDate.setFullYear(newDate.getFullYear() + 1);
-            else break;
-          }
-          sub.next_billing_date = newDate.toISOString().split('T')[0];
-          // Update in background — catch errors to avoid unhandled promise rejections
-          Promise.resolve(
-            supabase.from('subscriptions').update({ next_billing_date: sub.next_billing_date }).eq('id', sub.id)
-          )
-            .then(({ error }) => { if (error) console.error(`Failed to advance billing date for sub ${sub.id}:`, error.message); })
-            .catch((err: unknown) => console.error(`Failed to advance billing date for sub ${sub.id}:`, err));
+    const toAdvance = deduped.filter((sub: any) =>
+      sub.next_billing_date && sub.status === 'active' && new Date(sub.next_billing_date) < now
+    );
+
+    for (const sub of toAdvance) {
+      try {
+        const newDate = new Date(sub.next_billing_date);
+        let iterations = 0;
+        while (newDate < now && iterations < 24) {
+          if (sub.billing_cycle === 'monthly') newDate.setMonth(newDate.getMonth() + 1);
+          else if (sub.billing_cycle === 'quarterly') newDate.setMonth(newDate.getMonth() + 3);
+          else if (sub.billing_cycle === 'yearly') newDate.setFullYear(newDate.getFullYear() + 1);
+          else break;
+          iterations++;
         }
+        sub.next_billing_date = newDate.toISOString().split('T')[0];
+        // Update in background — don't await so we don't block the response
+        Promise.resolve(
+          supabase.from('subscriptions')
+            .update({ next_billing_date: sub.next_billing_date })
+            .eq('id', sub.id)
+        )
+          .then(({ error }) => { if (error) console.error(`Failed to advance billing date for sub ${sub.id}:`, error.message); })
+          .catch((err: unknown) => console.error(`Failed to advance billing date for sub ${sub.id}:`, err));
+      } catch (advErr) {
+        console.error(`Error advancing billing date for sub ${sub.id}:`, advErr);
       }
     }
 
-    return NextResponse.json(data || []);
+    return NextResponse.json(deduped);
   } catch (error: any) {
     console.error('Error fetching subscriptions:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
