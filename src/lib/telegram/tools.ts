@@ -352,23 +352,23 @@ export const telegramTools: Tool[] = [
   {
     name: 'draft_dispute_letter',
     description:
-      'Draft a professional complaint or dispute letter citing exact UK consumer law. Returns a preview the user must approve before it is saved. Use Claude Sonnet for letter quality.',
+      "Draft a letter from a UK consumer to a company — either a fresh complaint, or a reply to a message the company just sent. Reads the supplier's last message (when provided) and calibrates tone: if they just asked a scheduling or info question, the reply stays short and cooperative; if they rejected the complaint or offered a settlement, the tone sharpens. Returns a preview the user must approve.",
     input_schema: {
       type: 'object' as const,
       properties: {
         provider: {
           type: 'string',
-          description: 'The company or provider name being disputed (e.g. "BT", "British Gas").',
+          description: 'The company or provider name being written to (e.g. "BT", "British Gas").',
         },
         issue_description: {
           type: 'string',
           description:
-            'Plain English description of the problem (e.g. "My broadband bill went up by £10/month without notice").',
+            'Plain English description of the underlying issue (e.g. "My broadband has been out 22 days"). For a reply, keep this short — it is background, not the main content of the reply.',
         },
         desired_outcome: {
           type: 'string',
           description:
-            'What the user wants to achieve (e.g. "revert to original price", "full refund", "compensation").',
+            'What the user wants (e.g. "revert price", "full refund", "confirm engineer appointment"). For a scheduling reply this might just be "confirm the appointment".',
         },
         issue_type: {
           type: 'string',
@@ -386,6 +386,22 @@ export const telegramTools: Tool[] = [
             'nhs_complaint',
           ],
           description: 'Category of dispute. Defaults to complaint if not specified.',
+        },
+        supplier_latest_message: {
+          type: 'string',
+          description:
+            "The full text of the supplier's most recent message to the user, if this is a REPLY to something they've sent (not a fresh complaint). Include subject + body. When provided, the letter will directly address what they said rather than re-stating the whole complaint history. Get this from get_dispute_detail.",
+        },
+        user_reply_brief: {
+          type: 'string',
+          description:
+            'What the user wants this reply to say, in plain English (e.g. "I\'m available any day except Friday, AM or PM"). When this is set, the letter focuses on communicating this point and does NOT re-litigate the complaint unless the supplier\'s message warrants it.',
+        },
+        reply_tone: {
+          type: 'string',
+          enum: ['auto', 'friendly', 'balanced', 'firm'],
+          description:
+            "Tone override. Default 'auto' — the AI picks based on what the supplier said (scheduling question → friendly, rejection → firm, settlement offer → balanced). Use 'friendly' for co-operative messages, 'balanced' for neutral professional, 'firm' for escalation/final-response threats.",
         },
       },
       required: ['provider', 'issue_description', 'desired_outcome'],

@@ -142,6 +142,9 @@ export async function executeToolCall(
         issue_description: toolInput.issue_description as string,
         desired_outcome: toolInput.desired_outcome as string,
         issue_type: (toolInput.issue_type as string | undefined) ?? 'complaint',
+        supplier_latest_message: toolInput.supplier_latest_message as string | undefined,
+        user_reply_brief: toolInput.user_reply_brief as string | undefined,
+        reply_tone: (toolInput.reply_tone as ReplyTone | undefined) ?? 'auto',
       });
     case 'search_legal_rights':
       return searchLegalRights(
@@ -927,6 +930,59 @@ async function getPriceAlerts(
 // ACTION HANDLERS
 // ============================================================
 
+type ReplyTone = 'auto' | 'friendly' | 'balanced' | 'firm';
+
+function toneGuidance(tone: ReplyTone, hasSupplierContext: boolean): string {
+  switch (tone) {
+    case 'friendly':
+      return [
+        "TONE: FRIENDLY / CO-OPERATIVE.",
+        "- Warm, polite, brief. Assume good faith.",
+        "- Directly answer / do what the supplier asked. Do NOT re-litigate the complaint.",
+        "- No statutory references unless the user explicitly asked for them.",
+        "- No 14-day ultimatum. No ombudsman reference.",
+        "- 120–200 words is plenty.",
+      ].join('\n');
+    case 'firm':
+      return [
+        "TONE: FIRM.",
+        "- Professional but unmistakably escalating.",
+        "- Cite the relevant UK consumer law (Consumer Rights Act 2015 s.49/s.50, sector ombudsman rules, Ofcom automatic compensation, Ofgem guaranteed standards, EU/UK261, etc. — whichever is relevant).",
+        "- State a clear 14-day deadline.",
+        "- Reference the escalation path (relevant ombudsman / FOS / Small Claims / Section 75) that will follow if not resolved.",
+        "- 250–350 words.",
+      ].join('\n');
+    case 'balanced':
+      return [
+        "TONE: BALANCED / PROFESSIONAL.",
+        "- Neutral, businesslike, firm but not aggressive.",
+        "- Mention consumer-law context lightly (one sentence, naturally woven in) — don't lecture.",
+        "- Set a 14-day response expectation only if the supplier is dragging their feet.",
+        "- 180–280 words.",
+      ].join('\n');
+    case 'auto':
+    default:
+      return hasSupplierContext
+        ? [
+            "TONE: AUTO — decide based on what the supplier just said.",
+            "- If the supplier's latest message is a HOLDING REPLY (\"we've got your complaint, looking into it\") — acknowledge briefly, no action required.",
+            "- If the supplier asked a scheduling / info / administrative QUESTION (engineer appointment, account number, proof) — answer it directly, keep it short and warm, do NOT re-state the whole complaint history. Only provide what they asked for.",
+            "- If the supplier OFFERED a settlement/refund/credit — neutral, businesslike, accept / counter / reject clearly. Don't grovel, don't escalate.",
+            "- If the supplier REJECTED the complaint or gave a FINAL RESPONSE / deadlock letter — firm, cite the relevant law and ombudsman / escalation path, 14-day deadline.",
+            "- If the supplier's message is unclear or just marketing — keep the reply minimal.",
+            "- Match the register of their message. If they were brief and friendly, you are brief and friendly. If they were dismissive, you are firm.",
+            "- Never open with a paragraph re-stating the original complaint unless the supplier's message directly contradicts it.",
+          ].join('\n')
+        : [
+            "TONE: AUTO — this appears to be a fresh complaint (no prior supplier message).",
+            "- Formal, professional, firm.",
+            "- Cite the relevant UK consumer law and sector regulator.",
+            "- Set a 14-day deadline and mention the escalation path.",
+            "- 250–350 words.",
+          ].join('\n');
+  }
+}
+
 async function draftDisputeLetter(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
@@ -935,6 +991,9 @@ async function draftDisputeLetter(
     issue_description: string;
     desired_outcome: string;
     issue_type: string;
+    supplier_latest_message?: string;
+    user_reply_brief?: string;
+    reply_tone?: ReplyTone;
   },
 ): Promise<ToolResult> {
   // Get user's name and address for the letter
@@ -949,30 +1008,49 @@ async function draftDisputeLetter(
     [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
     'Customer';
 
-  // Use Claude Sonnet for letter quality
+  const tone: ReplyTone = params.reply_tone ?? 'auto';
+  const supplierMsg = (params.supplier_latest_message || '').trim();
+  const hasSupplierContext = supplierMsg.length > 0;
+  const isReply = hasSupplierContext || (params.user_reply_brief || '').trim().length > 0;
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const letterPrompt = `Write a professional complaint letter from a UK consumer to ${params.provider}.
-
-Customer name: ${fullName}
-Customer address: ${profile?.address ?? '[Address]'}, ${profile?.postcode ?? '[Postcode]'}
-Issue: ${params.issue_description}
-Desired outcome: ${params.desired_outcome}
-Letter type: ${params.issue_type.replace(/_/g, ' ')}
-
-Requirements:
-- Formal, professional tone
-- Cite specific UK consumer law (Consumer Rights Act 2015, relevant sector regulations like Ofgem/Ofcom rules)
-- Reference specific legislation sections where applicable
-- State the desired outcome clearly and the timeframe for response (14 days)
-- Mention escalation path (relevant ombudsman/regulator) if not resolved
-- Include placeholders for date and account number where needed
-- Keep under 400 words
-- Do NOT include a subject line — the letter body only, starting with "Dear [Provider Name] Customer Services,"`;
+  const letterPrompt = [
+    isReply
+      ? `Write a UK consumer's REPLY to ${params.provider}.`
+      : `Write a professional complaint letter from a UK consumer to ${params.provider}.`,
+    ``,
+    `Customer name: ${fullName}`,
+    `Customer address: ${profile?.address ?? '[Address]'}, ${profile?.postcode ?? '[Postcode]'}`,
+    `Today's date: ${today}`,
+    `Underlying issue (background — do NOT re-narrate unless the tone rules say to): ${params.issue_description}`,
+    `Desired outcome: ${params.desired_outcome}`,
+    `Letter type: ${params.issue_type.replace(/_/g, ' ')}`,
+    ``,
+    hasSupplierContext
+      ? `Supplier's latest message (the one we are replying to):\n"""\n${supplierMsg.slice(0, 4000)}\n"""`
+      : `(No prior supplier message — this is a fresh letter.)`,
+    ``,
+    params.user_reply_brief
+      ? `WHAT THE USER WANTS THIS REPLY TO SAY (most important — this is the whole point of the letter):\n"""\n${params.user_reply_brief}\n"""`
+      : ``,
+    ``,
+    toneGuidance(tone, hasSupplierContext),
+    ``,
+    `Hard rules (apply regardless of tone):`,
+    `- Start with "Dear ${params.provider} Customer Services," and end with "Yours sincerely,\\n${fullName}".`,
+    `- UK English. Sounds like an intelligent human wrote it, not a template.`,
+    `- Where the supplier asked for specific details (account number, address, DOB), use square-bracket placeholders (e.g. "[account number]") rather than inventing them.`,
+    `- If the user_reply_brief specifies facts (e.g. "any day except Friday"), use those facts verbatim. Do not add availability the user didn't give.`,
+    `- Keep the original reference number / ticket ID if it's in the supplier's message.`,
+    `- Never include a subject line. The letter body only.`,
+    `- Never use bullet points, headings, or CAPS.`,
+  ].filter(Boolean).join('\n');
 
   const letterResponse = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 1400,
     messages: [{ role: 'user', content: letterPrompt }],
   });
 
@@ -990,12 +1068,14 @@ Requirements:
     letter_text: letterText,
   };
 
-  const preview = letterText.length > 800
-    ? letterText.slice(0, 800) + '...\n\n_[Letter truncated — full version saved on approval]_'
-    : letterText;
+  // Return the full letter — the caller (user-bot.ts) splits it into
+  // Telegram-sized chunks via splitMessage(). Don't truncate here.
+  const header = isReply
+    ? `*Draft reply to ${params.provider}* _(${tone} tone)_ — review below, then approve to save to the audit trail.`
+    : `*Draft letter for ${params.provider}* _(${tone} tone)_ — review below, then approve to save.`;
 
   return {
-    text: `*Draft letter for ${params.provider}:*\n\n${preview}`,
+    text: `${header}\n\n${letterText}`,
     pendingAction,
   };
 }

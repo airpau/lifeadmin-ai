@@ -188,8 +188,13 @@ RULES:
 - When a user asks to change subscription frequency (e.g. "change to yearly"), call update_subscription.
 - mark_bill_paid stores a manual override — it shows as ✅ in expected bills for the current month only.
 - For dispute follow-ups: always mention the FCA 8-week deadline — it's the most powerful lever for UK consumers.
-- REPLYING TO A SUPPLIER — If the user asks you to draft / send / reply / respond / chase / follow up with a named supplier (e.g. "draft a reply to OneStream", "tell OneStream I'm available any day except Friday", "please write back"), you MUST call get_disputes FIRST with status="open" to find the matching dispute. Match provider_name with a relaxed fuzzy compare (case-insensitive, ignore spaces/punctuation) — "OneStream" must match "Onestream", "BG" must match "British Gas", etc. If a dispute is found, call get_dispute_detail to pull the latest supplier correspondence, then call draft_dispute_letter using that context. Never tell the user "I don't have an open dispute with X" without calling get_disputes first.
+- REPLYING TO A SUPPLIER — If the user asks you to draft / send / reply / respond / chase / follow up with a named supplier (e.g. "draft a reply to OneStream", "tell OneStream I'm available any day except Friday", "please write back"), you MUST call get_disputes FIRST with status="open" to find the matching dispute. Match provider_name with a relaxed fuzzy compare (case-insensitive, ignore spaces/punctuation) — "OneStream" must match "Onestream", "BG" must match "British Gas", etc. If a dispute is found, call get_dispute_detail to pull the latest supplier correspondence, then call draft_dispute_letter. Never tell the user "I don't have an open dispute with X" without calling get_disputes first.
 - If the user mentions context that sounds like a reply to a Watchdog Telegram alert ("tell them", "reply to them", "they said"), treat it as a dispute reply — look up the most recent open dispute and use its latest supplier correspondence as the context.
+- WHEN CALLING draft_dispute_letter FOR A REPLY, you MUST:
+  (a) Put the full text of the supplier's latest message into the 'supplier_latest_message' param — copy the body verbatim from get_dispute_detail, not a paraphrase. This is how the letter stays on-topic.
+  (b) Put what the user actually said to tell the supplier into the 'user_reply_brief' param — e.g. if the user typed "tell them I'm available any day except Friday", user_reply_brief = "I'm available any day except Friday, AM or PM." This is the whole content of the reply; do NOT fold it into issue_description.
+  (c) Leave 'reply_tone' as 'auto' unless the user explicitly asks to be firmer / softer / more formal ("be firm", "push back hard", "keep it polite") — then set 'firm' / 'friendly' accordingly.
+  (d) Never re-narrate the whole complaint history in the reply. If the supplier only asked a scheduling question, the reply answers the scheduling question. If they rejected the complaint, then — and only then — is full complaint context appropriate.
 
 FINANCIAL INTELLIGENCE — CRITICAL:
 - get_expected_bills cross-references bank transaction data to determine paid/unpaid status. Trust its ✅/❌/⏳ indicators. ❌ means a bill was due but no matching payment was found in the bank — flag this clearly to the user.
@@ -1229,18 +1234,25 @@ Return JSON: { "subject": "...", "body": "..." }`;
   // path is purely audit-trail: it writes a `user_note` correspondence
   // row so the dispute history shows they responded.
   // -------------------------------------------------------
-  bot.callbackQuery(/^drftrp_(.+)$/, async (ctx) => {
-    await ctx.answerCallbackQuery({ text: 'Drafting your reply…' });
-    const corrId = ctx.match[1];
-    const chatId = ctx.update.callback_query?.message?.chat?.id;
-    const msgId = ctx.update.callback_query?.message?.message_id;
-    if (!chatId) return;
+  // Shared draft-reply engine. Called by:
+  //   drftrp_<id> → tone='auto' (default on the first tap of an alert)
+  //   sfdft_<id>  → tone='friendly' (user tapped "Soften")
+  //   bldft_<id>  → tone='balanced' (user tapped "Balanced")
+  //   hddft_<id>  → tone='firm' (user tapped "Harden")
+  type DraftTone = 'auto' | 'friendly' | 'balanced' | 'firm';
+  const TONE_LABEL: Record<DraftTone, string> = {
+    auto: 'auto',
+    friendly: 'friendly',
+    balanced: 'balanced',
+    firm: 'firm',
+  };
+
+  async function runDraftReply(corrId: string, chatId: number, msgId: number | undefined, tone: DraftTone): Promise<void> {
     const supabase = getAdmin();
 
     try {
-      await safeEdit(bot.api, chatId, msgId, '✍️ Drafting your reply… This takes ~15 seconds.');
+      await safeEdit(bot.api, chatId, msgId, `✍️ Drafting your reply (${TONE_LABEL[tone]} tone)… This takes ~15 seconds.`);
 
-      // Pull the supplier's message we're replying to
       const { data: supplierMsg } = await supabase
         .from('correspondence')
         .select('id, dispute_id, user_id, title, content, sender_name, sender_address, entry_date, ai_rationale, ai_suggested_reply_context, ai_category')
@@ -1252,7 +1264,6 @@ Return JSON: { "subject": "...", "body": "..." }`;
         return;
       }
 
-      // Verify this chat is linked to the owning user
       const { data: session } = await supabase
         .from('telegram_sessions')
         .select('user_id')
@@ -1264,7 +1275,6 @@ Return JSON: { "subject": "...", "body": "..." }`;
         return;
       }
 
-      // Pull dispute + user profile + user's most recent outbound letter for context
       const [{ data: dispute }, { data: profile }, { data: recentOutbound }] = await Promise.all([
         supabase
           .from('disputes')
@@ -1297,43 +1307,95 @@ Return JSON: { "subject": "...", "body": "..." }`;
         : '(no earlier letter on record)';
 
       const supplierExcerpt = String(supplierMsg.content || '').slice(0, 4000);
+      const category = (supplierMsg.ai_category as string | null) || 'unknown';
 
-      const prompt = `Write a UK consumer's REPLY to a supplier's latest message on an ongoing dispute.
+      // Tone-specific directives. 'auto' lets the classifier's category
+      // (info_request / holding_reply / settlement_offer / rejection /
+      // escalation_needed) steer the letter, so a scheduling question gets
+      // a scheduling answer — not a full complaint restatement.
+      const toneBlock = (() => {
+        switch (tone) {
+          case 'friendly':
+            return [
+              'TONE: FRIENDLY / CO-OPERATIVE.',
+              '- Warm, polite, concise. Short paragraphs.',
+              '- Directly answer or do what the supplier asked — nothing more.',
+              '- Do NOT re-state the complaint history.',
+              '- No statutory references. No deadline. No ombudsman threat.',
+              '- 120–200 words.',
+            ].join('\n');
+          case 'firm':
+            return [
+              'TONE: FIRM.',
+              '- Professional but unmistakably escalating.',
+              '- Cite the most relevant UK law or regulator (CRA 2015 s.49/s.50, Ofcom automatic comp, Ofgem guaranteed standards, EU/UK261, FOS, etc.).',
+              '- State a clear 14-day deadline.',
+              '- Name the escalation path (relevant ombudsman, Small Claims, Section 75) that follows if unresolved.',
+              '- 250–350 words.',
+            ].join('\n');
+          case 'balanced':
+            return [
+              'TONE: BALANCED / PROFESSIONAL.',
+              '- Neutral, businesslike, firm but not aggressive.',
+              '- Mention consumer-law context lightly if relevant (one sentence, woven in — no lecture).',
+              '- Set a 14-day response expectation only if the supplier has been dragging their feet.',
+              '- 180–280 words.',
+            ].join('\n');
+          case 'auto':
+          default:
+            return [
+              `TONE: AUTO — decide based on the supplier's message category (classifier result: ${category}).`,
+              '- holding_reply  → one-paragraph acknowledgement. No action, no pressure.',
+              '- info_request   → friendly/cooperative. Directly provide what they asked for (use square-bracket placeholders like [account number] if the user has not supplied it). Do NOT re-state the complaint. 120–200 words.',
+              '- settlement_offer → balanced. Clearly accept, counter, or reject. No grovelling, no escalation unless the offer is insulting.',
+              '- rejection      → firm. Cite the relevant law + 14-day deadline + name the ombudsman or FOS escalation path.',
+              '- escalation_needed → firm. Reference the 8-week final-response rule and the user\'s ombudsman rights.',
+              '- other / unclear → brief, polite, ask only for clarification.',
+              '- ALWAYS match the register of the supplier\'s own message. If they were brief and friendly, you are brief and friendly.',
+              '- NEVER open with a paragraph re-stating the original complaint unless the supplier has directly rejected or contradicted it.',
+            ].join('\n');
+        }
+      })();
 
-Customer name: ${fullName}
-Customer address: ${addrLine}
-Today's date: ${today}
-Supplier: ${providerName}
-Dispute summary: ${dispute?.issue_summary || '(see thread)'}
-Desired outcome: ${dispute?.desired_outcome || '(see thread)'}
-
-Supplier's latest message (the one we are replying to), received ${new Date(supplierMsg.entry_date).toLocaleDateString('en-GB')}:
-"""
-${supplierExcerpt}
-"""
-
-Paybacker's read of the supplier's message: ${supplierMsg.ai_rationale || 'n/a'}
-Short hint on what the reply should cover: ${supplierMsg.ai_suggested_reply_context || 'n/a'}
-
-What the user previously wrote to this supplier (for tone and context):
-"""
-${lastOutboundBody}
-"""
-
-Rules:
-- Formal, professional UK English. Reads as intelligent human writing, not AI.
-- Directly address what the supplier asked / said.
-- If they asked for information, provide placeholders like [account number] rather than inventing details.
-- Keep the original dispute reference (subject line / ticket ref) in a "Reference:" line at the top.
-- No section headings. No CAPS LOCK.
-- Weave any legal references naturally (Consumer Rights Act 2015, Ofcom, Ofgem, Ombudsman, etc.) — never bullet lists.
-- Set a clear next-step deadline where appropriate (e.g. 14 days).
-- Under 350 words.
-- Start with "Dear ${providerName} Customer Services," and end with "Yours sincerely,\n${fullName}".`;
+      const prompt = [
+        "Write a UK consumer's REPLY to a supplier's latest message on an ongoing dispute.",
+        '',
+        `Customer name: ${fullName}`,
+        `Customer address: ${addrLine}`,
+        `Today's date: ${today}`,
+        `Supplier: ${providerName}`,
+        `Dispute summary: ${dispute?.issue_summary || '(see thread)'}`,
+        `Desired outcome: ${dispute?.desired_outcome || '(see thread)'}`,
+        '',
+        `Supplier's latest message (the one we are replying to), received ${new Date(supplierMsg.entry_date).toLocaleDateString('en-GB')}:`,
+        '"""',
+        supplierExcerpt,
+        '"""',
+        '',
+        `Paybacker's read of the supplier's message: ${supplierMsg.ai_rationale || 'n/a'}`,
+        `Short hint on what the reply should cover: ${supplierMsg.ai_suggested_reply_context || 'n/a'}`,
+        `Supplier message category (from our classifier): ${category}`,
+        '',
+        'What the user previously wrote to this supplier (background context only — do NOT quote or paraphrase):',
+        '"""',
+        lastOutboundBody,
+        '"""',
+        '',
+        toneBlock,
+        '',
+        'Hard rules (apply regardless of tone):',
+        '- UK English. Reads as intelligent human writing, not AI.',
+        '- Start with `Dear ' + providerName + ' Customer Services,` and end with `Yours sincerely,\\n' + fullName + '`.',
+        "- Directly address what the supplier asked / said. Don't invent facts the user hasn't supplied.",
+        '- If the supplier asked for info the user hasn\'t provided, use square-bracket placeholders ([account number], [meter reading], etc.).',
+        "- Keep any reference / ticket number from the supplier's email in a short `Reference:` line after the salutation.",
+        '- No section headings. No bullet points. No CAPS.',
+        '- Plain letter body only — no subject line, no envelope headers.',
+      ].join('\n');
 
       const draft = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1100,
+        max_tokens: 1400,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -1343,16 +1405,15 @@ Rules:
         .join('')
         .trim();
 
-      // Save as draft correspondence so it shows in the audit trail immediately
       const { data: savedDraft } = await supabase
         .from('correspondence')
         .insert({
           dispute_id: supplierMsg.dispute_id,
           user_id: supplierMsg.user_id,
           entry_type: 'ai_letter',
-          title: `Draft reply to ${providerName}`,
+          title: `Draft reply to ${providerName} (${TONE_LABEL[tone]})`,
           content: draftText,
-          summary: `Draft reply to ${providerName} — awaiting user confirmation`,
+          summary: `Draft reply to ${providerName} — ${TONE_LABEL[tone]} tone — awaiting user confirmation`,
           telegram_chat_id: chatId,
           source: 'telegram_watchdog',
           entry_date: new Date().toISOString(),
@@ -1362,30 +1423,30 @@ Rules:
 
       const draftId = savedDraft?.id;
 
-      // Send the draft with confirm-sent / revise / cancel buttons
       await bot.api.sendMessage(
         chatId,
-        `📝 *Draft reply to ${providerName}* — review, copy, and send it from your email. Then tap "✅ I sent this" and I'll log it.`,
+        `📝 *Draft reply to ${escapeMarkdown(providerName)}* — ${TONE_LABEL[tone]} tone. Full letter below. Review it, then use the buttons to adjust tone or confirm you've sent it.`,
         { parse_mode: 'Markdown' },
       );
 
-      // Chunk the letter itself in plain text so no Markdown surprises
-      const MAX = 4000;
-      let pos = 0;
-      while (pos < draftText.length) {
-        let end = Math.min(pos + MAX, draftText.length);
-        if (end < draftText.length) {
-          const nl = draftText.lastIndexOf('\n', end);
-          if (nl > pos + MAX / 2) end = nl + 1;
-        }
-        await bot.api.sendMessage(chatId, draftText.slice(pos, end));
-        pos = end;
+      // Deliver the FULL letter chunked into Telegram-sized pieces (plain text).
+      const chunks = splitMessage(draftText, 4000);
+      for (const c of chunks) {
+        await bot.api.sendMessage(chatId, c);
       }
 
       if (draftId) {
-        await bot.api.sendMessage(chatId, 'Happy to send this?', {
+        // Tone adjustment buttons: hide the current tone, show the other two
+        // + the standard confirm/revise/cancel row.
+        const toneRow: Array<{ text: string; callback_data: string }> = [];
+        if (tone !== 'friendly') toneRow.push({ text: '🕊️ Soften',   callback_data: `sfdft_${corrId}` });
+        if (tone !== 'balanced') toneRow.push({ text: '⚖️ Balanced', callback_data: `bldft_${corrId}` });
+        if (tone !== 'firm')     toneRow.push({ text: '🔥 Harden',   callback_data: `hddft_${corrId}` });
+
+        await bot.api.sendMessage(chatId, 'Happy to send this, or want a different tone?', {
           reply_markup: {
             inline_keyboard: [
+              toneRow,
               [{ text: '✅ I sent this', callback_data: `cfsnt_${draftId}` }],
               [{ text: '✏️ Revise',      callback_data: `rvdft_${corrId}` }],
               [{ text: '🔕 Cancel',      callback_data: `dsmrp_${corrId}` }],
@@ -1394,11 +1455,40 @@ Rules:
         });
       }
     } catch (err) {
-      console.error('[UserBot] drftrp callback error:', err);
+      console.error('[UserBot] runDraftReply error:', err);
       try {
         await bot.api.sendMessage(chatId, "Sorry, I couldn't draft that right now. You can open the dispute in Paybacker and draft it there.");
       } catch { /* silent */ }
     }
+  }
+
+  bot.callbackQuery(/^drftrp_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Drafting your reply…' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    await runDraftReply(ctx.match[1], chatId, msgId, 'auto');
+  });
+
+  bot.callbackQuery(/^sfdft_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Softening the tone…' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    await runDraftReply(ctx.match[1], chatId, undefined, 'friendly');
+  });
+
+  bot.callbackQuery(/^bldft_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Re-drafting in a balanced tone…' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    await runDraftReply(ctx.match[1], chatId, undefined, 'balanced');
+  });
+
+  bot.callbackQuery(/^hddft_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Hardening the tone…' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    await runDraftReply(ctx.match[1], chatId, undefined, 'firm');
   });
 
   bot.callbackQuery(/^rvdft_(.+)$/, async (ctx) => {
