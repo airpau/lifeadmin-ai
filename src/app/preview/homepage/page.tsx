@@ -31,6 +31,15 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
+import {
+  DisputesDemo,
+  PocketAgentDemo,
+  MoneyHubDemo,
+  SubscriptionsDemo,
+  ExportDemo,
+  DealsDemo,
+  McpDemo,
+} from './demos';
 import './styles.css';
 
 // React.CSSProperties doesn't know about CSS custom properties.
@@ -841,6 +850,74 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ========== Product demos ========== */}
+      <section className="demos-section section-light" id="demos">
+        <div className="wrap">
+          <Reveal className="section-head">
+            <span className="eyebrow">See it move</span>
+            <h2>
+              Watch every product
+              <br />
+              do the work for you.
+            </h2>
+            <p>
+              Live, looping product demos. Every interaction is real product copy,
+              every number is a worked example.
+            </p>
+          </Reveal>
+
+          <Reveal className="demo-block">
+            <div className="demo-block-head">
+              <span className="eyebrow">01 · AI Disputes Centre</span>
+              <h3>Draft a UK-law-cited complaint in 30 seconds.</h3>
+            </div>
+            <div className="demo-slot">
+              <DisputesDemo />
+            </div>
+          </Reveal>
+
+          <Reveal className="demo-block demo-block--ink">
+            <div className="demo-block-head">
+              <span className="eyebrow on-ink">02 · Pocket Agent</span>
+              <h3 className="on-ink">Your money agent in Telegram. Reply, fix, save.</h3>
+            </div>
+            <div className="demo-slot demo-slot--dark">
+              <PocketAgentDemo />
+            </div>
+          </Reveal>
+
+          <Reveal className="demo-block">
+            <div className="demo-block-head">
+              <span className="eyebrow">03 · Money Hub</span>
+              <h3>Every account, every bill, every trend — in one view.</h3>
+            </div>
+            <div className="demo-slot">
+              <MoneyHubDemo />
+            </div>
+          </Reveal>
+
+          <Reveal className="demo-block">
+            <div className="demo-block-head">
+              <span className="eyebrow">04 · Subscriptions tracker</span>
+              <h3>Every fixed outgoing — surfaced, sorted, savings-flagged.</h3>
+            </div>
+            <div className="demo-slot">
+              <SubscriptionsDemo />
+            </div>
+          </Reveal>
+
+          <Reveal className="demo-block">
+            <div className="demo-block-head">
+              <span className="eyebrow">05 · Export hub</span>
+              <h3>Live-sync to Google Sheets. Or one-shot to CSV, Excel, PDF.</h3>
+            </div>
+            <div className="demo-slot">
+              <ExportDemo />
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ========== How it works (dark) ========== */}
       <section className="how-section section-ink" id="how">
         <div className="wrap">
@@ -939,22 +1016,11 @@ export default function HomepageV3PreviewPage() {
             ))}
           </div>
 
-          <div className="category-grid">
-            {[
-              { name: 'Broadband', count: '12 partners', save: 'Save £240/yr' },
-              { name: 'Mobile', count: '9 partners', save: 'Save £180/yr' },
-              { name: 'Energy', count: '14 partners', save: 'Save £450/yr' },
-              { name: 'Insurance', count: '11 partners', save: 'Save £320/yr' },
-              { name: 'Mortgages', count: '4 partners', save: 'Save £1,200/yr' },
-              { name: 'Travel', count: '3 partners', save: 'Save £95/trip' },
-            ].map((cat, i) => (
-              <Reveal key={cat.name} className="cat-tile" delay={i * 60}>
-                <div className="cat-name">{cat.name}</div>
-                <div className="cat-count">{cat.count}</div>
-                <div className="save-badge">{cat.save}</div>
-              </Reveal>
-            ))}
-          </div>
+          <Reveal className="demo-block">
+            <div className="demo-slot">
+              <DealsDemo />
+            </div>
+          </Reveal>
 
           <p className="commission-note">
             We earn a commission if you switch — you pay nothing extra, and we stay
@@ -1041,6 +1107,31 @@ export default function HomepageV3PreviewPage() {
           </h2>
         </Reveal>
         <Testimonials />
+      </section>
+
+      {/* ========== Developer · MCP ========== */}
+      <section className="mcp-section section-ink" id="mcp">
+        <div className="wrap">
+          <Reveal className="section-head">
+            <span className="pill-pro">Pro plan</span>
+            <span className="eyebrow on-ink">Developer · MCP</span>
+            <h2>
+              Talk to your money
+              <br />
+              from Claude Desktop.
+            </h2>
+            <p className="sub">
+              The Paybacker MCP server gives Claude direct read-only access to your
+              transactions, hikes, and savings opportunities. Available on Pro.
+            </p>
+          </Reveal>
+
+          <Reveal className="demo-block">
+            <div className="demo-slot demo-slot--dark">
+              <McpDemo />
+            </div>
+          </Reveal>
+        </div>
       </section>
 
       {/* ========== Final CTA (dark) ========== */}
