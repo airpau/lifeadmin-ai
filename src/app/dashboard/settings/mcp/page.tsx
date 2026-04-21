@@ -1,8 +1,9 @@
 'use client';
 // src/app/dashboard/settings/mcp/page.tsx
 // Paybacker MCP — personal access token management for Pro users.
-// Users mint a token here, paste it into Claude Desktop via the @paybacker/mcp
-// npm package, and Claude can then read (never write) their financial data.
+// Users mint a token here, paste it into their desktop AI app via the
+// @paybacker/mcp npm package, and the assistant can then read (never write)
+// their financial data.
 //
 // The plaintext token is shown ONCE at mint-time. After that the UI only
 // ever sees the 8-char prefix, the label, and usage stats.
@@ -46,7 +47,7 @@ export default function McpSettingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // mint flow
-  const [newName, setNewName] = useState('Claude Desktop');
+  const [newName, setNewName] = useState('Paybacker Assistant');
   const [creating, setCreating] = useState(false);
   const [justMinted, setJustMinted] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -109,14 +110,14 @@ export default function McpSettingsPage() {
       const res = await fetch('/api/mcp/tokens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() || 'Claude Desktop' }),
+        body: JSON.stringify({ name: newName.trim() || 'Paybacker Assistant' }),
       });
       const body = await res.json();
       if (!res.ok) {
         throw new Error(body.error ?? 'Failed to create token');
       }
       setJustMinted(body.token as string);
-      setNewName('Claude Desktop');
+      setNewName('Paybacker Assistant');
       await loadTokens();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
@@ -132,7 +133,7 @@ export default function McpSettingsPage() {
   };
 
   const handleRevoke = async (id: string, name: string) => {
-    if (!confirm(`Revoke "${name}"? Any Claude Desktop session using this token will stop working immediately.`)) return;
+    if (!confirm(`Revoke "${name}"? Any AI assistant session using this token will stop working immediately.`)) return;
     setRevokingId(id);
     try {
       const res = await fetch(`/api/mcp/tokens/${id}`, { method: 'DELETE' });
@@ -172,7 +173,7 @@ export default function McpSettingsPage() {
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Pro Feature</h2>
           <p className="text-slate-400 mb-6">
-            The Paybacker MCP lets Claude Desktop read your transactions, subscriptions,
+            The Paybacker Assistant lets a desktop AI app read your transactions, subscriptions,
             budgets and net worth. It&rsquo;s available on the Pro plan.
           </p>
           <Link
@@ -195,17 +196,17 @@ export default function McpSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <Terminal className="h-7 w-7 text-mint-400" />
-          Claude Desktop (MCP)
+          Paybacker Assistant (MCP)
         </h1>
         <p className="text-slate-400 mt-1 text-sm max-w-2xl">
-          Connect Claude Desktop to your Paybacker account so you can ask Claude about
+          Connect a desktop AI assistant to your Paybacker account so you can ask about
           your transactions, subscriptions, budgets and disputes in natural language.
         </p>
       </div>
 
       {/* What it does */}
       <div className="bg-navy-900/50 border border-navy-700/50 rounded-2xl p-6">
-        <h3 className="text-white font-semibold mb-4">What Claude can do</h3>
+        <h3 className="text-white font-semibold mb-4">What your assistant can do</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="flex flex-col items-start gap-2">
             <div className="bg-mint-500/10 p-2 rounded-lg">
@@ -222,7 +223,7 @@ export default function McpSettingsPage() {
             </div>
             <span className="text-sm font-medium text-white">Ask in English</span>
             <span className="text-xs text-slate-400">
-              &ldquo;What did I spend on food last month?&rdquo; &mdash; Claude queries Paybacker directly
+              &ldquo;What did I spend on food last month?&rdquo; &mdash; your assistant queries Paybacker directly
             </span>
           </div>
           <div className="flex flex-col items-start gap-2">
@@ -245,7 +246,7 @@ export default function McpSettingsPage() {
             How to connect
           </h3>
           <Link
-            href="/docs/claude-desktop"
+            href="/docs/paybacker-assistant"
             className="text-xs text-mint-400 hover:text-mint-300"
           >
             Full walkthrough →
@@ -259,8 +260,8 @@ export default function McpSettingsPage() {
               npx @paybacker/mcp setup
             </pre>
           </li>
-          <li>Paste your token when asked. Restart Claude Desktop.</li>
-          <li>Ask Claude something like &ldquo;summarise my spending last month&rdquo;.</li>
+          <li>Paste your token when asked. Restart your AI desktop app.</li>
+          <li>Ask it something like &ldquo;summarise my spending last month&rdquo;.</li>
         </ol>
       </div>
 
@@ -313,7 +314,7 @@ export default function McpSettingsPage() {
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Label, e.g. Claude Desktop on Macbook"
+            placeholder="Label, e.g. Paybacker Assistant on Macbook"
             maxLength={80}
             className="flex-1 bg-navy-950 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-mint-500/60"
           />
