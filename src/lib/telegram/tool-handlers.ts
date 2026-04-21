@@ -1010,11 +1010,25 @@ async function draftDisputeLetter(
 
   const tone: ReplyTone = params.reply_tone ?? 'auto';
   const supplierMsg = (params.supplier_latest_message || '').trim();
+  const userBrief = (params.user_reply_brief || '').trim();
   const hasSupplierContext = supplierMsg.length > 0;
-  const isReply = hasSupplierContext || (params.user_reply_brief || '').trim().length > 0;
+  const isReply = hasSupplierContext || userBrief.length > 0;
+  const likeForLikeMode = userBrief.length > 0;
   const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const likeForLikeBlock = [
+    `LIKE-FOR-LIKE MODE (overrides tone length targets and any instruction to add substantive content).`,
+    `The user has told you exactly what they want the reply to say. Your job is to render THOSE WORDS as a short, polite, professional business letter — nothing more.`,
+    `- Treat the user's brief as the ENTIRE content of the reply. Do not add points, arguments, deadlines, law citations, escalation paths, or outcomes the user didn't mention.`,
+    `- Do not re-narrate the complaint history. Do not restate the original issue. Do not "set the record straight".`,
+    `- Do not invent availability, dates, preferences, figures, or facts not in the brief.`,
+    `- Length is dictated by the brief — if they said one sentence, the body is one short paragraph. Ignore any word-count target from the tone rules.`,
+    `- You may: (1) add a one-line courteous opener acknowledging their message, (2) polish grammar / phrasing into business English, (3) add a short courteous closing line (e.g. "Please confirm and I'll keep the slot free.").`,
+    `- You may NOT: reframe the user's point, expand it, soften or harden its substance, or layer in extra asks the user didn't make.`,
+    `- If the user asked to be firmer/softer via tone, adjust WORDING only — not substance.`,
+  ].join('\n');
 
   const letterPrompt = [
     isReply
@@ -1032,20 +1046,25 @@ async function draftDisputeLetter(
       ? `Supplier's latest message (the one we are replying to):\n"""\n${supplierMsg.slice(0, 4000)}\n"""`
       : `(No prior supplier message — this is a fresh letter.)`,
     ``,
-    params.user_reply_brief
-      ? `WHAT THE USER WANTS THIS REPLY TO SAY (most important — this is the whole point of the letter):\n"""\n${params.user_reply_brief}\n"""`
+    likeForLikeMode
+      ? `WHAT THE USER WANTS THIS REPLY TO SAY (this IS the letter — render it, don't rewrite it):\n"""\n${userBrief}\n"""`
       : ``,
+    ``,
+    likeForLikeMode ? likeForLikeBlock : ``,
     ``,
     toneGuidance(tone, hasSupplierContext),
     ``,
     `Hard rules (apply regardless of tone):`,
     `- Start with "Dear ${params.provider} Customer Services," and end with "Yours sincerely,\\n${fullName}".`,
     `- UK English. Sounds like an intelligent human wrote it, not a template.`,
-    `- Where the supplier asked for specific details (account number, address, DOB), use square-bracket placeholders (e.g. "[account number]") rather than inventing them.`,
-    `- If the user_reply_brief specifies facts (e.g. "any day except Friday"), use those facts verbatim. Do not add availability the user didn't give.`,
+    `- Where the supplier asked for specific details (account number, address, DOB) and the user didn't provide them, use square-bracket placeholders (e.g. "[account number]") rather than inventing them.`,
+    `- If the user_reply_brief specifies facts (e.g. "any day except Friday"), use those facts verbatim. Do not add availability, dates, or details the user didn't give.`,
     `- Keep the original reference number / ticket ID if it's in the supplier's message.`,
     `- Never include a subject line. The letter body only.`,
     `- Never use bullet points, headings, or CAPS.`,
+    likeForLikeMode
+      ? `- LIKE-FOR-LIKE MODE IS ACTIVE: if anything in the tone rules above tells you to add content, hit a word count, cite law, or set a deadline, IGNORE IT. The user's brief is the letter.`
+      : ``,
   ].filter(Boolean).join('\n');
 
   const letterResponse = await anthropic.messages.create({

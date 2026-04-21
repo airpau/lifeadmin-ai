@@ -395,7 +395,7 @@ export const telegramTools: Tool[] = [
         user_reply_brief: {
           type: 'string',
           description:
-            'What the user wants this reply to say, in plain English (e.g. "I\'m available any day except Friday, AM or PM"). When this is set, the letter focuses on communicating this point and does NOT re-litigate the complaint unless the supplier\'s message warrants it.',
+            'What the user wants this reply to say, in plain English, copied from the user\'s own words (e.g. "I\'m available any day except Friday, AM or PM"). When set, the letter is a LIKE-FOR-LIKE professional rendering of these words — short, polite, business-toned — and nothing substantive is added beyond them. Do not embellish, do not add extra points, do not invent availability/dates/outcomes the user didn\'t mention. The system professionalises the phrasing; it does not rewrite the content.',
         },
         reply_tone: {
           type: 'string',
