@@ -438,8 +438,12 @@ export default function DashboardPage() {
         const seenNames = new Map<string, boolean>();
         const dedupedSubs = filteredSubs.filter(s => {
           const normName = cleanMerchantName(s.provider_name).toLowerCase();
-          if (seenNames.has(normName)) return false;
-          seenNames.set(normName, true);
+          // Include amount band so two separate bills at the same provider but
+          // different amounts (e.g. two council-tax DDs) count as distinct.
+          const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
+          const key = `${normName}|${band}`;
+          if (seenNames.has(key)) return false;
+          seenNames.set(key, true);
           return true;
         });
         setSubscriptionCount(dedupedSubs.length);

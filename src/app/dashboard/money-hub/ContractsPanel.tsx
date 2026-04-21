@@ -4,9 +4,45 @@ import { fmtNum } from '@/lib/format';
 import { Calendar, AlertTriangle, Lock, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
+/** Normalise a provider name for dedup (mirrors the cron logic). */
+function normaliseProvider(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .replace(/\b(ltd|limited|plc|llp|inc|corp|co\.uk|uk)\b/g, '')
+    .replace(/\d{4,}/g, '')
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Logarithmic amount band (~10% wide). Amounts within ~5% map to the same
+ * band; amounts differing by >10% produce different bands.
+ * Prevents two separate bills at the same provider but different amounts
+ * (e.g. two council-tax DDs) from being collapsed to one entry.
+ */
+function amountBand(amount: number): number {
+  if (amount <= 0) return 0;
+  return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
+}
+
 export default function ContractsPanel({ data, isPro }: { data: any, isPro: boolean }) {
   const subscriptions = data.subscriptions || [];
-  const activeSubs = subscriptions.filter((s: any) => s.status === 'active');
+
+  // Deduplicate active subscriptions by normalised provider name + billing cycle
+  // + amount band.  Including the amount band ensures that two genuinely separate
+  // subscriptions from the same provider at different amounts (e.g. two council-
+  // tax DDs for different properties) are shown as distinct entries.
+  const seen = new Map<string, boolean>();
+  const activeSubs = subscriptions
+    .filter((s: any) => s.status === 'active')
+    .filter((s: any) => {
+      const band = amountBand(Math.abs(parseFloat(String(s.amount)) || 0));
+      const key = `${normaliseProvider(s.provider_name)}|${s.billing_cycle}|${band}`;
+      if (seen.has(key)) return false;
+      seen.set(key, true);
+      return true;
+    });
   
   // Calculate totals
   const monthlyTotal = activeSubs.reduce((sum: number, s: any) => {

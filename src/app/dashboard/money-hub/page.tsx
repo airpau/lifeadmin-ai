@@ -71,6 +71,7 @@ export default function MoneyHubPage() {
   // Expected bills
   const [expectedBills, setExpectedBills] = useState<ExpectedBill[]>([]);
   const [expectedBillsTotal, setExpectedBillsTotal] = useState(0);
+  const [showAllBills, setShowAllBills] = useState(false);
 
   // Bank state
   const [expiredConnections, setExpiredConnections] = useState<any[]>([]);
@@ -738,7 +739,7 @@ export default function MoneyHubPage() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {expectedBills.slice(0, 12).map((bill: any) => {
+            {(showAllBills ? expectedBills : expectedBills.slice(0, 12)).map((bill: any) => {
               const statusColor = bill.paid
                 ? 'border-green-500/30 bg-green-500/5'
                 : bill.past_due
@@ -794,7 +795,14 @@ export default function MoneyHubPage() {
             })}
           </div>
           {expectedBills.length > 12 && (
-            <p className="text-center text-xs text-slate-500 mt-2">+ {expectedBills.length - 12} more expected bills</p>
+            <button
+              onClick={() => setShowAllBills(v => !v)}
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-mint-400 py-2 mt-1 transition-colors"
+            >
+              {showAllBills
+                ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</>
+                : <><ChevronDown className="h-3.5 w-3.5" /> Show all {expectedBills.length} bills ({expectedBills.length - 12} more)</>}
+            </button>
           )}
         </div>
       )}
