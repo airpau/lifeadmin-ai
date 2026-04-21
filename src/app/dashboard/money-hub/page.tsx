@@ -828,7 +828,7 @@ export default function MoneyHubPage() {
         <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
       </div>
 
-      {/* Ask Claude about your money — MCP prompt strip */}
+      {/* Ask Paybacker about your money — MCP prompt strip */}
       <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="min-w-0">
@@ -840,11 +840,11 @@ export default function MoneyHubPage() {
               </span>
             </h3>
             <p className="text-slate-400 text-sm mt-1">
-              Connect Paybacker to Claude Desktop and ask plain-English questions about your own transactions, subscriptions, budgets, and disputes. Read-only — Claude can&apos;t move money or change anything.
+              Connect the Paybacker Assistant to your desktop AI app and ask plain-English questions about your own transactions, subscriptions, budgets, and disputes. Read-only — it can&apos;t move money or change anything.
             </p>
           </div>
           <Link
-            href={isPro ? '/dashboard/settings/mcp' : '/docs/claude-desktop'}
+            href={isPro ? '/dashboard/settings/mcp' : '/docs/paybacker-assistant'}
             className="whitespace-nowrap text-xs bg-mint-500/10 border border-mint-400/30 text-mint-400 hover:bg-mint-500/20 hover:text-mint-300 px-3 py-1.5 rounded-full transition-colors"
           >
             {isPro ? 'Generate token →' : 'Setup guide →'}
@@ -869,7 +869,7 @@ export default function MoneyHubPage() {
         </div>
         {!isPro && (
           <p className="text-xs text-slate-500 mt-4">
-            The Claude Desktop MCP is a Pro feature.{' '}
+            The Paybacker Assistant is a Pro feature.{' '}
             <Link href="/pricing" className="text-mint-400 hover:text-mint-300">
               Upgrade for £9.99/mo
             </Link>{' '}
