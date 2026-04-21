@@ -12,7 +12,7 @@ const NAV_LINKS = [
   { href: '/blog', label: 'Blog' },
   { href: '/deals', label: 'Deals' },
   { href: '/pricing', label: 'Pricing' },
-  { href: '/docs/claude-desktop', label: 'Claude Desktop' },
+  { href: '/docs/paybacker-assistant', label: 'Paybacker Assistant' },
 ];
 
 export default function PublicNavbar() {
