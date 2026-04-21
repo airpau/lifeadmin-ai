@@ -21,6 +21,7 @@ import GoalsAndBudgetsPanel from './GoalsAndBudgetsPanel';
 import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
 import GoogleSheetsConnect from '@/components/GoogleSheetsConnect';
+import DataExportCard from '@/components/DataExportCard';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -714,8 +715,11 @@ export default function MoneyHubPage() {
         </div>
       )}
 
-      {/* Google Sheets export — sync all bank data to a Google Sheet, updated daily */}
-      <GoogleSheetsConnect />
+      {/* Data export row — Google Sheets sync + one-shot CSV/Excel download */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <GoogleSheetsConnect />
+        <DataExportCard />
+      </div>
 
       {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
       <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
