@@ -1,14 +1,31 @@
 /**
  * Telegram Price Increase Detection Cron
  *
- * Runs daily after bank sync. Compares this month's recurring payment amounts
- * to previous months to detect price rises > £1.
+ * Runs daily after bank sync. Detects genuine price rises on known subscriptions
+ * and alerts the user via Telegram.
+ *
+ * Detection rules (ALL must pass before any alert is raised):
+ *   1. Subscription-first: merchant must exist in subscriptions table
+ *      (status: active or pending_cancellation). Food delivery, pharmacies,
+ *      shops etc. are blocked unless the user explicitly added them as a sub.
+ *   2. DD / SO only: only DIRECT_DEBIT or STANDING_ORDER transactions. Card
+ *      payments are variable by nature and must never be flagged.
+ *   3. Consistency: the "old price" must have appeared at least twice in prior
+ *      months. A single prior transaction is not evidence of a fixed price.
+ *   4. Category allowlist: subscription category must be broadband / mobile /
+ *      streaming / energy / water / insurance / fitness / software / bills.
+ *   5. Billing-cycle alignment: only compare transactions that fall within ±5
+ *      days of the merchant's typical billing day-of-month.
+ *   6. Bank blocklist: bank and lender names (Santander, Barclays, etc.) are
+ *      always excluded — their DDs are loan / mortgage payments, not services.
+ *
+ * Additional sanity guards:
+ *   - Increase > 100% in a single month → data anomaly, skip
+ *   - New amount > per-category ceiling → mismatched transaction, skip
  *
  * Routing:
- *   > £20/mo increase  → send immediately via sendProactiveAlert (creates detected_issue)
- *   ≤ £20/mo increase  → queue to telegram_pending_alerts for the evening digest
- *
- * Uses notification_log to prevent re-alerting the same price increase in the same month.
+ *   > £20/mo increase  → send immediately via sendProactiveAlert
+ *   ≤ £20/mo increase  → queue to telegram_pending_alerts for evening digest
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -41,6 +58,12 @@ function normaliseName(name: string): string {
     .trim();
 }
 
+// Strip trailing bank-appended digit suffixes that disambiguate duplicate DDs
+// e.g. "Onestream Broadband 1" → "Onestream Broadband"
+function normaliseProviderName(name: string): string {
+  return name.replace(/\s+\d+$/, '').trim();
+}
+
 function namesMatch(a: string, b: string): boolean {
   const na = normaliseName(a);
   const nb = normaliseName(b);
@@ -50,6 +73,38 @@ function namesMatch(a: string, b: string): boolean {
   return longer.includes(shorter.substring(0, Math.min(shorter.length, 8)));
 }
 
+// Rule 4: only these subscription categories are eligible for price-increase detection
+const ELIGIBLE_CATEGORIES = new Set([
+  'broadband', 'mobile', 'streaming', 'energy', 'water',
+  'insurance', 'fitness', 'software', 'bills', 'council_tax',
+]);
+
+// Rule 6: bank / lender names — their DDs are repayments, not service subscriptions
+const BANK_BLOCKLIST: string[] = [
+  'santander', 'barclays', 'barclaycard', 'hsbc', 'halifax', 'lloyds',
+  'natwest', 'nationwide', 'virgin money', 'metro bank', 'first direct',
+  'tesco bank', 'starling', 'monzo', 'revolut', 'tide', 'chase',
+  'co-operative bank', 'cooperative bank', 'bank of scotland',
+  'royal bank of scotland', 'rbs', 'clydesdale', 'yorkshire bank',
+  'tsb', 'danske', 'ulster bank', 'atom bank', 'aldermore',
+];
+
+// Per-category absolute ceiling on what counts as a plausible recurring amount
+const CATEGORY_MAX_AMOUNT: Record<string, number> = {
+  streaming:    50,
+  broadband:   150,
+  mobile:      150,
+  fitness:     150,
+  software:    200,
+  water:       200,
+  energy:      500,
+  insurance:   400,
+  council_tax: 400,
+  credit:     1000,
+  loans:      2000,
+  mortgage:   5000,
+};
+const DEFAULT_MAX_AMOUNT = 300;
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get('authorization')?.replace('Bearer ', '');
@@ -62,16 +117,11 @@ export async function GET(request: NextRequest) {
   const errors: string[] = [];
 
   const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // Keep monthStr as alias used in refKey construction below
+  const monthStr = currentMonth;
 
-  // Current month window
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
-
-  // Previous month window
-  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-  const prevMonthEnd = thisMonthStart;
-
-  const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString();
 
   // Get all active sessions
   const { data: sessions } = await supabase
@@ -123,38 +173,32 @@ export async function GET(request: NextRequest) {
     const { user_id: userId, telegram_chat_id: chatId } = session;
 
     try {
-      // Get active subscriptions
+      // Rule 1: only subscriptions already tracked by the user are candidates.
+      // Include pending_cancellation — users who cancelled still care about
+      // overcharges during the notice period.
       const { data: subscriptions } = await supabase
         .from('subscriptions')
         .select('id, provider_name, amount, billing_cycle, category')
         .eq('user_id', userId)
-        .eq('status', 'active')
+        .in('status', ['active', 'pending_cancellation'])
         .in('billing_cycle', ['monthly', 'quarterly']);
 
       if (!subscriptions || subscriptions.length === 0) continue;
 
-      // Get transactions for both months
-      const [thisMonthRes, prevMonthRes] = await Promise.all([
-        supabase
-          .from('bank_transactions')
-          .select('merchant_name, description, amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', thisMonthStart)
-          .lt('timestamp', thisMonthEnd),
-        supabase
-          .from('bank_transactions')
-          .select('merchant_name, description, amount')
-          .eq('user_id', userId)
-          .lt('amount', 0)
-          .gte('timestamp', prevMonthStart)
-          .lt('timestamp', prevMonthEnd),
-      ]);
+      // Rule 2: fetch only DIRECT_DEBIT and STANDING_ORDER transactions.
+      // Filtering at DB level avoids pulling in card payments that are never
+      // eligible for price-increase detection.
+      const { data: allTxns } = await supabase
+        .from('bank_transactions')
+        .select('merchant_name, description, amount, category, timestamp')
+        .eq('user_id', userId)
+        .lt('amount', 0)
+        .in('category', ['DIRECT_DEBIT', 'STANDING_ORDER'])
+        .gte('timestamp', sixMonthsAgo)
+        .order('timestamp', { ascending: true });
 
-      const thisTxns = thisMonthRes.data ?? [];
-      const prevTxns = prevMonthRes.data ?? [];
+      if (!allTxns || allTxns.length === 0) continue;
 
-      // For each subscription, find matching transactions and compare amounts
       const increases: Array<{
         name: string;
         prevAmount: number;
@@ -164,45 +208,131 @@ export async function GET(request: NextRequest) {
       }> = [];
 
       for (const sub of subscriptions) {
-        const thisSub = thisTxns
-          .filter((t) => namesMatch(sub.provider_name, t.merchant_name || t.description || ''))
-          .map((t) => Math.abs(Number(t.amount)));
+        // Rule 4: category allowlist — skip categories that are not fixed-price services
+        if (sub.category && !ELIGIBLE_CATEGORIES.has(sub.category)) continue;
 
-        const prevSub = prevTxns
-          .filter((t) => namesMatch(sub.provider_name, t.merchant_name || t.description || ''))
-          .map((t) => Math.abs(Number(t.amount)));
+        // Rule 6: bank blocklist — loan/mortgage DDs must never be flagged
+        const subNameNorm = normaliseName(sub.provider_name);
+        if (BANK_BLOCKLIST.some((b) => subNameNorm.includes(b))) continue;
 
-        // Need at least one match in each month
-        if (thisSub.length === 0 || prevSub.length === 0) continue;
+        // Find all matching DD / SO transactions for this subscription (Rule 2
+        // already enforced at query level above)
+        const matchingTxns = allTxns.filter((t) =>
+          namesMatch(sub.provider_name, t.merchant_name || t.description || ''),
+        );
 
-        const thisAmt = Math.max(...thisSub);
-        const prevAmt = Math.max(...prevSub);
-        const increase = thisAmt - prevAmt;
+        // Need at least 3 transactions to establish a consistent price history
+        if (matchingTxns.length < 3) continue;
 
-        // Only alert if increase > £1
+        // Rule 5: determine this merchant's typical billing day-of-month
+        const dayFreq = new Map<number, number>();
+        for (const tx of matchingTxns) {
+          const d = new Date(tx.timestamp).getDate();
+          dayFreq.set(d, (dayFreq.get(d) ?? 0) + 1);
+        }
+        let billingDay = 1;
+        let maxFreq = 0;
+        for (const [d, freq] of dayFreq) {
+          if (freq > maxFreq) { billingDay = d; maxFreq = freq; }
+        }
+
+        // Rule 5: group by YYYY-MM keeping only transactions within ±5 days of
+        // the typical billing day. This prevents a random purchase on the 15th
+        // being compared against a DD on the 1st.
+        const byMonth = new Map<string, { amount: number; dayDiff: number }>();
+        for (const tx of matchingTxns) {
+          const txDay = new Date(tx.timestamp).getDate();
+          const month = (tx.timestamp as string).slice(0, 7);
+          const amt = Math.abs(Number(tx.amount));
+
+          // Wrap-around diff handles billing days near month boundaries
+          const rawDiff = Math.abs(txDay - billingDay);
+          const dayDiff = Math.min(rawDiff, 31 - rawDiff);
+          if (dayDiff > 5) continue;
+
+          const existing = byMonth.get(month);
+          if (!existing || dayDiff < existing.dayDiff) {
+            byMonth.set(month, { amount: amt, dayDiff });
+          }
+        }
+
+        // Must have payment data across at least 3 distinct months
+        if (byMonth.size < 3) continue;
+
+        const monthEntries = Array.from(byMonth.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        const latestEntry = monthEntries[monthEntries.length - 1];
+
+        // Only process if the most recent aligned payment is in the current month
+        if (latestEntry[0] !== currentMonth) continue;
+
+        const latestAmt = latestEntry[1].amount;
+        const priorEntries = monthEntries.slice(0, -1);
+
+        // Rule 3: find the modal (most frequent) amount across prior months.
+        // It must appear at least twice — one prior transaction is not evidence
+        // of a stable fixed price.
+        const amtFreq = new Map<number, number>();
+        for (const [, { amount }] of priorEntries) {
+          const rounded = Math.round(amount * 100) / 100;
+          amtFreq.set(rounded, (amtFreq.get(rounded) ?? 0) + 1);
+        }
+
+        let oldPrice = 0;
+        let oldPriceCount = 0;
+        for (const [amt, count] of amtFreq) {
+          if (count > oldPriceCount) { oldPrice = amt; oldPriceCount = count; }
+        }
+
+        // Require at least 2 months at the old price
+        if (oldPriceCount < 2) continue;
+
+        const increase = Math.round((latestAmt - oldPrice) * 100) / 100;
+
+        // Only alert on increases > £1
         if (increase <= 1) continue;
 
-        // Check we haven't already alerted for this increase this month
-        const refKey = `${sub.provider_name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
-        const { data: existing } = await supabase
+        // Sanity: skip if increase is > 100% — legitimate prices don't double overnight
+        if (oldPrice > 0 && increase / oldPrice > 1.0) continue;
+
+        // Sanity: skip if new amount exceeds the plausible ceiling for this category
+        const maxPlausible = CATEGORY_MAX_AMOUNT[sub.category ?? ''] ?? DEFAULT_MAX_AMOUNT;
+        if (latestAmt > maxPlausible) continue;
+
+        // Dedup: check notification_log using both the new normalised key format
+        // and the legacy raw-name format (for users already alerted under old code)
+        const normName = normaliseProviderName(sub.provider_name);
+        const newKey = `${normName.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
+        const legacyKey = `${sub.provider_name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
+
+        const { data: existingLog } = await supabase
           .from('notification_log')
           .select('id')
           .eq('user_id', userId)
           .eq('notification_type', 'price_increase')
-          .eq('reference_key', refKey)
-          .single();
+          .in('reference_key', [newKey, legacyKey])
+          .maybeSingle();
 
-        if (existing) continue;
+        if (existingLog) continue;
 
-        const annualIncrease = increase * 12;
-        increases.push({ name: sub.provider_name, prevAmount: prevAmt, newAmount: thisAmt, increase, annualIncrease });
+        const annualIncrease = Math.round(increase * 12 * 100) / 100;
+        increases.push({ name: normName, prevAmount: oldPrice, newAmount: latestAmt, increase, annualIncrease });
       }
 
       if (increases.length === 0) continue;
 
+      // Hard dedup by normalised name — multiple subscription rows for the same
+      // provider (e.g. "Onestream Broadband 1/2/3") must only produce one alert
+      const seenNames = new Set<string>();
+      const dedupedIncreases = increases.filter((inc) => {
+        const key = inc.name.toLowerCase();
+        if (seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+      });
+
       // Route each increase: > £20/mo → immediate send with inline buttons
       //                       ≤ £20/mo → queue for evening digest
-      for (const inc of increases) {
+      for (const inc of dedupedIncreases) {
         const refKey = `${inc.name.toLowerCase().replace(/\s+/g, '_')}_${monthStr}`;
 
         if (inc.increase > 20) {
@@ -217,14 +347,14 @@ export async function GET(request: NextRequest) {
           const { data: issue } = await supabase
             .from('detected_issues')
             .insert({
-              user_id:     userId,
-              issue_type:  'price_increase',
+              user_id:          userId,
+              issue_type:       'price_increase',
               title,
               detail,
-              source_type: 'bank_transaction',
-              amount_impact: inc.annualIncrease,
+              source_type:      'bank_transaction',
+              amount_impact:    inc.annualIncrease,
               telegram_chat_id: chatId,
-              status: 'active',
+              status:           'active',
             })
             .select('id')
             .single();
@@ -232,7 +362,14 @@ export async function GET(request: NextRequest) {
           if (issue) {
             const { ok, messageId } = await sendProactiveAlert({
               chatId: Number(chatId),
-              issue: { id: issue.id, title, detail, recommendation: null, amount_impact: inc.annualIncrease, issue_type: 'price_increase' },
+              issue: {
+                id: issue.id,
+                title,
+                detail,
+                recommendation: null,
+                amount_impact: inc.annualIncrease,
+                issue_type: 'price_increase',
+              },
             });
 
             if (ok) {
@@ -244,10 +381,10 @@ export async function GET(request: NextRequest) {
                   .eq('id', issue.id);
               }
               await supabase.from('notification_log').insert({
-                user_id: userId,
+                user_id:           userId,
                 notification_type: 'price_increase',
-                reference_key: refKey,
-              }).select().single();
+                reference_key:     refKey,
+              });
             } else {
               errors.push(`Failed chat ${chatId}`);
             }
@@ -256,22 +393,22 @@ export async function GET(request: NextRequest) {
           // Non-urgent: queue for the daily digest
           const queued = await queueTelegramAlert(supabase, {
             userId,
-            chatId:      Number(chatId),
-            alertType:   'price_increase',
+            chatId:       Number(chatId),
+            alertType:    'price_increase',
             providerName: inc.name,
-            amount:      inc.newAmount,
+            amount:       inc.newAmount,
             amountChange: inc.increase,
             referenceKey: `bankdet_price_${refKey}`,
-            metadata:    { source: 'bank_detection', prev_amount: inc.prevAmount, annual_increase: inc.annualIncrease },
+            metadata:     { source: 'bank_detection', prev_amount: inc.prevAmount, annual_increase: inc.annualIncrease },
           });
 
           if (queued) {
             sent++;
             await supabase.from('notification_log').insert({
-              user_id: userId,
+              user_id:           userId,
               notification_type: 'price_increase',
-              reference_key: refKey,
-            }).select().single();
+              reference_key:     refKey,
+            });
           }
         }
 
