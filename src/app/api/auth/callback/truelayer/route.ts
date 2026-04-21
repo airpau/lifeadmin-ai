@@ -144,13 +144,9 @@ export async function GET(request: NextRequest) {
     status: 'active',
     // Preserve original connected_at; set it only for brand-new rows
     connected_at: existingConnection?.connected_at ?? now,
+    reconnected_at: isReconnect ? now : null,
+    reconnect_count: isReconnect ? (existingConnection.reconnect_count ?? 0) + 1 : 0,
   };
-
-  if (isReconnect) {
-    // Track the reconnect timestamp and increment counter
-    upsertPayload.reconnected_at = now;
-    upsertPayload.reconnect_count = (existingConnection.reconnect_count ?? 0) + 1;
-  }
 
   // Store connection in DB (upsert on user_id + provider_id)
   const { data: connection, error: upsertError } = await supabase
