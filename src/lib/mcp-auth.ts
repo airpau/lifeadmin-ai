@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { hashToken, looksLikeToken } from '@/lib/mcp-tokens';
+import { captureServer } from '@/lib/posthog-server';
 
 export interface McpAuthSuccess {
   authenticated: true;
@@ -96,6 +97,17 @@ export async function authenticateMcp(
       { status: 403 },
     );
   }
+
+  // Fire-and-forget PostHog event. Pathname gives us the tool name
+  // (/api/mcp/transactions → "transactions") without having to thread an
+  // explicit label through every endpoint.
+  const pathname = req.nextUrl.pathname;
+  const tool = pathname.replace(/^\/api\/mcp\//, '').replace(/\/$/, '') || 'unknown';
+  captureServer('mcp_tool_called', row.user_id, {
+    tool,
+    path: pathname,
+    token_id: row.id,
+  });
 
   // Best-effort usage bump. Read-modify-write is fine here — this counter is
   // audit-only, not billing, so racing two requests to the same token and

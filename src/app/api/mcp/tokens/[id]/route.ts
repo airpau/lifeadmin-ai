@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
+import { captureServer } from '@/lib/posthog-server';
 
 export const runtime = 'nodejs';
 
@@ -64,6 +65,13 @@ export async function DELETE(
       created_by: 'mcp',
     });
   } catch {}
+
+  // Fire-and-forget PostHog event
+  captureServer('mcp_token_revoked', user.id, {
+    token_id: existing.id,
+    token_name: existing.name,
+    token_prefix: existing.token_prefix,
+  });
 
   return NextResponse.json({ ok: true });
 }

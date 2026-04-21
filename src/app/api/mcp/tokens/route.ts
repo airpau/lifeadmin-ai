@@ -13,6 +13,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { mintToken } from '@/lib/mcp-tokens';
+import { captureServer } from '@/lib/posthog-server';
 
 export const runtime = 'nodejs';
 
@@ -132,6 +133,13 @@ export async function POST(req: NextRequest) {
       created_by: 'mcp',
     });
   } catch {}
+
+  // Fire-and-forget PostHog event
+  captureServer('mcp_token_generated', user.id, {
+    token_id: data.id,
+    token_name: name,
+    token_prefix: tokenPrefix,
+  });
 
   return NextResponse.json(
     {
