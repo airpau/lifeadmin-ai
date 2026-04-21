@@ -268,6 +268,7 @@ export default function HomepageV2Preview() {
             <a href="/about">About</a>
             <a href="#pricing">Pricing</a>
             <a href="#deals">Deals</a>
+            <a href="#claude">Claude</a>
             <a href="/blog">Blog</a>
             <a href="#faq">FAQ</a>
           </div>
@@ -315,6 +316,7 @@ export default function HomepageV2Preview() {
           <a href="#pricing" onClick={closeNav}>Pricing</a>
           <a href="#deals" onClick={closeNav}>Deals</a>
           <a href="#pocket-agent" onClick={closeNav}>Pocket Agent</a>
+          <a href="#claude" onClick={closeNav}>Claude Desktop</a>
           <a href="/blog" onClick={closeNav}>Blog</a>
           <a href="#faq" onClick={closeNav}>FAQ</a>
           <div className="nav-drawer-cta-row">
@@ -706,6 +708,44 @@ export default function HomepageV2Preview() {
             <p style={{ fontSize: '17px', margin: 0 }}>
               Cite exact UK consumer law. Send from your inbox. AI monitors the reply thread.
             </p>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px',
+                marginTop: '20px',
+              }}
+            >
+              {[
+                'Broadband & mobile',
+                'Energy bill (Ofgem)',
+                'Flight delay (UK261, up to £520)',
+                'Faulty goods (CRA 2015)',
+                'HMRC tax rebate',
+                'Council tax band challenge',
+                'DVLA appeal',
+                'NHS complaint',
+                'Parking charge notice',
+                'Debt collection response',
+              ].map((label) => (
+                <span
+                  key={label}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '6px 12px',
+                    borderRadius: '999px',
+                    background: '#fff',
+                    border: '1px solid var(--divider)',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div
@@ -2223,6 +2263,124 @@ export default function HomepageV2Preview() {
         </div>
 
       </section>
+
+      {/* 07 · Claude Desktop (MCP, dark) --------------------------- */}
+      <section
+        id="claude"
+        style={{
+          background: '#0b1220',
+          color: '#e2e8f0',
+          padding: '96px 0',
+          scrollMarginTop: '80px',
+        }}
+      >
+        <div className="wrap">
+          <div
+            className="section-head reveal"
+            style={{ textAlign: 'center', margin: '0 auto 48px', maxWidth: '760px' }}
+          >
+            <span
+              className="eyebrow"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '14px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                color: '#5eead4',
+              }}
+            >
+              07 · Claude Desktop (Pro)
+            </span>
+            <h2 style={{ margin: '12px 0 10px', fontSize: '36px', color: '#f8fafc' }}>
+              Ask Claude about your money in plain English
+            </h2>
+            <p style={{ fontSize: '17px', margin: 0, color: '#94a3b8' }}>
+              Pro users can connect Paybacker to Claude Desktop. Your subscriptions, contracts, bills
+              and transactions become a conversation.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '16px',
+              marginBottom: '40px',
+            }}
+            className="reveal"
+          >
+            {[
+              'Which of my subs could I cancel without really missing?',
+              'Am I overpaying on broadband vs the UK median?',
+              'Which contracts are ending in the next 60 days?',
+              'Draft a cancel email for my gym citing Consumer Rights Act 2015.',
+              'Summarise my groceries vs takeaways over the last 3 months.',
+              'Find direct debits that look like auto-renewals I forgot about.',
+            ].map((prompt) => (
+              <div
+                key={prompt}
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(148,163,184,0.2)',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  fontSize: '15px',
+                  lineHeight: '1.5',
+                  color: '#e2e8f0',
+                  fontStyle: 'italic',
+                }}
+              >
+                &ldquo;{prompt}&rdquo;
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '12px',
+              justifyContent: 'center',
+            }}
+            className="reveal"
+          >
+            <a
+              href="/docs/claude-desktop"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '14px 24px',
+                borderRadius: '12px',
+                background: '#5eead4',
+                color: '#0b1220',
+                fontWeight: 700,
+                fontSize: '15px',
+                textDecoration: 'none',
+              }}
+            >
+              See the 60-second setup →
+            </a>
+            <a
+              href="#pricing"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '14px 24px',
+                borderRadius: '12px',
+                background: 'transparent',
+                color: '#e2e8f0',
+                fontWeight: 600,
+                fontSize: '15px',
+                textDecoration: 'none',
+                border: '1px solid rgba(148,163,184,0.3)',
+              }}
+            >
+              Upgrade to Pro
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* Deals (mint wash) ----------------------------------------- */}
       <section className="deals-section section-mint" id="deals">
         <div className="wrap">

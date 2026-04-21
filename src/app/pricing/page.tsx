@@ -78,6 +78,8 @@ const plans = [
       'Unlimited email scans',
       'Full transaction-level spending analysis',
       'Money Hub Pro AI chatbot (18 tools)',
+      'Claude Desktop integration (Paybacker MCP)',
+      'CSV & Excel export of transactions',
       'Savings goals with progress tracking',
       'Annual financial report (PDF)',
       'On-demand financial reports',
@@ -622,6 +624,7 @@ export default function PricingPage() {
                 <li><Link href="/blog" className="text-slate-500 hover:text-white transition-all">Blog</Link></li>
                 <li><Link href="/about" className="text-slate-500 hover:text-white transition-all">About</Link></li>
                 <li><Link href="/deals" className="text-slate-500 hover:text-white transition-all">Deal Comparison</Link></li>
+                <li><Link href="/docs/claude-desktop" className="text-slate-500 hover:text-white transition-all">Claude Desktop</Link></li>
               </ul>
             </div>
             <div>

@@ -11,7 +11,7 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 // Constants
-const PROJECT_DIR = "/Users/paul-ops/.openclaw/workspace/lifeadmin-ai";
+const PROJECT_DIR = process.env.PAYBACKER_PROJECT_DIR || "/Users/paul-ops/lifeadmin-ai";
 const CONTEXT_DIR = join(PROJECT_DIR, "shared-context");
 const FACEBOOK_PAGE_ID = "1056645287525328";
 const INSTAGRAM_ID = "17841440175351137";
@@ -277,6 +277,20 @@ const TOOLS = [
       required: ["type", "with", "summary"],
     },
   },
+  {
+    name: "get_project_briefing",
+    description:
+      "Returns a single consolidated briefing for the Paybacker project: all shared-context files, current git status, open PRs, and recent business_log entries. Call this at the START of any new chat to pick up where the last session left off — one call replaces reading 9 context files individually.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        business_log_limit: {
+          type: "number",
+          description: "How many recent business_log rows to include (default 10)",
+        },
+      },
+    },
+  },
 ];
 
 // Tool handlers
@@ -287,6 +301,82 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
     // --- Shared Context ---
     case "read_context": {
       return readContextFile(args.file as string);
+    }
+
+    case "get_project_briefing": {
+      const limit = (args.business_log_limit as number) || 10;
+      const parts: string[] = [];
+      parts.push(`# Paybacker project briefing (generated ${timestamp()})`);
+      parts.push("");
+
+      // Shared context files
+      parts.push("## Shared context files");
+      for (const file of VALID_CONTEXT_FILES) {
+        const content = readContextFile(file);
+        parts.push(`\n### ${file}\n`);
+        parts.push(content);
+      }
+
+      // Git status
+      parts.push("\n## Git status\n");
+      try {
+        const branch = execSync("git rev-parse --abbrev-ref HEAD", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        }).trim();
+        const status = execSync("git status --short", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        });
+        const log = execSync("git log --oneline -10", {
+          cwd: PROJECT_DIR,
+          encoding: "utf-8",
+        });
+        parts.push(`Branch: ${branch}`);
+        parts.push("\nWorking tree:");
+        parts.push(status || "(clean)");
+        parts.push("\nRecent commits:");
+        parts.push(log);
+      } catch (e) {
+        parts.push(`(git status unavailable: ${(e as Error).message})`);
+      }
+
+      // Open PRs
+      parts.push("\n## Open PRs\n");
+      try {
+        const prs = execSync(
+          "gh pr list -R airpau/lifeadmin-ai --state open --json number,title,headRefName,author",
+          { cwd: PROJECT_DIR, encoding: "utf-8" },
+        );
+        parts.push(prs || "(none)");
+      } catch (e) {
+        parts.push(`(gh pr list unavailable: ${(e as Error).message})`);
+      }
+
+      // Recent business_log
+      parts.push(`\n## Recent business_log (last ${limit})\n`);
+      try {
+        const { url, key } = getSupabaseCredentials();
+        const res = await fetch(
+          `${url}/rest/v1/business_log?select=*&order=created_at.desc&limit=${limit}`,
+          {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+          },
+        );
+        if (res.ok) {
+          const rows = (await res.json()) as Array<Record<string, unknown>>;
+          parts.push(JSON.stringify(rows, null, 2));
+        } else {
+          parts.push(`(business_log fetch failed: ${res.status})`);
+        }
+      } catch (e) {
+        parts.push(`(business_log unavailable: ${(e as Error).message})`);
+      }
+
+      return parts.join("\n");
     }
 
     case "write_context": {

@@ -27,6 +27,7 @@ import {
   FolderLock,
   MessageCircle,
   Download,
+  Plug,
   Loader2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -41,6 +42,7 @@ const navItems = [
   { name: 'Rewards', href: '/dashboard/rewards', icon: Gift },
   { name: 'Pocket Agent', href: '/dashboard/pocket-agent', icon: MessageCircle },
   { name: 'Export', href: '/dashboard/export', icon: Download },
+  { name: 'Claude Desktop', href: '/dashboard/settings/mcp', icon: Plug },
   { name: 'Profile', href: '/dashboard/profile', icon: User },
 ];
 
