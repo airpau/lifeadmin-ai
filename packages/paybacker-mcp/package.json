@@ -1,0 +1,52 @@
+{
+  "name": "@paybacker/mcp",
+  "version": "0.1.0",
+  "description": "Paybacker MCP server — let Claude Desktop read your transactions, subscriptions, budgets and net worth from paybacker.co.uk",
+  "license": "MIT",
+  "author": "Paybacker LTD <hello@paybacker.co.uk>",
+  "homepage": "https://paybacker.co.uk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/airpau/paybacker-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/airpau/paybacker-mcp/issues",
+    "email": "hello@paybacker.co.uk"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "paybacker",
+    "personal-finance",
+    "open-banking"
+  ],
+  "type": "module",
+  "main": "dist/server.js",
+  "bin": {
+    "paybacker-mcp": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
