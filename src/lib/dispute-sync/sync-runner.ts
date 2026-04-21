@@ -224,14 +224,31 @@ export async function syncLinkedThread(
       sendTelegramSafely({
         userId: link.user_id,
         disputeId: link.dispute_id,
+        correspondenceId: inserted.id,
         providerName,
         subject: m.subject,
         snippet: m.snippet,
         linkUrl,
         classification,
-      }).catch((err) =>
-        console.warn('[watchdog] telegram send failed:', err instanceof Error ? err.message : err),
-      );
+      }).catch(async (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[watchdog] telegram send failed:', msg);
+        try {
+          await db.from('business_log').insert({
+            category: 'telegram_error',
+            title: 'Watchdog dispute-reply alert failed',
+            content:
+              `Could not send Telegram alert for dispute ${link.dispute_id} (correspondence ${inserted.id}). ` +
+              `Provider: ${providerName}. Error: ${msg}`,
+            created_by: 'watchdog-sync-runner',
+          });
+        } catch (logErr) {
+          console.warn(
+            '[watchdog] business_log insert failed:',
+            logErr instanceof Error ? logErr.message : logErr,
+          );
+        }
+      });
     }
   }
 
@@ -288,6 +305,7 @@ async function sendTelegramSafely(args: {
   snippet: string;
   linkUrl: string;
   disputeId: string;
+  correspondenceId: string;
   classification: ReplyClassification | null;
 }): Promise<void> {
   const db = admin();
@@ -311,32 +329,40 @@ async function sendTelegramSafely(args: {
   if (!session?.telegram_chat_id) return;
 
   // Late import — only load the Telegram helper when we actually send.
-  const { sendProactiveAlert } = await import('../telegram/user-bot');
-  const preview = args.snippet.length > 200
+  const { sendProactiveAlert, escapeMarkdown } = await import('../telegram/user-bot');
+  const rawPreview = args.snippet.length > 200
     ? args.snippet.slice(0, 200) + '…'
     : args.snippet;
+
+  // Supplier subjects routinely carry ticket tags like "[ ref:!00D0Y0rFw3... ]"
+  // which Telegram's legacy MarkdownV1 parser treats as an unbalanced link and
+  // rejects with HTTP 400. Escape any special chars before embedding.
+  const safeSubject = escapeMarkdown(args.subject);
+  const safePreview = escapeMarkdown(rawPreview);
+  const safeProvider = escapeMarkdown(args.providerName);
 
   const c = args.classification;
   const emoji = c ? categoryEmoji(c.category, c.urgency) : '🔔';
   const label = c ? categoryLabel(c.category) : 'New reply';
   const actionLine = c?.respondNeeded
-    ? '\n\n⚠️ *Action needed* — reply *draft* below to generate your response.'
+    ? '\n\n⚠️ *Action needed* — tap *✍️ Draft response* below and I\'ll write your reply.'
     : c?.category === 'holding_reply'
       ? '\n\n_No action needed — they\'re still looking into it._'
       : c?.category === 'resolution'
-        ? '\n\n_Looks resolved — confirm with a 👍 if you\'re happy._'
+        ? '\n\n_Looks resolved — tap ✅ Mark as replied if you\'re happy._'
         : '';
 
   const aiLine = c?.rationale
-    ? `\n\n🧠 *Paybacker read:* ${c.rationale}`
+    ? `\n\n🧠 *Paybacker read:* ${escapeMarkdown(c.rationale)}`
     : '';
 
   await sendProactiveAlert({
     chatId: Number(session.telegram_chat_id),
     issue: {
       id: args.disputeId,
-      title: `${emoji} ${args.providerName} — ${label}`,
-      detail: `*Subject:* ${args.subject}\n\n_${preview}_${aiLine}${actionLine}`,
+      correspondenceId: args.correspondenceId,
+      title: `${emoji} ${safeProvider} — ${label}`,
+      detail: `*Subject:* ${safeSubject}\n\n_${safePreview}_${aiLine}${actionLine}`,
       issue_type: c?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
     },
     showFollowUpButtons: false,

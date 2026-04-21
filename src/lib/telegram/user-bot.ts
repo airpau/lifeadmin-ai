@@ -91,6 +91,20 @@ async function safeEdit(
 }
 
 // ============================================================
+// escapeMarkdown — escape characters that break Telegram's legacy
+// MarkdownV1 parser. Relevant set: * _ ` [  (Telegram V1 is forgiving
+// on ( ) ] but the unbalanced `[` in subjects like
+//   "Re: Support [ ref:!00D0Y0rFw3.!500P40lubbU:ref ]"
+// causes a 400 "can't parse entities" because V1 reads `[text](url)`
+// syntax. We escape defensively on anything a supplier might inject.
+// Used when embedding free-text into a MarkdownV1 body.
+// ============================================================
+export function escapeMarkdown(input: string | null | undefined): string {
+  if (!input) return '';
+  return String(input).replace(/([*_`\[\]])/g, '\\$1');
+}
+
+// ============================================================
 // Constants
 // ============================================================
 const RATE_LIMIT_PER_HOUR = 200;
@@ -174,6 +188,8 @@ RULES:
 - When a user asks to change subscription frequency (e.g. "change to yearly"), call update_subscription.
 - mark_bill_paid stores a manual override — it shows as ✅ in expected bills for the current month only.
 - For dispute follow-ups: always mention the FCA 8-week deadline — it's the most powerful lever for UK consumers.
+- REPLYING TO A SUPPLIER — If the user asks you to draft / send / reply / respond / chase / follow up with a named supplier (e.g. "draft a reply to OneStream", "tell OneStream I'm available any day except Friday", "please write back"), you MUST call get_disputes FIRST with status="open" to find the matching dispute. Match provider_name with a relaxed fuzzy compare (case-insensitive, ignore spaces/punctuation) — "OneStream" must match "Onestream", "BG" must match "British Gas", etc. If a dispute is found, call get_dispute_detail to pull the latest supplier correspondence, then call draft_dispute_letter using that context. Never tell the user "I don't have an open dispute with X" without calling get_disputes first.
+- If the user mentions context that sounds like a reply to a Watchdog Telegram alert ("tell them", "reply to them", "they said"), treat it as a dispute reply — look up the most recent open dispute and use its latest supplier correspondence as the context.
 
 FINANCIAL INTELLIGENCE — CRITICAL:
 - get_expected_bills cross-references bank transaction data to determine paid/unpaid status. Trust its ✅/❌/⏳ indicators. ❌ means a bill was due but no matching payment was found in the bank — flag this clearly to the user.
@@ -1201,6 +1217,315 @@ Return JSON: { "subject": "...", "body": "..." }`;
   });
 
   // -------------------------------------------------------
+  // Watchdog dispute-reply callbacks
+  //
+  //   drftrp_<correspondenceId> — generate an AI draft reply to a supplier
+  //   mksnt_<correspondenceId>  — user confirms they've sent the reply
+  //   dsmrp_<correspondenceId>  — dismiss the alert (no action)
+  //   cfsnt_<correspondenceId>  — confirm a drafted reply was sent (written to audit trail)
+  //   rvdft_<correspondenceId>  — regenerate the draft with new context
+  //
+  // Paybacker never sends the email for the user. The "Mark as replied"
+  // path is purely audit-trail: it writes a `user_note` correspondence
+  // row so the dispute history shows they responded.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^drftrp_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Drafting your reply…' });
+    const corrId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+
+    try {
+      await safeEdit(bot.api, chatId, msgId, '✍️ Drafting your reply… This takes ~15 seconds.');
+
+      // Pull the supplier's message we're replying to
+      const { data: supplierMsg } = await supabase
+        .from('correspondence')
+        .select('id, dispute_id, user_id, title, content, sender_name, sender_address, entry_date, ai_rationale, ai_suggested_reply_context, ai_category')
+        .eq('id', corrId)
+        .maybeSingle();
+
+      if (!supplierMsg) {
+        await bot.api.sendMessage(chatId, "Couldn't find this reply — it may have been cleaned up. Open Paybacker to respond directly.");
+        return;
+      }
+
+      // Verify this chat is linked to the owning user
+      const { data: session } = await supabase
+        .from('telegram_sessions')
+        .select('user_id')
+        .eq('telegram_chat_id', chatId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!session || session.user_id !== supplierMsg.user_id) {
+        await bot.api.sendMessage(chatId, "I can't access that dispute from this Telegram account.");
+        return;
+      }
+
+      // Pull dispute + user profile + user's most recent outbound letter for context
+      const [{ data: dispute }, { data: profile }, { data: recentOutbound }] = await Promise.all([
+        supabase
+          .from('disputes')
+          .select('id, provider_name, provider_type, issue_type, issue_summary, desired_outcome')
+          .eq('id', supplierMsg.dispute_id)
+          .maybeSingle(),
+        supabase
+          .from('profiles')
+          .select('full_name, first_name, last_name, address, postcode')
+          .eq('id', supplierMsg.user_id)
+          .maybeSingle(),
+        supabase
+          .from('correspondence')
+          .select('content, entry_date, entry_type')
+          .eq('dispute_id', supplierMsg.dispute_id)
+          .in('entry_type', ['ai_letter', 'user_note'])
+          .order('entry_date', { ascending: false })
+          .limit(1),
+      ]);
+
+      const fullName =
+        profile?.full_name ??
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ??
+        'Customer';
+      const providerName = dispute?.provider_name ?? supplierMsg.sender_name ?? 'Provider';
+      const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const addrLine = [profile?.address, profile?.postcode].filter(Boolean).join(', ') || '[Your address]';
+      const lastOutboundBody = recentOutbound?.[0]?.content
+        ? String(recentOutbound[0].content).slice(0, 1500)
+        : '(no earlier letter on record)';
+
+      const supplierExcerpt = String(supplierMsg.content || '').slice(0, 4000);
+
+      const prompt = `Write a UK consumer's REPLY to a supplier's latest message on an ongoing dispute.
+
+Customer name: ${fullName}
+Customer address: ${addrLine}
+Today's date: ${today}
+Supplier: ${providerName}
+Dispute summary: ${dispute?.issue_summary || '(see thread)'}
+Desired outcome: ${dispute?.desired_outcome || '(see thread)'}
+
+Supplier's latest message (the one we are replying to), received ${new Date(supplierMsg.entry_date).toLocaleDateString('en-GB')}:
+"""
+${supplierExcerpt}
+"""
+
+Paybacker's read of the supplier's message: ${supplierMsg.ai_rationale || 'n/a'}
+Short hint on what the reply should cover: ${supplierMsg.ai_suggested_reply_context || 'n/a'}
+
+What the user previously wrote to this supplier (for tone and context):
+"""
+${lastOutboundBody}
+"""
+
+Rules:
+- Formal, professional UK English. Reads as intelligent human writing, not AI.
+- Directly address what the supplier asked / said.
+- If they asked for information, provide placeholders like [account number] rather than inventing details.
+- Keep the original dispute reference (subject line / ticket ref) in a "Reference:" line at the top.
+- No section headings. No CAPS LOCK.
+- Weave any legal references naturally (Consumer Rights Act 2015, Ofcom, Ofgem, Ombudsman, etc.) — never bullet lists.
+- Set a clear next-step deadline where appropriate (e.g. 14 days).
+- Under 350 words.
+- Start with "Dear ${providerName} Customer Services," and end with "Yours sincerely,\n${fullName}".`;
+
+      const draft = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1100,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const draftText = draft.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('')
+        .trim();
+
+      // Save as draft correspondence so it shows in the audit trail immediately
+      const { data: savedDraft } = await supabase
+        .from('correspondence')
+        .insert({
+          dispute_id: supplierMsg.dispute_id,
+          user_id: supplierMsg.user_id,
+          entry_type: 'ai_letter',
+          title: `Draft reply to ${providerName}`,
+          content: draftText,
+          summary: `Draft reply to ${providerName} — awaiting user confirmation`,
+          telegram_chat_id: chatId,
+          source: 'telegram_watchdog',
+          entry_date: new Date().toISOString(),
+        })
+        .select('id')
+        .maybeSingle();
+
+      const draftId = savedDraft?.id;
+
+      // Send the draft with confirm-sent / revise / cancel buttons
+      await bot.api.sendMessage(
+        chatId,
+        `📝 *Draft reply to ${providerName}* — review, copy, and send it from your email. Then tap "✅ I sent this" and I'll log it.`,
+        { parse_mode: 'Markdown' },
+      );
+
+      // Chunk the letter itself in plain text so no Markdown surprises
+      const MAX = 4000;
+      let pos = 0;
+      while (pos < draftText.length) {
+        let end = Math.min(pos + MAX, draftText.length);
+        if (end < draftText.length) {
+          const nl = draftText.lastIndexOf('\n', end);
+          if (nl > pos + MAX / 2) end = nl + 1;
+        }
+        await bot.api.sendMessage(chatId, draftText.slice(pos, end));
+        pos = end;
+      }
+
+      if (draftId) {
+        await bot.api.sendMessage(chatId, 'Happy to send this?', {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ I sent this', callback_data: `cfsnt_${draftId}` }],
+              [{ text: '✏️ Revise',      callback_data: `rvdft_${corrId}` }],
+              [{ text: '🔕 Cancel',      callback_data: `dsmrp_${corrId}` }],
+            ],
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[UserBot] drftrp callback error:', err);
+      try {
+        await bot.api.sendMessage(chatId, "Sorry, I couldn't draft that right now. You can open the dispute in Paybacker and draft it there.");
+      } catch { /* silent */ }
+    }
+  });
+
+  bot.callbackQuery(/^rvdft_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Ok — send me any changes' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    await bot.api.sendMessage(
+      chatId,
+      "No problem — tell me what to change (e.g. \"keep it shorter\", \"mention the 22-day outage\", \"ask for compensation\") and I'll redraft.",
+    );
+  });
+
+  bot.callbackQuery(/^mksnt_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Logging as replied…' });
+    const corrId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+
+    try {
+      const { data: supplierMsg } = await supabase
+        .from('correspondence')
+        .select('id, dispute_id, user_id, sender_name')
+        .eq('id', corrId)
+        .maybeSingle();
+
+      const { data: session } = await supabase
+        .from('telegram_sessions')
+        .select('user_id')
+        .eq('telegram_chat_id', chatId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!supplierMsg || !session || session.user_id !== supplierMsg.user_id) {
+        await safeEdit(bot.api, chatId, msgId, "I can't update that dispute from this chat.");
+        return;
+      }
+
+      await supabase.from('correspondence').insert({
+        dispute_id: supplierMsg.dispute_id,
+        user_id: supplierMsg.user_id,
+        entry_type: 'user_note',
+        title: `User confirmed reply sent to ${supplierMsg.sender_name || 'supplier'}`,
+        content: 'User marked this supplier reply as responded to via Telegram. No draft text captured — this is an audit note only.',
+        source: 'telegram_watchdog',
+        telegram_chat_id: chatId,
+        entry_date: new Date().toISOString(),
+      });
+
+      await supabase
+        .from('disputes')
+        .update({ status: 'awaiting_response', updated_at: new Date().toISOString() })
+        .eq('id', supplierMsg.dispute_id);
+
+      await safeEdit(bot.api, chatId, msgId, '✅ Audit trail updated — logged as replied.');
+    } catch (err) {
+      console.error('[UserBot] mksnt callback error:', err);
+      try {
+        await bot.api.sendMessage(chatId, 'Sorry, I couldn\'t update the audit trail. Try again from the website.');
+      } catch { /* silent */ }
+    }
+  });
+
+  bot.callbackQuery(/^cfsnt_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Logging as sent…' });
+    const draftId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+
+    try {
+      const { data: draft } = await supabase
+        .from('correspondence')
+        .select('id, dispute_id, user_id, content, title')
+        .eq('id', draftId)
+        .maybeSingle();
+
+      const { data: session } = await supabase
+        .from('telegram_sessions')
+        .select('user_id')
+        .eq('telegram_chat_id', chatId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!draft || !session || session.user_id !== draft.user_id) {
+        await safeEdit(bot.api, chatId, msgId, "I can't update that draft from this chat.");
+        return;
+      }
+
+      // Write a user_note confirming the draft was sent. Keep the full text
+      // for the audit trail so the dispute history tells the full story.
+      await supabase.from('correspondence').insert({
+        dispute_id: draft.dispute_id,
+        user_id: draft.user_id,
+        entry_type: 'user_note',
+        title: 'User confirmed reply was sent',
+        content: `User confirmed they sent the following reply to the supplier via their own email. Logged from Telegram on ${new Date().toISOString()}.\n\n---\n\n${draft.content}`,
+        source: 'telegram_watchdog',
+        telegram_chat_id: chatId,
+        entry_date: new Date().toISOString(),
+      });
+
+      await supabase
+        .from('disputes')
+        .update({ status: 'awaiting_response', updated_at: new Date().toISOString() })
+        .eq('id', draft.dispute_id);
+
+      await safeEdit(bot.api, chatId, msgId, '✅ Logged as sent — your dispute audit trail is updated.');
+    } catch (err) {
+      console.error('[UserBot] cfsnt callback error:', err);
+      try {
+        await bot.api.sendMessage(chatId, "Sorry, I couldn't update the audit trail. Try it from the Paybacker website instead.");
+      } catch { /* silent */ }
+    }
+  });
+
+  bot.callbackQuery(/^dsmrp_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Dismissed ✓' });
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    await safeEdit(bot.api, chatId, msgId, "Dismissed ✓ — the reply is still saved in your dispute if you want it later.");
+  });
+
+  // -------------------------------------------------------
   // Callbacks: palert_* — pending queue alert actions
   // These are triggered from the batched daily digest message.
   // -------------------------------------------------------
@@ -1709,11 +2034,19 @@ export async function sendProactiveAlert(params: {
     recommendation?: string | null;
     amount_impact?: number | null;
     issue_type: string;
+    /**
+     * Optional correspondence row id for dispute_reply alerts — lets the user
+     * tap "Draft response" or "Mark as replied" in Telegram and we know which
+     * supplier message they are acting on.
+     */
+     correspondenceId?: string | null;
   };
   showFollowUpButtons?: boolean;
 }): Promise<{ messageId?: number; ok: boolean }> {
   const token = (process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN);
-  if (!token) return { ok: false };
+  if (!token) {
+    throw new Error('Telegram bot token not configured (TELEGRAM_USER_BOT_TOKEN or TELEGRAM_BOT_TOKEN)');
+  }
 
   const { chatId, issue, showFollowUpButtons } = params;
   const TELEGRAM_API = `https://api.telegram.org/bot${token}`;
@@ -1766,6 +2099,21 @@ export async function sendProactiveAlert(params: {
         [{ text: '🔕 Dismiss', callback_data: `dismiss_${issue.id}` }],
       ],
     };
+  } else if (
+    (issue.issue_type === 'dispute_reply' || issue.issue_type === 'dispute_reply_action') &&
+    issue.correspondenceId
+  ) {
+    // Watchdog reply alert — user can draft a response, mark as replied, or dismiss.
+    // We never send on the user's behalf; "Mark as replied" just writes to the
+    // audit trail so Paybacker knows the thread is moving.
+    const cid = issue.correspondenceId;
+    replyMarkup = {
+      inline_keyboard: [
+        [{ text: '✍️ Draft response',  callback_data: `drftrp_${cid}` }],
+        [{ text: '✅ Mark as replied', callback_data: `mksnt_${cid}` }],
+        [{ text: '🔕 Dismiss',         callback_data: `dsmrp_${cid}` }],
+      ],
+    };
   } else {
     // budget_overrun, unused_subscription, etc.
     replyMarkup = {
@@ -1778,17 +2126,55 @@ export async function sendProactiveAlert(params: {
     };
   }
 
-  const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: 'Markdown',
-      reply_markup: replyMarkup,
-    }),
+  // Attempt with Markdown first. If Telegram rejects the entities (400 from
+  // unbalanced * _ [ ] etc in supplier-authored subjects), retry as plain
+  // text so the alert still lands.
+  type TgSendResponse = {
+    ok: boolean;
+    description?: string;
+    error_code?: number;
+    result?: { message_id: number };
+  };
+
+  const post = async (body: Record<string, unknown>): Promise<TgSendResponse> => {
+    const r = await fetch(`${TELEGRAM_API}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return (await r.json()) as TgSendResponse;
+  };
+
+  let data = await post({
+    chat_id: chatId,
+    text,
+    parse_mode: 'Markdown',
+    reply_markup: replyMarkup,
   });
 
-  const data = await res.json() as { ok: boolean; result?: { message_id: number } };
-  return { ok: data.ok, messageId: data.result?.message_id };
+  if (!data.ok) {
+    const desc = (data.description || '').toLowerCase();
+    const entitiesError =
+      desc.includes("can't parse entities") ||
+      desc.includes('parse entities') ||
+      desc.includes('invalid entities') ||
+      data.error_code === 400;
+    if (entitiesError) {
+      console.warn(`[UserBot] Telegram Markdown rejected (${data.description}); retrying as plain text.`);
+      const plain = text.replace(/[*_`]/g, '');
+      data = await post({
+        chat_id: chatId,
+        text: plain,
+        reply_markup: replyMarkup,
+      });
+    }
+  }
+
+  if (!data.ok) {
+    throw new Error(
+      `Telegram sendMessage failed: ${data.description || 'unknown error'} (code ${data.error_code ?? '?'})`,
+    );
+  }
+
+  return { ok: true, messageId: data.result?.message_id };
 }
