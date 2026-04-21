@@ -834,7 +834,7 @@ export default function MoneyHubPage() {
           <div className="min-w-0">
             <h3 className="text-white font-semibold text-lg flex items-center gap-2 flex-wrap">
               <MessageCircle className="h-5 w-5 text-mint-400" />
-              Ask Claude about your money
+              Ask Paybacker about your money
               <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-mint-400 bg-mint-400/10 border border-mint-400/30">
                 Pro
               </span>
