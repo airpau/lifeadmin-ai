@@ -20,6 +20,7 @@ import SpendingPanel from './SpendingPanel';
 import GoalsAndBudgetsPanel from './GoalsAndBudgetsPanel';
 import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
+import GoogleSheetsConnect from '@/components/GoogleSheetsConnect';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -713,11 +714,17 @@ export default function MoneyHubPage() {
         </div>
       )}
 
+      {/* Google Sheets export — sync all bank data to a Google Sheet, updated daily */}
+      <GoogleSheetsConnect />
+
       {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
       <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
 
-      {/* Spending Intelligence */}
-      <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+      {/* MAIN GRID: Spending + Budgets & Goals */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+        <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
+      </div>
 
       {/* Expected Bills (for the selected month) */}
       {expectedBills.length > 0 && (
@@ -824,9 +831,6 @@ export default function MoneyHubPage() {
         <ContractsPanel data={data} isPro={isPro} />
         <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
       </div>
-
-      {/* Budgets & Savings Goals — above FAC for visibility */}
-      <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
 
       {/* Financial Action Centre (Pro) */}
       {isPro && (
