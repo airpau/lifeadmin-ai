@@ -1,10 +1,12 @@
 'use client'
 // src/app/dashboard/export/page.tsx
 // Export destinations page — send Paybacker data to third-party tools.
-// Currently: Google Sheets (live); CSV, Notion, YNAB marked coming soon.
+// Currently live: Google Sheets sync, CSV + Excel one-shot download.
+// Coming soon: Notion, YNAB, Actual Budget.
 
 import Link from 'next/link'
 import GoogleSheetsConnect from '@/components/GoogleSheetsConnect'
+import DataExportCard from '@/components/DataExportCard'
 
 type ComingSoonDestination = {
   name: string
@@ -14,19 +16,6 @@ type ComingSoonDestination = {
 }
 
 const comingSoon: ComingSoonDestination[] = [
-  {
-    name: 'CSV Download',
-    blurb: 'One-click export of all transactions as a CSV file',
-    iconBg: 'bg-slate-400/10',
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="12" y1="18" x2="12" y2="12" />
-        <polyline points="9 15 12 18 15 15" />
-      </svg>
-    ),
-  },
   {
     name: 'Notion',
     blurb: 'Sync transactions into a Notion database',
@@ -81,6 +70,7 @@ export default function ExportPage() {
         </h2>
         <div className="grid grid-cols-1 gap-4">
           <GoogleSheetsConnect />
+          <DataExportCard />
         </div>
       </section>
 
