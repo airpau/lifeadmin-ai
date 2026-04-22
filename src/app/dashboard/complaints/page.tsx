@@ -150,9 +150,14 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 // Active statuses that can be changed via the status dropdown
 const ACTIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
 
-// Check if a dispute is resolved/closed
+// Check if a dispute is terminal (closed for any reason — won, partial, lost, or user-closed)
 function isResolved(status: string): boolean {
-  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed', 'won', 'partial', 'lost', 'withdrawn'].includes(status);
+  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'].includes(status);
+}
+
+// Check if a dispute was actually won (for money-recovered badges)
+function isWon(status: string): boolean {
+  return ['resolved_won', 'resolved_partial'].includes(status);
 }
 
 // Dispute summary type
@@ -2359,9 +2364,9 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             <div className="k-delta">Open cases · awaiting action or reply</div>
           </div>
           <div className="kpi-card">
-            <div className="k-label"><CheckCircle className="h-3.5 w-3.5" /> Resolved</div>
+            <div className="k-label"><CheckCircle className="h-3.5 w-3.5" /> Won &amp; settled</div>
             <div className="k-val">{summary.total_resolved}</div>
-            <div className="k-delta">Closed · won or settled</div>
+            <div className="k-delta">Full or partial wins</div>
           </div>
           <div className="kpi-card">
             <div className="k-label"><PoundSterling className="h-3.5 w-3.5" /> Being disputed</div>
