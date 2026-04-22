@@ -25,14 +25,14 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
     disputeThreadLinks: 1,
     watchdogSyncIntervalMinutes: null, // manual only
-    features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
+    features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual', 'pocket_agent'],
   },
   essential: {
     complaintsPerMonth: null,
     scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
     disputeThreadLinks: 5,
     watchdogSyncIntervalMinutes: 60,
-    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'watchdog_auto'],
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'watchdog_auto', 'pocket_agent'],
   },
   pro: {
     complaintsPerMonth: null,
@@ -72,21 +72,32 @@ export async function checkUsageLimit(
   // Fetch user's current tier and Stripe subscription info
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .eq('id', userId)
     .single();
 
   const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
 
-  // Verify paid tier has an active Stripe subscription or founding member trial
+  // Verify paid tier has an active Stripe subscription or trial
   const isPaid = tier !== 'free';
   const hasActiveStripe = profile?.stripe_subscription_id &&
     ['active', 'trialing'].includes(profile?.subscription_status ?? '');
 
-  // Founding member trial: tier != free, status = trialing, no Stripe, valid trial_ends_at
+  // Onboarding trial (any tier): trial_ends_at in the future, not yet converted or expired
+  const isOnboardingTrial = profile?.trial_ends_at &&
+    new Date(profile.trial_ends_at) > new Date() &&
+    !profile?.trial_converted_at &&
+    !profile?.trial_expired_at;
+
+  // Founding member trial: paid tier, trialing, no Stripe, valid trial_ends_at
   const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
     profile?.subscription_status === 'trialing' &&
     profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+
+  // Active onboarding trial always grants pro-level access regardless of stored tier
+  if (!hasActiveStripe && isOnboardingTrial) {
+    return { allowed: true, used: 0, limit: null, tier: 'pro', upgradeRequired: false };
+  }
 
   const effectiveTier: PlanTier = (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
   if (isPaid && !hasActiveStripe && !isFoundingTrial) {
@@ -148,7 +159,7 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const admin = getAdmin();
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .eq('id', userId)
     .single();
 
@@ -156,6 +167,15 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const isPaid = tier !== 'free';
   const hasActiveStripe = profile?.stripe_subscription_id &&
     ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+
+  // Onboarding trial grants pro access regardless of stored tier
+  const isOnboardingTrial = profile?.trial_ends_at &&
+    new Date(profile.trial_ends_at) > new Date() &&
+    !profile?.trial_converted_at &&
+    !profile?.trial_expired_at;
+
+  if (!hasActiveStripe && isOnboardingTrial) return 'pro';
+
   const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
     profile?.subscription_status === 'trialing' &&
     profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();

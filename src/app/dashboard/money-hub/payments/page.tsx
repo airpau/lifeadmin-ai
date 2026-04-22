@@ -309,8 +309,28 @@ export default function PaymentsPage() {
     fetch('/api/subscriptions')
       .then(r => r.json())
       .then((data: any) => {
-        const subs = Array.isArray(data) ? data : data.subscriptions || [];
-        setPayments(subs.filter((s: any) => s.status === 'active'));
+        const subs: Payment[] = Array.isArray(data) ? data : data.subscriptions || [];
+        const active = subs.filter((s: any) => s.status === 'active');
+
+        // Deduplicate by normalised provider name + billing cycle + amount band.
+        // Including the amount band preserves two genuinely separate subscriptions
+        // to the same provider at different amounts (e.g. two council-tax DDs for
+        // different properties, two gym memberships at the same chain, etc.).
+        // Within each band, keep the record with the largest amount (most authoritative).
+        const amountBand = (amount: number) => {
+          if (amount <= 0) return 0;
+          return Math.round(Math.log(Math.max(amount, 0.01)) / Math.log(1.1));
+        };
+        const grouped = new Map<string, Payment>();
+        for (const sub of active) {
+          const band = amountBand(Math.abs(sub.amount || 0));
+          const key = `${(sub.provider_name || '').toLowerCase().replace(/\s+/g, ' ').trim()}|${sub.billing_cycle}|${band}`;
+          const existing = grouped.get(key);
+          if (!existing || Math.abs(sub.amount || 0) > Math.abs(existing.amount || 0)) {
+            grouped.set(key, sub);
+          }
+        }
+        setPayments(Array.from(grouped.values()));
       })
       .catch(console.error)
       .finally(() => setLoading(false));

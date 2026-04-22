@@ -26,7 +26,7 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
 
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, founding_member')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at, founding_member')
     .eq('id', userId)
     .single();
 
@@ -39,17 +39,25 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
     return { tier, status, isActive: true, isTrial: status === 'trialing', trialDaysLeft: null };
   }
 
+  // Onboarding trial: trial_ends_at in the future, not yet converted or expired → treat as pro
+  const trialEnd = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+  const now = new Date();
+  const isOnboardingTrial = trialEnd &&
+    trialEnd > now &&
+    !profile?.trial_converted_at &&
+    !profile?.trial_expired_at;
+
+  if (!hasStripe && isOnboardingTrial) {
+    const daysLeft = Math.ceil((trialEnd!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return { tier: 'pro', status: 'trialing', isActive: true, isTrial: true, trialDaysLeft: daysLeft };
+  }
+
   // Founding member trial (no Stripe, but tier=pro/essential + trialing)
   if (tier !== 'free' && status === 'trialing' && !hasStripe) {
-    const trialEnd = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
-    const now = new Date();
-
     if (trialEnd && trialEnd > now) {
-      // Active trial
       const daysLeft = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       return { tier, status: 'trialing', isActive: true, isTrial: true, trialDaysLeft: daysLeft };
     }
-
     // Trial expired — treat as free
     return { tier: 'free', status: 'expired', isActive: false, isTrial: false, trialDaysLeft: 0 };
   }
