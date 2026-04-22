@@ -1079,6 +1079,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       fetchDispute();
     } catch (err: any) {
       alert(err.message || 'Failed to save changes. Please try again.');
+      setEditingEntryId(null);
     } finally {
       setEditSaving(false);
     }
@@ -1098,6 +1099,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       fetchDispute();
     } catch (err: any) {
       alert(err.message || 'Failed to delete entry. Please try again.');
+      setDeleteConfirmId(null);
     } finally {
       setDeleteInProgress(false);
     }

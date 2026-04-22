@@ -156,6 +156,7 @@ export async function PATCH(
     .from('correspondence')
     .update(updates)
     .eq('id', entryId)
+    .eq('dispute_id', sourceDisputeId)
     .eq('user_id', user.id)
     .select()
     .single();
@@ -216,6 +217,7 @@ export async function DELETE(
     .from('correspondence')
     .delete()
     .eq('id', entryId)
+    .eq('dispute_id', disputeId)
     .eq('user_id', user.id);
 
   if (deleteErr) {
