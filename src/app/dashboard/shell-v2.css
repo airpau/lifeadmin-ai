@@ -317,6 +317,39 @@
 }
 .shell-v2 .cta-danger:hover { background: #FEE2E2; }
 
+/* ─── Mobile overflow safeguards ──────────────────────────────────────────
+   Pages were rendering with horizontal scroll on iPhone-class viewports
+   because:
+   - `.shell-v2 .shell` is a CSS grid; without `min-width:0` on its column
+     track, a long unbreakable string (or an inline grid that doesn't
+     stack on its own) expands the track past the viewport
+   - `.page-title-row` is `flex-wrap:wrap` but its first child <div>
+     has default `min-width:auto` so a long page-sub forces the row wider
+   - several hero strips use `flex` with `whiteSpace:nowrap` CTAs that
+     refused to wrap on narrow widths
+
+   This block hard-stops overflow at the shell-v2 root + adds the
+   required min-width:0 to the columns + makes the inline-style grids
+   that didn't ship their own media queries stack below 760px. */
+.shell-v2 { overflow-x: hidden; }
+.shell-v2 > .shell > * { min-width: 0; }
+.shell-v2 .main-inner { min-width: 0; max-width: 100vw; }
+.shell-v2 .page-title-row > * { min-width: 0; }
+.shell-v2 .page-title { overflow-wrap: anywhere; word-break: break-word; }
+
+/* The deals hero CTA had whiteSpace:nowrap which refused to wrap on a
+   ~390px viewport. Same for the rewards / billing tier grids etc. */
+@media (max-width: 760px) {
+  .shell-v2 .compose-grid,
+  .shell-v2 .rewards-hero-grid,
+  .shell-v2 .deal-grid,
+  .shell-v2 .notif-grid,
+  .shell-v2 .tier-grid,
+  .shell-v2 .onboarding-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* ─── Dispute compose: 2-col grid with right rail (batch7 DisputeCompose) ─── */
 .shell-v2 .compose-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
 .shell-v2 .compose-eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mint-deep);display:inline-block;margin-bottom:10px}
