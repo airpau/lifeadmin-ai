@@ -51,14 +51,21 @@ function useInViewTicker(period: number) {
       return () => stop();
     }
 
+    // Trigger the demo to restart at T=0 every time it scrolls into view
+    // (≥25% visible). Small positive rootMargin so it fires just before the
+    // user is centred on the stage — no "missed the start" feeling.
     const io = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (!entry) return;
-        if (entry.isIntersecting) play();
-        else stop();
+        if (entry.isIntersecting) {
+          stop();
+          play();
+        } else {
+          stop();
+        }
       },
-      { rootMargin: '200px 0px' },
+      { rootMargin: '0px 0px -15% 0px', threshold: [0, 0.25] },
     );
     io.observe(node);
 
