@@ -15,6 +15,7 @@ import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers
 import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
 import { cleanMerchantName } from '@/lib/merchant-utils';
+import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
@@ -1854,13 +1855,15 @@ export default function SubscriptionsPage() {
         );
       })()}
 
-      {/* Summary — from get_subscription_total() RPC (single source of truth) */}
+      {/* Summary — monthly totals from get_subscription_total() RPC;
+          active-count computed locally via countActiveSubscriptions so
+          every page agrees on "how many subs are active". */}
       {rpcTotals && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Subscriptions & Bills</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.subscriptions_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{rpcTotals.subscriptions_count} active</p>
+            <p className="text-slate-500 text-xs mt-1">{countActiveSubscriptions(subscriptions)} active</p>
           </div>
 
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
@@ -1878,7 +1881,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Total All Commitments</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {rpcTotals.subscriptions_count + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
+            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
         </div>
       )}
