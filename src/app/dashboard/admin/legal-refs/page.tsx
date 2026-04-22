@@ -32,7 +32,7 @@ interface LegalRef {
 
 const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle; className: string }> = {
   current: { label: 'Current', icon: CheckCircle, className: 'text-green-400 bg-green-500/10' },
-  updated: { label: 'Auto-updated', icon: RefreshCw, className: 'text-mint-400 bg-mint-400/10' },
+  updated: { label: 'Auto-updated', icon: RefreshCw, className: 'text-emerald-600 bg-mint-400/10' },
   needs_review: { label: 'Needs review', icon: AlertTriangle, className: 'text-amber-400 bg-amber-500/10' },
   outdated: { label: 'Outdated', icon: AlertTriangle, className: 'text-red-400 bg-red-500/10' },
 };
@@ -150,7 +150,7 @@ export default function LegalRefsAdminPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -160,8 +160,8 @@ export default function LegalRefsAdminPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <Shield className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
-          <p className="text-slate-400">Admin access only.</p>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Access Denied</h1>
+          <p className="text-slate-600">Admin access only.</p>
         </div>
       </div>
     );
@@ -173,23 +173,23 @@ export default function LegalRefsAdminPage() {
       <div className="mb-6">
         <Link
           href="/dashboard/admin"
-          className="inline-flex items-center gap-1.5 text-slate-400 hover:text-white text-sm mb-4 transition-colors"
+          className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-900 text-sm mb-4 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Admin
         </Link>
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
-              <Shield className="h-9 w-9 text-mint-400" />
+            <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+              <Shield className="h-9 w-9 text-emerald-600" />
               Legal References
             </h1>
-            <p className="text-slate-400">{counts.total} references across {categories.length} categories</p>
+            <p className="text-slate-600">{counts.total} references across {categories.length} categories</p>
           </div>
           <button
             onClick={runVerification}
             disabled={verifying}
-            className="flex items-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
           >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {verifying ? 'Verifying...' : 'Run Verification'}
@@ -210,7 +210,7 @@ export default function LegalRefsAdminPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Current', count: counts.current, className: 'border-green-500/20 bg-green-500/5', textClass: 'text-green-400' },
-          { label: 'Auto-updated', count: counts.updated, className: 'border-mint-400/20 bg-mint-400/5', textClass: 'text-mint-400' },
+          { label: 'Auto-updated', count: counts.updated, className: 'border-mint-400/20 bg-mint-400/5', textClass: 'text-emerald-600' },
           { label: 'Needs review', count: counts.needs_review, className: 'border-amber-500/20 bg-amber-500/5', textClass: 'text-amber-400' },
           { label: 'Outdated', count: counts.outdated, className: 'border-red-500/20 bg-red-500/5', textClass: 'text-red-400' },
         ].map(card => (
@@ -220,7 +220,7 @@ export default function LegalRefsAdminPage() {
             className={`border rounded-2xl p-5 text-left transition-all hover:opacity-80 ${card.className}`}
           >
             <p className={`text-3xl font-bold ${card.textClass}`}>{card.count}</p>
-            <p className="text-slate-400 text-sm mt-1">{card.label}</p>
+            <p className="text-slate-600 text-sm mt-1">{card.label}</p>
           </button>
         ))}
       </div>
@@ -228,19 +228,19 @@ export default function LegalRefsAdminPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="flex-1 min-w-[200px] relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-700" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search references..."
-            className="w-full pl-9 pr-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-mint-400"
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 text-sm focus:outline-none focus:border-mint-400"
           />
         </div>
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-300 text-sm focus:outline-none focus:border-mint-400"
+          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-mint-400"
         >
           <option value="all">All statuses</option>
           <option value="current">Current</option>
@@ -251,7 +251,7 @@ export default function LegalRefsAdminPage() {
         <select
           value={filterCategory}
           onChange={e => setFilterCategory(e.target.value)}
-          className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-300 text-sm focus:outline-none focus:border-mint-400"
+          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-mint-400"
         >
           <option value="all">All categories</option>
           {categories.map(cat => (
@@ -261,26 +261,26 @@ export default function LegalRefsAdminPage() {
         {(search || filterStatus !== 'all' || filterCategory !== 'all') && (
           <button
             onClick={() => { setSearch(''); setFilterStatus('all'); setFilterCategory('all'); }}
-            className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-400 hover:text-white text-sm transition-colors"
+            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 hover:text-slate-900 text-sm transition-colors"
           >
             Clear
           </button>
         )}
       </div>
 
-      <p className="text-slate-500 text-sm mb-4">Showing {filtered.length} of {refs.length} references</p>
+      <p className="text-slate-700 text-sm mb-4">Showing {filtered.length} of {refs.length} references</p>
 
       {/* Table */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-navy-700/50">
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Law / Section</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Category</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Status</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden lg:table-cell">Last verified</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden xl:table-cell">Strength</th>
+              <tr className="border-b border-slate-200">
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Law / Section</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Category</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">Status</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden lg:table-cell">Last verified</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wide hidden xl:table-cell">Strength</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -291,20 +291,20 @@ export default function LegalRefsAdminPage() {
                 return (
                   <tr
                     key={ref.id}
-                    className={`border-b border-navy-700/30 hover:bg-navy-800/50 transition-colors ${i % 2 === 0 ? '' : 'bg-navy-950/30'}`}
+                    className={`border-b border-slate-200 hover:bg-slate-100/50 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-100/30'}`}
                   >
                     <td className="px-5 py-4">
-                      <p className="text-white text-sm font-medium">{ref.law_name}</p>
+                      <p className="text-slate-900 text-sm font-medium">{ref.law_name}</p>
                       {ref.section && (
-                        <p className="text-slate-500 text-xs mt-0.5">{ref.section}</p>
+                        <p className="text-slate-700 text-xs mt-0.5">{ref.section}</p>
                       )}
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2 max-w-sm">{ref.summary}</p>
+                      <p className="text-slate-600 text-xs mt-1 line-clamp-2 max-w-sm">{ref.summary}</p>
                       {ref.verification_notes && (
                         <p className="text-amber-400/70 text-[11px] mt-1 line-clamp-1">{ref.verification_notes}</p>
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <span className="text-xs bg-navy-800 text-slate-300 px-2.5 py-1 rounded-full border border-navy-700/50">
+                      <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200">
                         {CATEGORY_LABELS[ref.category] || ref.category}
                       </span>
                       {ref.subcategory && (
@@ -318,7 +318,7 @@ export default function LegalRefsAdminPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 hidden lg:table-cell">
-                      <div className="flex items-center gap-1.5 text-slate-400 text-xs">
+                      <div className="flex items-center gap-1.5 text-slate-600 text-xs">
                         <Clock className="h-3.5 w-3.5 flex-shrink-0" />
                         {formatDate(ref.last_verified)}
                       </div>
@@ -327,7 +327,7 @@ export default function LegalRefsAdminPage() {
                       )}
                     </td>
                     <td className="px-5 py-4 hidden xl:table-cell">
-                      <span className={`text-xs font-medium capitalize ${STRENGTH_CONFIG[ref.strength] || 'text-slate-400'}`}>
+                      <span className={`text-xs font-medium capitalize ${STRENGTH_CONFIG[ref.strength] || 'text-slate-600'}`}>
                         {ref.strength}
                       </span>
                     </td>
@@ -336,7 +336,7 @@ export default function LegalRefsAdminPage() {
                         href={ref.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-mint-400 hover:text-mint-300 transition-colors whitespace-nowrap"
+                        className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-mint-300 transition-colors whitespace-nowrap"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         View source
@@ -352,7 +352,7 @@ export default function LegalRefsAdminPage() {
         {filtered.length === 0 && (
           <div className="py-16 text-center">
             <Shield className="h-10 w-10 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400 text-sm">No references match your filters.</p>
+            <p className="text-slate-600 text-sm">No references match your filters.</p>
           </div>
         )}
       </div>
