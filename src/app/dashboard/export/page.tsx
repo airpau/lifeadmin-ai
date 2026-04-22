@@ -19,11 +19,11 @@ const comingSoon: ComingSoonDestination[] = [
   {
     name: 'Notion',
     blurb: 'Sync transactions into a Notion database',
-    iconBg: 'bg-white/5',
+    iconBg: 'bg-slate-100',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#ffffff"/>
-        <path d="M7 7h2l4 7V7h2v10h-2l-4-7v7H7z" fill="#0f172a"/>
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#0f172a"/>
+        <path d="M7 7h2l4 7V7h2v10h-2l-4-7v7H7z" fill="#ffffff"/>
       </svg>
     ),
   },
@@ -56,8 +56,8 @@ export default function ExportPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-white">Export</h1>
-        <p className="mt-2 text-sm text-slate-400 max-w-2xl">
+        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Export</h1>
+        <p className="mt-2 text-sm text-slate-600 max-w-2xl">
           Send your Paybacker data to the tools you already use. Connect a destination once and
           we&rsquo;ll keep it in sync automatically.
         </p>
@@ -82,7 +82,7 @@ export default function ExportPage() {
           </h2>
           <Link
             href="mailto:hello@paybacker.co.uk?subject=Destination%20request"
-            className="text-xs text-mint-400 hover:text-mint-300 transition-colors"
+            className="text-xs text-emerald-600 hover:text-emerald-700 transition-colors"
           >
             Request a destination →
           </Link>
@@ -91,7 +91,7 @@ export default function ExportPage() {
           {comingSoon.map((d) => (
             <div
               key={d.name}
-              className="rounded-2xl border border-navy-700/50 bg-navy-900/60 p-5 opacity-80"
+              className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 opacity-80"
             >
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-lg ${d.iconBg} flex items-center justify-center flex-shrink-0`}>
@@ -99,12 +99,12 @@ export default function ExportPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-white text-sm">{d.name}</h3>
-                    <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-400 bg-slate-400/10">
+                    <h3 className="font-semibold text-slate-900 text-sm">{d.name}</h3>
+                    <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-slate-600 bg-slate-100">
                       Soon
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">{d.blurb}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{d.blurb}</p>
                 </div>
               </div>
             </div>

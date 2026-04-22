@@ -23,7 +23,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Dashboard Overview',
     subtitle: 'Your financial command centre. See savings opportunities, track complaints, and monitor spending at a glance.',
     icon: LayoutDashboard,
-    colour: 'text-blue-400',
+    colour: 'text-blue-600',
     link: '/dashboard',
     steps: [
       'Your dashboard shows key stats: total subscriptions, monthly spend, complaints generated, and connected bank accounts.',
@@ -37,7 +37,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Money Hub',
     subtitle: 'Your complete financial picture. Income, spending, bank accounts, and your Financial Health Score.',
     icon: Wallet,
-    colour: 'text-purple-400',
+    colour: 'text-purple-600',
     link: '/dashboard/money-hub',
     steps: [
       'Connect your bank account to see all your transactions automatically.',
@@ -52,7 +52,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Regular Payments',
     subtitle: 'Every subscription, direct debit, and standing order in one place. Spot unused services and save money.',
     icon: CreditCard,
-    colour: 'text-green-400',
+    colour: 'text-green-600',
     link: '/dashboard/money-hub/payments',
     steps: [
       'Your payments are split into 3 tabs: Subscriptions (streaming, software, gym), Direct Debits (energy, broadband, insurance), and Other.',
@@ -67,7 +67,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Disputes',
     subtitle: 'Tell us your problem in plain English. Our AI writes a complaint letter citing exact UK law.',
     icon: FileText,
-    colour: 'text-mint-400',
+    colour: 'text-emerald-600',
     link: '/dashboard/complaints',
     steps: [
       'Click "New dispute" and tell us what happened in your own words. No legal knowledge needed.',
@@ -83,7 +83,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'My Contracts',
     subtitle: 'Upload any contract and our AI reads the key terms, flags unfair clauses, and strengthens your complaints.',
     icon: Shield,
-    colour: 'text-purple-400',
+    colour: 'text-purple-600',
     link: '/dashboard/contracts',
     steps: [
       'Upload a PDF or photo of any contract you have signed.',
@@ -98,7 +98,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Subscriptions',
     subtitle: 'Track every subscription, see annual costs, and cancel with one click.',
     icon: CreditCard,
-    colour: 'text-sky-400',
+    colour: 'text-sky-600',
     link: '/dashboard/subscriptions',
     steps: [
       'Add subscriptions manually or connect your bank to auto-detect them.',
@@ -113,7 +113,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Inbox Scan',
     subtitle: 'Connect your email. We automatically detect subscriptions, overcharges, and savings opportunities.',
     icon: ScanSearch,
-    colour: 'text-amber-400',
+    colour: 'text-orange-600',
     link: '/dashboard/profile?connect_email=true',
     steps: [
       'Connect your bank account via Open Banking (read-only, secure, FCA regulated).',
@@ -128,7 +128,7 @@ const TUTORIALS: Tutorial[] = [
     title: 'Deals',
     subtitle: 'Find cheaper alternatives for your current services. We compare energy, broadband, mobile, and insurance.',
     icon: Tag,
-    colour: 'text-red-400',
+    colour: 'text-red-600',
     link: '/dashboard/deals',
     steps: [
       'Browse deals by category: energy, broadband, mobile, streaming, insurance, and more.',
@@ -144,40 +144,40 @@ function TutorialCard({ tutorial }: { tutorial: Tutorial }) {
   const Icon = tutorial.icon;
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl overflow-hidden hover:border-mint-400/20 transition-all">
+    <div className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-hidden hover:border-emerald-300 hover:shadow-md transition-all">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full text-left p-5"
       >
         <div className="flex items-start gap-3">
-          <div className={`w-10 h-10 rounded-lg bg-navy-800 flex items-center justify-center flex-shrink-0 ${tutorial.colour}`}>
+          <div className={`w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 ${tutorial.colour}`}>
             <Icon className="h-5 w-5" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <h3 className="text-white font-semibold">{tutorial.title}</h3>
-              {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+              <h3 className="text-slate-900 font-semibold">{tutorial.title}</h3>
+              {expanded ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
             </div>
-            <p className="text-slate-400 text-sm mt-1">{tutorial.subtitle}</p>
+            <p className="text-slate-600 text-sm mt-1">{tutorial.subtitle}</p>
           </div>
         </div>
       </button>
 
       {expanded && (
-        <div className="px-5 pb-5 border-t border-navy-700/50 pt-4">
+        <div className="px-5 pb-5 border-t border-slate-200 pt-4">
           <ol className="space-y-3">
             {tutorial.steps.map((step, i) => (
               <li key={i} className="flex items-start gap-3 text-sm">
-                <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                   {i + 1}
                 </span>
-                <p className="text-slate-300">{step}</p>
+                <p className="text-slate-700">{step}</p>
               </li>
             ))}
           </ol>
           <Link
             href={tutorial.link}
-            className="inline-flex items-center gap-2 mt-4 text-sm text-mint-400 hover:text-mint-300 font-medium transition-all"
+            className="inline-flex items-center gap-2 mt-4 text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-all"
           >
             Try it now <ArrowRight className="h-3 w-3" />
           </Link>
@@ -191,17 +191,17 @@ export default function TutorialsPage() {
   return (
     <div className="max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">How to Use Paybacker</h1>
-        <p className="text-slate-400 mt-1">Step-by-step guides for every feature</p>
+        <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">How to Use Paybacker</h1>
+        <p className="text-slate-600 mt-1">Step-by-step guides for every feature</p>
       </div>
 
-      <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl p-5 mb-6">
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mb-6">
         <div className="flex items-start gap-3">
-          <Sparkles className="h-5 w-5 text-mint-400 mt-0.5 flex-shrink-0" />
+          <Sparkles className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="text-white font-medium text-sm">New here?</p>
-            <p className="text-slate-400 text-sm mt-1">
-              Start with <strong className="text-white">Disputes</strong> to write your first complaint letter in 30 seconds, or connect your bank in the <strong className="text-white">Money Hub</strong> to find hidden savings.
+            <p className="text-slate-900 font-medium text-sm">New here?</p>
+            <p className="text-slate-700 text-sm mt-1">
+              Start with <strong className="text-slate-900">Disputes</strong> to write your first complaint letter in 30 seconds, or connect your bank in the <strong className="text-slate-900">Money Hub</strong> to find hidden savings.
             </p>
           </div>
         </div>
