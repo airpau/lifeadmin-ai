@@ -132,7 +132,7 @@ const CATEGORY_ALIAS: Record<string, string> = {
 
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  open: { label: 'Open', className: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' },
+  open: { label: 'Open', className: 'bg-amber-100 text-amber-600 border border-amber-200' },
   in_progress: { label: 'In Progress', className: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' },
   awaiting_response: { label: 'Waiting for reply', className: 'bg-purple-500/10 text-purple-400 border border-purple-500/20' },
   escalated: { label: 'Escalated', className: 'bg-orange-500/10 text-orange-400 border border-orange-500/20' },
@@ -141,10 +141,10 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   won: { label: 'Won', className: 'bg-green-500/10 text-green-500 border border-green-500/20' },
   resolved_partial: { label: 'Partially Won', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
   partial: { label: 'Partially Won', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
-  resolved_lost: { label: 'Not resolved', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
-  lost: { label: 'Not resolved', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
-  withdrawn: { label: 'Withdrawn', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
-  closed: { label: 'Closed', className: 'bg-slate-500/10 text-slate-400 border border-slate-500/20' },
+  resolved_lost: { label: 'Not resolved', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
+  lost: { label: 'Not resolved', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
+  withdrawn: { label: 'Withdrawn', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
+  closed: { label: 'Closed', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
 };
 
 // Active statuses that can be changed via the status dropdown
@@ -164,7 +164,7 @@ interface DisputeSummary {
 }
 
 const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: typeof FileText; className: string }> = {
-  ai_letter: { label: 'Your letter', icon: FileText, className: 'border-mint-400/30 bg-mint-400/5' },
+  ai_letter: { label: 'Your letter', icon: FileText, className: 'border-emerald-500/30 bg-emerald-500/5' },
   company_email: { label: 'Their email', icon: Mail, className: 'border-orange-400/30 bg-orange-400/5' },
   company_letter: { label: 'Their letter', icon: FileText, className: 'border-orange-400/30 bg-orange-400/5' },
   phone_call: { label: 'Phone call', icon: Phone, className: 'border-blue-400/30 bg-blue-400/5' },
@@ -226,10 +226,10 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-navy-700/50 flex-shrink-0">
+      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-xl font-bold text-white truncate">{title}</h2>
+            <h2 className="text-xl font-bold text-slate-900 truncate">{title}</h2>
             {(() => {
               const count = rightsPills?.length ?? 0;
               if (count >= 3) return (
@@ -238,7 +238,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
                 </span>
               );
               if (count >= 1) return (
-                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <span className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-600 border border-amber-200">
                   Some legal backing
                 </span>
               );
@@ -249,12 +249,12 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
               );
             })()}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 flex-shrink-0"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1 flex-shrink-0"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="bg-navy-950 rounded-xl p-6 border border-navy-700/50 mb-4">
+          <div className="bg-white rounded-xl p-6 border border-slate-200/50 mb-4">
             <pre
-              className="text-sm text-slate-200 whitespace-pre-wrap font-mono leading-relaxed"
+              className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed"
               onCopy={(e) => {
                 // Override browser's default rich-text copy (which carries white colour styling).
                 // Force plain text so the letter pastes correctly into Gmail, Outlook, etc.
@@ -266,8 +266,8 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
             >{content}</pre>
           </div>
           {(rightsPills && rightsPills.length > 0 || legalRefs.length > 0) && (
-            <div className="bg-navy-950/50 rounded-lg p-4 border border-navy-700/50 mb-3">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Your rights used in this letter</h3>
+            <div className="bg-white/50 rounded-lg p-4 border border-slate-200/50 mb-3">
+              <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">Your rights used in this letter</h3>
               <div className="flex flex-wrap gap-1.5">
                 {rightsPills && rightsPills.length > 0
                   ? rightsPills.map((pill, i) => (
@@ -276,19 +276,19 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
                         href={pill.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors inline-flex items-center gap-1"
+                        className="text-[11px] bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
                         title={pill.strength === 'strong' ? 'Strong legal protection' : pill.strength === 'moderate' ? 'Moderate legal protection' : 'Legal reference'}
                       >
                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${
                           pill.strength === 'strong' ? 'bg-green-500' :
-                          pill.strength === 'moderate' ? 'bg-amber-500' :
+                          pill.strength === 'moderate' ? 'bg-orange-500' :
                           'bg-gray-400'
                         }`} />
                         {pill.label}
                       </a>
                     ))
                   : legalRefs.map((ref, i) => (
-                      <span key={i} className="text-[11px] bg-mint-400/10 text-mint-400 px-2.5 py-1 rounded-full border border-mint-400/20">
+                      <span key={i} className="text-[11px] bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-500/20">
                         {ref}
                       </span>
                     ))
@@ -298,12 +298,12 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
           )}
           <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
         </div>
-        <div className="flex gap-3 p-6 border-t border-navy-700/50 flex-shrink-0">
-          <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-lg transition-all font-medium">
+        <div className="flex gap-3 p-6 border-t border-slate-200/50 flex-shrink-0">
+          <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
             {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             {copied ? 'Copied!' : 'Copy Letter'}
           </button>
-          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 py-3 rounded-lg transition-all font-semibold">
+          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 py-3 rounded-lg transition-all font-semibold">
             <Download className="h-4 w-4" /> Download PDF
           </button>
         </div>
@@ -379,16 +379,16 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border border-navy-700/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-2xl" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
+      <div className="relative bg-white border border-slate-200/50 rounded-t-2xl sm:rounded-2xl w-full max-w-lg shadow-2xl" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
-        <div className="flex items-center justify-between p-5 border-b border-navy-700/50 flex-shrink-0">
-          <h2 className="text-lg font-bold text-white">Add to your dispute</h2>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+        <div className="flex items-center justify-between p-5 border-b border-slate-200/50 flex-shrink-0">
+          <h2 className="text-lg font-bold text-slate-900">Add to your dispute</h2>
+          <button type="button" onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
           style={{ WebkitOverflowScrolling: 'touch' as any }}>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">What are you adding?</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">What are you adding?</label>
             <div className="grid grid-cols-1 gap-2">
               {typeOptions.map((opt) => {
                 const Icon = opt.icon;
@@ -399,8 +399,8 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
                     onClick={() => setEntryType(opt.value)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all ${
                       entryType === opt.value
-                        ? 'bg-mint-400/10 border border-mint-400/30 text-white'
-                        : 'bg-navy-950 border border-navy-700/50 text-slate-400 hover:border-navy-600'
+                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-slate-900'
+                        : 'bg-white border border-slate-200/50 text-slate-600 hover:border-slate-200'
                     }`}
                   >
                     <Icon className="h-4 w-4 flex-shrink-0" />
@@ -412,20 +412,20 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-600 mb-2">
               Title <span className="text-slate-500 font-normal">(optional)</span>
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               placeholder={entryType === 'phone_call' ? 'e.g. Spoke to customer service' : 'e.g. Their response to my complaint'}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-600 mb-2">
               {entryType === 'phone_call' ? 'What happened on the call?' : 'Paste or type the content'} *
             </label>
             <textarea
@@ -433,7 +433,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
               rows={6}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               placeholder={
                 entryType === 'phone_call'
                   ? 'Summarise the phone call - who you spoke to, what they said, any reference numbers...'
@@ -446,20 +446,20 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
 
           {/* File attachment */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-600 mb-2">
               Attach a file <span className="text-slate-500 font-normal">(optional - screenshot, scan, or photo)</span>
             </label>
             {attachedFile ? (
-              <div className="flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <Paperclip className="h-4 w-4 text-mint-400" />
-                  <span className="text-mint-400 text-xs font-medium truncate max-w-[200px]">{attachedFile.name}</span>
+                  <Paperclip className="h-4 w-4 text-emerald-600" />
+                  <span className="text-emerald-600 text-xs font-medium truncate max-w-[200px]">{attachedFile.name}</span>
                 </div>
-                <button type="button" onClick={() => setAttachedFile(null)} className="text-slate-500 hover:text-white text-xs">Remove</button>
+                <button type="button" onClick={() => setAttachedFile(null)} className="text-slate-500 hover:text-slate-900 text-xs">Remove</button>
               </div>
             ) : (
-              <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
-                <Paperclip className="h-4 w-4 text-mint-400" />
+              <label className="flex items-center gap-3 w-full px-4 py-3 bg-white border border-dashed border-slate-200/50 rounded-lg text-slate-500 hover:border-emerald-500/50 hover:text-slate-700 cursor-pointer transition-all text-sm">
+                <Paperclip className="h-4 w-4 text-emerald-600" />
                 <span>Upload a screenshot, scan or photo</span>
                 <input
                   type="file"
@@ -479,21 +479,21 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">When did this happen?</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">When did this happen?</label>
             <input
               type="date"
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
         </div>
-        <div className="p-5 pt-3 border-t border-navy-700/50 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
+        <div className="p-5 pt-3 border-t border-slate-200/50 flex-shrink-0" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}>
           <button
             type="submit"
             disabled={saving || uploading || !content.trim()}
-            className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
+            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
             {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
@@ -523,8 +523,8 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
   const outcomeOptions = [
     { value: 'won', label: 'Won', desc: 'Full resolution in your favour', icon: '🏆', className: 'border-green-500/30 bg-green-500/5 text-green-400' },
     { value: 'partial', label: 'Partially Won', desc: 'Some money or partial resolution', icon: '🤝', className: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400' },
-    { value: 'lost', label: 'Lost', desc: 'Company rejected your complaint', icon: '😔', className: 'border-slate-500/30 bg-slate-500/5 text-slate-400' },
-    { value: 'withdrawn', label: 'Withdrawn', desc: 'You decided not to pursue this', icon: '🚫', className: 'border-slate-500/30 bg-slate-500/5 text-slate-400' },
+    { value: 'lost', label: 'Lost', desc: 'Company rejected your complaint', icon: '😔', className: 'border-slate-500/30 bg-slate-50 text-slate-600' },
+    { value: 'withdrawn', label: 'Withdrawn', desc: 'You decided not to pursue this', icon: '🚫', className: 'border-slate-500/30 bg-slate-50 text-slate-600' },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -554,18 +554,18 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
+      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
-            <h2 className="text-lg font-bold text-white">Resolve Dispute</h2>
+            <h2 className="text-lg font-bold text-slate-900">Resolve Dispute</h2>
             <p className="text-slate-500 text-sm mt-0.5">Record the outcome of your dispute</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Outcome selector */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">What was the outcome?</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">What was the outcome?</label>
             <div className="grid grid-cols-2 gap-2">
               {outcomeOptions.map((opt) => (
                 <button
@@ -575,12 +575,12 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all border ${
                     outcome === opt.value
                       ? opt.className
-                      : 'bg-navy-950 border-navy-700/50 text-slate-400 hover:border-navy-600'
+                      : 'bg-white border-slate-200/50 text-slate-600 hover:border-slate-200'
                   }`}
                 >
                   <span className="text-lg">{opt.icon}</span>
                   <div>
-                    <p className={`font-medium ${outcome === opt.value ? '' : 'text-slate-300'}`}>{opt.label}</p>
+                    <p className={`font-medium ${outcome === opt.value ? '' : 'text-slate-600'}`}>{opt.label}</p>
                     <p className="text-[11px] text-slate-500 mt-0.5">{opt.desc}</p>
                   </div>
                 </button>
@@ -591,18 +591,18 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
           {/* Money recovered — only for won/partial */}
           {showMoneyField && (
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
+              <label className="block text-sm font-medium text-slate-600 mb-2">
                 How much did you recover?
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-400 font-semibold">£</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-600 font-semibold">£</span>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   value={moneyRecovered}
                   onChange={(e) => setMoneyRecovered(e.target.value)}
-                  className="w-full pl-8 pr-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                  className="w-full pl-8 pr-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-300 focus:ring-1 focus:ring-amber-400"
                   placeholder={disputedAmount ? disputedAmount.toFixed(2) : '0.00'}
                 />
               </div>
@@ -610,7 +610,7 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
                 <button
                   type="button"
                   onClick={() => setMoneyRecovered(disputedAmount.toFixed(2))}
-                  className="text-xs text-amber-400/70 hover:text-amber-400 mt-1 transition-colors"
+                  className="text-xs text-amber-600/70 hover:text-amber-600 mt-1 transition-colors"
                 >
                   Use full disputed amount (£{disputedAmount.toFixed(2)})
                 </button>
@@ -620,14 +620,14 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
+            <label className="block text-sm font-medium text-slate-600 mb-2">
               Notes <span className="text-slate-500 font-normal">(optional)</span>
             </label>
             <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               placeholder="Any notes about the resolution..."
             />
           </div>
@@ -635,7 +635,7 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
           <button
             type="submit"
             disabled={saving}
-            className="w-full bg-amber-400 hover:bg-amber-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
+            className="w-full bg-amber-500 hover:bg-orange-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Resolve Dispute'}
           </button>
@@ -709,18 +709,18 @@ function DisputeProgressTracker({ dispute, providerInfo }: {
   const fillWidthPct = ((currentStage - 1) / totalSteps) * 100; // 0 to 83.33%
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+    <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Dispute Progress</p>
       <div className="relative pb-1">
         {/* Background track */}
         <div
-          className="absolute top-3 h-0.5 bg-navy-700"
+          className="absolute top-3 h-0.5 bg-slate-50"
           style={{ left: `${fillStartPct}%`, right: `${fillStartPct}%` }}
         />
         {/* Filled track */}
         {fillWidthPct > 0 && (
           <div
-            className="absolute top-3 h-0.5 bg-mint-400 transition-all duration-500"
+            className="absolute top-3 h-0.5 bg-emerald-500 transition-all duration-500"
             style={{ left: `${fillStartPct}%`, width: `${fillWidthPct}%` }}
           />
         )}
@@ -733,23 +733,23 @@ function DisputeProgressTracker({ dispute, providerInfo }: {
               <div key={step.stage} className="flex flex-col items-center" style={{ width: `${100 / totalSteps}%` }}>
                 <div className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all ${
                   done
-                    ? 'bg-mint-400 border-mint-400'
+                    ? 'bg-emerald-500 border-emerald-500'
                     : current
-                    ? 'bg-navy-900 border-amber-400'
-                    : 'bg-navy-900 border-navy-700'
+                    ? 'bg-white border-amber-300'
+                    : 'bg-white border-slate-200'
                 }`}>
                   {done ? (
-                    <svg className="h-3 w-3 text-navy-950" viewBox="0 0 12 12" fill="none">
+                    <svg className="h-3 w-3 text-slate-900" viewBox="0 0 12 12" fill="none">
                       <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   ) : current ? (
-                    <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                   ) : (
-                    <div className="w-1.5 h-1.5 rounded-full bg-navy-700" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-50" />
                   )}
                 </div>
                 <span className={`mt-2 text-center font-medium transition-all leading-tight px-0.5 ${
-                  done ? 'text-mint-400' : current ? 'text-amber-400' : 'text-slate-600'
+                  done ? 'text-emerald-600' : current ? 'text-amber-600' : 'text-slate-600'
                 } text-[9px] sm:text-[10px]`}>
                   <span className="hidden sm:block">{step.label}</span>
                   <span className="sm:hidden">{step.shortLabel}</span>
@@ -792,53 +792,53 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative bg-navy-900 border border-navy-700/50 rounded-2xl w-full max-w-lg shadow-2xl"
+        className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl"
       >
-        <div className="flex items-center justify-between p-6 border-b border-navy-700/50">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
-            <h2 className="text-lg font-bold text-white">Review your dispute</h2>
-            <p className="text-slate-400 text-sm mt-0.5">Check the details before we write your letter</p>
+            <h2 className="text-lg font-bold text-slate-900">Review your dispute</h2>
+            <p className="text-slate-600 text-sm mt-0.5">Check the details before we write your letter</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-mint-400/10 text-mint-400 border border-mint-400/20 font-medium">
+            <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 font-medium">
               {issueLabel}
             </span>
           </div>
-          <p className="text-2xl font-bold text-white">{formData.provider_name}</p>
+          <p className="text-2xl font-bold text-slate-900">{formData.provider_name}</p>
           <div className="space-y-3">
-            <div className="bg-navy-950 rounded-xl p-4">
+            <div className="bg-white rounded-xl p-4">
               <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">What happened</p>
-              <p className="text-sm text-slate-300 leading-relaxed line-clamp-4">{formData.issue_summary}</p>
+              <p className="text-sm text-slate-600 leading-relaxed line-clamp-4">{formData.issue_summary}</p>
             </div>
-            <div className="bg-navy-950 rounded-xl p-4">
+            <div className="bg-white rounded-xl p-4">
               <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">What you want</p>
-              <p className="text-sm text-slate-300">{formData.desired_outcome}</p>
+              <p className="text-sm text-slate-600">{formData.desired_outcome}</p>
             </div>
             {(formData.disputed_amount || formData.account_number) && (
               <div className="flex gap-3">
                 {formData.disputed_amount && (
-                  <div className="bg-navy-950 rounded-xl p-4 flex-1">
+                  <div className="bg-white rounded-xl p-4 flex-1">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Amount</p>
-                    <p className="text-sm text-amber-400 font-semibold">£{formData.disputed_amount}</p>
+                    <p className="text-sm text-amber-600 font-semibold">£{formData.disputed_amount}</p>
                   </div>
                 )}
                 {formData.account_number && (
-                  <div className="bg-navy-950 rounded-xl p-4 flex-1">
+                  <div className="bg-white rounded-xl p-4 flex-1">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Account</p>
-                    <p className="text-sm text-slate-300">{formData.account_number}</p>
+                    <p className="text-sm text-slate-600">{formData.account_number}</p>
                   </div>
                 )}
               </div>
             )}
           </div>
-          <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3 flex items-start gap-2">
-            <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-slate-400">
+          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3 flex items-start gap-2">
+            <Sparkles className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-600">
               Our AI will write a formal complaint letter citing the exact UK consumer law that protects you in this situation.
             </p>
           </div>
@@ -846,13 +846,13 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
         <div className="flex gap-3 p-6 pt-0 flex-shrink-0">
           <button
             onClick={onClose}
-            className="px-5 py-3 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg transition-all text-sm font-medium"
+            className="px-5 py-3 bg-white hover:bg-slate-50 text-slate-600 rounded-lg transition-all text-sm font-medium"
           >
             Edit
           </button>
           <button
             onClick={onConfirm}
-            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-3 rounded-lg transition-all"
+            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all"
           >
             <Sparkles className="h-4 w-4" />
             Generate Letter
@@ -996,7 +996,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-mint-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
       </div>
     );
   }
@@ -1004,13 +1004,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   if (!dispute) {
     return (
       <div className="text-center py-20">
-        <p className="text-slate-400">Dispute not found</p>
-        <button onClick={onBack} className="text-mint-400 mt-2">Go back</button>
+        <p className="text-slate-600">Dispute not found</p>
+        <button onClick={onBack} className="text-emerald-600 mt-2">Go back</button>
       </div>
     );
   }
 
-  const statusConf = STATUS_CONFIG[dispute.status] || { label: dispute.status, className: 'bg-slate-500/10 text-slate-400' };
+  const statusConf = STATUS_CONFIG[dispute.status] || { label: dispute.status, className: 'bg-slate-100 text-slate-600' };
 
   return (
     <div className="max-w-4xl">
@@ -1042,21 +1042,21 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       )}
 
       {/* Back + header */}
-      <button onClick={onBack} className="flex items-center gap-1 text-slate-400 hover:text-white mb-4 text-sm transition-all">
+      <button onClick={onBack} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
         <ChevronLeft className="h-4 w-4" /> Back to all disputes
       </button>
 
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
+      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h1 className="text-2xl font-bold text-white font-[family-name:var(--font-heading)]">
+            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
               {dispute.provider_name}
             </h1>
-            <p className="text-slate-400 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
+            <p className="text-slate-600 text-sm mt-1">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
           </div>
           <div className="flex items-center gap-3">
             {dispute.disputed_amount && dispute.disputed_amount > 0 && (
-              <span className="text-amber-400 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
+              <span className="text-amber-600 font-bold text-lg">£{dispute.disputed_amount.toFixed(2)}</span>
             )}
             <div className="relative">
               <button
@@ -1069,8 +1069,8 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 {statusConf.label}
               </button>
               {statusDropdown && !isResolved(dispute.status) && (
-                <div className="absolute right-0 top-full mt-2 bg-navy-800 border border-navy-700/50 rounded-lg shadow-xl z-10 min-w-[200px]">
-                  <div className="px-3 py-2 border-b border-navy-700/50">
+                <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200/50 rounded-lg shadow-xl z-10 min-w-[200px]">
+                  <div className="px-3 py-2 border-b border-slate-200/50">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Update Status</p>
                   </div>
                   {ACTIVE_STATUSES.map((key) => {
@@ -1079,12 +1079,12 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                       <button
                         key={key}
                         onClick={() => updateStatus(key)}
-                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-navy-700 transition-all flex items-center gap-2 ${
-                          dispute.status === key ? 'text-amber-400' : 'text-slate-300'
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 transition-all flex items-center gap-2 ${
+                          dispute.status === key ? 'text-amber-600' : 'text-slate-600'
                         }`}
                       >
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          key === 'open' ? 'bg-amber-400' :
+                          key === 'open' ? 'bg-amber-500' :
                           key === 'in_progress' ? 'bg-blue-400' :
                           key === 'awaiting_response' ? 'bg-purple-400' :
                           key === 'escalated' ? 'bg-orange-400' :
@@ -1100,7 +1100,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </div>
           </div>
         </div>
-        <p className="text-slate-300 text-sm">{dispute.issue_summary}</p>
+        <p className="text-slate-600 text-sm">{dispute.issue_summary}</p>
         {dispute.desired_outcome && (
           <p className="text-slate-500 text-xs mt-2">Outcome wanted: {dispute.desired_outcome}</p>
         )}
@@ -1109,7 +1109,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           {!isResolved(dispute.status) && (
             <button
               onClick={() => setShowResolveModal(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-400/10 text-amber-400 hover:bg-amber-400/20 rounded-lg transition-all border border-amber-400/20 font-medium"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-100 text-amber-600 hover:bg-amber-300/20 rounded-lg transition-all border border-amber-300/20 font-medium"
             >
               <Trophy className="h-3.5 w-3.5" />
               Resolve Dispute
@@ -1136,48 +1136,48 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
       {/* Provider Info Card */}
       {providerInfo && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
-          <h3 className="text-sm font-semibold text-white mb-3">About {providerInfo.display_name}</h3>
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
           <div className="grid sm:grid-cols-2 gap-3 text-xs">
             {providerInfo.cancellation_method && (
-              <div className="bg-navy-950 rounded-lg px-3 py-2">
+              <div className="bg-white rounded-lg px-3 py-2">
                 <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to cancel</p>
-                <p className="text-slate-300 capitalize">{providerInfo.cancellation_method}</p>
-                {providerInfo.cancellation_phone && <p className="text-mint-400">{providerInfo.cancellation_phone}</p>}
+                <p className="text-slate-600 capitalize">{providerInfo.cancellation_method}</p>
+                {providerInfo.cancellation_phone && <p className="text-emerald-600">{providerInfo.cancellation_phone}</p>}
                 {providerInfo.cancellation_url && (
-                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline">Cancel online</a>
+                  <a href={providerInfo.cancellation_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Cancel online</a>
                 )}
               </div>
             )}
             {providerInfo.complaints_url && (
-              <div className="bg-navy-950 rounded-lg px-3 py-2">
+              <div className="bg-white rounded-lg px-3 py-2">
                 <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">How to complain</p>
-                {providerInfo.complaints_email && <p className="text-slate-300">{providerInfo.complaints_email}</p>}
-                {providerInfo.complaints_phone && <p className="text-slate-300">{providerInfo.complaints_phone}</p>}
-                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline">Complaints page</a>
+                {providerInfo.complaints_email && <p className="text-slate-600">{providerInfo.complaints_email}</p>}
+                {providerInfo.complaints_phone && <p className="text-slate-600">{providerInfo.complaints_phone}</p>}
+                <a href={providerInfo.complaints_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Complaints page</a>
               </div>
             )}
             {providerInfo.complaints_response_days && (
-              <div className="bg-navy-950 rounded-lg px-3 py-2">
+              <div className="bg-white rounded-lg px-3 py-2">
                 <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Response deadline</p>
-                <p className="text-slate-300">{providerInfo.complaints_response_days} days to respond</p>
+                <p className="text-slate-600">{providerInfo.complaints_response_days} days to respond</p>
               </div>
             )}
             {providerInfo.ombudsman_name && (
-              <div className="bg-navy-950 rounded-lg px-3 py-2">
+              <div className="bg-white rounded-lg px-3 py-2">
                 <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Escalate to</p>
-                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-mint-400 hover:underline">{providerInfo.ombudsman_name}</a>
+                <a href={providerInfo.ombudsman_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">{providerInfo.ombudsman_name}</a>
               </div>
             )}
             {providerInfo.early_exit_fee_info && (
-              <div className="bg-navy-950 rounded-lg px-3 py-2 sm:col-span-2">
+              <div className="bg-white rounded-lg px-3 py-2 sm:col-span-2">
                 <p className="text-slate-500 uppercase tracking-wide text-[10px] mb-1">Exit fees</p>
-                <p className="text-slate-300">{providerInfo.early_exit_fee_info}</p>
+                <p className="text-slate-600">{providerInfo.early_exit_fee_info}</p>
               </div>
             )}
           </div>
           {providerInfo.terms_url && (
-            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-mint-400 mt-3 inline-block">
+            <a href={providerInfo.terms_url} target="_blank" rel="noopener noreferrer" className="text-xs text-slate-500 hover:text-emerald-600 mt-3 inline-block">
               View {providerInfo.display_name} T&Cs
             </a>
           )}
@@ -1187,17 +1187,17 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       {/* Thread */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-bold text-white">Your dispute timeline</h2>
+          <h2 className="text-lg font-bold text-slate-900">Your dispute timeline</h2>
           <div className="flex gap-2">
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg text-sm transition-all"
+              className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-sm transition-all"
             >
               <Plus className="h-4 w-4" /> Add update
             </button>
             <button
               onClick={generateFollowUp}
-              className="flex items-center gap-2 px-3 py-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
+              className="flex items-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
             >
               {generating ? (
                 <>
@@ -1215,21 +1215,21 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
 
         {(!dispute.correspondence || dispute.correspondence.length === 0) ? (
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
             <MessageSquare className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-400 mb-2">No correspondence yet</p>
+            <p className="text-slate-600 mb-2">No correspondence yet</p>
             <p className="text-slate-500 text-sm mb-6">Generate your first letter or add what the company has sent you</p>
             <div className="flex justify-center gap-3">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg text-sm transition-all"
+                className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-sm transition-all"
               >
                 <Plus className="h-4 w-4" /> Add their response
               </button>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-                className="flex items-center gap-2 px-4 py-2.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write your first letter
@@ -1250,7 +1250,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                   ref={index === (dispute.correspondence?.length || 0) - 1 ? latestLetterRef : null}
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
-                    isAiLetter ? 'cursor-pointer hover:border-mint-400/50' : ''
+                    isAiLetter ? 'cursor-pointer hover:border-emerald-500/50' : ''
                   }`}
                   onClick={() => {
                     if (isAiLetter) {
@@ -1265,15 +1265,15 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <Icon className={`h-4 w-4 ${isFromCompany ? 'text-orange-400' : isAiLetter ? 'text-mint-400' : 'text-slate-400'}`} />
-                      <span className={`text-sm font-medium ${isFromCompany ? 'text-orange-300' : isAiLetter ? 'text-mint-300' : 'text-slate-300'}`}>
+                      <Icon className={`h-4 w-4 ${isFromCompany ? 'text-orange-400' : isAiLetter ? 'text-emerald-600' : 'text-slate-600'}`} />
+                      <span className={`text-sm font-medium ${isFromCompany ? 'text-orange-300' : isAiLetter ? 'text-emerald-500' : 'text-slate-600'}`}>
                         {config.label}
                       </span>
                       {entry.title && (
                         <span className="text-slate-500 text-sm">— {entry.title}</span>
                       )}
                       {entry.detected_from_email && (
-                        <span className="text-[10px] bg-mint-400/15 text-mint-400 border border-mint-400/20 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide">
+                        <span className="text-[10px] bg-emerald-500/15 text-emerald-600 border border-emerald-500/20 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide">
                           Auto-imported
                         </span>
                       )}
@@ -1304,7 +1304,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                               })
                               .catch(() => alert('Failed to move reply'));
                           }}
-                          className="text-slate-600 hover:text-mint-400 transition-colors p-0.5"
+                          className="text-slate-600 hover:text-emerald-600 transition-colors p-0.5"
                           title="Move to a different dispute"
                         >
                           <ArrowRight className="h-3 w-3" />
@@ -1329,7 +1329,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
                   {isAiLetter ? (
                     <>
-                      <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed line-clamp-6">
+                      <pre className="text-sm text-slate-600 whitespace-pre-wrap font-mono leading-relaxed line-clamp-6">
                         {entry.content}
                       </pre>
                       {/* Confidence indicator */}
@@ -1337,7 +1337,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         {entry.estimated_success != null && (
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                             entry.estimated_success >= 80 ? 'bg-green-500/10 text-green-400' :
-                            entry.estimated_success >= 50 ? 'bg-amber-500/10 text-amber-400' :
+                            entry.estimated_success >= 50 ? 'bg-amber-100 text-amber-600' :
                             'bg-red-500/10 text-red-400'
                           }`}>
                             {entry.estimated_success >= 80 ? 'Strong case' :
@@ -1356,7 +1356,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                               pills: entry.rights_pills || [],
                             });
                           }}
-                          className="text-xs text-mint-400 ml-auto hover:text-mint-300 transition-colors"
+                          className="text-xs text-emerald-600 ml-auto hover:text-emerald-500 transition-colors"
                         >
                           Click to view full letter
                         </button>
@@ -1372,19 +1372,19 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                                   href={pill.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20 hover:bg-mint-400/20 transition-colors inline-flex items-center gap-1"
+                                  className="text-[10px] bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
                                   title={pill.strength === 'strong' ? 'Strong legal protection' : pill.strength === 'moderate' ? 'Moderate legal protection' : 'Legal reference'}
                                 >
                                   <span className={`inline-block w-1.5 h-1.5 rounded-full ${
                                     pill.strength === 'strong' ? 'bg-green-500' :
-                                    pill.strength === 'moderate' ? 'bg-amber-500' :
+                                    pill.strength === 'moderate' ? 'bg-orange-500' :
                                     'bg-gray-400'
                                   }`} />
                                   {pill.label}
                                 </a>
                               ))
                             : (entry.legal_references || []).slice(0, 4).map((ref: string, i: number) => (
-                                <span key={i} className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-0.5 rounded-full border border-mint-400/20">
+                                <span key={i} className="text-[10px] bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-500/20">
                                   {ref}
                                 </span>
                               ))
@@ -1396,19 +1396,19 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                       )}
                     </>
                   ) : (
-                    <p className="text-sm text-slate-300 whitespace-pre-wrap">{entry.content}</p>
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap">{entry.content}</p>
                   )}
 
                   {/* Draft response button — shown on company responses */}
                   {isFromCompany && !isResolved(dispute.status) && (
-                    <div className="mt-3 pt-3 border-t border-navy-700/30">
+                    <div className="mt-3 pt-3 border-t border-slate-200/30">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           generateFollowUp();
                         }}
                         disabled={generating}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg text-sm transition-all border border-amber-500/20 font-medium"
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg text-sm transition-all border border-amber-200 font-medium"
                       >
                         {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                         Draft response to this
@@ -1422,24 +1422,24 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
           {/* Action buttons at bottom of thread */}
           {!isResolved(dispute.status) && (
-            <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-navy-700/30">
+            <div className="flex flex-col sm:flex-row gap-3 mt-6 pt-4 border-t border-slate-200/30">
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write next letter
               </button>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-xl text-sm transition-all flex-1"
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-white hover:bg-slate-50 text-slate-600 rounded-xl text-sm transition-all flex-1"
               >
                 <Plus className="h-4 w-4" /> Add their response
               </button>
               <button
                 onClick={() => setShowResolveModal(true)}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm transition-all border border-amber-500/20 font-medium flex-1"
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-xl text-sm transition-all border border-amber-200 font-medium flex-1"
               >
                 <Trophy className="h-3.5 w-3.5" /> Resolve dispute
               </button>
@@ -1450,18 +1450,18 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       </div>
 
       {/* Contract Upload Section */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
+      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="h-5 w-5 text-purple-400" />
-          <h2 className="text-lg font-bold text-white">Your contract</h2>
+          <h2 className="text-lg font-bold text-slate-900">Your contract</h2>
         </div>
 
         {dispute.contract_extractions && dispute.contract_extractions.length > 0 ? (
           <div>
             {justExtracted && (
-              <div className="flex items-center gap-2 mb-3 bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
-                <CheckCircle className="h-4 w-4 text-mint-400 flex-shrink-0" />
-                <p className="text-xs text-mint-400 font-medium">Contract analysed successfully — terms loaded below</p>
+              <div className="flex items-center gap-2 mb-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                <p className="text-xs text-emerald-600 font-medium">Contract analysed successfully — terms loaded below</p>
               </div>
             )}
 
@@ -1470,7 +1470,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               {(dispute.contract_extractions[0].provider_name || dispute.contract_extractions[0].contract_type) && (
                 <div className="flex items-center gap-3 mb-3">
                   {dispute.contract_extractions[0].provider_name && (
-                    <span className="text-sm font-semibold text-white">{dispute.contract_extractions[0].provider_name}</span>
+                    <span className="text-sm font-semibold text-slate-900">{dispute.contract_extractions[0].provider_name}</span>
                   )}
                   {dispute.contract_extractions[0].contract_type && (
                     <span className="text-[10px] uppercase tracking-wide bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full capitalize">
@@ -1480,33 +1480,33 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 </div>
               )}
 
-              <p className="text-xs text-slate-400 mb-3 leading-relaxed">{dispute.contract_extractions[0].raw_summary}</p>
+              <p className="text-xs text-slate-600 mb-3 leading-relaxed">{dispute.contract_extractions[0].raw_summary}</p>
 
               <div className="grid sm:grid-cols-2 gap-2">
                 {/* Dates */}
                 {dispute.contract_extractions[0].contract_start_date && (
-                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                  <div className="bg-white rounded-lg px-3 py-2">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">Contract start</p>
-                    <p className="text-xs text-slate-300">{new Date(dispute.contract_extractions[0].contract_start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <p className="text-xs text-slate-600">{new Date(dispute.contract_extractions[0].contract_start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                   </div>
                 )}
                 {dispute.contract_extractions[0].contract_end_date && (
-                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                  <div className="bg-white rounded-lg px-3 py-2">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">Contract end</p>
-                    <p className="text-xs text-slate-300">{new Date(dispute.contract_extractions[0].contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <p className="text-xs text-slate-600">{new Date(dispute.contract_extractions[0].contract_end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                   </div>
                 )}
                 {/* Costs */}
                 {dispute.contract_extractions[0].monthly_cost != null && (
-                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                  <div className="bg-white rounded-lg px-3 py-2">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">Monthly cost</p>
-                    <p className="text-xs text-slate-300">£{dispute.contract_extractions[0].monthly_cost.toFixed(2)}</p>
+                    <p className="text-xs text-slate-600">£{dispute.contract_extractions[0].monthly_cost.toFixed(2)}</p>
                   </div>
                 )}
                 {dispute.contract_extractions[0].annual_cost != null && (
-                  <div className="bg-navy-950 rounded-lg px-3 py-2">
+                  <div className="bg-white rounded-lg px-3 py-2">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">Annual cost</p>
-                    <p className="text-xs text-slate-300">£{dispute.contract_extractions[0].annual_cost.toFixed(2)}</p>
+                    <p className="text-xs text-slate-600">£{dispute.contract_extractions[0].annual_cost.toFixed(2)}</p>
                   </div>
                 )}
                 {/* Key terms */}
@@ -1518,18 +1518,18 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                   { label: 'Auto-renewal', value: dispute.contract_extractions[0].auto_renewal },
                   { label: 'Cooling-off period', value: dispute.contract_extractions[0].cooling_off_period },
                 ].filter(t => t.value).map((term) => (
-                  <div key={term.label} className="bg-navy-950 rounded-lg px-3 py-2">
+                  <div key={term.label} className="bg-white rounded-lg px-3 py-2">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">{term.label}</p>
-                    <p className="text-xs text-slate-300">{term.value}</p>
+                    <p className="text-xs text-slate-600">{term.value}</p>
                   </div>
                 ))}
               </div>
 
               {/* Price increase clause gets its own row */}
               {dispute.contract_extractions[0].price_increase_clause && (
-                <div className="mt-2 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
-                  <p className="text-[10px] text-amber-400 uppercase tracking-wide mb-1">Price increase clause</p>
-                  <p className="text-xs text-slate-300">{dispute.contract_extractions[0].price_increase_clause}</p>
+                <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-amber-600 uppercase tracking-wide mb-1">Price increase clause</p>
+                  <p className="text-xs text-slate-600">{dispute.contract_extractions[0].price_increase_clause}</p>
                 </div>
               )}
             </div>
@@ -1540,7 +1540,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                   <AlertCircle className="h-4 w-4 inline mr-1" />
                   {dispute.contract_extractions[0].unfair_clauses.length} potentially unfair clause{dispute.contract_extractions[0].unfair_clauses.length !== 1 ? 's' : ''} found
                 </p>
-                <ul className="text-xs text-slate-400 space-y-1.5">
+                <ul className="text-xs text-slate-600 space-y-1.5">
                   {dispute.contract_extractions[0].unfair_clauses.map((clause: string, i: number) => (
                     <li key={i} className="flex items-start gap-2">
                       <AlertCircle className="h-3 w-3 text-red-400 mt-0.5 flex-shrink-0" />
@@ -1552,16 +1552,16 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             )}
 
             <p className="text-xs text-slate-500">
-              <CheckCircle className="h-3 w-3 text-mint-400 inline mr-1" />
+              <CheckCircle className="h-3 w-3 text-emerald-600 inline mr-1" />
               These terms will be used to strengthen your next letter
             </p>
           </div>
         ) : (
           <div>
-            <p className="text-sm text-slate-400 mb-3">
+            <p className="text-sm text-slate-600 mb-3">
               Got a copy of your contract? Upload it and we&apos;ll find the clauses that help your case.
             </p>
-            <label className={`flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-purple-500/30 rounded-lg text-slate-400 hover:border-purple-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm ${contractUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className={`flex items-center gap-3 w-full px-4 py-3 bg-white border border-dashed border-purple-500/30 rounded-lg text-slate-600 hover:border-purple-400/50 hover:text-slate-700 cursor-pointer transition-all text-sm ${contractUploading ? 'opacity-50 pointer-events-none' : ''}`}>
               {contractUploading ? (
                 <Loader2 className="h-5 w-5 text-purple-400 animate-spin flex-shrink-0" />
               ) : (
@@ -1604,11 +1604,11 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       </div>
 
       {/* Tip */}
-      <div className="bg-mint-400/5 border border-mint-400/20 rounded-xl px-4 py-3">
+      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl px-4 py-3">
         <div className="flex items-start gap-2">
-          <Sparkles className="h-4 w-4 text-mint-400 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-slate-400">
-            <strong className="text-mint-400">Tip:</strong> Add the company&apos;s replies to your thread. The more context our AI has, the stronger your next letter will be. Every response they send gives us more ammunition.
+          <Sparkles className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-slate-600">
+            <strong className="text-emerald-600">Tip:</strong> Add the company&apos;s replies to your thread. The more context our AI has, the stronger your next letter will be. Every response they send gives us more ammunition.
           </p>
         </div>
       </div>
@@ -1804,15 +1804,15 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   if (generating) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
           <div className="relative mx-auto w-20 h-20 mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-navy-700" />
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-mint-400 animate-spin" />
+            <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
             <span className="absolute inset-0 flex items-center justify-center text-3xl">
               {LOADING_CAPTIONS[loadingCaption].icon}
             </span>
           </div>
-          <p className="text-white font-semibold text-lg mb-2">{LOADING_CAPTIONS[loadingCaption].text}</p>
+          <p className="text-slate-900 font-semibold text-lg mb-2">{LOADING_CAPTIONS[loadingCaption].text}</p>
           <p className="text-slate-500 text-sm">This usually takes 15-30 seconds</p>
         </div>
       </div>
@@ -1841,21 +1841,21 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         />
       )}
 
-      <button onClick={onCancel} className="flex items-center gap-1 text-slate-400 hover:text-white mb-4 text-sm transition-all">
+      <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
         <ChevronLeft className="h-4 w-4" /> Back
       </button>
 
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
-        <h2 className="text-xl font-bold text-white mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
-        <p className="text-slate-400 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
+      <div className="bg-white border border-slate-200/50 rounded-2xl p-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
+        <p className="text-slate-600 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">What type of issue?</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">What type of issue?</label>
             <select
               value={formData.issue_type}
               onChange={(e) => setFormData({ ...formData, issue_type: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             >
               {Object.entries(ISSUE_TYPE_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -1864,25 +1864,25 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Who is it with? *</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">Who is it with? *</label>
             <input
               type="text"
               required
               value={formData.provider_name}
               onChange={(e) => setFormData({ ...formData, provider_name: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               placeholder="e.g. British Gas, Sky, Virgin Media"
             />
           </div>
 
           {/* Bill upload */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-slate-600 mb-1">
               Got a bill to dispute? <span className="text-slate-500 font-normal">(optional)</span>
             </label>
             <p className="text-[11px] text-slate-600 mb-2">Files are scanned by AI then immediately deleted. We never store your uploads.</p>
-            <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-navy-700/50 rounded-lg text-slate-500 hover:border-mint-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
-              <Upload className="h-5 w-5 text-mint-400 flex-shrink-0" />
+            <label className="flex items-center gap-3 w-full px-4 py-3 bg-white border border-dashed border-slate-200/50 rounded-lg text-slate-500 hover:border-emerald-500/50 hover:text-slate-700 cursor-pointer transition-all text-sm">
+              <Upload className="h-5 w-5 text-emerald-600 flex-shrink-0" />
               <span>{scanning ? 'Scanning bill...' : 'Upload a photo or PDF of the bill'}</span>
               <input
                 type="file"
@@ -1897,80 +1897,80 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
               />
             </label>
             {uploadedBillContext && (
-              <div className="mt-2 flex items-center justify-between bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2">
+              <div className="mt-2 flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-mint-400 flex-shrink-0" />
+                  <CheckCircle className="h-4 w-4 text-emerald-600 flex-shrink-0" />
                   <div>
-                    <p className="text-mint-400 text-xs font-medium">Bill scanned</p>
+                    <p className="text-emerald-600 text-xs font-medium">Bill scanned</p>
                     <p className="text-slate-500 text-[10px]">{uploadedBillName}</p>
                   </div>
                 </div>
-                <button type="button" onClick={() => { setUploadedBillContext(null); setUploadedBillName(null); }} className="text-slate-500 hover:text-white text-xs ml-2">Remove</button>
+                <button type="button" onClick={() => { setUploadedBillContext(null); setUploadedBillName(null); }} className="text-slate-500 hover:text-slate-900 text-xs ml-2">Remove</button>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">What happened? *</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">What happened? *</label>
             <textarea
               required
               minLength={40}
               rows={4}
               value={formData.issue_summary}
               onChange={(e) => setFormData({ ...formData, issue_summary: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               placeholder="Explain what went wrong, when it happened, and any impact on you. Paste email content here too."
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">What outcome do you want? *</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">What outcome do you want? *</label>
             <input
               type="text"
               required
               value={formData.desired_outcome}
               onChange={(e) => setFormData({ ...formData, desired_outcome: e.target.value })}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               placeholder="e.g. Full refund, £200 compensation, contract cancellation"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Amount (£)</label>
+              <label className="block text-sm font-medium text-slate-600 mb-2">Amount (£)</label>
               <input
                 type="text"
                 value={formData.disputed_amount}
                 onChange={(e) => setFormData({ ...formData, disputed_amount: e.target.value })}
-                className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                 placeholder="150.00"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Account number</label>
+              <label className="block text-sm font-medium text-slate-600 mb-2">Account number</label>
               <input
                 type="text"
                 value={formData.account_number}
                 onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
-                className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+                className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                 placeholder="12345678"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Incident date</label>
+            <label className="block text-sm font-medium text-slate-600 mb-2">Incident date</label>
             <input
               type="date"
               value={incidentDate}
               onChange={(e) => setIncidentDate(e.target.value)}
-              className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-lg text-white focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
+              className="w-full px-4 py-3 bg-white border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
           {/* Contract upload */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-slate-600 mb-1">
               Got a copy of your contract? <span className="text-slate-500 font-normal">(optional)</span>
             </label>
             <p className="text-[11px] text-slate-600 mb-2">We&apos;ll find the clauses that strengthen your case</p>
@@ -1983,10 +1983,10 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
                     <p className="text-slate-500 text-[10px]">{contractFile.name}</p>
                   </div>
                 </div>
-                <button type="button" onClick={() => setContractFile(null)} className="text-slate-500 hover:text-white text-xs ml-2">Remove</button>
+                <button type="button" onClick={() => setContractFile(null)} className="text-slate-500 hover:text-slate-900 text-xs ml-2">Remove</button>
               </div>
             ) : (
-              <label className="flex items-center gap-3 w-full px-4 py-3 bg-navy-950 border border-dashed border-purple-500/30 rounded-lg text-slate-500 hover:border-purple-400/50 hover:text-slate-300 cursor-pointer transition-all text-sm">
+              <label className="flex items-center gap-3 w-full px-4 py-3 bg-white border border-dashed border-purple-500/30 rounded-lg text-slate-500 hover:border-purple-400/50 hover:text-slate-700 cursor-pointer transition-all text-sm">
                 <Shield className="h-5 w-5 text-purple-400 flex-shrink-0" />
                 <span>Upload contract (PDF or photo)</span>
                 <input
@@ -2009,12 +2009,12 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
           {usageInfo && usageInfo.limit !== null && (
             <p className="text-xs text-slate-500 text-right">
               {usageInfo.used} of {usageInfo.limit} letters used this month
-              {usageInfo.used >= usageInfo.limit && <span className="text-mint-400 ml-1">— upgrade for unlimited</span>}
+              {usageInfo.used >= usageInfo.limit && <span className="text-emerald-600 ml-1">— upgrade for unlimited</span>}
             </p>
           )}
 
           <div className="flex gap-3">
-            <button type="button" onClick={onCancel} className="px-6 py-4 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg transition-all">
+            <button type="button" onClick={onCancel} className="px-6 py-4 bg-white hover:bg-slate-50 text-slate-600 rounded-lg transition-all">
               Cancel
             </button>
             <button
@@ -2024,7 +2024,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
                 if (formRef.current && !formRef.current.reportValidity()) return;
                 setShowPreviewModal(true);
               }}
-              className="flex-1 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold py-4 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <Eye className="h-5 w-5" />
               {saving ? 'Starting dispute...' : 'Preview & Confirm'}
@@ -2117,23 +2117,23 @@ function GuidedTour({ onComplete }: { onComplete: () => void }) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
-          className="absolute z-[101] bg-navy-800 border border-mint-400/30 rounded-xl p-4 shadow-2xl max-w-[280px]"
+          className="absolute z-[101] bg-white border border-emerald-500/30 rounded-xl p-4 shadow-2xl max-w-[280px]"
           style={{
             top: rect.bottom + 12 + 200 > window.innerHeight ? rect.top - 120 : rect.bottom + 12,
             left: Math.min(Math.max(rect.left, 16), window.innerWidth - 296),
           }}
         >
-          <p className="text-mint-400 text-sm font-semibold mb-1">{TOUR_STEPS[step].title}</p>
-          <p className="text-slate-300 text-sm mb-3">{TOUR_STEPS[step].text}</p>
+          <p className="text-emerald-600 text-sm font-semibold mb-1">{TOUR_STEPS[step].title}</p>
+          <p className="text-slate-600 text-sm mb-3">{TOUR_STEPS[step].text}</p>
           <div className="flex items-center justify-between">
             <div className="flex gap-1">
               {TOUR_STEPS.map((_, i) => (
-                <div key={i} className={`w-2 h-2 rounded-full ${i <= step ? 'bg-mint-400' : 'bg-navy-600'}`} />
+                <div key={i} className={`w-2 h-2 rounded-full ${i <= step ? 'bg-emerald-500' : 'bg-slate-50'}`} />
               ))}
             </div>
             <div className="flex gap-2">
-              <button onClick={onComplete} className="text-slate-500 hover:text-slate-300 text-xs transition-all">Skip</button>
-              <button onClick={handleNext} className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
+              <button onClick={onComplete} className="text-slate-500 hover:text-slate-700 text-xs transition-all">Skip</button>
+              <button onClick={handleNext} className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
                 {step === TOUR_STEPS.length - 1 ? 'Got it' : 'Next'}
               </button>
             </div>
@@ -2205,13 +2205,13 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">Disputes</h1>
-          <p className="text-slate-400 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
+          <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">Disputes</h1>
+          <p className="text-slate-600 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
         </div>
         <button
           id="tour-new-btn"
           onClick={onNew}
-          className="flex items-center gap-2 px-4 py-2.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
         >
           <Plus className="h-4 w-4" />
           New dispute
@@ -2221,36 +2221,36 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       {/* Dispute Summary Stats */}
       {summary && (summary.total_open > 0 || summary.total_resolved > 0) && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-400/10 rounded-lg flex items-center justify-center">
-                <Scale className="h-4 w-4 text-amber-400" />
+              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                <Scale className="h-4 w-4 text-amber-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-white">{summary.total_open}</p>
+            <p className="text-2xl font-bold text-slate-900">{summary.total_open}</p>
             <p className="text-slate-500 text-xs mt-0.5">Active Disputes</p>
           </div>
-          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
                 <CheckCircle className="h-4 w-4 text-green-400" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-white">{summary.total_resolved}</p>
+            <p className="text-2xl font-bold text-slate-900">{summary.total_resolved}</p>
             <p className="text-slate-500 text-xs mt-0.5">Resolved</p>
           </div>
-          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-400/10 rounded-lg flex items-center justify-center">
-                <PoundSterling className="h-4 w-4 text-amber-400" />
+              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                <PoundSterling className="h-4 w-4 text-amber-600" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-2xl font-bold text-slate-900">
               £{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </p>
             <p className="text-slate-500 text-xs mt-0.5">Being Disputed</p>
           </div>
-          <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
                 <TrendingUp className="h-4 w-4 text-green-400" />
@@ -2265,36 +2265,36 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       )}
 
       {/* How it works */}
-      <div id="tour-how" className="bg-navy-900 border border-navy-700/50 rounded-xl p-5 mb-6">
-        <p className="text-xs font-semibold text-mint-400 uppercase tracking-wide mb-3">How it works</p>
+      <div id="tour-how" className="bg-white border border-slate-200/50 rounded-xl p-5 mb-6">
+        <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-3">How it works</p>
         <div className="grid sm:grid-cols-3 gap-4">
           <div className="flex items-start gap-3">
-            <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
-            <p className="text-slate-300 text-sm">Tell us what happened — in plain English, no legal knowledge needed</p>
+            <span className="bg-emerald-500 text-slate-900 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+            <p className="text-slate-600 text-sm">Tell us what happened — in plain English, no legal knowledge needed</p>
           </div>
           <div className="flex items-start gap-3">
-            <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
-            <p className="text-slate-300 text-sm">Our AI writes the perfect response citing the exact law that protects you</p>
+            <span className="bg-emerald-500 text-slate-900 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+            <p className="text-slate-600 text-sm">Our AI writes the perfect response citing the exact law that protects you</p>
           </div>
           <div className="flex items-start gap-3">
-            <span className="bg-mint-400 text-navy-950 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
-            <p className="text-slate-300 text-sm">Add their replies and we write even stronger follow-ups — every response builds your argument</p>
+            <span className="bg-emerald-500 text-slate-900 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+            <p className="text-slate-600 text-sm">Add their replies and we write even stronger follow-ups — every response builds your argument</p>
           </div>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-mint-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : disputes.length === 0 ? (
-        <div id="tour-list" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
+        <div id="tour-list" className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
           <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400 mb-2">No disputes yet</p>
+          <p className="text-slate-600 mb-2">No disputes yet</p>
           <p className="text-slate-500 text-sm mb-6">Start your first dispute and we will write the perfect complaint letter</p>
           <button
             onClick={onNew}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-lg transition-all"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
           >
             <Plus className="h-4 w-4" /> Start a dispute
           </button>
@@ -2302,18 +2302,18 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       ) : (
         <div id="tour-list" className="space-y-3">
           {disputes.map((d, idx) => {
-            const statusConf = STATUS_CONFIG[d.status] || { label: d.status, className: 'bg-slate-500/10 text-slate-400' };
+            const statusConf = STATUS_CONFIG[d.status] || { label: d.status, className: 'bg-slate-100 text-slate-600' };
             return (
               <button
                 key={d.id}
                 id={idx === 0 ? 'tour-card' : undefined}
                 onClick={() => onSelect(d.id)}
-                className="w-full text-left bg-navy-900 border border-navy-700/50 rounded-2xl p-6 hover:border-mint-400/30 transition-all"
+                className="w-full text-left bg-white border border-slate-200/50 rounded-2xl p-6 hover:border-emerald-500/30 transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className="text-white font-semibold truncate">{d.provider_name}</h3>
+                      <h3 className="text-slate-900 font-semibold truncate">{d.provider_name}</h3>
                       {(d.unread_reply_count ?? 0) > 0 && (
                         <span className="inline-flex items-center gap-1 text-[10px] bg-brand-400/15 text-brand-400 border border-brand-400/25 px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
                           <span className="relative flex h-1.5 w-1.5">
@@ -2325,7 +2325,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                         </span>
                       )}
                     </div>
-                    <p className="text-slate-400 text-sm truncate">{d.latest_snippet || d.issue_summary}</p>
+                    <p className="text-slate-600 text-sm truncate">{d.latest_snippet || d.issue_summary}</p>
                     <div className="flex items-center gap-3 mt-2 flex-wrap">
                       <span className="text-slate-500 text-xs">{ISSUE_TYPE_LABELS[d.issue_type] || d.issue_type}</span>
                       <span className="text-slate-600 text-xs flex items-center gap-1">
@@ -2345,7 +2345,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                         £{d.money_recovered.toFixed(2)}
                       </span>
                     ) : d.disputed_amount && d.disputed_amount > 0 ? (
-                      <span className="text-amber-400 font-semibold">£{d.disputed_amount.toFixed(2)}</span>
+                      <span className="text-amber-600 font-semibold">£{d.disputed_amount.toFixed(2)}</span>
                     ) : null}
                     <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusConf.className}`}>
                       {statusConf.label}

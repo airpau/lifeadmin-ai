@@ -56,15 +56,15 @@ const CHANGE_TYPE_LABELS: Record<ChangeType, string> = {
 
 const CONFIDENCE_CONFIG: Record<Confidence, { label: string; className: string; dotClass: string }> = {
   high: { label: 'High', className: 'text-green-400 bg-green-500/10 border-green-500/20', dotClass: 'bg-green-400' },
-  medium: { label: 'Medium', className: 'text-amber-400 bg-amber-500/10 border-amber-500/20', dotClass: 'bg-amber-400' },
+  medium: { label: 'Medium', className: 'text-amber-600 bg-amber-100 border-amber-200', dotClass: 'bg-amber-500' },
   low: { label: 'Low', className: 'text-red-400 bg-red-500/10 border-red-500/20', dotClass: 'bg-red-400' },
 };
 
 const STATUS_CONFIG: Record<QueueStatus, { label: string; className: string }> = {
-  pending: { label: 'Pending review', className: 'text-amber-400 bg-amber-500/10' },
+  pending: { label: 'Pending review', className: 'text-amber-600 bg-amber-100' },
   approved: { label: 'Approved', className: 'text-green-400 bg-green-500/10' },
-  rejected: { label: 'Rejected', className: 'text-slate-400 bg-slate-500/10' },
-  auto_applied: { label: 'Auto-applied', className: 'text-mint-400 bg-mint-400/10' },
+  rejected: { label: 'Rejected', className: 'text-slate-600 bg-slate-100' },
+  auto_applied: { label: 'Auto-applied', className: 'text-emerald-600 bg-emerald-500/10' },
 };
 
 function formatDate(d: string | null) {
@@ -213,7 +213,7 @@ export default function LegalUpdatesAdminPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -223,8 +223,8 @@ export default function LegalUpdatesAdminPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <Shield className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
-          <p className="text-slate-400">Admin access only.</p>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Access Denied</h1>
+          <p className="text-slate-600">Admin access only.</p>
         </div>
       </div>
     );
@@ -236,18 +236,18 @@ export default function LegalUpdatesAdminPage() {
       <div className="mb-6">
         <Link
           href="/dashboard/admin"
-          className="inline-flex items-center gap-1.5 text-slate-400 hover:text-white text-sm mb-4 transition-colors"
+          className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-900 text-sm mb-4 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Admin
         </Link>
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
-              <Zap className="h-9 w-9 text-amber-400" />
+            <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+              <Zap className="h-9 w-9 text-amber-600" />
               Legal Updates
             </h1>
-            <p className="text-slate-400">
+            <p className="text-slate-600">
               Self-learning legal intelligence queue.
               {stats.lastScanDate && ` Last scan: ${formatDate(stats.lastScanDate)}`}
             </p>
@@ -255,7 +255,7 @@ export default function LegalUpdatesAdminPage() {
           <div className="flex gap-2">
             <Link
               href="/dashboard/admin/legal-refs"
-              className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-slate-300 font-medium px-4 py-2.5 rounded-lg transition-all text-sm border border-navy-700/50"
+              className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-600 font-medium px-4 py-2.5 rounded-lg transition-all text-sm border border-slate-200/50"
             >
               <FileText className="h-4 w-4" />
               All References
@@ -263,7 +263,7 @@ export default function LegalUpdatesAdminPage() {
             <button
               onClick={runScan}
               disabled={scanning}
-              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+              className="flex items-center gap-2 bg-orange-500 hover:bg-amber-300 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
             >
               {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               {scanning ? 'Scanning...' : 'Run Scan Now'}
@@ -284,18 +284,18 @@ export default function LegalUpdatesAdminPage() {
       {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Pending review', count: stats.pending, cls: 'border-amber-500/20 bg-amber-500/5', textCls: 'text-amber-400', statusKey: 'pending' },
-          { label: 'Auto-applied', count: stats.autoApplied, cls: 'border-mint-400/20 bg-mint-400/5', textCls: 'text-mint-400', statusKey: 'auto_applied' },
+          { label: 'Pending review', count: stats.pending, cls: 'border-amber-200 bg-amber-50', textCls: 'text-amber-600', statusKey: 'pending' },
+          { label: 'Auto-applied', count: stats.autoApplied, cls: 'border-emerald-500/20 bg-emerald-500/5', textCls: 'text-emerald-600', statusKey: 'auto_applied' },
           { label: 'Approved', count: stats.approved, cls: 'border-green-500/20 bg-green-500/5', textCls: 'text-green-400', statusKey: 'approved' },
-          { label: 'Rejected', count: stats.rejected, cls: 'border-slate-500/20 bg-slate-500/5', textCls: 'text-slate-400', statusKey: 'rejected' },
+          { label: 'Rejected', count: stats.rejected, cls: 'border-slate-200 bg-slate-50', textCls: 'text-slate-600', statusKey: 'rejected' },
         ].map(card => (
           <button
             key={card.label}
             onClick={() => setFilterStatus(filterStatus === card.statusKey ? 'all' : card.statusKey)}
-            className={`border rounded-2xl p-5 text-left transition-all hover:opacity-80 ${card.cls} ${filterStatus === card.statusKey ? 'ring-1 ring-white/20' : ''}`}
+            className={`border rounded-2xl p-5 text-left transition-all hover:opacity-80 ${card.cls} ${filterStatus === card.statusKey ? 'ring-1 ring-slate-300' : ''}`}
           >
             <p className={`text-3xl font-bold ${card.textCls}`}>{card.count}</p>
-            <p className="text-slate-400 text-sm mt-1">{card.label}</p>
+            <p className="text-slate-600 text-sm mt-1">{card.label}</p>
           </button>
         ))}
       </div>
@@ -309,13 +309,13 @@ export default function LegalUpdatesAdminPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search changes..."
-            className="w-full pl-9 pr-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-amber-400"
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200/50 rounded-xl text-slate-900 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-300"
           />
         </div>
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-300 text-sm focus:outline-none focus:border-amber-400"
+          className="px-4 py-2.5 bg-white border border-slate-200/50 rounded-xl text-slate-600 text-sm focus:outline-none focus:border-amber-300"
         >
           <option value="all">All statuses</option>
           <option value="pending">Pending</option>
@@ -326,7 +326,7 @@ export default function LegalUpdatesAdminPage() {
         <select
           value={filterConfidence}
           onChange={e => setFilterConfidence(e.target.value)}
-          className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-300 text-sm focus:outline-none focus:border-amber-400"
+          className="px-4 py-2.5 bg-white border border-slate-200/50 rounded-xl text-slate-600 text-sm focus:outline-none focus:border-amber-300"
         >
           <option value="all">All confidence</option>
           <option value="high">High</option>
@@ -336,7 +336,7 @@ export default function LegalUpdatesAdminPage() {
         <select
           value={filterType}
           onChange={e => setFilterType(e.target.value)}
-          className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-300 text-sm focus:outline-none focus:border-amber-400"
+          className="px-4 py-2.5 bg-white border border-slate-200/50 rounded-xl text-slate-600 text-sm focus:outline-none focus:border-amber-300"
         >
           <option value="all">All types</option>
           {Object.entries(CHANGE_TYPE_LABELS).map(([k, v]) => (
@@ -346,7 +346,7 @@ export default function LegalUpdatesAdminPage() {
         {(search || filterStatus !== 'pending' || filterConfidence !== 'all' || filterType !== 'all') && (
           <button
             onClick={() => { setSearch(''); setFilterStatus('pending'); setFilterConfidence('all'); setFilterType('all'); }}
-            className="px-4 py-2.5 bg-navy-900 border border-navy-700/50 rounded-xl text-slate-400 hover:text-white text-sm transition-colors"
+            className="px-4 py-2.5 bg-white border border-slate-200/50 rounded-xl text-slate-600 hover:text-slate-900 text-sm transition-colors"
           >
             Reset
           </button>
@@ -368,11 +368,11 @@ export default function LegalUpdatesAdminPage() {
           return (
             <div
               key={item.id}
-              className="bg-navy-900 border border-navy-700/50 rounded-2xl overflow-hidden"
+              className="bg-white border border-slate-200/50 rounded-2xl overflow-hidden"
             >
               {/* Item header */}
               <button
-                className="w-full px-5 py-4 text-left flex items-start gap-4 hover:bg-navy-800/50 transition-colors"
+                className="w-full px-5 py-4 text-left flex items-start gap-4 hover:bg-white/50 transition-colors"
                 onClick={() => setExpandedId(isExpanded ? null : item.id)}
               >
                 {/* Confidence dot */}
@@ -381,11 +381,11 @@ export default function LegalUpdatesAdminPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     {ref ? (
-                      <span className="text-white text-sm font-medium">
+                      <span className="text-slate-900 text-sm font-medium">
                         {ref.law_name}{ref.section ? ` — ${ref.section}` : ''}
                       </span>
                     ) : (
-                      <span className="text-amber-400 text-sm font-medium">
+                      <span className="text-amber-600 text-sm font-medium">
                         {CHANGE_TYPE_LABELS[item.change_type]} (no existing ref)
                       </span>
                     )}
@@ -395,11 +395,11 @@ export default function LegalUpdatesAdminPage() {
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${status.className}`}>
                       {status.label}
                     </span>
-                    <span className="text-xs bg-navy-800 text-slate-400 px-2 py-0.5 rounded-full border border-navy-700/50">
+                    <span className="text-xs bg-white text-slate-600 px-2 py-0.5 rounded-full border border-slate-200/50">
                       {CHANGE_TYPE_LABELS[item.change_type]}
                     </span>
                   </div>
-                  <p className="text-slate-300 text-sm leading-relaxed line-clamp-2">
+                  <p className="text-slate-600 text-sm leading-relaxed line-clamp-2">
                     {item.detected_change_summary}
                   </p>
                   <p className="text-slate-600 text-xs mt-1">{formatDate(item.created_at)}</p>
@@ -432,14 +432,14 @@ export default function LegalUpdatesAdminPage() {
 
               {/* Expanded detail: diff view + edit */}
               {isExpanded && (
-                <div className="border-t border-navy-700/50 px-5 py-4 space-y-4">
+                <div className="border-t border-slate-200/50 px-5 py-4 space-y-4">
                   {/* Side-by-side diff */}
                   {ref && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Current reference</p>
-                        <div className="bg-navy-950/60 border border-navy-700/30 rounded-xl p-4">
-                          <p className="text-slate-300 text-sm leading-relaxed">{ref.summary}</p>
+                        <div className="bg-white/60 border border-slate-200/30 rounded-xl p-4">
+                          <p className="text-slate-600 text-sm leading-relaxed">{ref.summary}</p>
                         </div>
                       </div>
                       <div>
@@ -456,7 +456,7 @@ export default function LegalUpdatesAdminPage() {
                                   setEditText(item.proposed_update || '');
                                 }
                               }}
-                              className="flex items-center gap-1 text-slate-400 hover:text-white text-xs transition-colors"
+                              className="flex items-center gap-1 text-slate-600 hover:text-slate-900 text-xs transition-colors"
                             >
                               <Edit3 className="h-3 w-3" />
                               {isEditing ? 'Cancel edit' : 'Edit'}
@@ -468,11 +468,11 @@ export default function LegalUpdatesAdminPage() {
                             value={editText}
                             onChange={e => setEditText(e.target.value)}
                             rows={5}
-                            className="w-full bg-navy-950/60 border border-amber-500/30 rounded-xl p-4 text-white text-sm leading-relaxed focus:outline-none focus:border-amber-400 resize-none"
+                            className="w-full bg-white/60 border border-amber-300 rounded-xl p-4 text-slate-900 text-sm leading-relaxed focus:outline-none focus:border-amber-300 resize-none"
                           />
                         ) : (
                           <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-4">
-                            <p className="text-slate-200 text-sm leading-relaxed">
+                            <p className="text-slate-700 text-sm leading-relaxed">
                               {item.proposed_update || 'No proposed text — this is a new legislation alert.'}
                             </p>
                           </div>
@@ -485,8 +485,8 @@ export default function LegalUpdatesAdminPage() {
                   {!ref && item.proposed_update && (
                     <div>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Proposed addition</p>
-                      <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
-                        <p className="text-slate-200 text-sm leading-relaxed">{item.proposed_update}</p>
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <p className="text-slate-700 text-sm leading-relaxed">{item.proposed_update}</p>
                       </div>
                     </div>
                   )}
@@ -499,7 +499,7 @@ export default function LegalUpdatesAdminPage() {
                         href={item.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-mint-400 hover:text-mint-300 transition-colors"
+                        className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-500 transition-colors"
                       >
                         <ExternalLink className="h-3 w-3" />
                         {item.source_url.slice(0, 80)}{item.source_url.length > 80 ? '...' : ''}
@@ -537,7 +537,7 @@ export default function LegalUpdatesAdminPage() {
       {filtered.length === 0 && (
         <div className="py-20 text-center">
           <AlertTriangle className="h-10 w-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">
+          <p className="text-slate-600 text-sm">
             {items.length === 0 ? 'No items in queue. Run a scan to check for legal updates.' : 'No items match your filters.'}
           </p>
         </div>
