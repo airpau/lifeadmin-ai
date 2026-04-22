@@ -192,7 +192,7 @@ export default function RewardsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -201,9 +201,9 @@ export default function RewardsPage() {
     return (
       <div className="max-w-4xl text-center py-16">
         <Gift className="h-16 w-16 text-red-400 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2">Something went wrong</h2>
-        <p className="text-slate-400 mb-4">{error}</p>
-        <button onClick={() => { setError(null); setLoading(true); loadData(); }} className="px-4 py-2 bg-mint-400 text-navy-950 rounded-lg font-medium hover:bg-mint-500 transition-colors">
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Something went wrong</h2>
+        <p className="text-slate-600 mb-4">{error}</p>
+        <button onClick={() => { setError(null); setLoading(true); loadData(); }} className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 transition-colors">
           Retry
         </button>
       </div>
@@ -214,8 +214,8 @@ export default function RewardsPage() {
     return (
       <div className="max-w-4xl text-center py-16">
         <Gift className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-white mb-2">Loyalty Rewards</h2>
-        <p className="text-slate-400">Start using Paybacker to earn points and unlock rewards.</p>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Loyalty Rewards</h2>
+        <p className="text-slate-600">Start using Paybacker to earn points and unlock rewards.</p>
       </div>
     );
   }
@@ -260,20 +260,20 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 1: Hero Stats Bar ═══ */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-navy-900 border rounded-2xl p-5 text-center" style={{ borderColor: data.tierInfo.color + '44' }}>
+        <div className="bg-white border rounded-2xl p-5 text-center" style={{ borderColor: data.tierInfo.color + '44' }}>
           <TierIcon className="h-8 w-8 mx-auto mb-2" style={{ color: data.tierInfo.color }} />
-          <p className="text-lg font-bold text-white">{data.tierInfo.label}</p>
+          <p className="text-lg font-bold text-slate-900">{data.tierInfo.label}</p>
           <p className="text-slate-500 text-xs">{data.tierInfo.multiplier}x points</p>
         </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 text-center">
-          <p className="text-4xl font-bold text-mint-400">{data.balance.toLocaleString()}</p>
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-5 text-center">
+          <p className="text-4xl font-bold text-emerald-600">{data.balance.toLocaleString()}</p>
           <p className="text-slate-500 text-xs">Points balance</p>
         </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 text-center">
-          <p className="text-2xl font-bold text-slate-300">{data.lifetime.toLocaleString()}</p>
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-5 text-center">
+          <p className="text-2xl font-bold text-slate-700">{data.lifetime.toLocaleString()}</p>
           <p className="text-slate-500 text-xs">Lifetime earned</p>
         </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 text-center">
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-5 text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
             <Flame className="h-5 w-5 text-orange-400" />
             <p className="text-2xl font-bold text-orange-400">{data.currentStreak}</p>
@@ -283,24 +283,24 @@ export default function RewardsPage() {
       </div>
 
       {/* ═══ SECTION 2: Tier Progress ═══ */}
-      <div id="tiers" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
-        <h2 className="text-lg font-bold text-white mb-4">Tier Progress</h2>
+      <div id="tiers" className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+        <h2 className="text-lg font-bold text-slate-900 mb-4">Tier Progress</h2>
         {isMaxTier ? (
           <div className="text-center py-4">
             <span className="text-4xl mb-3 block">💎</span>
-            <p className="text-white font-bold text-lg">You have reached the highest tier</p>
-            <p className="text-slate-400 text-sm mt-1">Thank you for being a loyal Paybacker member</p>
+            <p className="text-slate-900 font-bold text-lg">You have reached the highest tier</p>
+            <p className="text-slate-600 text-sm mt-1">Thank you for being a loyal Paybacker member</p>
           </div>
         ) : nextTier && (
           <>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{tierEmojis[data.tier]}</span>
-                <span className="text-white font-semibold">{data.tierInfo.label}</span>
+                <span className="text-slate-900 font-semibold">{data.tierInfo.label}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-lg">{tierEmojis[nextTier.key]}</span>
-                <span className="text-white font-semibold">{nextTier.label}</span>
+                <span className="text-slate-900 font-semibold">{nextTier.label}</span>
               </div>
             </div>
             {/* Points progress bar */}
@@ -309,16 +309,16 @@ export default function RewardsPage() {
                 <span>Points: {data.lifetime.toLocaleString()} / {nextTier.minPoints.toLocaleString()}</span>
                 <span>{Math.min(100, Math.round((data.lifetime / nextTier.minPoints) * 100))}%</span>
               </div>
-              <div className="h-2 bg-navy-800 rounded-full overflow-hidden">
-                <div className="h-full bg-mint-400 rounded-full transition-all" style={{ width: `${Math.min(100, (data.lifetime / nextTier.minPoints) * 100)}%` }} />
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${Math.min(100, (data.lifetime / nextTier.minPoints) * 100)}%` }} />
               </div>
             </div>
-            <p className="text-slate-400 text-sm mt-3">
+            <p className="text-slate-600 text-sm mt-3">
               {Math.max(0, nextTier.minPoints - data.lifetime).toLocaleString()} more points and {Math.max(0, nextTier.minMonths)} months membership to reach {nextTier.label}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {nextTier.perks.map((perk, i) => (
-                <span key={i} className="text-xs bg-navy-800 text-slate-300 px-2 py-1 rounded-full">{perk}</span>
+                <span key={i} className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-full">{perk}</span>
               ))}
             </div>
           </>
@@ -327,17 +327,17 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 3: Redemptions ═══ */}
       <div className="mb-8">
-        <h2 className="text-lg font-bold text-white mb-4">Redeem Your Points</h2>
+        <h2 className="text-lg font-bold text-slate-900 mb-4">Redeem Your Points</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {data.redemptionOptions.map((opt) => {
             const isLocked = !opt.canRedeem;
             const isRedeeming = redeemingId === opt.id;
             const pointsNeeded = Math.max(0, opt.points - data.balance);
             return (
-              <div key={opt.id} className={`bg-navy-900 border rounded-2xl p-4 text-center transition-all ${isLocked ? 'border-navy-700/50 opacity-60' : 'border-mint-400/30 hover:border-mint-400/60'}`}>
+              <div key={opt.id} className={`bg-white border rounded-2xl p-4 text-center transition-all ${isLocked ? 'border-slate-200/50 opacity-60' : 'border-mint-400/30 hover:border-mint-400/60'}`}>
                 <span className="text-3xl block mb-2">{redemptionEmojis[opt.id] || '🎁'}</span>
-                <p className="text-white font-semibold text-sm mb-1">{opt.label}</p>
-                <p className="text-mint-400 font-bold text-sm mb-2">{opt.points.toLocaleString()} pts</p>
+                <p className="text-slate-900 font-semibold text-sm mb-1">{opt.label}</p>
+                <p className="text-emerald-600 font-bold text-sm mb-2">{opt.points.toLocaleString()} pts</p>
                 {isLocked ? (
                   <div>
                     <Lock className="h-4 w-4 text-slate-600 mx-auto mb-1" />
@@ -351,7 +351,7 @@ export default function RewardsPage() {
                       }
                     }}
                     disabled={isRedeeming}
-                    className="bg-mint-400 hover:bg-mint-500 disabled:opacity-50 text-navy-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
+                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-navy-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
                   >
                     {isRedeeming ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : 'Redeem'}
                   </button>
@@ -363,9 +363,9 @@ export default function RewardsPage() {
       </div>
 
       {/* ═══ SECTION 4: Badges Collection ═══ */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+      <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">Badges</h2>
+          <h2 className="text-lg font-bold text-slate-900">Badges</h2>
           <span className="text-slate-500 text-sm">{earnedBadgeIds.size} of {ALL_BADGES.length} earned</span>
         </div>
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
@@ -377,13 +377,13 @@ export default function RewardsPage() {
                 key={badge.id}
                 href={earned ? '#' : badge.action}
                 className={`rounded-xl p-3 text-center transition-all border ${earned
-                  ? 'bg-mint-400/5 border-mint-400/20 hover:border-mint-400/40'
-                  : 'bg-navy-950/50 border-navy-700/50 hover:border-navy-700/50 opacity-40'
+                  ? 'bg-emerald-50 border-emerald-200 hover:border-mint-400/40'
+                  : 'bg-slate-50/50 border-slate-200/50 hover:border-slate-200/50 opacity-40'
                 }`}
                 title={earned ? `${badge.name} - earned ${earnedData ? new Date(earnedData.earned_at).toLocaleDateString('en-GB') : ''}` : badge.description}
               >
                 <span className="text-2xl block mb-1">{earned ? badge.emoji : '🔒'}</span>
-                <p className={`text-[10px] font-medium truncate ${earned ? 'text-white' : 'text-slate-600'}`}>{badge.name}</p>
+                <p className={`text-[10px] font-medium truncate ${earned ? 'text-slate-900' : 'text-slate-600'}`}>{badge.name}</p>
               </a>
             );
           })}
@@ -392,10 +392,10 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 4B: Savings Challenges ═══ */}
       {challenges && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Target className="h-5 w-5 text-mint-400" /> Savings Challenges
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Target className="h-5 w-5 text-emerald-600" /> Savings Challenges
             </h2>
             {challenges.completed.length > 0 && (
               <span className="text-slate-500 text-sm">{challenges.completed.length} completed</span>
@@ -405,7 +405,7 @@ export default function RewardsPage() {
           {/* Active challenges */}
           {challenges.active.length > 0 && (
             <div className="mb-5">
-              <h3 className="text-sm font-semibold text-slate-400 mb-3">Active</h3>
+              <h3 className="text-sm font-semibold text-slate-600 mb-3">Active</h3>
               <div className="grid sm:grid-cols-2 gap-3">
                 {challenges.active.map((uc: any) => (
                   <ChallengeCard
@@ -451,7 +451,7 @@ export default function RewardsPage() {
           {/* Available challenges */}
           {challenges.available.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-400 mb-3">Available</h3>
+              <h3 className="text-sm font-semibold text-slate-600 mb-3">Available</h3>
               <div className="grid sm:grid-cols-2 gap-3">
                 {(showAllAvailable ? challenges.available : challenges.available.slice(0, 4)).map((t: any) => (
                   <ChallengeCard
@@ -481,7 +481,7 @@ export default function RewardsPage() {
               {challenges.available.length > 4 && (
                 <button
                   onClick={() => setShowAllAvailable(!showAllAvailable)}
-                  className="text-mint-400 text-sm mt-3 flex items-center gap-1 hover:text-mint-300 transition-all"
+                  className="text-emerald-600 text-sm mt-3 flex items-center gap-1 hover:text-emerald-700 transition-all"
                 >
                   {showAllAvailable ? <><ChevronUp className="h-4 w-4" /> Show fewer</> : <><ChevronDown className="h-4 w-4" /> Show all {challenges.available.length} challenges</>}
                 </button>
@@ -496,8 +496,8 @@ export default function RewardsPage() {
       )}
 
       {/* ═══ SECTION 5: Streak Tracker ═══ */}
-      <div id="streaks" className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
-        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+      <div id="streaks" className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+        <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
           <Flame className="h-5 w-5 text-orange-400" /> Streak Tracker
         </h2>
         <div className="flex items-center justify-between gap-1 mb-4">
@@ -505,15 +505,15 @@ export default function RewardsPage() {
             const isActive = activeMonths.has(m.key);
             return (
               <div key={m.key} className="flex-1 text-center">
-                <div className={`w-6 h-6 mx-auto rounded-full ${isActive ? 'bg-green-500' : 'bg-navy-800'}`} />
+                <div className={`w-6 h-6 mx-auto rounded-full ${isActive ? 'bg-green-500' : 'bg-slate-100'}`} />
                 <p className="text-[9px] text-slate-500 mt-1">{m.label}</p>
               </div>
             );
           })}
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-400">Current: <strong className="text-orange-400">{data.currentStreak} month{data.currentStreak === 1 ? '' : 's'}</strong></span>
-          <span className="text-slate-400">Longest: <strong className="text-white">{data.longestStreak} month{data.longestStreak === 1 ? '' : 's'}</strong></span>
+          <span className="text-slate-600">Current: <strong className="text-orange-400">{data.currentStreak} month{data.currentStreak === 1 ? '' : 's'}</strong></span>
+          <span className="text-slate-600">Longest: <strong className="text-slate-900">{data.longestStreak} month{data.longestStreak === 1 ? '' : 's'}</strong></span>
         </div>
         {data.currentStreak < 3 && (
           <p className="text-slate-500 text-xs mt-2">Reach a 3-month streak for +15 bonus points</p>
@@ -528,42 +528,42 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 6: Referrals ═══ */}
       {referrals && (
-        <div id="referrals" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-mint-400/20 rounded-2xl p-6 mb-8">
-          <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-            <Share2 className="h-5 w-5 text-mint-400" /> Invite friends, both get 1 free month
+        <div id="referrals" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-emerald-200 rounded-2xl p-6 mb-8">
+          <h2 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
+            <Share2 className="h-5 w-5 text-emerald-600" /> Invite friends, both get 1 free month
           </h2>
-          <p className="text-slate-400 text-sm mb-4">Share your link. When a friend signs up and subscribes, you both get 1 free month applied to your next bill automatically via Stripe. Plus 100 loyalty points when they join and 200 more when they upgrade.</p>
+          <p className="text-slate-600 text-sm mb-4">Share your link. When a friend signs up and subscribes, you both get 1 free month applied to your next bill automatically via Stripe. Plus 100 loyalty points when they join and 200 more when they upgrade.</p>
 
-          <div className="bg-navy-950/50 rounded-xl p-4 border border-navy-700/50 mb-4">
+          <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-200/50 mb-4">
             <p className="text-slate-500 text-xs mb-2">Your referral link</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-mint-400 text-sm bg-slate-900 rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
-              <button onClick={handleCopyCode} className="shrink-0 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
+              <code className="flex-1 text-emerald-600 text-sm bg-slate-900 rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
+              <button onClick={handleCopyCode} className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-navy-950 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
                 {codeCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
-              <button onClick={handleWhatsAppShare} className="shrink-0 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm transition-all">
+              <button onClick={handleWhatsAppShare} className="shrink-0 bg-green-600 hover:bg-green-700 text-slate-900 px-3 py-2 rounded-lg text-sm transition-all">
                 WhatsApp
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-navy-950/50 rounded-lg p-3 text-center border border-navy-700/50">
-              <p className="text-white font-bold text-lg">{referrals.totalReferred}</p>
+            <div className="bg-slate-50/50 rounded-lg p-3 text-center border border-slate-200/50">
+              <p className="text-slate-900 font-bold text-lg">{referrals.totalReferred}</p>
               <p className="text-slate-500 text-[10px]">Invited</p>
             </div>
-            <div className="bg-navy-950/50 rounded-lg p-3 text-center border border-navy-700/50">
-              <p className="text-white font-bold text-lg">{referrals.totalSignedUp}</p>
+            <div className="bg-slate-50/50 rounded-lg p-3 text-center border border-slate-200/50">
+              <p className="text-slate-900 font-bold text-lg">{referrals.totalSignedUp}</p>
               <p className="text-slate-500 text-[10px]">Signed up</p>
             </div>
-            <div className="bg-navy-950/50 rounded-lg p-3 text-center border border-navy-700/50">
-              <p className="text-mint-400 font-bold text-lg">{referrals.totalSubscribed}</p>
+            <div className="bg-slate-50/50 rounded-lg p-3 text-center border border-slate-200/50">
+              <p className="text-emerald-600 font-bold text-lg">{referrals.totalSubscribed}</p>
               <p className="text-slate-500 text-[10px]">Upgraded</p>
             </div>
           </div>
 
           {referrals.pendingUpgrades > 0 && (
-            <div className="bg-mint-400/10 border border-mint-400/20 rounded-lg p-3 text-mint-400 text-sm">
+            <div className="bg-emerald-500/10 border border-emerald-200 rounded-lg p-3 text-emerald-600 text-sm">
               {referrals.pendingUpgrades} friend{referrals.pendingUpgrades > 1 ? 's have' : ' has'} signed up but not upgraded yet. When they subscribe, you both get 1 free month + 200 bonus points for you.
             </div>
           )}
@@ -571,15 +571,15 @@ export default function RewardsPage() {
           <div className="mt-4 grid grid-cols-3 gap-3 text-center">
             <div>
               <span className="text-lg block">📤</span>
-              <p className="text-slate-400 text-xs">Share your link</p>
+              <p className="text-slate-600 text-xs">Share your link</p>
             </div>
             <div>
               <span className="text-lg block">👥</span>
-              <p className="text-slate-400 text-xs">Friend signs up free</p>
+              <p className="text-slate-600 text-xs">Friend signs up free</p>
             </div>
             <div>
               <span className="text-lg block">💰</span>
-              <p className="text-slate-400 text-xs">You both earn rewards</p>
+              <p className="text-slate-600 text-xs">You both earn rewards</p>
             </div>
           </div>
         </div>
@@ -587,13 +587,13 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 7: Points History ═══ */}
       {nonZeroEvents.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
-          <h2 className="text-lg font-bold text-white mb-4">Points History</h2>
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">Points History</h2>
           <div className="space-y-2">
             {(showAllHistory ? nonZeroEvents : nonZeroEvents.slice(0, 8)).map((event, i) => (
-              <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2.5 border border-navy-700/50">
+              <div key={i} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-2.5 border border-slate-200/50">
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm truncate">{event.description}</p>
+                  <p className="text-slate-900 text-sm truncate">{event.description}</p>
                   <p className="text-slate-500 text-xs">
                     {new Date(event.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
@@ -605,7 +605,7 @@ export default function RewardsPage() {
             ))}
           </div>
           {nonZeroEvents.length > 8 && (
-            <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-mint-400 text-sm mt-3 flex items-center gap-1 hover:text-mint-300 transition-all">
+            <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-emerald-600 text-sm mt-3 flex items-center gap-1 hover:text-emerald-700 transition-all">
               {showAllHistory ? <><ChevronUp className="h-4 w-4" /> Show less</> : <><ChevronDown className="h-4 w-4" /> View all activity</>}
             </button>
           )}
@@ -613,25 +613,25 @@ export default function RewardsPage() {
       )}
 
       {/* ═══ SECTION 8: How Points Work (FAQ) ═══ */}
-      <div id="earn" className="bg-navy-900 border border-navy-700/50 rounded-2xl mb-8 overflow-hidden">
+      <div id="earn" className="bg-white border border-slate-200/50 rounded-2xl mb-8 overflow-hidden">
         <button onClick={() => setShowFaq(!showFaq)} className="w-full flex items-center justify-between p-6 text-left">
-          <h2 className="text-lg font-bold text-white">How Points Work</h2>
-          {showFaq ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />}
+          <h2 className="text-lg font-bold text-slate-900">How Points Work</h2>
+          {showFaq ? <ChevronUp className="h-5 w-5 text-slate-600" /> : <ChevronDown className="h-5 w-5 text-slate-600" />}
         </button>
 
         {showFaq && (
           <div className="px-6 pb-6 space-y-6">
             {/* How to earn */}
             <div>
-              <h3 className="text-white font-semibold mb-3">How to earn points</h3>
+              <h3 className="text-slate-900 font-semibold mb-3">How to earn points</h3>
               <div className="grid sm:grid-cols-2 gap-2">
                 {EARN_ACTIONS.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2 bg-navy-950/50 border border-navy-700/50">
+                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-50/50 border border-slate-200/50">
                     <div className="flex items-center gap-2">
                       <span>{item.emoji}</span>
-                      <span className="text-slate-300 text-xs">{item.action}</span>
+                      <span className="text-slate-700 text-xs">{item.action}</span>
                     </div>
-                    <span className="text-mint-400 font-bold text-xs">+{item.points}</span>
+                    <span className="text-emerald-600 font-bold text-xs">+{item.points}</span>
                   </div>
                 ))}
               </div>
@@ -639,19 +639,19 @@ export default function RewardsPage() {
 
             {/* How tiers work */}
             <div>
-              <h3 className="text-white font-semibold mb-3">How tiers work</h3>
-              <p className="text-slate-400 text-sm mb-3">Tiers are based on both your membership duration and lifetime points earned. Higher tiers unlock better perks and a points multiplier.</p>
+              <h3 className="text-slate-900 font-semibold mb-3">How tiers work</h3>
+              <p className="text-slate-600 text-sm mb-3">Tiers are based on both your membership duration and lifetime points earned. Higher tiers unlock better perks and a points multiplier.</p>
               <div className="space-y-2">
                 {data.allTiers.map((t) => (
-                  <div key={t.key} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${t.isCurrent ? 'border-mint-400/50 bg-mint-400/5' : 'border-navy-700/50 bg-navy-950/50'}`}>
+                  <div key={t.key} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${t.isCurrent ? 'border-mint-400/50 bg-emerald-50' : 'border-slate-200/50 bg-slate-50/50'}`}>
                     <span>{tierEmojis[t.key]}</span>
                     <div className="flex-1">
-                      <span className="text-white font-semibold text-sm">{t.label}</span>
+                      <span className="text-slate-900 font-semibold text-sm">{t.label}</span>
                       <span className="text-slate-500 text-xs ml-2">
                         {t.minMonths === 0 ? 'From day one' : `${t.minMonths}+ months + ${t.minPoints.toLocaleString()}+ pts`}
                       </span>
                     </div>
-                    <span className="text-mint-400 text-xs font-bold">{t.multiplier}x</span>
+                    <span className="text-emerald-600 text-xs font-bold">{t.multiplier}x</span>
                   </div>
                 ))}
               </div>
@@ -659,14 +659,14 @@ export default function RewardsPage() {
 
             {/* When points expire */}
             <div>
-              <h3 className="text-white font-semibold mb-2">When do points expire?</h3>
-              <p className="text-slate-400 text-sm">Your redeemable points balance resets to 0 if you do not earn any points for 365 days. Your lifetime earned total is preserved. We will send you a warning email 30 days before expiry.</p>
+              <h3 className="text-slate-900 font-semibold mb-2">When do points expire?</h3>
+              <p className="text-slate-600 text-sm">Your redeemable points balance resets to 0 if you do not earn any points for 365 days. Your lifetime earned total is preserved. We will send you a warning email 30 days before expiry.</p>
             </div>
 
             {/* How to redeem */}
             <div>
-              <h3 className="text-white font-semibold mb-2">How do I redeem?</h3>
-              <p className="text-slate-400 text-sm">Click the Redeem button on any reward above. Stripe discounts are applied automatically to your next invoice. Charity donations are batched monthly by Paybacker.</p>
+              <h3 className="text-slate-900 font-semibold mb-2">How do I redeem?</h3>
+              <p className="text-slate-600 text-sm">Click the Redeem button on any reward above. Stripe discounts are applied automatically to your next invoice. Charity donations are batched monthly by Paybacker.</p>
             </div>
           </div>
         )}
