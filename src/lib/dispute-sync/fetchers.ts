@@ -10,6 +10,7 @@
  * Plan ref: docs/DISPUTE_EMAIL_SYNC_PLAN.md §6
  */
 
+import { createClient } from '@supabase/supabase-js';
 import { refreshAccessToken as refreshGmailToken } from '../gmail';
 import { refreshMicrosoftToken } from '../outlook';
 import type {
@@ -18,6 +19,29 @@ import type {
   EmailProvider,
 } from './types';
 import { providerFromConnection } from './types';
+
+function admin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
+
+/**
+ * Thrown when an OAuth refresh attempt fails and the connection needs a
+ * human to reconnect. The caller should stop retrying and surface this via
+ * the UI / business_log rather than keep polling on a dead token.
+ */
+export class EmailConnectionAuthError extends Error {
+  constructor(
+    message: string,
+    readonly connectionId: string,
+    readonly provider: EmailProvider,
+  ) {
+    super(message);
+    this.name = 'EmailConnectionAuthError';
+  }
+}
 
 // Local type mirroring the shape Microsoft Graph /me/messages returns with
 // the $select we request. Kept inline so the outlook.ts public surface
@@ -73,24 +97,87 @@ function makeSnippet(body: string, n = 150): string {
   return body.length > n ? body.slice(0, n).trim() + '…' : body.trim();
 }
 
+async function markConnectionNeedsReauth(
+  connectionId: string,
+  provider: EmailProvider,
+  message: string,
+): Promise<void> {
+  const db = admin();
+  try {
+    await db
+      .from('email_connections')
+      .update({
+        status: 'needs_reauth',
+        last_error: message.slice(0, 500),
+        last_error_at: new Date().toISOString(),
+      })
+      .eq('id', connectionId);
+
+    await db.from('business_log').insert({
+      category: 'watchdog_error',
+      title: `${provider} connection needs reauth`,
+      content:
+        `Email connection ${connectionId} (${provider}) failed to refresh its access token. ` +
+        `User must reconnect via Profile. Error: ${message}`,
+      created_by: 'dispute-sync-fetchers',
+    });
+  } catch {
+    // Never let bookkeeping failures mask the real auth error.
+  }
+}
+
+async function persistRefreshedToken(
+  connectionId: string,
+  accessToken: string,
+  expiresInSeconds: number,
+): Promise<void> {
+  const db = admin();
+  try {
+    const expiry = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+    await db
+      .from('email_connections')
+      .update({
+        access_token: accessToken,
+        token_expiry: expiry,
+        // If we were previously flagged, a successful refresh clears the flag.
+        status: 'active',
+        last_error: null,
+        last_error_at: null,
+      })
+      .eq('id', connectionId);
+  } catch {
+    // Non-fatal — the in-memory token still works for this request.
+  }
+}
+
 async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider): Promise<string> {
   const expiresAt = conn.token_expiry ? new Date(conn.token_expiry).getTime() : 0;
   const now = Date.now();
   if (conn.access_token && expiresAt - now > 60_000) return conn.access_token;
 
   if (!conn.refresh_token) {
-    throw new Error(`No refresh token for connection ${conn.id}; user must reconnect ${provider}.`);
+    const msg = `No refresh token on file — user must reconnect ${provider}.`;
+    await markConnectionNeedsReauth(conn.id, provider, msg);
+    throw new EmailConnectionAuthError(msg, conn.id, provider);
   }
 
-  if (provider === 'gmail') {
-    const refreshed = await refreshGmailToken(conn.refresh_token);
-    return refreshed.access_token;
+  try {
+    if (provider === 'gmail') {
+      const refreshed = await refreshGmailToken(conn.refresh_token);
+      await persistRefreshedToken(conn.id, refreshed.access_token, refreshed.expires_in);
+      return refreshed.access_token;
+    }
+    if (provider === 'outlook') {
+      const refreshed = await refreshMicrosoftToken(conn.refresh_token);
+      await persistRefreshedToken(conn.id, refreshed.access_token, refreshed.expires_in);
+      return refreshed.access_token;
+    }
+    throw new Error(`ensureFreshToken called for non-OAuth provider: ${provider}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Token refresh failed';
+    await markConnectionNeedsReauth(conn.id, provider, message);
+    throw new EmailConnectionAuthError(message, conn.id, provider);
   }
-  if (provider === 'outlook') {
-    const refreshed = await refreshMicrosoftToken(conn.refresh_token);
-    return refreshed.access_token;
-  }
-  throw new Error(`ensureFreshToken called for non-OAuth provider: ${provider}`);
 }
 
 // -----------------------------------------------------------------------------
