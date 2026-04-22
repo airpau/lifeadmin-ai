@@ -212,7 +212,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
               {emailConns.map(e => (
                 <div key={e.id} className="flex items-center justify-between text-sm pr-2">
                   <div className="flex items-center gap-2 text-sm z-10 w-full min-w-0 pr-4">
-                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'active' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                    <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'active' ? 'bg-green-400' : 'bg-amber-500'}`} />
                     <span className="text-slate-700 capitalize">{e.provider_type === 'google' ? 'Gmail' : e.provider_type === 'outlook' ? 'Outlook' : e.provider_type}</span>
                     <span className="text-slate-500 truncate">· {e.email_address}</span>
                   </div>
@@ -304,7 +304,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                 <div className="grid grid-cols-2 gap-2">
                   <button
                      onClick={() => { window.location.href = '/api/auth/google?returnPath=/dashboard/profile'; }}
-                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left"
                   >
                     <span className="text-xl">📧</span>
                     <div>
@@ -314,7 +314,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   </button>
                   <button
                      onClick={() => { window.location.href = '/api/outlook/auth?returnPath=/dashboard/profile'; }}
-                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left"
                   >
                     <span className="text-xl">📬</span>
                     <div>
@@ -322,14 +322,14 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
                   </button>
-                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">📨</span>
                     <div>
                       <p className="text-slate-900 text-sm font-medium">Yahoo Mail</p>
                       <p className="text-slate-500 text-[10px]">App password required</p>
                     </div>
                   </button>
-                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">✉️</span>
                     <div>
                       <p className="text-slate-900 text-sm font-medium">Other</p>
@@ -349,7 +349,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                       value={connectEmail}
                       onChange={(e) => setConnectEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 text-sm"
                       autoFocus
                     />
                     {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && (
@@ -368,7 +368,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                         value={connectPassword}
                         onChange={(e) => setConnectPassword(e.target.value)}
                         placeholder="Your email password"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 pr-10 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 pr-10 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 text-sm"
                       />
                       <button
                         type="button"
@@ -381,15 +381,15 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   </div>
 
                   {detectedProvider?.note && (
-                    <div className="bg-orange-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
-                      <p className="text-xs text-amber-400 leading-relaxed">{detectedProvider.note}</p>
+                    <div className="bg-orange-500/10 border border-amber-200 rounded-lg px-3 py-2.5">
+                      <p className="text-xs text-amber-600 leading-relaxed">{detectedProvider.note}</p>
                     </div>
                   )}
 
                   <button
                     onClick={handleConnectEmail}
                     disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword}
-                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
                   >
                     {connecting ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
@@ -717,7 +717,7 @@ export default function ProfilePage() {
 
   const subscriptionBadge = () => {
     const colors = {
-      free: 'bg-slate-500/10 text-slate-600 border-slate-500/30',
+      free: 'bg-slate-100 text-slate-600 border-slate-500/30',
       essential: 'bg-emerald-500/10 text-emerald-600 border-emerald-200',
       pro: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
     };
@@ -775,8 +775,8 @@ export default function ProfilePage() {
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-mint-400 to-mint-500 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8 text-white" />
+            <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-emerald-500 rounded-full flex items-center justify-center">
+              <User className="h-8 w-8 text-slate-900" />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-slate-900">{profile?.full_name || 'User'}</h2>
@@ -832,7 +832,7 @@ export default function ProfilePage() {
                   type="text"
                   value={editForm.first_name}
                   onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-sm"
                   placeholder="First name"
                 />
               </div>
@@ -842,7 +842,7 @@ export default function ProfilePage() {
                   type="text"
                   value={editForm.last_name}
                   onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-sm"
                   placeholder="Last name"
                 />
               </div>
@@ -854,7 +854,7 @@ export default function ProfilePage() {
                 type="tel"
                 value={editForm.phone}
                 onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-sm"
                 placeholder="07xxx xxxxxx"
               />
             </div>
@@ -865,7 +865,7 @@ export default function ProfilePage() {
                 type="text"
                 value={editForm.address}
                 onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-sm"
                 placeholder="House number, street, city"
               />
             </div>
@@ -876,7 +876,7 @@ export default function ProfilePage() {
                 type="text"
                 value={editForm.postcode}
                 onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm uppercase"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-sm uppercase"
                 placeholder="SW1A 1AA"
                 maxLength={8}
               />
@@ -894,7 +894,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleSaveProfile}
                 disabled={saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 {saving ? 'Saving...' : 'Save Changes'}
@@ -937,7 +937,7 @@ export default function ProfilePage() {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-sm"
               placeholder="••••••••"
              />
           </div>
@@ -975,7 +975,7 @@ export default function ProfilePage() {
             </div>
             <div className="w-full bg-slate-100 rounded-full h-2 mb-3">
               <div
-                className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
+                className="bg-gradient-to-r from-emerald-500 to-emerald-500 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${percent}%` }}
               />
             </div>
@@ -987,7 +987,7 @@ export default function ProfilePage() {
               {!profile?.postcode && ' Add your postcode.'}
             </p>
             {!editing && (
-              <button onClick={startEditing} className="mt-2 text-xs text-emerald-600 hover:text-mint-300 font-medium transition-all">
+              <button onClick={startEditing} className="mt-2 text-xs text-emerald-600 hover:text-emerald-500 font-medium transition-all">
                 Complete profile
               </button>
             )}
@@ -1013,7 +1013,7 @@ export default function ProfilePage() {
             <div className="flex items-center justify-between">
               <div>
                 <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
-                  isTrialUser ? 'bg-amber-400/10 text-amber-400' :
+                  isTrialUser ? 'bg-amber-100 text-amber-600' :
                   effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
                   effectiveTier === 'essential' ? 'bg-emerald-500/10 text-emerald-600' :
                   'bg-slate-400/10 text-slate-600'
@@ -1031,11 +1031,11 @@ export default function ProfilePage() {
                 </p>
               </div>
               {isTrialUser ? (
-                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Subscribe to keep Pro
                 </Link>
               ) : effectiveTier === 'free' ? (
-                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Upgrade Plan
                 </Link>
               ) : (
@@ -1064,7 +1064,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => handleGenerateReport('annual')}
                 disabled={reportLoading}
-                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
               >
                 {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                 {reportLoading ? 'Generating...' : 'Generate Annual Report'}
@@ -1162,7 +1162,7 @@ export default function ProfilePage() {
             </p>
             <a
               href="/pricing"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-white font-semibold px-6 py-3 rounded-lg transition-all"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all"
             >
               Upgrade Plan
             </a>
@@ -1247,7 +1247,7 @@ export default function ProfilePage() {
         ) : (
           <Link
             href="/dashboard/pocket-agent"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-amber-600 rounded-xl text-sm font-medium transition-colors"
           >
             Set Up Pocket Agent
           </Link>

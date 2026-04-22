@@ -139,7 +139,7 @@ function SupplierDropdown({
       <button
         type="button"
         onClick={() => { setOpen(!open); setTimeout(() => inputRef.current?.focus(), 50); }}
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-left focus:outline-none focus:border-amber-400 transition-all"
+        className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-left focus:outline-none focus:border-amber-300 transition-all"
       >
         <span className={value ? 'text-slate-900' : 'text-slate-500'}>
           {value ? selectedLabel : 'Select a supplier...'}
@@ -159,7 +159,7 @@ function SupplierDropdown({
                 placeholder="Search suppliers..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200/50 rounded text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200/50 rounded text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-300"
               />
             </div>
           </div>
@@ -203,7 +203,7 @@ function SupplierDropdown({
           placeholder="Enter supplier name..."
           value={customName}
           onChange={(e) => onCustomNameChange(e.target.value)}
-          className="mt-2 w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+          className="mt-2 w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-300"
         />
       )}
     </div>
@@ -339,7 +339,7 @@ function ContractDetail({ contract, onBack, onDelete }: {
         )}
         <Link
           href={`/dashboard/complaints?new=1&company=${encodeURIComponent(contract.provider_name || '')}`}
-          className="flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-orange-500 text-navy-950 font-semibold rounded-lg text-sm transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-orange-500 text-slate-900 font-semibold rounded-lg text-sm transition-all"
         >
           <FileText className="h-4 w-4" /> Write a complaint letter
         </Link>
@@ -534,13 +534,13 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
         <div className="flex border-b border-slate-200/50">
           <button
             onClick={() => setTab('upload')}
-            className={`flex-1 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 ${tab === 'upload' ? 'text-orange-600 border-b-2 border-amber-400' : 'text-slate-600 hover:text-slate-900'}`}
+            className={`flex-1 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 ${tab === 'upload' ? 'text-orange-600 border-b-2 border-amber-300' : 'text-slate-600 hover:text-slate-900'}`}
           >
             <Upload className="h-4 w-4" /> Upload file
           </button>
           <button
             onClick={() => setTab('manual')}
-            className={`flex-1 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 ${tab === 'manual' ? 'text-orange-600 border-b-2 border-amber-400' : 'text-slate-600 hover:text-slate-900'}`}
+            className={`flex-1 py-3 text-sm font-medium transition-all flex items-center justify-center gap-2 ${tab === 'manual' ? 'text-orange-600 border-b-2 border-amber-300' : 'text-slate-600 hover:text-slate-900'}`}
           >
             <PenLine className="h-4 w-4" /> Enter manually
           </button>
@@ -576,7 +576,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
                   <label
                     className={`flex flex-col items-center gap-2 w-full px-4 py-6 bg-slate-50 border-2 border-dashed rounded-lg cursor-pointer transition-all text-sm text-center ${
                       dragActive
-                        ? 'border-amber-400 bg-amber-400/5'
+                        ? 'border-amber-300 bg-amber-500/5'
                         : 'border-purple-500/30 hover:border-purple-400/50'
                     }`}
                     onDragEnter={handleDrag}
@@ -610,7 +610,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
               <button
                 onClick={handleUpload}
                 disabled={!file || !supplierId || (supplierId === 'other' && !customSupplierName.trim()) || uploading}
-                className="w-full bg-amber-400 hover:bg-orange-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-amber-500 hover:bg-orange-500 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {uploading ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Reading your contract...</>
@@ -629,7 +629,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
                 <select
                   value={manualCategory}
                   onChange={(e) => setManualCategory(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-amber-400"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-amber-300"
                 >
                   <option value="">Select category</option>
                   {CATEGORY_OPTIONS.map(c => (
@@ -647,7 +647,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
                   placeholder="e.g. 29.99"
                   value={manualMonthlyCost}
                   onChange={(e) => setManualMonthlyCost(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-300"
                 />
               </div>
 
@@ -658,7 +658,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
                     type="date"
                     value={manualStartDate}
                     onChange={(e) => setManualStartDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-amber-400 [color-scheme:dark]"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-amber-300 [color-scheme:dark]"
                   />
                 </div>
                 <div>
@@ -667,14 +667,14 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
                     type="date"
                     value={manualEndDate}
                     onChange={(e) => setManualEndDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-amber-400 [color-scheme:dark]"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 focus:outline-none focus:border-amber-300 [color-scheme:dark]"
                   />
                 </div>
               </div>
 
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
-                  className={`relative w-10 h-5 rounded-full transition-all ${manualAutoRenews ? 'bg-amber-400' : 'bg-navy-700'}`}
+                  className={`relative w-10 h-5 rounded-full transition-all ${manualAutoRenews ? 'bg-amber-500' : 'bg-slate-50'}`}
                   onClick={() => setManualAutoRenews(!manualAutoRenews)}
                 >
                   <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${manualAutoRenews ? 'left-5' : 'left-0.5'}`} />
@@ -685,7 +685,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
               <button
                 onClick={handleManualSave}
                 disabled={!supplierId || (supplierId === 'other' && !customSupplierName.trim()) || saving}
-                className="w-full bg-amber-400 hover:bg-orange-500 text-navy-950 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-amber-500 hover:bg-orange-500 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {saving ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
@@ -798,7 +798,7 @@ export default function ContractsPage() {
         </div>
         <button
           onClick={() => setShowUpload(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-orange-500 text-navy-950 font-semibold rounded-lg transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-orange-500 text-slate-900 font-semibold rounded-lg transition-all"
         >
           <Plus className="h-4 w-4" /> Upload contract
         </button>
@@ -819,7 +819,7 @@ export default function ContractsPage() {
           <div className="flex gap-1.5">
             <button
               onClick={() => setFilterType('all')}
-              className={`text-xs px-3 py-1.5 rounded-full transition-all ${filterType === 'all' ? 'bg-amber-400 text-navy-950 font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
+              className={`text-xs px-3 py-1.5 rounded-full transition-all ${filterType === 'all' ? 'bg-amber-500 text-slate-900 font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
             >
               All ({contracts.length})
             </button>
@@ -827,7 +827,7 @@ export default function ContractsPage() {
               <button
                 key={t}
                 onClick={() => setFilterType(t)}
-                className={`text-xs px-3 py-1.5 rounded-full transition-all ${filterType === t ? 'bg-amber-400 text-navy-950 font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
+                className={`text-xs px-3 py-1.5 rounded-full transition-all ${filterType === t ? 'bg-amber-500 text-slate-900 font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
               >
                 {TYPE_LABELS[t] || t}
               </button>
@@ -856,7 +856,7 @@ export default function ContractsPage() {
           <p className="text-slate-600 text-sm mb-6 max-w-md mx-auto">Upload a contract and we will read the key terms, flag anything unfair, and use it to write stronger complaint letters.</p>
           <button
             onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-amber-400 hover:bg-orange-500 text-navy-950 font-semibold rounded-lg transition-all"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-orange-500 text-slate-900 font-semibold rounded-lg transition-all"
           >
             <Upload className="h-4 w-4" /> Upload your first contract
           </button>

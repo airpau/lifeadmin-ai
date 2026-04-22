@@ -244,8 +244,8 @@ export default function ContractVaultPage() {
         <div
           className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
             dragActive
-              ? 'border-amber-400 bg-orange-500/5'
-              : 'border-navy-600 hover:border-navy-500'
+              ? 'border-amber-300 bg-orange-500/5'
+              : 'border-slate-200 hover:border-slate-300'
           }`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -258,7 +258,7 @@ export default function ContractVaultPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-amber-600 disabled:bg-slate-600 text-navy-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-700 disabled:bg-slate-600 text-slate-900 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
           >
             {uploading ? (
               <>
@@ -289,7 +289,7 @@ export default function ContractVaultPage() {
             value={providerName}
             onChange={(e) => setProviderName(e.target.value)}
             placeholder="e.g. British Gas, Virgin Media"
-            className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:border-amber-400"
+            className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-sm placeholder-slate-500 focus:outline-none focus:border-amber-300"
           />
         </div>
 
@@ -332,7 +332,7 @@ export default function ContractVaultPage() {
               </p>
               <Link
                 href="/dashboard/subscriptions"
-                className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-amber-600 text-navy-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-700 text-slate-900 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
               >
                 <Plus className="h-4 w-4" /> Go to Subscriptions
               </Link>
@@ -430,7 +430,7 @@ function ContractCard({ contract, onDelete }: ContractCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-white border border-slate-200/50 rounded-xl overflow-hidden hover:border-amber-400/40 transition-colors">
+    <div className="bg-white border border-slate-200/50 rounded-xl overflow-hidden hover:border-amber-300/40 transition-colors">
       {/* Collapsed Header */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -517,31 +517,31 @@ function ContractCard({ contract, onDelete }: ContractCardProps) {
               {contract.cancellation_fee && (
                 <div className="bg-slate-100/50 border border-slate-200 rounded-lg p-3">
                   <p className="text-xs font-semibold text-slate-700 mb-1">Cancellation Fee</p>
-                  <p className="text-sm text-slate-200">{contract.cancellation_fee}</p>
+                  <p className="text-sm text-slate-700">{contract.cancellation_fee}</p>
                 </div>
               )}
               {contract.early_exit_fee && (
                 <div className="bg-slate-100/50 border border-slate-200 rounded-lg p-3">
                   <p className="text-xs font-semibold text-slate-700 mb-1">Early Exit Fee</p>
-                  <p className="text-sm text-slate-200">{contract.early_exit_fee}</p>
+                  <p className="text-sm text-slate-700">{contract.early_exit_fee}</p>
                 </div>
               )}
               {contract.auto_renewal && (
                 <div className="bg-slate-100/50 border border-slate-200 rounded-lg p-3">
                   <p className="text-xs font-semibold text-slate-700 mb-1">Auto-Renewal</p>
-                  <p className="text-sm text-slate-200">{contract.auto_renewal}</p>
+                  <p className="text-sm text-slate-700">{contract.auto_renewal}</p>
                 </div>
               )}
               {contract.price_increase_clause && (
                 <div className="bg-slate-100/50 border border-slate-200 rounded-lg p-3">
                   <p className="text-xs font-semibold text-slate-700 mb-1">Price Increases</p>
-                  <p className="text-sm text-slate-200">{contract.price_increase_clause}</p>
+                  <p className="text-sm text-slate-700">{contract.price_increase_clause}</p>
                 </div>
               )}
               {contract.cooling_off_period && (
                 <div className="bg-slate-100/50 border border-slate-200 rounded-lg p-3">
                   <p className="text-xs font-semibold text-slate-700 mb-1">Cooling Off Period</p>
-                  <p className="text-sm text-slate-200">{contract.cooling_off_period}</p>
+                  <p className="text-sm text-slate-700">{contract.cooling_off_period}</p>
                 </div>
               )}
             </div>
@@ -599,7 +599,7 @@ function SubscriptionRow({ contract: c }: { contract: Subscription }) {
   return (
     <Link
       href={`/dashboard/subscriptions?highlight=${c.id}`}
-      className={`block bg-white border rounded-xl p-4 hover:border-amber-400/40 transition-colors ${
+      className={`block bg-white border rounded-xl p-4 hover:border-amber-300/40 transition-colors ${
         isExpiringSoon ? 'border-orange-200' : 'border-slate-200/50'
       }`}
     >

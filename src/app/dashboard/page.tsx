@@ -557,7 +557,7 @@ export default function DashboardPage() {
             <p className="text-slate-900 font-semibold text-sm">Your free Pro trial has ended</p>
             <p className="text-slate-600 text-xs mt-1">Upgrade to keep unlimited letters, daily bank sync, spending intelligence, and all Pro features. All your data is safe.</p>
           </div>
-          <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all text-sm whitespace-nowrap ml-4">
+          <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all text-sm whitespace-nowrap ml-4">
             Upgrade Now
           </Link>
         </div>
@@ -571,7 +571,7 @@ export default function DashboardPage() {
               Pro trial ends in <span className="text-emerald-600 font-semibold">{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</span>. Upgrade to keep all features.
             </p>
           </div>
-          <Link href="/pricing" className="text-emerald-600 hover:text-mint-300 text-sm font-medium whitespace-nowrap ml-4">
+          <Link href="/pricing" className="text-emerald-600 hover:text-emerald-500 text-sm font-medium whitespace-nowrap ml-4">
             View Plans
           </Link>
         </div>
@@ -731,7 +731,7 @@ export default function DashboardPage() {
             {(() => {
               const hasActive = bankAccounts.some(b => b.status === 'active');
               const hasExpired = bankConnected && !hasActive;
-              const borderClass = hasActive ? 'border-green-500/30 bg-green-500/5' : hasExpired ? 'border-amber-500/30 bg-orange-500/5' : 'border-amber-500/30 bg-orange-500/5';
+              const borderClass = hasActive ? 'border-green-500/30 bg-green-500/5' : hasExpired ? 'border-amber-300 bg-orange-500/5' : 'border-amber-300 bg-orange-500/5';
               return (
             <div className={`rounded-xl border p-4 ${borderClass}`}>
               <div className="flex items-center gap-2 mb-2">
@@ -746,11 +746,11 @@ export default function DashboardPage() {
                   </>
                 ) : hasExpired ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-amber-400" />
-                    <span className="text-amber-400 text-sm">Needs reconnect</span>
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <span className="text-amber-600 text-sm">Needs reconnect</span>
                   </>
                 ) : (
-                  <span className="text-amber-400 text-sm">Not connected</span>
+                  <span className="text-amber-600 text-sm">Not connected</span>
                 )}
               </div>
               {hasActive ? (
@@ -781,7 +781,7 @@ export default function DashboardPage() {
             })()}
 
             {/* Email Inbox */}
-            <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-orange-500/5'}`}>
+            <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-300 bg-orange-500/5'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <Mail className="h-5 w-5 text-slate-700" />
                 <span className="text-slate-900 font-medium text-sm">Email Inbox</span>
@@ -793,7 +793,7 @@ export default function DashboardPage() {
                     <span className="text-green-400 text-sm">Connected</span>
                   </>
                 ) : (
-                  <span className="text-amber-400 text-sm">Not connected</span>
+                  <span className="text-amber-600 text-sm">Not connected</span>
                 )}
               </div>
               {emailConnected ? (
@@ -807,7 +807,7 @@ export default function DashboardPage() {
               ) : (
                 <Link
                   href="/dashboard/profile?connect_email=true"
-                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-emerald-500 hover:bg-emerald-600 text-white"
+                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-emerald-500 hover:bg-emerald-600 text-slate-900"
                 >
                   Connect Email
                 </Link>
@@ -815,7 +815,7 @@ export default function DashboardPage() {
             </div>
 
             {/* First Letter */}
-            <div className={`rounded-xl border p-4 ${complaintsGenerated > 0 ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-orange-500/5'}`}>
+            <div className={`rounded-xl border p-4 ${complaintsGenerated > 0 ? 'border-green-500/30 bg-green-500/5' : 'border-amber-300 bg-orange-500/5'}`}>
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="h-5 w-5 text-slate-700" />
                 <span className="text-slate-900 font-medium text-sm">First Letter</span>
@@ -827,7 +827,7 @@ export default function DashboardPage() {
                     <span className="text-green-400 text-sm">{complaintsGenerated} written</span>
                   </>
                 ) : (
-                  <span className="text-amber-400 text-sm">None yet</span>
+                  <span className="text-amber-600 text-sm">None yet</span>
                 )}
               </div>
               <Link
@@ -835,7 +835,7 @@ export default function DashboardPage() {
                 className={`flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center ${
                   complaintsGenerated > 0
                     ? 'bg-slate-100 hover:bg-slate-200 text-slate-900 font-medium'
-                    : 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                    : 'bg-emerald-500 hover:bg-emerald-600 text-slate-900'
                 }`}
               >
                 Write Letter
@@ -865,7 +865,7 @@ export default function DashboardPage() {
             bankAccounts.map(b => {
               const isActive = b.status === 'active';
               const statusLabel = isActive ? 'Active' : 'Expired';
-              const statusClass = isActive ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-amber-400 bg-orange-500/10 border-amber-500/20';
+              const statusClass = isActive ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-amber-600 bg-orange-500/10 border-amber-200';
               return (
               (b.account_display_names && b.account_display_names.length > 0)
                 ? b.account_display_names.map((name, i) => (
@@ -880,7 +880,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Reconnect</button>}
+                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-600 hover:text-amber-300 font-medium">Reconnect</button>}
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
                       <button onClick={() => disconnectBank(b.id, b.bank_name || 'Bank')} disabled={disconnectingId === b.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1" title="Disconnect this bank">
                         <Trash2 className="h-4 w-4" />
@@ -900,7 +900,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Reconnect</button>}
+                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-600 hover:text-amber-300 font-medium">Reconnect</button>}
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
                       <button onClick={() => disconnectBank(b.id, b.bank_name || 'Bank')} disabled={disconnectingId === b.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1" title="Disconnect this bank">
                         <Trash2 className="h-4 w-4" />
@@ -978,7 +978,7 @@ export default function DashboardPage() {
               <p className="text-slate-600 text-xs">Review these before they auto-renew at a higher rate</p>
             </div>
           </div>
-          <Link href="/dashboard/contracts" className="text-emerald-600 hover:text-mint-300 text-sm font-medium flex items-center gap-1">
+          <Link href="/dashboard/contracts" className="text-emerald-600 hover:text-emerald-500 text-sm font-medium flex items-center gap-1">
             View <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -1029,13 +1029,13 @@ export default function DashboardPage() {
                   dispute: { text: 'Dispute', color: 'bg-orange-600 hover:bg-orange-700' },
                   claim_compensation: { text: 'Claim', color: 'bg-green-600 hover:bg-green-700' },
                   claim_refund: { text: 'Claim Refund', color: 'bg-green-600 hover:bg-green-700' },
-                  monitor: { text: 'Monitor', color: 'bg-slate-200 hover:bg-navy-600' },
+                  monitor: { text: 'Monitor', color: 'bg-slate-200 hover:bg-slate-50' },
                 };
                 const action = actionLabel[opp.suggestedAction] || actionLabel.track;
                 // Determine action based on opportunity type for better routing
                 const effectiveAction = (() => {
                   if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
-                    return { text: 'Find Deal', color: 'bg-emerald-500 hover:bg-emerald-600 text-white' };
+                    return { text: 'Find Deal', color: 'bg-emerald-500 hover:bg-emerald-600 text-slate-900' };
                   }
                   if (['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) || opp.suggestedAction === 'dispute') {
                     return { text: 'Dispute', color: 'bg-red-500 hover:bg-red-600' };
@@ -1053,7 +1053,7 @@ export default function DashboardPage() {
                 })();
                 const typeColors: Record<string, string> = {
                   subscription: 'text-blue-400 bg-blue-500/10',
-                  renewal: 'text-amber-400 bg-orange-500/10',
+                  renewal: 'text-amber-600 bg-orange-500/10',
                   price_increase: 'text-orange-400 bg-orange-500/10',
                   overcharge: 'text-red-400 bg-red-500/10',
                   utility_bill: 'text-cyan-400 bg-cyan-500/10',
@@ -1064,12 +1064,12 @@ export default function DashboardPage() {
                   insurance_renewal: 'text-emerald-400 bg-emerald-500/10',
                   refund_opportunity: 'text-green-400 bg-green-500/10',
                   loan: 'text-violet-400 bg-violet-500/10',
-                  deal_expiry: 'text-amber-400 bg-orange-500/10',
+                  deal_expiry: 'text-amber-600 bg-orange-500/10',
                   dd_advance_notice: 'text-blue-400 bg-blue-500/10',
                   tax_rebate: 'text-purple-400 bg-purple-500/10',
                   government: 'text-purple-400 bg-purple-500/10',
                 };
-                const typeColor = typeColors[opp.type] || 'text-slate-600 bg-slate-500/10';
+                const typeColor = typeColors[opp.type] || 'text-slate-600 bg-slate-100';
                 return (
                   <div key={opp.id || i} className="bg-white border border-slate-200/50 rounded-xl p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -1255,7 +1255,7 @@ export default function DashboardPage() {
                   <button
                     key={f}
                     onClick={() => setTaskFilter(f)}
-                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-emerald-500 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
+                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-emerald-500 text-slate-900 font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
                   >
                     {f}
                   </button>
@@ -1289,13 +1289,13 @@ export default function DashboardPage() {
                   const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
 
                   return (
-                    <div key={task.id} className={`bg-white border rounded-xl p-4 transition-all ${isHighPriority ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : isSoon ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-slate-200/50'}`}>
+                    <div key={task.id} className={`bg-white border rounded-xl p-4 transition-all ${isHighPriority ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : isSoon ? 'border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-slate-200/50'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {task.urgency === 'immediate' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold border border-red-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
-                        {task.urgency === 'soon' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-400 font-semibold border border-amber-500/20 uppercase tracking-widest"><Clock className="h-3 w-3" /> Soon</span>}
-                        {!task.urgency && isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
+                        {task.urgency === 'soon' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-600 font-semibold border border-amber-200 uppercase tracking-widest"><Clock className="h-3 w-3" /> Soon</span>}
+                        {!task.urgency && isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-500 font-semibold border border-amber-200 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
                         {task.provider && <span className="text-slate-500 text-xs">{cleanMerchantName(task.provider)}</span>}
                         {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
@@ -1316,7 +1316,7 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {task.contractEndDate && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/10 text-amber-400">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/10 text-amber-600">
                               ends {new Date(task.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
                           )}
@@ -1415,7 +1415,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Link
           href="/dashboard/complaints"
-          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
         >
           <FileText className="h-8 w-8 text-emerald-600 mb-3" />
           <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Write a Complaint Letter</h3>
@@ -1425,7 +1425,7 @@ export default function DashboardPage() {
 
         <Link
           href="/dashboard/subscriptions"
-          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
         >
           <CreditCard className="h-8 w-8 text-green-500 mb-3" />
           <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Track Subscriptions</h3>
@@ -1435,7 +1435,7 @@ export default function DashboardPage() {
 
         <Link
           href="/dashboard/complaints?new=1"
-          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
         >
           <Building2 className="h-8 w-8 text-purple-500 mb-3" />
           <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Disputes</h3>
@@ -1446,7 +1446,7 @@ export default function DashboardPage() {
         {userTier !== 'free' && (
           <Link
             href="/dashboard/money-hub"
-            className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+            className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
           >
             <BarChart3 className="h-8 w-8 text-sky-500 mb-3" />
             <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Money Hub</h3>
@@ -1458,7 +1458,7 @@ export default function DashboardPage() {
         {userTier === 'free' && (
           <Link
             href="/pricing"
-            className="bg-white border border-emerald-200 rounded-2xl p-6 hover:border-mint-400/50 transition-all group"
+            className="bg-white border border-emerald-200 rounded-2xl p-6 hover:border-emerald-500/50 transition-all group"
           >
             <Sparkles className="h-8 w-8 text-emerald-600 mb-3" />
             <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Upgrade Your Plan</h3>
