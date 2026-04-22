@@ -159,7 +159,7 @@ export default function McpSettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -167,18 +167,18 @@ export default function McpSettingsPage() {
   if (isPro === false) {
     return (
       <div className="max-w-2xl mx-auto p-6">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-8 text-center">
-          <div className="bg-amber-500/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="h-8 w-8 text-amber-500" />
+        <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-8 text-center">
+          <div className="bg-orange-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="h-8 w-8 text-orange-600" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Pro Feature</h2>
-          <p className="text-slate-400 mb-6">
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Pro feature</h2>
+          <p className="text-slate-600 mb-6">
             The Paybacker Assistant lets a desktop AI app read your transactions, subscriptions,
             budgets and net worth. It&rsquo;s available on the Pro plan.
           </p>
           <Link
             href="/dashboard/upgrade"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-xl transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-colors"
           >
             <Sparkles className="h-4 w-4" />
             Upgrade to Pro
@@ -194,44 +194,44 @@ export default function McpSettingsPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-          <Terminal className="h-7 w-7 text-mint-400" />
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+          <Terminal className="h-7 w-7 text-emerald-600" />
           Paybacker Assistant (MCP)
         </h1>
-        <p className="text-slate-400 mt-1 text-sm max-w-2xl">
+        <p className="text-slate-600 mt-1 text-sm max-w-2xl">
           Connect a desktop AI assistant to your Paybacker account so you can ask about
           your transactions, subscriptions, budgets and disputes in natural language.
         </p>
       </div>
 
       {/* What it does */}
-      <div className="bg-navy-900/50 border border-navy-700/50 rounded-2xl p-6">
-        <h3 className="text-white font-semibold mb-4">What your assistant can do</h3>
+      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
+        <h3 className="text-slate-900 font-semibold mb-4">What your assistant can do</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="flex flex-col items-start gap-2">
-            <div className="bg-mint-500/10 p-2 rounded-lg">
-              <Eye className="h-5 w-5 text-mint-400" />
+            <div className="bg-emerald-50 p-2 rounded-lg">
+              <Eye className="h-5 w-5 text-emerald-600" />
             </div>
-            <span className="text-sm font-medium text-white">Read your data</span>
-            <span className="text-xs text-slate-400">
+            <span className="text-sm font-medium text-slate-900">Read your data</span>
+            <span className="text-xs text-slate-600">
               Transactions, subscriptions, budget, net worth and open disputes
             </span>
           </div>
           <div className="flex flex-col items-start gap-2">
-            <div className="bg-amber-500/10 p-2 rounded-lg">
-              <Zap className="h-5 w-5 text-amber-400" />
+            <div className="bg-orange-50 p-2 rounded-lg">
+              <Zap className="h-5 w-5 text-orange-600" />
             </div>
-            <span className="text-sm font-medium text-white">Ask in English</span>
-            <span className="text-xs text-slate-400">
+            <span className="text-sm font-medium text-slate-900">Ask in English</span>
+            <span className="text-xs text-slate-600">
               &ldquo;What did I spend on food last month?&rdquo; &mdash; your assistant queries Paybacker directly
             </span>
           </div>
           <div className="flex flex-col items-start gap-2">
-            <div className="bg-green-500/10 p-2 rounded-lg">
-              <ShieldCheck className="h-5 w-5 text-green-400" />
+            <div className="bg-emerald-50 p-2 rounded-lg">
+              <ShieldCheck className="h-5 w-5 text-emerald-600" />
             </div>
-            <span className="text-sm font-medium text-white">Read-only by design</span>
-            <span className="text-xs text-slate-400">
+            <span className="text-sm font-medium text-slate-900">Read-only by design</span>
+            <span className="text-xs text-slate-600">
               No writes, no transfers. Revoke any token instantly.
             </span>
           </div>
@@ -239,24 +239,24 @@ export default function McpSettingsPage() {
       </div>
 
       {/* Quick install snippet */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
+      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-white font-semibold flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-slate-400" />
+          <h3 className="text-slate-900 font-semibold flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-slate-500" />
             How to connect
           </h3>
           <Link
             href="/docs/paybacker-assistant"
-            className="text-xs text-mint-400 hover:text-mint-300"
+            className="text-xs text-emerald-600 hover:text-emerald-700"
           >
             Full walkthrough →
           </Link>
         </div>
-        <ol className="space-y-3 text-sm text-slate-300 list-decimal list-inside">
+        <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
           <li>Generate a token below and copy it (you only see it once).</li>
           <li>
             In a terminal, run:
-            <pre className="mt-2 bg-navy-950 border border-navy-700/50 rounded-lg p-3 text-xs text-mint-300 overflow-x-auto">
+            <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
               npx @paybacker/mcp setup
             </pre>
           </li>
@@ -266,7 +266,7 @@ export default function McpSettingsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+        <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           <span className="text-sm">{error}</span>
         </div>
@@ -274,22 +274,22 @@ export default function McpSettingsPage() {
 
       {/* Just-minted token banner */}
       {justMinted && (
-        <div className="bg-mint-500/10 border border-mint-500/30 rounded-2xl p-5">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-mint-300">
+              <p className="text-sm font-semibold text-emerald-800">
                 Token created — copy it now, you won&rsquo;t see it again
               </p>
-              <p className="text-xs text-mint-200/80 mt-1">
+              <p className="text-xs text-emerald-700/80 mt-1">
                 Store this somewhere safe. If you lose it, revoke it and generate a new one.
               </p>
               <div className="mt-3 flex items-center gap-2">
-                <code className="flex-1 font-mono text-sm text-white bg-navy-950 border border-navy-700/50 rounded-lg px-3 py-2 break-all">
+                <code className="flex-1 font-mono text-sm text-slate-900 bg-white border border-emerald-200 rounded-lg px-3 py-2 break-all">
                   {justMinted}
                 </code>
                 <button
                   onClick={() => handleCopy(justMinted)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-mint-500 hover:bg-mint-400 text-black font-medium rounded-lg text-sm transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-sm transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   {copied ? 'Copied' : 'Copy'}
@@ -298,7 +298,7 @@ export default function McpSettingsPage() {
             </div>
             <button
               onClick={() => setJustMinted(null)}
-              className="text-mint-300/60 hover:text-mint-200 text-xs"
+              className="text-emerald-700/60 hover:text-emerald-800 text-xs"
             >
               Dismiss
             </button>
@@ -307,8 +307,8 @@ export default function McpSettingsPage() {
       )}
 
       {/* Create a new token */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
-        <h3 className="text-white font-semibold mb-4">Create a new token</h3>
+      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
+        <h3 className="text-slate-900 font-semibold mb-4">Create a new token</h3>
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
@@ -316,12 +316,12 @@ export default function McpSettingsPage() {
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Label, e.g. Paybacker Assistant on Macbook"
             maxLength={80}
-            className="flex-1 bg-navy-950 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-mint-500/60"
+            className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
           />
           <button
             onClick={handleCreate}
             disabled={creating}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-mint-500 hover:bg-mint-400 text-black font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Generate token
@@ -333,9 +333,9 @@ export default function McpSettingsPage() {
       </div>
 
       {/* Active tokens */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl">
-        <div className="p-5 border-b border-navy-700/50">
-          <h3 className="text-white font-semibold">Active tokens</h3>
+      <div className="bg-white border border-slate-200 shadow-sm rounded-2xl">
+        <div className="p-5 border-b border-slate-200">
+          <h3 className="text-slate-900 font-semibold">Active tokens</h3>
           <p className="text-xs text-slate-500 mt-1">
             {active.length === 0
               ? 'No active tokens yet. Generate one above.'
@@ -343,13 +343,13 @@ export default function McpSettingsPage() {
           </p>
         </div>
         {active.length > 0 && (
-          <ul className="divide-y divide-navy-700/40">
+          <ul className="divide-y divide-slate-200">
             {active.map((t) => (
               <li key={t.id} className="p-5 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-white truncate">{t.name}</span>
-                    <code className="font-mono text-xs text-slate-400 bg-navy-950 px-2 py-0.5 rounded">
+                    <span className="text-sm font-medium text-slate-900 truncate">{t.name}</span>
+                    <code className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
                       {t.token_prefix}…
                     </code>
                   </div>
@@ -367,7 +367,7 @@ export default function McpSettingsPage() {
                 <button
                   onClick={() => handleRevoke(t.id, t.name)}
                   disabled={revokingId === t.id}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-400 hover:text-red-300 border border-red-400/20 hover:border-red-400/40 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
                 >
                   {revokingId === t.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -384,15 +384,15 @@ export default function McpSettingsPage() {
 
       {/* Revoked history */}
       {revoked.length > 0 && (
-        <details className="bg-navy-900/50 border border-navy-700/40 rounded-2xl">
-          <summary className="p-4 text-sm text-slate-400 cursor-pointer hover:text-slate-300">
+        <details className="bg-white border border-slate-200 rounded-2xl">
+          <summary className="p-4 text-sm text-slate-600 cursor-pointer hover:text-slate-800">
             Revoked tokens ({revoked.length})
           </summary>
-          <ul className="divide-y divide-navy-700/40">
+          <ul className="divide-y divide-slate-200">
             {revoked.map((t) => (
               <li key={t.id} className="p-4 text-xs text-slate-500 flex items-center justify-between">
                 <div className="min-w-0">
-                  <span className="text-slate-400 font-medium">{t.name}</span>{' '}
+                  <span className="text-slate-700 font-medium">{t.name}</span>{' '}
                   <code className="font-mono">{t.token_prefix}…</code>
                 </div>
                 <span>Revoked {t.revoked_at ? formatDate(t.revoked_at) : ''}</span>
