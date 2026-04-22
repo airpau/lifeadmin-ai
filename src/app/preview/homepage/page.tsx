@@ -1533,8 +1533,8 @@ export default function HomepageV2Preview() {
                   Your data is <strong>never sold</strong>, never shared with third-party
                   advertisers, and never used to train AI models outside your own account. Full
                   detail in our{' '}
-                  <a href="/privacy">Privacy Policy</a> and{' '}
-                  <a href="/terms">Terms of Service</a>.
+                  <a href="/privacy-policy">Privacy Policy</a> and{' '}
+                  <a href="/terms-of-service">Terms of Service</a>.
                 </p>
               </div>
             </details>
