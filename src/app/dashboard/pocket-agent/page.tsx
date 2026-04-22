@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import {
   MessageCircle,
   CheckCircle2,
@@ -10,7 +9,6 @@ import {
   RefreshCw,
   Unlink,
   Loader2,
-  Sparkles,
   BellRing,
   TrendingDown,
   Shield,
@@ -63,24 +61,15 @@ export default function PocketAgentPage() {
   const [generating, setGenerating] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isPro, setIsPro] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const supabase = createClient();
 
   const loadStatus = useCallback(async () => {
     setError(null);
     try {
       const res = await fetch('/api/telegram/link-code');
-      if (res.status === 403) {
-        setIsPro(false);
-        setLoading(false);
-        return;
-      }
       if (!res.ok) throw new Error('Failed to load Pocket Agent status');
       const data: LinkStatus = await res.json();
       setStatus(data);
-      setIsPro(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -91,18 +80,6 @@ export default function PocketAgentPage() {
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
-
-  // Check plan on mount
-  useEffect(() => {
-    const checkPlan = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      setIsPro(true);
-    };
-    checkPlan();
-  }, [supabase]);
 
   const generateCode = async () => {
     setGenerating(true);
@@ -155,50 +132,7 @@ export default function PocketAgentPage() {
     );
   }
 
-  // STATE A -- Not Pro
-  if (isPro === false) {
-    return (
-      <div className="max-w-2xl mx-auto p-6">
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-8 text-center">
-          <div className="bg-orange-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5">
-            <Bot className="h-10 w-10 text-orange-500" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Pocket Agent</h2>
-          <p className="text-slate-600 mb-6 max-w-md mx-auto">
-            Pocket Agent is exclusive to Pro subscribers. Get your AI financial agent right in your pocket via Telegram.
-          </p>
-
-          <div className="bg-slate-100/50 border border-slate-200/30 rounded-xl p-5 mb-6 text-left max-w-sm mx-auto">
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">What you get with Pocket Agent:</h3>
-            <ul className="space-y-2.5">
-              <li className="flex items-start gap-2.5">
-                <MessageCircle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                <span className="text-sm text-slate-700">AI chat -- ask anything about your finances</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <BellRing className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                <span className="text-sm text-slate-700">Proactive alerts for bills, renewals, and budget overruns</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <Shield className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                <span className="text-sm text-slate-700">Draft and send complaint letters citing UK consumer law</span>
-              </li>
-            </ul>
-          </div>
-
-          <a
-            href="/pricing"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-black font-semibold rounded-xl transition-colors"
-          >
-            <Sparkles className="h-4 w-4" />
-            Upgrade to Pro
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  // STATE C -- Pro AND linked
+  // STATE C -- linked
   if (status?.linked && status.session) {
     return (
       <div className="max-w-2xl mx-auto p-6 space-y-6">
@@ -320,7 +254,7 @@ export default function PocketAgentPage() {
     );
   }
 
-  // STATE B -- Pro but NOT linked
+  // STATE B -- not yet linked
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
       {/* Header */}

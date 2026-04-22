@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import {
   MessageCircle,
   CheckCircle2,
@@ -10,7 +9,6 @@ import {
   RefreshCw,
   Unlink,
   Loader2,
-  Sparkles,
   BellRing,
   TrendingDown,
   Shield,
@@ -61,24 +59,15 @@ export default function TelegramSettingsPage() {
   const [generating, setGenerating] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isPro, setIsPro] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const supabase = createClient();
 
   const loadStatus = useCallback(async () => {
     setError(null);
     try {
       const res = await fetch('/api/telegram/link-code');
-      if (res.status === 403) {
-        setIsPro(false);
-        setLoading(false);
-        return;
-      }
       if (!res.ok) throw new Error('Failed to load Telegram status');
       const data: LinkStatus = await res.json();
       setStatus(data);
-      setIsPro(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -89,29 +78,6 @@ export default function TelegramSettingsPage() {
   useEffect(() => {
     loadStatus();
   }, [loadStatus]);
-
-  // Check plan on mount
-  useEffect(() => {
-    const checkPlan = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('subscription_tier, subscription_status, stripe_subscription_id')
-        .eq('id', user.id)
-        .single();
-      const tier = profile?.subscription_tier;
-      const status = profile?.subscription_status;
-      const hasStripe = !!profile?.stripe_subscription_id;
-      setIsPro(
-        tier === 'pro' &&
-          (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing'),
-      );
-    };
-    checkPlan();
-  }, [supabase]);
 
   const generateCode = async () => {
     setGenerating(true);
@@ -160,31 +126,6 @@ export default function TelegramSettingsPage() {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
-      </div>
-    );
-  }
-
-  if (isPro === false) {
-    return (
-      <div className="max-w-2xl mx-auto p-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
-          <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="h-8 w-8 text-orange-500" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Pro Feature</h2>
-          <p className="text-slate-600 mb-6">
-            The Telegram financial assistant is available to Pro subscribers only.
-            Upgrade to get proactive bill alerts, spending summaries, and complaint letters
-            delivered directly to Telegram.
-          </p>
-          <a
-            href="/dashboard/upgrade"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-black font-semibold rounded-xl transition-colors"
-          >
-            <Sparkles className="h-4 w-4" />
-            Upgrade to Pro
-          </a>
-        </div>
       </div>
     );
   }
