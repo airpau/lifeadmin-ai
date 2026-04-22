@@ -632,16 +632,23 @@ export default function DealsPage() {
     );
   }
 
-  // Total potential savings — sum of the biggest-saver deal per eligible
-  // subscription category, matching what the cards below render individually.
+  // Total potential savings — sum the largest annual £ figure parsed from
+  // each eligible category's "saving" copy ("Save up to £150/yr"), times
+  // the user's matching subscription count in that category.
+  const parseSavingGBP = (s: string): number => {
+    const m = (s || '').match(/£\s*([\d,]+)/);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) || 0 : 0;
+  };
   const potentialAnnualSaving = (() => {
     let total = 0;
-    for (const cat of Object.keys(urgentSubsByCategory) as (keyof typeof DEALS)[]) {
+    for (const cat of Object.keys(urgentSubsByCategory)) {
       const deals = DEALS[cat] || [];
       const subs = urgentSubsByCategory[cat] || [];
       if (!deals.length || !subs.length) continue;
-      const best = deals.reduce((max, d) => (d.save > max.save ? d : max), deals[0]);
-      total += (best.save || 0) * subs.length;
+      const best = deals.reduce((max, d) => {
+        return parseSavingGBP(d.saving) > parseSavingGBP(max.saving) ? d : max;
+      }, deals[0]);
+      total += parseSavingGBP(best.saving) * subs.length;
     }
     return Math.round(total);
   })();
