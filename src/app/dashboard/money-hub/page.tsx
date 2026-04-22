@@ -55,6 +55,21 @@ type FacItem = {
  matchedTxn: { merchant_name: string; amount: number; timestamp: string } | null;
 };
 
+// Humorous rotating captions shown while the inbox scan runs.
+// Mirrors the LOADING_CAPTIONS pattern in dashboard/complaints/page.tsx.
+const SCAN_CAPTIONS: { icon: string; text: string }[] = [
+ { icon: '📬', text: 'Rifling through your inbox for receipts you forgot existed...' },
+ { icon: '🕵️', text: 'Hunting for that Netflix trial you swore you cancelled...' },
+ { icon: '📈', text: 'Flagging silent price rises your provider hoped you\'d miss...' },
+ { icon: '📅', text: 'Spotting contract renewals before they ambush you...' },
+ { icon: '💳', text: 'Reading subscription confirmations from the last two years...' },
+ { icon: '⚖️', text: 'Checking whether anyone owes you a refund right now...' },
+ { icon: '🧾', text: 'Matching receipts to transactions so the maths adds up...' },
+ { icon: '🔍', text: 'Reading 1,200 emails so you don\'t have to...' },
+ { icon: '☕', text: 'This usually takes less than a kettle boil...' },
+ { icon: '🎯', text: 'Almost done — packaging everything we found...' },
+];
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function MoneyHubPage() {
@@ -91,6 +106,7 @@ export default function MoneyHubPage() {
 
  // Email scanning
  const [scanning, setScanning] = useState(false);
+ const [scanCaption, setScanCaption] = useState(0);
 
  // Deals
  const [deals, setDeals] = useState<any>(null);
@@ -429,16 +445,47 @@ export default function MoneyHubPage() {
  // ─── Email scan ────────────────────────────────────────────────────────
 
  const scanInbox = async (silent = false) => {
- if (!silent) setScanning(true);
- try { 
- const res = await fetch('/api/gmail/scan', { method: 'POST' }); 
- if (!res.ok) throw new Error('Scan failed');
- await refreshData(); 
- if (!silent) showToast('Inbox scan complete.', 'success'); 
+ if (!silent) {
+   setScanning(true);
+   setScanCaption(0);
  }
- catch { 
- if (!silent) showToast('Scan failed.', 'error'); 
+ // Rotate the humorous caption every 3s while the scan runs — gives the
+ // user something to watch so they know it didn't silently freeze.
+ const captionTimer = !silent
+   ? setInterval(() => setScanCaption((prev) => (prev + 1) % SCAN_CAPTIONS.length), 3000)
+   : null;
+ try {
+   const res = await fetch('/api/gmail/scan', { method: 'POST' });
+   if (!res.ok) throw new Error('Scan failed');
+   const payload = await res.json();
+   await refreshData();
+   if (!silent) {
+     const parts: string[] = [];
+     const ops = Array.isArray(payload?.opportunities) ? payload.opportunities : [];
+     const byType = ops.reduce((acc: Record<string, number>, o: any) => {
+       const k = String(o?.type || 'other');
+       acc[k] = (acc[k] || 0) + 1;
+       return acc;
+     }, {});
+     if (byType.subscription) parts.push(`${byType.subscription} new subscription${byType.subscription === 1 ? '' : 's'}`);
+     if (byType.price_increase) parts.push(`${byType.price_increase} price alert${byType.price_increase === 1 ? '' : 's'}`);
+     if (byType.bill) parts.push(`${byType.bill} bill${byType.bill === 1 ? '' : 's'}`);
+     if (byType.contract) parts.push(`${byType.contract} contract update${byType.contract === 1 ? '' : 's'}`);
+     if (byType.dispute_response) parts.push(`${byType.dispute_response} dispute repl${byType.dispute_response === 1 ? 'y' : 'ies'}`);
+     if (byType.cancellation) parts.push(`${byType.cancellation} cancellation${byType.cancellation === 1 ? '' : 's'}`);
+     const scanned = typeof payload?.emailsScanned === 'number' ? payload.emailsScanned : null;
+     const summary = parts.length
+       ? `Scanned ${scanned ?? 'your'} email${scanned === 1 ? '' : 's'} · Found ${parts.join(', ')}.`
+       : scanned
+         ? `Scanned ${scanned} email${scanned === 1 ? '' : 's'} · Nothing new to surface — you're all caught up.`
+         : 'Inbox scan complete — nothing new.';
+     showToast(summary, 'success');
+   }
  }
+ catch {
+   if (!silent) showToast('Scan failed. Check your email connection in Profile.', 'error');
+ }
+ if (captionTimer) clearInterval(captionTimer);
  if (!silent) setScanning(false);
  };
 
@@ -913,12 +960,32 @@ export default function MoneyHubPage() {
  <button
  onClick={() => scanInbox(false)}
  disabled={scanning}
- className="text-xs text-emerald-600 hover:text-emerald-500 font-medium disabled:opacity-50"
+ className="text-xs text-emerald-600 hover:text-emerald-500 font-medium disabled:opacity-50 flex items-center gap-1.5"
  >
- {scanning ? 'Scanning...' : (alerts.length > 0 ? 'Re-scan' : 'Scan Now')}
+ {scanning ? (
+   <>
+     <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+       <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+     </svg>
+     Scanning...
+   </>
+ ) : (alerts.length > 0 ? 'Re-scan' : 'Scan Now')}
  </button>
  </div>
- {alerts.length > 0 ? (
+ {scanning ? (
+ <div className="bg-gradient-to-br from-emerald-50 to-emerald-50/30 border border-emerald-200 rounded-xl p-5 text-center">
+ <div className="relative mx-auto w-14 h-14 mb-3">
+ <div className="absolute inset-0 rounded-full border-4 border-emerald-100" />
+ <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
+ <span className="absolute inset-0 flex items-center justify-center text-2xl">
+ {SCAN_CAPTIONS[scanCaption].icon}
+ </span>
+ </div>
+ <p className="text-slate-900 font-semibold text-sm">{SCAN_CAPTIONS[scanCaption].text}</p>
+ <p className="text-slate-500 text-xs mt-1">Usually under 30 seconds · read-only, Google-verified access</p>
+ </div>
+ ) : alerts.length > 0 ? (
  <div className="space-y-2">
  {alerts.slice(0, 5).map((a: any) => (
  <div key={a.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg p-3 border border-slate-200">
