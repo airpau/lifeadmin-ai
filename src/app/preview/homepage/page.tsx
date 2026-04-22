@@ -240,53 +240,14 @@ function Nav() {
 }
 
 // ---------------------------------------------------------------------------
-// HeroVisual — live DisputesDemo as the hero centrepiece, with two floating
-// supporting cards (mini savings snapshot + Pocket Agent bubble).
+// HeroVisual — live DisputesDemo as a clean centred device. No rotation, no
+// floating overlays. The demo is the hero — let it breathe.
 // ---------------------------------------------------------------------------
 function HeroVisual() {
-  const dashRef = useRef<HTMLDivElement | null>(null);
-
-  const onMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const el = dashRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width - 0.5;
-    const y = (event.clientY - rect.top) / rect.height - 0.5;
-    const rotY = x * 4;
-    const rotX = -y * 3;
-    el.style.transform = `perspective(1200px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) translateZ(0)`;
-  }, []);
-
-  const onMouseLeave = useCallback(() => {
-    const el = dashRef.current;
-    if (!el) return;
-    el.style.transform = '';
-  }, []);
-
   return (
     <div className="hero-visual hero-visual--live" aria-hidden="true">
-      <div className="mini-card float mini-card--hero" style={{ animationDelay: '-2s' }}>
-        <div className="label">Yearly savings spotted</div>
-        <div className="big">£1,000+</div>
-        <div className="desc">typical amount we find per household</div>
-      </div>
-
-      <div
-        ref={dashRef}
-        className="hero-demo-frame tilt-host"
-        onMouseMove={onMouseMove}
-        onMouseLeave={onMouseLeave}
-      >
+      <div className="hero-demo-frame">
         <DisputesDemo />
-      </div>
-
-      <div className="agent-bubble float agent-bubble--hero" style={{ animationDelay: '-3s' }}>
-        <div className="who">
-          <span className="dot-mint" /> Pocket Agent · Telegram
-        </div>
-        <div className="msg">
-          Virgin Media bill up <strong>£12</strong> — draft an Ofcom dispute?
-        </div>
       </div>
     </div>
   );
