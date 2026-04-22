@@ -224,7 +224,7 @@ export default function AdminPage() {
     <div className="max-w-7xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+          <h1 className="page-title">
             <ShieldAlert className="h-10 w-10 text-red-500" />
             Admin Dashboard
           </h1>

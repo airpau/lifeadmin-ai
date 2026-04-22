@@ -243,7 +243,7 @@ export default function LegalUpdatesAdminPage() {
         </Link>
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+            <h1 className="page-title">
               <Zap className="h-9 w-9 text-amber-600" />
               Legal Updates
             </h1>

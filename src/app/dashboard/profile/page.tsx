@@ -183,7 +183,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
 
   return (
     <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Connected Accounts & Integrations</h2>
+      <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Connected Accounts & Integrations</h2>
       <div className="space-y-4">
         {/* Email */}
         <div className="p-4 bg-slate-50/50 rounded-lg border border-slate-200/50">
@@ -767,8 +767,8 @@ export default function ProfilePage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
-        <p className="text-slate-600">Manage your account and view your stats</p>
+        <h1 className="page-title">Profile</h1>
+        <p className="page-sub">Manage your account and view your stats</p>
       </div>
 
       {/* Account Info */}
@@ -804,7 +804,7 @@ export default function ProfilePage() {
       {/* Personal Details */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
             <MapPin className="h-5 w-5 text-emerald-600" />
             Personal Details
           </h2>
@@ -925,7 +925,7 @@ export default function ProfilePage() {
 
       {/* Security Details */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-6">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
           Security
         </h2>
@@ -1006,7 +1006,7 @@ export default function ProfilePage() {
 
         return (
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
               <Sparkles className="h-5 w-5 text-emerald-600" />
               Your Plan
             </h2>
@@ -1053,7 +1053,7 @@ export default function ProfilePage() {
 
       {/* Financial Reports */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
           <FileText className="h-5 w-5 text-emerald-600" />
           Financial Reports
         </h2>
@@ -1151,7 +1151,7 @@ export default function ProfilePage() {
 
       {/* Subscription Management */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8">
-        <h2 className="text-xl font-bold text-slate-900 mb-4">Subscription</h2>
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Subscription</h2>
         
         {effectiveTier === 'free' ? (
           <div className="text-center py-8">
@@ -1226,7 +1226,7 @@ export default function ProfilePage() {
       </div>
       {/* Pocket Agent */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
           <Mail className="h-5 w-5 text-amber-500" />
           Pocket Agent
         </h2>
@@ -1255,7 +1255,7 @@ export default function ProfilePage() {
       </div>
       {/* Data Export — GDPR Right to Portability */}
       <div className="bg-white backdrop-blur-sm border border-slate-200 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
           <Download className="h-5 w-5 text-emerald-600" />
           Download My Data
         </h2>
@@ -1274,7 +1274,7 @@ export default function ProfilePage() {
 
       {/* Danger Zone — Delete Account */}
       <div className="bg-white backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
           <Trash2 className="h-5 w-5 text-red-400" />
           Delete Account
         </h2>

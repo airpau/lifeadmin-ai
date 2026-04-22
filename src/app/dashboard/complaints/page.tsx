@@ -229,7 +229,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
       <div className="relative card w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-xl font-bold text-slate-900 truncate">{title}</h2>
+            <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{title}</h2>
             {(() => {
               const count = rightsPills?.length ?? 0;
               if (count >= 3) return (
@@ -1846,7 +1846,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
       </button>
 
       <div className="card">
-        <h2 className="text-xl font-bold text-slate-900 mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Start a new dispute</h2>
         <p className="text-slate-600 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
@@ -2205,7 +2205,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">Disputes</h1>
+          <h1 className="page-title">Disputes</h1>
           <p className="text-slate-600 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
         </div>
         <button

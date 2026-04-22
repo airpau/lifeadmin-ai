@@ -635,8 +635,8 @@ export default function DealsPage() {
     <div className="max-w-7xl">
       {/* Hero */}
       <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Find Better Deals</h1>
-        <p className="text-slate-600">Personalised savings based on your contracts and bills.</p>
+        <h1 className="page-title">Find Better Deals</h1>
+        <p className="page-sub">Personalised savings based on your contracts and bills.</p>
       </div>
 
       {/* Category filter tabs */}
@@ -738,7 +738,7 @@ export default function DealsPage() {
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="h-5 w-5 text-slate-500" />
-                  <h2 className="text-xl font-bold text-slate-900">{category}</h2>
+                  <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category}</h2>
                 </div>
                 <div className="bg-slate-100/30 border border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
                   <Info className="h-5 w-5 text-slate-500 flex-shrink-0" />
@@ -789,7 +789,7 @@ export default function DealsPage() {
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="h-5 w-5 text-slate-500" />
-                  <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
+                  <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category} Deals</h2>
                 </div>
                 <div className="bg-slate-100/30 border border-dashed border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
                   <Info className="h-5 w-5 text-emerald-600 flex-shrink-0" />
@@ -813,7 +813,7 @@ export default function DealsPage() {
             <section key={category}>
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="h-5 w-5 text-emerald-600" />
-                <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
+                <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category} Deals</h2>
               </div>
 
               {matchingSubs.length > 0 && (

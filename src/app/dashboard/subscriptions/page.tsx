@@ -1669,8 +1669,8 @@ export default function SubscriptionsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Subscriptions</h1>
-          <p className="text-slate-600">Track and cancel subscriptions costing you money</p>
+          <h1 className="page-title">Subscriptions</h1>
+        <p className="page-sub">Track and cancel subscriptions costing you money</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -2282,7 +2282,7 @@ export default function SubscriptionsPage() {
 
         {/* Cancellation email panel */}
         <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
-          <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
             <Mail className="h-5 w-5 text-emerald-600" />
             Cancellation Email
           </h2>
@@ -2522,7 +2522,7 @@ export default function SubscriptionsPage() {
                       <AlertTriangle className="h-5 w-5 text-amber-600" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-slate-900">Don&apos;t recognise this?</h2>
+                      <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Don&apos;t recognise this?</h2>
                       <p className="text-slate-600 text-sm">{normaliseProviderName(unrecognisedSub.provider_name)} &middot; {formatGBP(unrecognisedSub.amount)}/{unrecognisedSub.billing_cycle}</p>
                     </div>
                   </div>
@@ -2595,7 +2595,7 @@ export default function SubscriptionsPage() {
                       <Shield className="h-5 w-5 text-red-400" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-bold text-slate-900">Reporting a fraudulent payment</h2>
+                      <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Reporting a fraudulent payment</h2>
                       <p className="text-slate-600 text-sm">{formatGBP(unrecognisedSub.amount)} &middot; {unrecognisedSub.bank_description || unrecognisedSub.provider_name}</p>
                     </div>
                   </div>
