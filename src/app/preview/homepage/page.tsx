@@ -240,14 +240,117 @@ function Nav() {
 }
 
 // ---------------------------------------------------------------------------
-// HeroVisual — live DisputesDemo as a clean centred device. No rotation, no
-// floating overlays. The demo is the hero — let it breathe.
+// HeroVisual — mini-card + dashboard card (3D tilt on mouse) + agent bubble.
+// The live DisputesDemo lives inside its own feature section further down so
+// it isn't repeated twice on the page.
 // ---------------------------------------------------------------------------
 function HeroVisual() {
+  const dashRef = useRef<HTMLDivElement | null>(null);
+
+  const onMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const el = dashRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width - 0.5;
+    const y = (event.clientY - rect.top) / rect.height - 0.5;
+    const rotY = x * 6;
+    const rotX = -y * 5;
+    el.style.transform = `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) translateZ(0)`;
+  }, []);
+
+  const onMouseLeave = useCallback(() => {
+    const el = dashRef.current;
+    if (!el) return;
+    el.style.transform = '';
+  }, []);
+
   return (
-    <div className="hero-visual hero-visual--live" aria-hidden="true">
-      <div className="hero-demo-frame">
-        <DisputesDemo />
+    <div className="hero-visual" aria-hidden="true">
+      <div className="mini-card float" style={{ animationDelay: '-2s' }}>
+        <div className="label">Example savings snapshot</div>
+        <div className="big">£1,000+</div>
+        <div className="desc">typical yearly overcharge we find</div>
+        <div className="mini-bar">
+          <div className="bar"><span className="n">Broadband hike</span><span className="v">+£12/mo</span></div>
+          <div className="bar"><span className="n">Energy standing</span><span className="v">+£28/mo</span></div>
+          <div className="bar"><span className="n">Unused streaming</span><span className="v">+£7.99/mo</span></div>
+          <div className="bar"><span className="n">Gym (inactive)</span><span className="v">+£34/mo</span></div>
+        </div>
+      </div>
+
+      <div
+        ref={dashRef}
+        className="dash-card float tilt-host"
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+      >
+        <div className="dash-header">
+          <div className="title">Money Hub · this month</div>
+          <div>●●●</div>
+        </div>
+        <div className="dash-body">
+          <div>
+            <div className="label">Spend tracked</div>
+            <div className="big-num">
+              £2,847
+              <span style={{ color: 'var(--text-tertiary)', fontSize: '0.6em' }}>.12</span>
+            </div>
+            <div className="delta">↗ 3 hikes flagged this week</div>
+          </div>
+          <div className="donut-row">
+            <div className="donut">
+              <div className="donut-center">
+                <span>Tracked</span>
+                <strong>£4,892</strong>
+              </div>
+            </div>
+            <div className="donut-legend">
+              <div className="row">
+                <span><span className="swatch" style={{ background: 'var(--accent-mint)' }} /><span className="name">Essentials</span></span>
+                <span className="amt">£1,859</span>
+              </div>
+              <div className="row">
+                <span><span className="swatch" style={{ background: 'var(--accent-orange)' }} /><span className="name">Subscriptions</span></span>
+                <span className="amt">£1,174</span>
+              </div>
+              <div className="row">
+                <span><span className="swatch" style={{ background: '#60A5FA' }} /><span className="name">Transport</span></span>
+                <span className="amt">£782</span>
+              </div>
+              <div className="row">
+                <span><span className="swatch" style={{ background: '#A78BFA' }} /><span className="name">Dining</span></span>
+                <span className="amt">£588</span>
+              </div>
+              <div className="row">
+                <span><span className="swatch" style={{ background: '#E5E7EB' }} /><span className="name">Other</span></span>
+                <span className="amt">£489</span>
+              </div>
+            </div>
+          </div>
+          <div className="sub-list">
+            <div className="row">
+              <span className="name">Netflix Premium<span className="tag">Unused</span></span>
+              <span className="amt">£17.99</span>
+            </div>
+            <div className="row">
+              <span className="name">Virgin Media<span className="tag">Hike</span></span>
+              <span className="amt">£49.00</span>
+            </div>
+            <div className="row">
+              <span className="name">Gym membership<span className="tag">Inactive</span></span>
+              <span className="amt">£34.99</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="agent-bubble float" style={{ animationDelay: '-3s' }}>
+        <div className="who">
+          <span className="dot-mint" /> Pocket Agent · Telegram
+        </div>
+        <div className="msg">
+          Virgin Media bill increased by <strong>£12</strong> this month — want me to draft a dispute citing Ofcom&rsquo;s mid-contract price rise rules?
+        </div>
       </div>
     </div>
   );
@@ -1058,15 +1161,13 @@ export default function HomepageV3PreviewPage() {
       {/* ========== Deals ========== */}
       <section className="deals-section section-mint" id="deals">
         <div className="wrap">
-          <Reveal className="section-head">
-            <div style={{ textAlign: 'center', margin: '0 auto 24px' }}>
-              <span className="eyebrow">53+ verified UK partners</span>
-              <h2 style={{ margin: '12px 0' }}>
-                Real prices. Real savings.
-                <br />
-                Better deals in every category.
-              </h2>
-            </div>
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">53+ verified UK partners</span>
+            <h2 style={{ margin: '12px 0' }}>
+              Real prices. Real savings.
+              <br />
+              Better deals in every category.
+            </h2>
           </Reveal>
 
           <div className="logo-cloud">
@@ -1091,15 +1192,13 @@ export default function HomepageV3PreviewPage() {
       {/* ========== Pricing ========== */}
       <section className="pricing-section section-light" id="pricing">
         <div className="wrap">
-          <Reveal className="section-head">
-            <div style={{ textAlign: 'center', margin: '0 auto 56px' }}>
-              <span className="eyebrow">Founding member pricing</span>
-              <h2 style={{ margin: '12px 0' }}>
-                Start free. Upgrade only when we&rsquo;ve
-                <br />
-                found you money.
-              </h2>
-            </div>
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">Founding member pricing</span>
+            <h2 style={{ margin: '12px 0' }}>
+              Start free. Upgrade only when we&rsquo;ve
+              <br />
+              found you money.
+            </h2>
           </Reveal>
 
           <div className="pricing-grid">
