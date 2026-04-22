@@ -789,13 +789,10 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ----- 02 · Pocket Agent (dark, demo left) ----- */}
+      {/* ----- 02 · Pocket Agent (dark; copy above demo) ----- */}
       <section className="feature-section feature-section--ink" id="pocket-agent">
         <div className="wrap">
-          <div className="feature-grid feature-grid--reverse">
-            <Reveal className="feature-stage" delay={120}>
-              <PocketAgentDemo />
-            </Reveal>
+          <div className="feature-grid">
             <Reveal className="feature-copy">
               <h2 className="feature-title">Pocket Agent</h2>
               <p className="feature-tagline">
@@ -816,6 +813,9 @@ export default function HomepageV3PreviewPage() {
                   Connect Telegram →
                 </Link>
               </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <PocketAgentDemo />
             </Reveal>
           </div>
         </div>
@@ -852,16 +852,13 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ----- 04 · Subscriptions tracker (alt bg, demo left) ----- */}
+      {/* ----- 04 · Subscriptions tracker (alt bg; copy above demo) ----- */}
       <section
         className="feature-section feature-section--alt"
         id="subscriptions"
       >
         <div className="wrap">
-          <div className="feature-grid feature-grid--reverse">
-            <Reveal className="feature-stage" delay={120}>
-              <SubscriptionsDemo />
-            </Reveal>
+          <div className="feature-grid">
             <Reveal className="feature-copy">
               <h2 className="feature-title">Subscriptions Tracker</h2>
               <p className="feature-tagline">
@@ -881,6 +878,9 @@ export default function HomepageV3PreviewPage() {
                   See every subscription →
                 </Link>
               </div>
+            </Reveal>
+            <Reveal className="feature-stage" delay={120}>
+              <SubscriptionsDemo />
             </Reveal>
           </div>
         </div>
