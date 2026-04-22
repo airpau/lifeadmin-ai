@@ -220,17 +220,24 @@ export async function syncLinkedThread(
         },
       });
 
-      // Telegram alert — fire-and-forget. Import lazily so the module graph stays light.
-      sendTelegramSafely({
-        userId: link.user_id,
-        disputeId: link.dispute_id,
-        correspondenceId: inserted.id,
-        providerName,
-        subject: m.subject,
-        snippet: m.snippet,
-        linkUrl,
-        classification,
-      }).catch(async (err) => {
+      // Telegram alert — MUST be awaited. In Vercel serverless the function
+      // instance can terminate the moment the handler returns, which means a
+      // fire-and-forget Telegram call gets killed mid-HTTPS and the user never
+      // receives the alert (confirmed by empty telegram_message_log rows for
+      // dispute replies that did produce in-app notifications). Import lazily
+      // so the module graph stays light.
+      try {
+        await sendTelegramSafely({
+          userId: link.user_id,
+          disputeId: link.dispute_id,
+          correspondenceId: inserted.id,
+          providerName,
+          subject: m.subject,
+          snippet: m.snippet,
+          linkUrl,
+          classification,
+        });
+      } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn('[watchdog] telegram send failed:', msg);
         try {
@@ -248,7 +255,8 @@ export async function syncLinkedThread(
             logErr instanceof Error ? logErr.message : logErr,
           );
         }
-      });
+        // Swallow — a failed Telegram alert must never abort the sync loop.
+      }
     }
   }
 
