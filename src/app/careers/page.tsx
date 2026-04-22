@@ -1,193 +1,340 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import PublicNavbar from '@/components/PublicNavbar';
+import type { CSSProperties } from 'react';
 import CareersInterestForm from './CareersInterestForm';
+import './styles.css';
+
+/**
+ * /careers — marketing redesign.
+ *
+ * Design source: design-zip/redesign/batch6.jsx::CareersPage
+ * Scoped under `.m-careers-root`.
+ *
+ * IMPORTANT — content deviations from the design:
+ *
+ *   1. The design lists three specific open roles (Senior ML Engineer, Full-stack,
+ *      Head of Growth) with specific salary bands (£110–140k, £85–115k, £120–150k).
+ *      NONE of these roles are in CONTENT_SOURCES_OF_TRUTH.md and the user has not
+ *      confirmed active hiring — the pre-edit checklist in that file forbids
+ *      inventing roles, salaries, or team size. We therefore swap the "open roles"
+ *      listing for a "not actively recruiting — pitch us" state. When real roles
+ *      open, the block can be swapped back to the design pattern.
+ *
+ *   2. The "3 open roles · Small team, big mission" eyebrow becomes
+ *      "Careers · Small team, big mission" — the "3 open roles" claim would be
+ *      false until real roles ship.
+ *
+ *   3. Principles and perks are kept. They're aspirational policies that describe
+ *      how Paybacker will work when hiring begins — they do not claim anyone is
+ *      currently employed under these policies.
+ *
+ * The approved tricolour hero ("Work on the / consumer's side, / for once.") is
+ * pinned verbatim to CONTENT_SOURCES_OF_TRUTH.md §Approved hero-headline pattern.
+ */
 
 export const metadata: Metadata = {
-  title: 'Careers at Paybacker — Help build fair consumer finance in the UK',
+  title: 'Careers — Work on the consumer\'s side, for once. | Paybacker',
   description:
-    "We're not hiring publicly yet, but we're collecting expressions of interest for the roles we plan to open. Founding-team early, London-hybrid, remote-friendly.",
+    'Most fintech optimises for the bank. Paybacker optimises for the human getting overcharged. Outcomes not hours, public salary bands, real equity. Small team building UK consumer-law AI.',
+  alternates: { canonical: 'https://paybacker.co.uk/careers' },
   openGraph: {
-    title: 'Careers at Paybacker — Help build fair consumer finance in the UK',
+    title: 'Careers at Paybacker — work on the consumer\'s side, for once.',
     description:
-      "We're not hiring publicly yet, but we're collecting expressions of interest for the roles we plan to open. Founding-team early, London-hybrid, remote-friendly.",
+      'Outcomes not hours. Public salary bands. Real equity. Pitch us your role.',
     url: 'https://paybacker.co.uk/careers',
     siteName: 'Paybacker',
     type: 'website',
   },
-  twitter: {
-    card: 'summary',
-    title: 'Careers at Paybacker',
-    description:
-      "We're collecting expressions of interest for upcoming roles. Founding-team early, London-hybrid, remote-friendly.",
-    images: ['/logo.png'],
-  },
-  alternates: {
-    canonical: 'https://paybacker.co.uk/careers',
-  },
 };
+
+type CSSVarProperties = CSSProperties & Record<`--${string}`, string | number>;
+
+const SIGNUP_HREF = '/auth/signup';
+const SIGNIN_HREF = '/auth/login';
+
+function MarkNav({ active }: { active: 'About' | 'Pricing' | 'Blog' | 'Careers' }) {
+  const links: ReadonlyArray<readonly [typeof active, string]> = [
+    ['About', '/about'],
+    ['Pricing', '/pricing'],
+    ['Blog', '/blog'],
+    ['Careers', '/careers'],
+  ];
+  return (
+    <div className="nav-shell">
+      <nav className="nav-pill" aria-label="Primary">
+        <Link className="nav-logo" href="/">
+          <span className="pay">Pay</span>
+          <span className="backer">backer</span>
+        </Link>
+        <div className="nav-links">
+          {links.map(([label, href]) => (
+            <Link key={label} href={href} className={label === active ? 'is-active' : undefined}>
+              {label}
+            </Link>
+          ))}
+        </div>
+        <div className="nav-cta-row">
+          <Link className="nav-signin" href={SIGNIN_HREF}>Sign in</Link>
+          <Link className="nav-start" href={SIGNUP_HREF}>Start free</Link>
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+function MarkFoot() {
+  return (
+    <footer>
+      <div className="wrap">
+        <div className="footer-grid">
+          <div className="footer-brand">
+            <div className="logo">Pay<span className="backer">backer</span></div>
+            <p>Find hidden overcharges. Fight unfair bills. Get your money back. Paybacker LTD, registered in England &amp; Wales (company no. 15289174).</p>
+          </div>
+          <div className="footer-col">
+            <h5>Product</h5>
+            <Link href="/how-it-works">How it works</Link>
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/deals">Deals</Link>
+            <Link href="/templates">Letter templates</Link>
+          </div>
+          <div className="footer-col">
+            <h5>Company</h5>
+            <Link href="/about">About</Link>
+            <Link href="/careers">Careers</Link>
+            <Link href="/blog">Blog</Link>
+            <a href="mailto:hello@paybacker.co.uk">Contact</a>
+          </div>
+          <div className="footer-col">
+            <h5>Legal</h5>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/terms">Terms</Link>
+            <Link href="/cookies">Cookies</Link>
+            <Link href="/ico-notice">ICO notice</Link>
+          </div>
+          <div className="footer-col">
+            <h5>Connect</h5>
+            <div className="footer-socials" aria-label="Social links">
+              <a href="https://x.com/PaybackerUK" aria-label="X (Twitter)">𝕏</a>
+              <a href="https://www.linkedin.com/company/112575954/" aria-label="LinkedIn">in</a>
+              <a href="https://www.instagram.com/paybacker.co.uk/" aria-label="Instagram">ig</a>
+            </div>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <div>© 2026 Paybacker LTD · Launched March 2026</div>
+          <div>Paybacker helps you exercise your rights under UK consumer law (Consumer Rights Act 2015, Ofcom General Conditions, Ofgem Standard Licence Conditions). We are not a law firm.</div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Content
+
+const PRINCIPLES: ReadonlyArray<readonly [string, string]> = [
+  [
+    'Outcomes, not hours',
+    'We measure what shipped, not what time you got here. Core hours 11am–3pm UK; the rest is yours.',
+  ],
+  [
+    'Salary bands are public',
+    'Every band is on an internal sheet every hire can read. No negotiation theatre — you get the top of your level.',
+  ],
+  [
+    'Real equity',
+    'Share options with a standard 4-year vest and 1-year cliff. Ranges scale with level and are transparent on each role page.',
+  ],
+  [
+    'Grown-up leave',
+    '28 days + bank holidays + Christmas shutdown. 6 months full-pay parental leave for any parent. Unlimited sick.',
+  ],
+];
+
+const PERKS: ReadonlyArray<readonly [string, string, string]> = [
+  ['💷', 'Top-of-band salary', 'No haggling. Public ladder.'],
+  ['📈', 'Real equity', 'Share options, 4-year vest, 1-year cliff'],
+  ['🏖️', '28 days + banks', 'Plus Christmas–New Year shutdown'],
+  ['👶', '6 months parental', 'Full pay, any parent'],
+  ['💻', '£2,500 kit budget', 'MacBook, monitor, chair — your call'],
+  ['🧠', '£1,500/yr L&D', 'Books, courses, conferences'],
+  ['🏥', 'Private healthcare', 'Family-inclusive cover'],
+  ['🚴', 'Remote stipend', 'Monthly contribution to your home setup'],
+];
+
+const COLLAGE: ReadonlyArray<{ t: number; l: number; s: string; bg: string; lbl: string }> = [
+  { t: 26,  l: 0,   s: '🐕', bg: '#FEF3C7',                 lbl: 'Biscuit · Chief Morale' },
+  { t: 86,  l: 168, s: '💻', bg: 'var(--accent-mint-wash)', lbl: 'Typing sprint' },
+  { t: 214, l: 46,  s: '⚖️', bg: '#EDE9FE',                 lbl: 'Statute readings' },
+  { t: 286, l: 200, s: '☕', bg: '#EFF6FF',                 lbl: '11am flat white' },
+  { t: 140, l: 296, s: '📬', bg: '#FEE2E2',                 lbl: 'Letters out: daily' },
+];
+
+// ---------------------------------------------------------------------
 
 export default function CareersPage() {
   return (
-    <div className="min-h-screen bg-navy-950">
-      <PublicNavbar />
-      <div className="h-16" />
+    <div className="m-careers-root">
+      <MarkNav active="Careers" />
 
-      <main className="container mx-auto px-4 md:px-6 py-10 md:py-16 max-w-3xl">
-        {/* Hero */}
-        <div className="mb-10">
-          <span className="inline-block px-3 py-1 rounded-full border border-mint-400/30 bg-mint-400/10 text-mint-400 text-xs font-semibold uppercase tracking-wider mb-4">
-            Expressing interest — not hiring publicly yet
-          </span>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            Help us build the consumer finance tool the UK deserves
-          </h1>
-          <p className="text-lg text-slate-300 leading-relaxed mb-4">
-            Paybacker is a small, founder-led team on a mission: give every UK household the legal and AI muscle to stop being overcharged. We&apos;re building in the open, shipping weekly, and looking for people who want in early.
-          </p>
-          <p className="text-lg text-slate-400 leading-relaxed">
-            We&apos;re not running a public recruitment process yet — but if any of the roles below sound like you, drop your details and we&apos;ll be in touch the moment we start hiring.
-          </p>
+      {/* Hero ------------------------------------------------------- */}
+      <section
+        className="section-light glow-wrap"
+        style={{ '--glow-opacity': 0.16, paddingTop: 140, paddingBottom: 80 } as CSSVarProperties}
+      >
+        <div className="wrap">
+          <div className="hero-grid">
+            <div>
+              <span className="eyebrow" style={{ color: 'var(--accent-orange-deep)' } as CSSProperties}>
+                ● Careers · Small team, big mission
+              </span>
+              <h1 className="hero-headline">
+                <span className="line-1">Work on the</span>
+                <span className="line-2">consumer&rsquo;s side,</span>
+                <span className="line-3">for once.</span>
+              </h1>
+              <p className="hero-sub">
+                Most fintech optimises for the bank. Paybacker optimises for the human getting overcharged. It&rsquo;s a more interesting problem — and a far better reason to build.
+              </p>
+              <div className="cta-row">
+                <a className="btn btn-mint" href="#pitch">Pitch us your role →</a>
+                <a className="btn btn-ghost" href="#principles">How we work</a>
+              </div>
+            </div>
+            <div className="collage" aria-hidden="true">
+              {COLLAGE.map((c, i) => (
+                <div
+                  key={i}
+                  className="collage-card"
+                  style={{
+                    top: c.t,
+                    left: c.l,
+                    background: c.bg,
+                    transform: `rotate(${(i % 2 ? 1 : -1) * (2 + i)}deg)`,
+                  } as CSSProperties}
+                >
+                  <div className="emoji">{c.s}</div>
+                  <div className="label">{c.lbl}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </section>
 
-        {/* What we value */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            What we care about
+      {/* Principles ------------------------------------------------- */}
+      <section id="principles" className="section-mint" style={{ padding: '120px 0' } as CSSProperties}>
+        <div className="wrap">
+          <span className="eyebrow">How we work</span>
+          <h2
+            style={{
+              fontSize: 'var(--fs-h2)',
+              fontWeight: 700,
+              letterSpacing: 'var(--track-tight)',
+              margin: '12px 0 48px',
+              maxWidth: 780,
+              lineHeight: 1.05,
+            } as CSSProperties}
+          >
+            No ping-pong, no &ldquo;family&rdquo;, no unlimited PTO that no one takes.
           </h2>
-          <div className="grid gap-4">
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Ship something a real person uses this week</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                We prefer scrappy-and-shipped to polished-and-stuck. If you&apos;ve never pushed something to production in under a week, this probably isn&apos;t the team for you.
-              </p>
-            </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Care about the user, not the stack</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                Our users are UK households being quietly overcharged. Every decision starts from their experience — not which framework is trendy this month.
-              </p>
-            </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Own outcomes, not tickets</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                Small team, big scope. You&apos;ll pick up work that isn&apos;t in your job title and see it through — and we&apos;ll back you when you do.
-              </p>
-            </div>
+          <div className="principles-grid">
+            {PRINCIPLES.map(([t, b]) => (
+              <div key={t} className="principle-card">
+                <h3>{t}</h3>
+                <p>{b}</p>
+              </div>
+            ))}
           </div>
-        </section>
-
-        {/* Roles we're thinking about */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            Roles we&apos;re thinking about
-          </h2>
-          <p className="text-slate-400 leading-relaxed mb-5 text-sm">
-            Rough descriptions — we haven&apos;t written formal JDs yet. Tell us which feels closest and we&apos;ll tailor the conversation when we&apos;re ready.
-          </p>
-          <div className="grid gap-4">
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Founding engineer (full-stack)</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                Next.js + Supabase + Claude. You&apos;ll own major surfaces of the product end-to-end. Bonus if you&apos;ve worked with Open Banking, email ingestion, or LLM pipelines.
-              </p>
-            </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Growth marketer</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                Performance + content + SEO across Google, Reddit and influencer partnerships. You get excited by a conversion funnel and a spreadsheet of CAC targets.
-              </p>
-            </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Product designer</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                Consumer-facing fintech design. You&apos;ll shape how millions of ordinary people understand their own money — no MBAs, no jargon, no dark patterns.
-              </p>
-            </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Consumer law / policy lead</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                You know the Consumer Rights Act 2015, Ofcom / Ofgem codes and UK261 well enough to help tune the AI&apos;s legal reasoning. Paralegal, policy or regulatory background welcome.
-              </p>
-            </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <h3 className="text-white font-semibold mb-1">Open — something else?</h3>
-              <p className="text-slate-300 text-sm leading-relaxed">
-                Support, ops, data, community — if you think you&apos;d add something and it isn&apos;t on this list, tell us.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* How we work */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            How we work
-          </h2>
-          <div className="bg-navy-900 border border-mint-400/30 rounded-2xl p-5">
-            <ul className="space-y-3 text-slate-300 text-sm">
-              <li className="flex items-start gap-2">
-                <span className="text-mint-400 mt-1">&#8226;</span>
-                <span>
-                  <strong className="text-white">London-hybrid, remote-friendly.</strong>{' '}
-                  We expect UK-based where possible for day-to-day overlap, but the default is async.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-mint-400 mt-1">&#8226;</span>
-                <span>
-                  <strong className="text-white">Equity from day one.</strong>{' '}
-                  Early joiners get meaningful ownership. We&apos;d rather be a small team that wins than a big one that shipwrecks.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-mint-400 mt-1">&#8226;</span>
-                <span>
-                  <strong className="text-white">We use the tools we trust.</strong>{' '}
-                  Claude, Next.js 15, Supabase, Stripe, Resend, Yapily. No legacy stack — just the sharpest tools we can point at the problem.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-mint-400 mt-1">&#8226;</span>
-                <span>
-                  <strong className="text-white">Founder-led but not founder-bottlenecked.</strong>{' '}
-                  Paul leads from the front, but the first engineering, design and marketing hires will own their surfaces completely.
-                </span>
-              </li>
-            </ul>
-          </div>
-        </section>
-
-        {/* Form */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            Register your interest
-          </h2>
-          <p className="text-slate-400 leading-relaxed mb-6 text-sm">
-            Takes less than a minute. We&apos;ll only get in touch once — when we&apos;re hiring for something that fits.
-          </p>
-          <CareersInterestForm />
-        </section>
-
-        {/* Footer note */}
-        <p className="text-slate-500 text-xs leading-relaxed">
-          Paybacker is an equal-opportunity employer. We welcome applicants from every background and commit to reading every expression of interest we receive. If you have specific accessibility needs for how you&apos;d like us to get in touch, mention it in the &ldquo;why you&apos;re interested&rdquo; box and we&apos;ll accommodate.
-        </p>
-      </main>
-
-      <footer className="container mx-auto px-4 md:px-6 py-8 border-t border-navy-700/50 mt-16">
-        <div className="text-center text-slate-500 text-sm space-y-3">
-          <div className="flex flex-wrap justify-center gap-4 md:gap-6">
-            <Link href="/about" className="hover:text-white transition-all">About</Link>
-            <Link href="/blog" className="hover:text-white transition-all">Blog</Link>
-            <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy Policy</Link>
-            <Link href="/terms-of-service" className="hover:text-white transition-all">Terms of Service</Link>
-            <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
-            <a href="mailto:hello@paybacker.co.uk" className="hover:text-white transition-all">Contact</a>
-          </div>
-          <p>&copy; 2026 Paybacker LTD. All rights reserved.</p>
         </div>
-      </footer>
+      </section>
+
+      {/* Register your interest (replaces invented "open roles" listing) */}
+      <section id="pitch" className="section-ink" style={{ padding: '120px 0' } as CSSProperties}>
+        <div className="wrap">
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1.3fr',
+              gap: 64,
+              alignItems: 'start',
+            } as CSSProperties}
+            className="register-grid"
+          >
+            <div>
+              <span className="eyebrow on-ink">Hiring</span>
+              <h2
+                style={{
+                  fontSize: 'var(--fs-h2)',
+                  fontWeight: 700,
+                  letterSpacing: 'var(--track-tight)',
+                  margin: '12px 0 18px',
+                  lineHeight: 1.05,
+                  color: 'var(--text-on-ink)',
+                } as CSSProperties}
+              >
+                Not actively recruiting — yet.
+              </h2>
+              <p
+                style={{
+                  fontSize: 16,
+                  lineHeight: 1.65,
+                  color: 'var(--text-on-ink-dim)',
+                  margin: '0 0 24px',
+                  maxWidth: 420,
+                } as CSSProperties}
+              >
+                We launched in March 2026 and we&rsquo;re a small team. We aren&rsquo;t running a live recruitment funnel, but we always read expressions of interest — especially from people working at the edge of AI, UK consumer law, or growth for consumer products.
+              </p>
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  color: 'var(--text-on-ink-dim)',
+                  margin: 0,
+                  maxWidth: 420,
+                } as CSSProperties}
+              >
+                The &ldquo;How we work&rdquo; block above is the contract we&rsquo;ll hold ourselves to when we hire. Leave your details and we&rsquo;ll email the moment we start.
+              </p>
+            </div>
+            <div>
+              <CareersInterestForm />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Perks ------------------------------------------------------ */}
+      <section className="section-ink" style={{ padding: '120px 0' } as CSSProperties}>
+        <div className="wrap">
+          <span className="eyebrow on-ink">The details</span>
+          <h2
+            style={{
+              fontSize: 'var(--fs-h2)',
+              fontWeight: 700,
+              letterSpacing: 'var(--track-tight)',
+              margin: '12px 0 48px',
+              lineHeight: 1.05,
+              color: 'var(--text-on-ink)',
+            } as CSSProperties}
+          >
+            What you&rsquo;ll get, beyond salary.
+          </h2>
+          <div className="perks-grid">
+            {PERKS.map(([e, t, b]) => (
+              <div key={t} className="perk">
+                <div className="emoji">{e}</div>
+                <div className="title">{t}</div>
+                <div className="sub">{b}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <MarkFoot />
     </div>
   );
 }
