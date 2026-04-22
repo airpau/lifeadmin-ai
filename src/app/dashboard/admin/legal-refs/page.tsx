@@ -180,7 +180,7 @@ export default function LegalRefsAdminPage() {
         </Link>
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+            <h1 className="page-title">
               <Shield className="h-9 w-9 text-emerald-600" />
               Legal References
             </h1>

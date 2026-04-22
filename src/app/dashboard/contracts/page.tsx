@@ -793,7 +793,7 @@ export default function ContractsPage() {
     <div className="max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">My Contracts</h1>
+          <h1 className="page-title">My Contracts</h1>
           <p className="text-slate-600 mt-1">Upload your contracts and we find the clauses that matter</p>
         </div>
         <button
@@ -852,7 +852,7 @@ export default function ContractsPage() {
       ) : contracts.length === 0 ? (
         <div className="bg-slate-50/50 border border-dashed border-slate-200/50 rounded-2xl p-12 text-center">
           <FileText className="h-12 w-12 text-slate-600 mx-auto mb-4 opacity-50" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">No contracts uploaded yet</h2>
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>No contracts uploaded yet</h2>
           <p className="text-slate-600 text-sm mb-6 max-w-md mx-auto">Upload a contract and we will read the key terms, flag anything unfair, and use it to write stronger complaint letters.</p>
           <button
             onClick={() => setShowUpload(true)}

@@ -187,8 +187,8 @@ export default function FormsPage() {
       </div>
 
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Forms & Government Letters</h1>
-        <p className="text-slate-600">Official regulatory forms and government letters. For company complaints, use the{' '}
+        <h1 className="page-title">Forms & Government Letters</h1>
+        <p className="page-sub">Official regulatory forms and government letters. For company complaints, use the{' '}
           <a href="/dashboard/complaints" className="text-emerald-600 hover:text-emerald-700 underline underline-offset-2 transition-all">Complaints section</a>.
         </p>
       </div>
@@ -378,7 +378,7 @@ export default function FormsPage() {
         <div>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">{result.formType}</h2>
+              <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{result.formType}</h2>
               <p className="text-green-600 text-sm flex items-center gap-1"><CheckCircle className="h-4 w-4" /> Saved to your history</p>
             </div>
             <button onClick={handleReset} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 text-sm transition-all">

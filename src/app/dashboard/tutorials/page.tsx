@@ -191,7 +191,7 @@ export default function TutorialsPage() {
   return (
     <div className="max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">How to Use Paybacker</h1>
+        <h1 className="page-title">How to Use Paybacker</h1>
         <p className="text-slate-600 mt-1">Step-by-step guides for every feature</p>
       </div>
 

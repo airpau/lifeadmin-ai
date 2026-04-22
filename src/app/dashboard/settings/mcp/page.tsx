@@ -171,7 +171,7 @@ export default function McpSettingsPage() {
           <div className="bg-orange-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
             <Sparkles className="h-8 w-8 text-orange-600" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Pro feature</h2>
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Pro feature</h2>
           <p className="text-slate-600 mb-6">
             The Paybacker Assistant lets a desktop AI app read your transactions, subscriptions,
             budgets and net worth. It&rsquo;s available on the Pro plan.

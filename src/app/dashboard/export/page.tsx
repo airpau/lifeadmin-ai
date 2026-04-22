@@ -56,7 +56,7 @@ export default function ExportPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Export</h1>
+        <h1 className="page-title">Export</h1>
         <p className="mt-2 text-sm text-slate-600 max-w-2xl">
           Send your Paybacker data to the tools you already use. Connect a destination once and
           we&rsquo;ll keep it in sync automatically.

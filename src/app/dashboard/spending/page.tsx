@@ -70,8 +70,8 @@ export default function SpendingPage() {
     return (
       <div className="max-w-5xl">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
-          <p className="text-slate-600">Connect your bank account to see where your money goes</p>
+          <h1 className="page-title">Spending Insights</h1>
+        <p className="page-sub">Connect your bank account to see where your money goes</p>
         </div>
         <div className="card shadow-sm p-12 text-center">
           <BarChart3 className="h-16 w-16 text-slate-700 mx-auto mb-4" />
@@ -91,8 +91,8 @@ export default function SpendingPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
-        <p className="text-slate-600">
+        <h1 className="page-title">Spending Insights</h1>
+        <p className="page-sub">
           Based on {summary.months_analysed} months of bank data · {summary.total_transactions.toLocaleString()} transactions
         </p>
       </div>
