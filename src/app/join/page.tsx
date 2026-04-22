@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Gift, CheckCircle, ArrowRight } from 'lucide-react';
 import { MarkNav } from '@/app/blog/_shared';
@@ -9,6 +9,7 @@ import '../(marketing)/styles.css';
 import '../auth/auth.css';
 
 function JoinContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const ref = searchParams.get('ref');
 
@@ -18,8 +19,27 @@ function JoinContent() {
       document.cookie = `pb_ref=${ref};path=/;max-age=${60 * 60 * 24 * 30};SameSite=Lax`;
       // Also store in localStorage as backup
       localStorage.setItem('pb_ref', ref);
+      return;
     }
-  }, [ref]);
+    // No referral code — this page was mistaken for a generic "start trial" CTA.
+    // Send the visitor to the normal signup flow instead of showing them
+    // an "You've been invited" message that doesn't apply.
+    router.replace('/auth/signup');
+  }, [ref, router]);
+
+  // If there's no ref we're about to redirect — render nothing to avoid the
+  // "You've been invited" flash.
+  if (!ref) {
+    return (
+      <main className="auth-shell">
+        <div className="auth-wrap">
+          <div className="auth-loading" aria-busy="true">
+            <div className="spinner" />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   const perks = [
     'AI complaint letters citing UK consumer law',
