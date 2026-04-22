@@ -142,7 +142,7 @@ export default function NotificationBell() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 rounded-lg text-slate-400 hover:text-white hover:bg-navy-800 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
+        className="relative p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors min-h-[40px] min-w-[40px] flex items-center justify-center"
         aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
       >
         <Bell className="h-5 w-5" />
@@ -155,15 +155,15 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[340px] max-w-[calc(100vw-2rem)] bg-navy-900 border border-navy-700/70 rounded-2xl shadow-2xl z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-navy-700/50">
-            <h3 className="text-sm font-semibold text-white">Notifications</h3>
+        <div className="absolute right-0 mt-2 w-[340px] max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+            <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
             <div className="flex items-center gap-2">
               {items.some((i) => !i.read_at) && (
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
-                  className="text-xs text-slate-400 hover:text-mint-400 transition-colors"
+                  className="text-xs text-slate-500 hover:text-mint-400 transition-colors"
                 >
                   Mark all read
                 </button>
@@ -171,7 +171,7 @@ export default function NotificationBell() {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-slate-500 hover:text-white p-0.5"
+                className="text-slate-500 hover:text-slate-900 p-0.5"
                 aria-label="Close notifications"
               >
                 <X className="h-4 w-4" />
@@ -197,7 +197,7 @@ export default function NotificationBell() {
                       <button
                         type="button"
                         onClick={() => handleNotificationClick(n)}
-                        className={`w-full text-left px-4 py-3 hover:bg-navy-800/70 transition-colors flex gap-3 ${
+                        className={`w-full text-left px-4 py-3 hover:bg-slate-100 transition-colors flex gap-3 ${
                           unread ? 'bg-mint-400/[0.03]' : ''
                         }`}
                       >
@@ -205,7 +205,7 @@ export default function NotificationBell() {
                           className={`flex-shrink-0 h-8 w-8 rounded-lg flex items-center justify-center ${
                             unread
                               ? 'bg-mint-400/10 text-mint-400'
-                              : 'bg-navy-800 text-slate-500'
+                              : 'bg-slate-100 text-slate-500'
                           }`}
                         >
                           <Icon className="h-4 w-4" />
@@ -214,7 +214,7 @@ export default function NotificationBell() {
                           <div className="flex items-center gap-2">
                             <p
                               className={`text-sm truncate ${
-                                unread ? 'text-white font-semibold' : 'text-slate-400'
+                                unread ? 'text-slate-900 font-semibold' : 'text-slate-500'
                               }`}
                             >
                               {n.title}
