@@ -162,38 +162,17 @@ export function resolveMoneyHubTransaction(
   }
 
   if (amount > 0) {
+    // 1. Explicit transfer override, or heuristic says it's an internal transfer
     if (resolvedOverride === 'transfers' || isTransferLikeTransaction(txn, effectiveIncomeType)) {
       return { amount, kind: 'transfer', spendingCategory: 'transfers', incomeType: 'transfer' };
     }
 
-    // User override wins for positive-amount transactions too.
-    // If the user has explicitly tagged this as a non-income category
-    // (e.g. 'loans', 'mortgage', 'credit'), respect it — exclude from income totals.
-    // We mirror the spending-branch logic: resolvedOverride (from the overrides
-    // table — strong signal) is honoured outright, while storedCategory (which
-    // migrations can also set) is honoured only for non-soft categories.
-    if (resolvedOverride && resolvedOverride !== 'income') {
-      return {
-        amount,
-        kind: 'transfer',
-        spendingCategory: resolvedOverride,
-        incomeType: null,
-      };
-    }
-    if (
-      storedCategory &&
-      storedCategory !== 'income' &&
-      storedCategory !== 'transfers' &&
-      !SOFT_SPENDING_CATEGORIES.has(storedCategory)
-    ) {
-      return {
-        amount,
-        kind: 'transfer',
-        spendingCategory: storedCategory,
-        incomeType: null,
-      };
-    }
-
+    // 2. Strong income signals win over a stale storedCategory. This matters
+    // because `txn.user_category` can carry a bank-side or migration label
+    // that isn't a real user choice — previously a positive transaction
+    // with any non-soft storedCategory was being bucketed as 'transfer'
+    // and disappearing from the monthly income total (hence the sudden
+    // drop in reported income).
     const hasRealIncomeType = !!effectiveIncomeType && !isExcludedIncomeType(effectiveIncomeType);
     const isStoredIncome = storedCategory === 'income' || resolvedOverride === 'income';
     const bankSuggestsIncome = CREDIT_BANK_CATEGORIES.has(bankCategory);
@@ -207,6 +186,20 @@ export function resolveMoneyHubTransaction(
       };
     }
 
+    // 3. Explicit user override (from the overrides table) to a non-income
+    //    category — honour the label but flag as 'other' so it stays out of
+    //    both income and spending totals. It is NOT an internal transfer.
+    if (resolvedOverride && resolvedOverride !== 'income') {
+      return {
+        amount,
+        kind: 'other',
+        spendingCategory: resolvedOverride,
+        incomeType: null,
+      };
+    }
+
+    // 4. Fallback income heuristic — catches salary/wage keywords the bank
+    //    mislabelled.
     const fallbackIncomeType = detectFallbackIncomeType(description, bankCategory, amount);
     if (fallbackIncomeType) {
       return {
@@ -214,6 +207,24 @@ export function resolveMoneyHubTransaction(
         kind: 'income',
         spendingCategory: null,
         incomeType: fallbackIncomeType,
+      };
+    }
+
+    // 5. Stored category from bank or migration — if it's confidently
+    //    non-income/non-transfer/non-soft (e.g. 'groceries' on a refund)
+    //    surface the label but keep it out of income totals. Still NOT a
+    //    transfer.
+    if (
+      storedCategory &&
+      storedCategory !== 'income' &&
+      storedCategory !== 'transfers' &&
+      !SOFT_SPENDING_CATEGORIES.has(storedCategory)
+    ) {
+      return {
+        amount,
+        kind: 'other',
+        spendingCategory: storedCategory,
+        incomeType: null,
       };
     }
 
