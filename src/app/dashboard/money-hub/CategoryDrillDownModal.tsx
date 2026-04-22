@@ -22,6 +22,17 @@ const ALL_CATEGORIES = [
   'transfers', 'travel', 'utility', 'water',
 ];
 
+// Income types the user can pick from when drilling into income.
+// Must match the CHECK constraint on bank_transactions.income_type and REAL_INCOME_TYPES in money-hub-classification.
+const INCOME_TYPES = [
+  'salary', 'freelance', 'benefits', 'rental', 'investment',
+  'refund', 'loan_repayment', 'gift', 'other',
+];
+
+// "This isn't income" escape hatch — picking one of these marks the txn as
+// non-income (income_type = 'credit_loan') and labels it on the spending side.
+const NON_INCOME_CATEGORIES = ['transfers', 'loans', 'mortgage', 'credit'];
+
 export default function CategoryDrillDownModal({ isOpen, onClose, category, incomeType, searchQuery, selectedMonth, onRecategorised }: CategoryDrillDownModalProps) {
   const [data, setData] = useState<{ transactions: any[]; merchants: any[]; totalSpent: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,19 +66,37 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     setLoading(false);
   };
 
-  const handleRecategorise = async (merchantPattern: string, newCategory: string) => {
+  // Unified recategorise handler.
+  // `mode` decides whether we POST { newIncomeType } (income-type change) or
+  // { newCategory } (spending-category / non-income label).
+  const handleRecategorise = async (
+    merchantPattern: string,
+    newValue: string,
+    mode: 'incomeType' | 'category' = 'category',
+  ) => {
     setRecatLoading(true);
     try {
+      const body: Record<string, any> =
+        mode === 'incomeType'
+          ? { merchantPattern, newIncomeType: newValue, applyToAll: true }
+          : { merchantPattern, newCategory: newValue, applyToAll: true };
+
       await fetch('/api/money-hub/recategorise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merchantPattern, newCategory, applyToAll: true }),
+        body: JSON.stringify(body),
       });
+
+      // Teach the learning engine with the matching signal
+      const learnBody: Record<string, any> = { rawName: merchantPattern };
+      if (mode === 'incomeType') learnBody.incomeType = newValue;
+      else learnBody.category = newValue;
       await fetch('/api/learn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawName: merchantPattern, category: newCategory }),
+        body: JSON.stringify(learnBody),
       });
+
       await loadData();
       onRecategorised();
     } catch {
@@ -83,6 +112,68 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   let displayTitle = '';
   if (searchQuery) displayTitle = `Search: "${searchQuery}"`;
   else displayTitle = (incomeType || category!).replace(/_/g, ' ');
+
+  // When the modal is opened in income context, the dropdown offers income types
+  // plus a "Not income" escape hatch. Otherwise we fall back to spending categories.
+  const isIncomeMode = !!incomeType;
+
+  const renderReassignOptions = (pattern: string) => {
+    if (isIncomeMode) {
+      return (
+        <>
+          <div className="p-2 border-b border-navy-700 bg-navy-900/50">
+            <p className="text-xs text-slate-400 font-medium">Change income type</p>
+          </div>
+          <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
+            {INCOME_TYPES.map(t => (
+              <button
+                key={`inc-${t}`}
+                onClick={() => handleRecategorise(pattern, t, 'incomeType')}
+                disabled={recatLoading}
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+              >
+                {t.replace(/_/g, ' ')}
+              </button>
+            ))}
+          </div>
+          <div className="p-2 border-t border-b border-navy-700 bg-navy-900/50">
+            <p className="text-xs text-slate-400 font-medium">Not income — tag as</p>
+          </div>
+          <div className="max-h-32 overflow-y-auto custom-scrollbar p-1">
+            {NON_INCOME_CATEGORIES.map(c => (
+              <button
+                key={`nic-${c}`}
+                onClick={() => handleRecategorise(pattern, c, 'category')}
+                disabled={recatLoading}
+                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+              >
+                {c.replace(/_/g, ' ')}
+              </button>
+            ))}
+          </div>
+        </>
+      );
+    }
+    return (
+      <>
+        <div className="p-2 border-b border-navy-700 bg-navy-900/50">
+          <p className="text-xs text-slate-400 font-medium">Reassign to...</p>
+        </div>
+        <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
+          {ALL_CATEGORIES.map(c => (
+            <button
+              key={c}
+              onClick={() => handleRecategorise(pattern, c, 'category')}
+              disabled={recatLoading}
+              className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
+            >
+              {c.replace(/_/g, ' ')}
+            </button>
+          ))}
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -135,22 +226,8 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                       </div>
                       
                       {merchantRecatIdx === idx && (
-                        <div className="absolute top-16 right-0 w-48 bg-navy-800 border border-navy-700 rounded-xl shadow-xl z-20 overflow-hidden">
-                          <div className="p-2 border-b border-navy-700 bg-navy-900/50">
-                            <p className="text-xs text-slate-400 font-medium">Reassign to...</p>
-                          </div>
-                          <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
-                            {ALL_CATEGORIES.map(c => (
-                              <button
-                                key={c}
-                                onClick={() => handleRecategorise(m.merchant, c)}
-                                disabled={recatLoading}
-                                className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
-                              >
-                                {c.replace(/_/g, ' ')}
-                              </button>
-                            ))}
-                          </div>
+                        <div className="absolute top-16 right-0 w-56 bg-navy-800 border border-navy-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                          {renderReassignOptions(m.merchant)}
                         </div>
                       )}
                     </div>
@@ -182,19 +259,8 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                         </div>
 
                         {isRecatOpen && (
-                          <div className="absolute top-12 right-4 w-48 bg-navy-800 border border-navy-700 rounded-xl shadow-xl z-20 overflow-hidden">
-                            <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
-                              {ALL_CATEGORIES.map(c => (
-                                <button
-                                  key={c}
-                                  onClick={() => handleRecategorise(cleanMerchantName(txn.description || ''), c)}
-                                  disabled={recatLoading}
-                                  className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-purple-500/20 hover:text-purple-300 rounded capitalize disabled:opacity-50"
-                                >
-                                  {c.replace(/_/g, ' ')}
-                                </button>
-                              ))}
-                            </div>
+                          <div className="absolute top-12 right-4 w-56 bg-navy-800 border border-navy-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                            {renderReassignOptions(cleanMerchantName(txn.description || ''))}
                           </div>
                         )}
                       </div>
