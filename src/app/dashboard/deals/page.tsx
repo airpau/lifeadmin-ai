@@ -634,9 +634,11 @@ export default function DealsPage() {
   return (
     <div className="max-w-7xl">
       {/* Hero */}
-      <div className="mb-8">
-        <h1 className="page-title">Find Better Deals</h1>
-        <p className="page-sub">Personalised savings based on your contracts and bills.</p>
+      <div className="page-title-row">
+        <div>
+          <h1 className="page-title">Find Better Deals</h1>
+          <p className="page-sub">Personalised savings based on your contracts and bills.</p>
+        </div>
       </div>
 
       {/* Category filter tabs */}
