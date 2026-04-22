@@ -285,8 +285,6 @@
 .m-v2-root .hero-sub { text-align: center; margin-left: auto; margin-right: auto; }
 .m-v2-root .hero-cta-row { justify-content: center; }
 .m-v2-root .hero-ticker { justify-content: center; align-self: center; }
-.m-v2-root .hero-visual--live { width: 100%; max-width: 960px; }
-.m-v2-root .hero-visual--live .hero-demo-frame { max-width: 960px; }
 
 .m-v2-root .hero h1 {
   font-size: var(--fs-display);
@@ -333,11 +331,17 @@
   100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
 }
 
-/* Hero visual */
+/* Hero visual — static 3-card composition: mini-card (left), dash-card
+   (right, mouse-tilt), agent-bubble (bottom-right). Needs a fixed width
+   so absolutely-positioned children have a containing block to anchor
+   against now that .hero-grid is a centred column. */
 
 .m-v2-root .hero-visual {
   position: relative;
+  width: 100%;
+  max-width: 720px;
   height: 600px;
+  margin: 0 auto;
   perspective: 1400px;
 }
 
@@ -1204,32 +1208,6 @@
 /* ============================================================
    Feature sections (merged copy + demo) + comparison matrix
    ============================================================ */
-
-/* Hero: clean centred Disputes demo — no rotation, no overlays.
-   The demo IS the centrepiece. Let it breathe. */
-.m-v2-root .hero-visual--live {
-  height: auto;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 8px;
-}
-.m-v2-root .hero-demo-frame {
-  position: relative;
-  width: 100%;
-  max-width: 620px;
-  border-radius: 20px;
-  box-shadow: var(--shadow-xl);
-  overflow: hidden;
-  background: #fff;
-}
-.m-v2-root .hero-demo-frame .demo-stage {
-  max-width: none;
-  width: 100%;
-  border-radius: 20px;
-  border: none;
-  box-shadow: none;
-}
 
 /* Shared: centred section head modifier */
 .m-v2-root .section-head--center {
