@@ -227,10 +227,6 @@ export default function HomepageV2Preview() {
 
   return (
     <div className="m-v2-root" ref={revealContainerRef}>
-      <div className="preview-badge" aria-label="Preview page">
-        Preview · Homepage v2
-      </div>
-
       {/* Floating pill nav ------------------------------------------ */}
       <div className={`nav-shell${navScrolled ? ' scrolled' : ''}`} id="navShell">
         <nav className="nav-pill" aria-label="Primary">
