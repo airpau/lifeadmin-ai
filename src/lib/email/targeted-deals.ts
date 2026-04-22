@@ -3,6 +3,7 @@ import { OpportunityScore } from '@/lib/opportunity-scoring';
 
 export function buildTargetedEmail(
   userName: string,
+  recipientEmail: string,
   score: OpportunityScore,
   totalMonthlySpend: number
 ): { subject: string; html: string } | null {
@@ -43,6 +44,8 @@ export function buildTargetedEmail(
       </td>
     </tr>
   `).join('');
+
+  const unsubUrl = `https://paybacker.co.uk/api/unsubscribe?email=${encodeURIComponent(recipientEmail)}`;
 
   const spendLine = totalMonthlySpend > 0
     ? ` across your &#163;${totalMonthlySpend.toFixed(0)}/month in tracked bills`
@@ -146,7 +149,7 @@ export function buildTargetedEmail(
                   <td align="center" style="color: #334155; font-size: 11px; line-height: 1.8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
                     Paybacker LTD &middot; paybacker.co.uk<br>
                     <a href="https://paybacker.co.uk/dashboard/profile" style="color: #64748b; text-decoration: underline;">Manage preferences</a> &middot;
-                    <a href="https://paybacker.co.uk/unsubscribe" style="color: #64748b; text-decoration: underline;">Unsubscribe</a> &middot;
+                    <a href="${unsubUrl}" style="color: #64748b; text-decoration: underline;">Unsubscribe</a> &middot;
                     <a href="https://paybacker.co.uk/privacy-policy" style="color: #64748b; text-decoration: underline;">Privacy</a>
                   </td>
                 </tr>
@@ -171,7 +174,7 @@ export async function sendTargetedDealEmail(
   score: OpportunityScore,
   totalMonthlySpend: number
 ): Promise<boolean> {
-  const emailData = buildTargetedEmail(userName, score, totalMonthlySpend);
+  const emailData = buildTargetedEmail(userName, email, score, totalMonthlySpend);
   if (!emailData) return false;
 
   try {
