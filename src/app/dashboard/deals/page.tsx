@@ -679,7 +679,7 @@ export default function DealsPage() {
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ flex: 1, minWidth: 280 }}>
+        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
           <span
             style={{
               fontSize: 11,
@@ -691,7 +691,7 @@ export default function DealsPage() {
           >
             Deals · updated weekly
           </span>
-          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-.015em', margin: '8px 0 6px', color: '#fff' }}>
+          <h2 style={{ fontSize: 'clamp(20px, 5vw, 26px)', fontWeight: 700, letterSpacing: '-.015em', margin: '8px 0 6px', color: '#fff' }}>
             {dealsCount} verified deals
             {potentialAnnualSaving > 0 && <>, £{potentialAnnualSaving.toLocaleString()} in potential savings.</>}
             {potentialAnnualSaving === 0 && ' tailored to your subscriptions.'}
@@ -711,7 +711,7 @@ export default function DealsPage() {
             color: '#059669',
             borderRadius: 12,
             textDecoration: 'none',
-            whiteSpace: 'nowrap',
+            flexShrink: 0,
           }}
         >
           Match against my bills →
