@@ -21,16 +21,43 @@ export function isDealValid(deal: { category?: string | null; currentPrice?: num
   return true;
 }
 
-export function calculateTotalSavings(deals: any[], priceAlerts: any[]): number {
-  const validDeals = (deals || []).filter(isDealValid);
-  const dealsTotal = validDeals.reduce((sum, d) => sum + (d.annualSaving || 0), 0);
-  
-  const alertTotal = (priceAlerts || []).reduce((sum, a) => {
-    const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-    return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-  }, 0);
-  
-  return dealsTotal + alertTotal;
+/**
+ * Headline "Potential Savings Found" figure shown on the dashboard.
+ *
+ * Only real switch-deal savings contribute to this total. Price-increase
+ * alerts are surfaced separately (via PriceIncreaseCard) — they represent
+ * *mitigable overspend*, not guaranteed savings, and rolling them into the
+ * same bucket was producing inflated, unreliable totals (e.g. £36k/yr)
+ * because:
+ *   (a) the same recurring merchant can produce multiple active alerts
+ *       over consecutive months, so the delta gets counted every time,
+ *   (b) one-off / non-recurring transactions occasionally slip through the
+ *       detector and show up as huge notional "increases",
+ *   (c) an alert's annual_impact is already the annualised delta, so the
+ *       previous code double-counted on the positive-diff branch.
+ *
+ * Deals are de-duplicated by subscriptionName so the same provider cannot
+ * contribute twice (parseComparisonDeals already takes the best comparison
+ * per subscription, but this is a belt-and-braces check for callers that
+ * pass pre-flattened lists).
+ *
+ * The second parameter is kept for backwards-compat with existing call
+ * sites; it is intentionally ignored.
+ */
+export function calculateTotalSavings(
+  deals: any[],
+  _priceAlerts?: any[],
+): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const d of deals || []) {
+    if (!isDealValid(d)) continue;
+    const key = (d.subscriptionName || d.providerName || '').toLowerCase().trim();
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    total += d.annualSaving || 0;
+  }
+  return total;
 }
 
 export function parseComparisonDeals(data: any) {

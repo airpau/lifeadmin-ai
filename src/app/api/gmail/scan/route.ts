@@ -8,6 +8,7 @@ import { checkUsageLimit, incrementUsage } from '@/lib/plan-limits';
 import { checkClaudeRateLimit, recordClaudeCall } from '@/lib/claude-rate-limit';
 import { getUserPlan } from '@/lib/get-user-plan';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -308,21 +309,49 @@ export async function POST(request: NextRequest) {
         );
 
         if (subs.length > 0) {
-          await admin.from('subscriptions').insert(
-            subs.map((o: any) => ({
+          // Only insert providers that aren't already tracked (by canonical
+          // recurring_group). Without this filter the partial unique index
+          // from 20260422020000 would reject the whole batch and nothing
+          // would land. Also fixes a latent bug: the previous code wrote
+          // `next_payment_date`, which isn't a column on `subscriptions` —
+          // the correct field is `next_billing_date`.
+          const { data: existingKeysRows } = await admin
+            .from('subscriptions')
+            .select('recurring_group')
+            .eq('user_id', user.id);
+          const existingKeysSet = new Set(
+            (existingKeysRows || [])
+              .map((r: { recurring_group: string | null }) => r.recurring_group)
+              .filter((k: string | null): k is string => !!k)
+          );
+
+          const subsToInsert = subs
+            .map((o: any) => {
+              const providerName = o.provider || 'Unknown';
+              return { o, providerName, key: deriveRecurringGroup(providerName) };
+            })
+            .filter(({ key }: { key: string | null }) => !key || !existingKeysSet.has(key))
+            .map(({ o, providerName, key }: { o: any; providerName: string; key: string | null }) => ({
               user_id: user.id,
-              provider_name: o.provider || 'Unknown',
+              provider_name: providerName,
               amount: o.amount || o.paymentAmount || 0,
               billing_cycle: o.paymentFrequency === 'yearly' ? 'yearly' : (o.paymentFrequency === 'quarterly' ? 'quarterly' : 'monthly'),
               status: 'active',
               source: 'gmail_scan',
               category: o.category || 'other',
-              next_payment_date: o.nextPaymentDate || null,
+              next_billing_date: o.nextPaymentDate || null,
               contract_end_date: o.contractEndDate || null,
               notes: o.description,
               detected_at: new Date().toISOString(),
-            }))
-          ).then(({ error: e }) => { if (e) console.error('[gmail-scan] subscriptions insert:', e.message); });
+              recurring_group: key,
+            }));
+
+          if (subsToInsert.length > 0) {
+            await admin.from('subscriptions').insert(subsToInsert)
+              .then(({ error: e }: { error: { message: string } | null }) => {
+                if (e) console.error('[gmail-scan] subscriptions insert:', e.message);
+              });
+          }
         }
 
         const alerts = newOpportunities.filter((o: any) => o.type !== 'subscription' && o.type !== 'forgotten_subscription');

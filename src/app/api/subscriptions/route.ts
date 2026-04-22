@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 export async function GET() {
   try {
@@ -69,6 +70,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Canonical key so the row plays nicely with get_subscription_total and
+    // the partial unique index on (user_id, recurring_group). See
+    // 20260422020000.
+    const recurringGroup = deriveRecurringGroup(body.provider_name);
+
+    // If an active row for this provider already exists, merge into it
+    // instead of inserting a duplicate. This is the user-friendly flip-side
+    // of the partial unique index — without it the INSERT would 23505 and
+    // the caller would see a 500.
+    if (recurringGroup) {
+      const { data: existing } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('recurring_group', recurringGroup)
+        .is('dismissed_at', null)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const patch: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+          amount: parseFloat(body.amount),
+          billing_cycle: body.billing_cycle,
+        };
+        if (body.category)            patch.category = body.category;
+        if (body.next_billing_date)   patch.next_billing_date = body.next_billing_date;
+        if (body.contract_end_date)   patch.contract_end_date = body.contract_end_date;
+        if (body.contract_start_date) patch.contract_start_date = body.contract_start_date;
+        if (body.provider_type)       patch.provider_type = body.provider_type;
+        if (body.current_tariff)      patch.current_tariff = body.current_tariff;
+        if (body.notes)               patch.notes = body.notes;
+
+        const { data: updated, error: updErr } = await supabase
+          .from('subscriptions')
+          .update(patch)
+          .eq('id', existing.id)
+          .eq('user_id', user.id)
+          .select()
+          .single();
+
+        if (updErr) throw updErr;
+        return NextResponse.json(updated, { status: 200 });
+      }
+    }
+
     const { data, error } = await supabase
       .from('subscriptions')
       .insert({
@@ -96,6 +144,7 @@ export async function POST(request: NextRequest) {
         alert_before_days: body.alert_before_days || 30,
         contract_end_source: body.contract_end_source || (body.contract_end_date ? 'manual' : null),
         source: body.source || 'manual',
+        recurring_group: recurringGroup,
       })
       .select()
       .single();

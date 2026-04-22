@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { deriveRecurringGroup } from './subscription-key';
 
 const STRIP_SUFFIXES = /\b(ltd|limited|plc|llp|inc|corp|group|uk|co\.uk)\b/gi;
 const AMOUNT_VARIANCE = 0.10; // 10%
@@ -206,7 +207,7 @@ export async function detectRecurring(
     // Check if subscription already exists (any status) — aggressive dedup
     const { data: allUserSubs } = await supabase
       .from('subscriptions')
-      .select('id, provider_name, status, cancelled_at, dismissed_at')
+      .select('id, provider_name, status, cancelled_at, dismissed_at, recurring_group')
       .eq('user_id', userId);
 
     // Helper: extract significant words (3+ chars, no noise)
@@ -215,7 +216,15 @@ export async function detectRecurring(
       .split(/\s+/)
       .filter(w => w.length >= 3 && !['ltd', 'limited', 'plc', 'the', 'and', 'for'].includes(w));
 
+    // Canonical key for this recurring group — same function used everywhere
+    // that inserts into `subscriptions`, so the partial unique index
+    // (user_id, recurring_group) will catch anything this heuristic misses.
+    const recurringKey = deriveRecurringGroup(displayName);
+
     const matchingSub = (allUserSubs || []).find((sub) => {
+      // Fast path: exact recurring_group match is unambiguous.
+      if (recurringKey && sub.recurring_group && sub.recurring_group === recurringKey) return true;
+
       const subNorm = normaliseMerchant(sub.provider_name);
       // Exact or normalised match
       if (sub.provider_name === displayName) return true;
@@ -280,6 +289,10 @@ export async function detectRecurring(
       category,
       bank_description: bankDesc,
       notes: 'Detected from bank transactions',
+      // Canonical key so `get_subscription_total` can join this row against
+      // the ledger and the partial unique index catches any race that
+      // slipped past the `matchingSub` filter above. See 20260422020000.
+      recurring_group: deriveRecurringGroup(finalDisplayName),
     });
 
     if (insertError) {

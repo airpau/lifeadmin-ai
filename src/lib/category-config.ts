@@ -3,6 +3,7 @@ import {
   Tv, Monitor, Car, Zap, MoreHorizontal, Dumbbell, Music, Gamepad2,
   Cloud, Heart, Lock, HandHeart, GraduationCap, PawPrint, ParkingCircle,
   Plane, Dice5, Receipt, CircleDollarSign, type LucideIcon, Droplets,
+  Cpu,
 } from 'lucide-react';
 
 interface CategoryConfig {
@@ -79,6 +80,13 @@ export interface FilterGroup {
   matches: string[];
 }
 
+// NOTE: every canonical category in CATEGORY_CONFIG should be covered by at
+// least one explicit filter group below (or fall through to 'other' by
+// intention). If a category is only in CATEGORY_CONFIG but not in any
+// filter group's `matches`, subscriptions tagged with it can vanish when the
+// user picks a specific filter — this is what happened to the Hounslow
+// parking subscription when it was re-categorised from 'other' to 'parking'
+// before this group existed. Keep in sync with CATEGORY_CONFIG above.
 export const SUBSCRIPTION_FILTER_CATEGORIES: FilterGroup[] = [
   { value: 'energy', label: 'Energy', icon: Zap, color: 'text-green-400', bgColor: 'bg-green-400/10', matches: ['energy', 'utility', 'water', 'gas'] },
   { value: 'broadband_tv', label: 'Broadband & TV', icon: Wifi, color: 'text-blue-400', bgColor: 'bg-blue-400/10', matches: ['broadband', 'tv'] },
@@ -87,5 +95,10 @@ export const SUBSCRIPTION_FILTER_CATEGORIES: FilterGroup[] = [
   { value: 'finance', label: 'Finance', icon: Banknote, color: 'text-red-400', bgColor: 'bg-red-400/10', matches: ['mortgage', 'loan', 'credit_card', 'credit_monitoring', 'fee', 'tax', 'bills', 'council_tax'] },
   { value: 'entertainment', label: 'Entertainment', icon: Tv, color: 'text-purple-400', bgColor: 'bg-purple-400/10', matches: ['streaming', 'gaming', 'music', 'gambling', 'news'] },
   { value: 'health_fitness', label: 'Health & Fitness', icon: Dumbbell, color: 'text-rose-400', bgColor: 'bg-rose-400/10', matches: ['fitness', 'healthcare', 'health'] },
+  { value: 'motoring', label: 'Motoring & Travel', icon: Car, color: 'text-yellow-400', bgColor: 'bg-yellow-400/10', matches: ['transport', 'motoring', 'parking', 'travel'] },
+  { value: 'home', label: 'Home', icon: Home, color: 'text-lime-400', bgColor: 'bg-lime-400/10', matches: ['rent', 'property_management', 'security'] },
+  { value: 'tech', label: 'Software & Storage', icon: Cpu, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10', matches: ['software', 'storage'] },
+  { value: 'food', label: 'Food & Drink', icon: UtensilsCrossed, color: 'text-orange-400', bgColor: 'bg-orange-400/10', matches: ['food'] },
+  { value: 'lifestyle', label: 'Lifestyle', icon: HandHeart, color: 'text-teal-400', bgColor: 'bg-teal-400/10', matches: ['charity', 'education', 'pets'] },
   { value: 'other', label: 'Other', icon: MoreHorizontal, color: 'text-slate-400', bgColor: 'bg-slate-400/10', matches: [] },
 ];

@@ -1,0 +1,28 @@
+diff --git a/src/app/dashboard/money-hub/page.tsx b/src/app/dashboard/money-hub/page.tsx
+index aefbcb5..4151afc 100644
+--- a/src/app/dashboard/money-hub/page.tsx
++++ b/src/app/dashboard/money-hub/page.tsx
+@@ -455,11 +455,8 @@ export default function MoneyHubPage() {
+       {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
+       <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+ 
+-      {/* MAIN GRID: Spending + Budgets & Goals */}
+-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+-        <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+-        <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
+-      </div>
++      {/* Spending Intelligence */}
++      <SpendingPanel data={data} isPro={isPro} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
+ 
+       {/* Expected Bills (for the selected month) */}
+       {expectedBills.length > 0 && (
+@@ -536,6 +533,9 @@ export default function MoneyHubPage() {
+         <NetWorthPanel data={data} isPro={isPro} refreshData={refreshData} />
+       </div>
+ 
++      {/* Budgets & Savings Goals — moved above Financial Action Centre for visibility */}
++      <GoalsAndBudgetsPanel data={data} isPro={isPro} refreshData={refreshData} />
++
+       {/* Financial Action Centre (Pro) */}
+       {isPro && (
+         <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">

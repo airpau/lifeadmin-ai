@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCategoryOverride, resolveMoneyHubTransaction } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
+import { deriveRecurringGroup } from '@/lib/subscription-key';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -1270,6 +1271,45 @@ async function addSubscription(
   userId: string,
   params: { provider_name: string; amount: number; billing_cycle: string; category: string },
 ): Promise<ToolResult> {
+  // Merge with existing active row for this provider, if one exists.
+  // Pocket users regularly say "add my Hounslow parking as yearly £144"
+  // when the item is already tracked — insertion would either duplicate
+  // or trip the partial unique index (see 20260422020000).
+  const recurringGroup = deriveRecurringGroup(params.provider_name);
+
+  if (recurringGroup) {
+    const { data: existing } = await supabase
+      .from('subscriptions')
+      .select('id, provider_name')
+      .eq('user_id', userId)
+      .eq('recurring_group', recurringGroup)
+      .is('dismissed_at', null)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from('subscriptions')
+        .update({
+          amount: params.amount,
+          billing_cycle: params.billing_cycle,
+          category: params.category,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .eq('user_id', userId);
+
+      if (updErr) {
+        return { text: `Failed to update existing ${existing.provider_name}: ${updErr.message}` };
+      }
+
+      const cycleA = params.billing_cycle;
+      const annualA = params.amount * (cycleA === 'monthly' ? 12 : cycleA === 'quarterly' ? 4 : 1);
+      return { text: `Updated existing *${existing.provider_name}* — ${fmt(params.amount)}/${cycleA} (${fmt(annualA)}/year). Category: ${params.category}.` };
+    }
+  }
+
   const { error } = await supabase.from('subscriptions').insert({
     user_id: userId,
     provider_name: params.provider_name,
@@ -1277,6 +1317,8 @@ async function addSubscription(
     billing_cycle: params.billing_cycle,
     category: params.category,
     status: 'active',
+    recurring_group: recurringGroup,
+    source: 'telegram',
   });
 
   if (error) {
@@ -1995,6 +2037,56 @@ async function addContract(
   },
 ): Promise<ToolResult> {
   const annual = params.monthly_cost * 12;
+  const recurringGroup = deriveRecurringGroup(params.provider_name);
+
+  // If there's already an active row for this provider, augment it with
+  // contract fields instead of inserting a duplicate. Contracts and
+  // subscriptions share the same row in this schema (contract_type !=
+  // null distinguishes them) so the partial unique index in
+  // 20260422020000 would otherwise reject the insert.
+  if (recurringGroup) {
+    const { data: existing } = await supabase
+      .from('subscriptions')
+      .select('id, provider_name')
+      .eq('user_id', userId)
+      .eq('recurring_group', recurringGroup)
+      .is('dismissed_at', null)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from('subscriptions')
+        .update({
+          category: params.category,
+          amount: params.monthly_cost,
+          billing_cycle: 'monthly',
+          contract_type: 'fixed_contract',
+          contract_start_date: params.contract_start_date ?? null,
+          contract_end_date: params.contract_end_date ?? null,
+          auto_renews: params.auto_renews,
+          interest_rate: params.interest_rate ?? null,
+          remaining_balance: params.remaining_balance ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .eq('user_id', userId);
+
+      if (updErr) {
+        return { text: `Failed to update contract: ${updErr.message}` };
+      }
+
+      let textA = `Updated contract on existing *${existing.provider_name}* [${params.category}] — ${fmt(params.monthly_cost)}/month (${fmt(annual)}/year)`;
+      if (params.contract_end_date) {
+        const daysLeftA = Math.ceil(
+          (new Date(params.contract_end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        );
+        textA += `\nEnds: ${fmtDate(params.contract_end_date)} (${daysLeftA} days)`;
+      }
+      return { text: textA };
+    }
+  }
 
   const { error } = await supabase.from('subscriptions').insert({
     user_id: userId,
@@ -2010,6 +2102,7 @@ async function addContract(
     remaining_balance: params.remaining_balance ?? null,
     status: 'active',
     source: 'telegram',
+    recurring_group: recurringGroup,
   });
 
   if (error) {
