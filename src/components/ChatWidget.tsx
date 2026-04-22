@@ -17,8 +17,8 @@ function InlineChart({ chartJson }: { chartJson: string }) {
 
     if (chart.chart_type === 'pie') {
       return (
-        <div className="my-2 bg-navy-950 rounded-lg p-3">
-          {chart.title && <p className="text-xs text-white font-medium mb-2">{chart.title}</p>}
+        <div className="my-2 bg-white rounded-lg p-3">
+          {chart.title && <p className="text-xs text-slate-900 font-medium mb-2">{chart.title}</p>}
           <ResponsiveContainer width="100%" height={160}>
             <PieChart>
               <Pie data={chart.data} cx="50%" cy="50%" innerRadius={30} outerRadius={55} paddingAngle={2} dataKey="value" nameKey="name">
@@ -29,7 +29,7 @@ function InlineChart({ chartJson }: { chartJson: string }) {
           </ResponsiveContainer>
           <div className="flex flex-wrap gap-2 mt-1">
             {chart.data.map((d: any, i: number) => (
-              <span key={i} className="text-[9px] text-slate-400 flex items-center gap-1">
+              <span key={i} className="text-[9px] text-slate-500 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full inline-block" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
                 {d.name}: £{d.value}
               </span>
@@ -41,8 +41,8 @@ function InlineChart({ chartJson }: { chartJson: string }) {
 
     if (chart.chart_type === 'bar') {
       return (
-        <div className="my-2 bg-navy-950 rounded-lg p-3">
-          {chart.title && <p className="text-xs text-white font-medium mb-2">{chart.title}</p>}
+        <div className="my-2 bg-white rounded-lg p-3">
+          {chart.title && <p className="text-xs text-slate-900 font-medium mb-2">{chart.title}</p>}
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={chart.data}>
               <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -81,7 +81,7 @@ function renderAssistantMessage(content: string) {
         return <p key={`${i}-${j}`} className="pl-3 before:content-['•'] before:mr-2 before:text-mint-400">{line.replace(/^[-•]\s*/, '')}</p>;
       }
       if (line.startsWith('**') && line.endsWith('**')) {
-        return <p key={`${i}-${j}`} className="font-semibold text-white">{line.replace(/\*\*/g, '')}</p>;
+        return <p key={`${i}-${j}`} className="font-semibold text-slate-900">{line.replace(/\*\*/g, '')}</p>;
       }
       return <p key={`${i}-${j}`}>{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
     });
@@ -256,12 +256,12 @@ export default function ChatWidget() {
                 setShowTeaser(false);
                 sessionStorage.setItem('pb_chat_teaser_dismissed', '1');
               }}
-              className="absolute -top-2 -right-2 bg-navy-700 hover:bg-navy-600 rounded-full w-5 h-5 flex items-center justify-center text-xs text-slate-400"
+              className="absolute -top-2 -right-2 bg-slate-100 hover:bg-navy-600 rounded-full w-5 h-5 flex items-center justify-center text-xs text-slate-500"
             >
               x
             </button>
             <p className="text-sm font-medium mb-2">Been overcharged on a bill?</p>
-            <p className="text-xs text-slate-400 mb-3">I can generate a free complaint letter citing UK law in 30 seconds. Try me.</p>
+            <p className="text-xs text-slate-500 mb-3">I can generate a free complaint letter citing UK law in 30 seconds. Try me.</p>
             <button
               onClick={() => {
                 setShowTeaser(false);
@@ -294,13 +294,13 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
+        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] card shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-navy-800 border-b border-navy-700">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-100 border-b border-slate-200">
             <div className="flex items-center gap-2">
               <Image src="/logo.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
               <div>
-                <p className="text-white text-sm font-semibold">Paybacker Support</p>
+                <p className="text-slate-900 text-sm font-semibold">Paybacker Support</p>
                 <p className="text-green-400 text-xs">Online</p>
               </div>
             </div>
@@ -308,7 +308,7 @@ export default function ChatWidget() {
               {messages.length > 0 && (
                 <button
                   onClick={() => { setMessages([]); setEscalatedTicket(null); sessionStorage.removeItem('pb_chat_history'); }}
-                  className="text-slate-400 hover:text-white transition-all text-xs px-2 py-1 rounded hover:bg-navy-700"
+                  className="text-slate-500 hover:text-slate-900 transition-all text-xs px-2 py-1 rounded hover:bg-slate-100"
                   title="Start new chat"
                 >
                   New Chat
@@ -316,7 +316,7 @@ export default function ChatWidget() {
               )}
               <button
                 onClick={() => setOpen(false)}
-                className="text-slate-400 hover:text-white transition-all p-1"
+                className="text-slate-500 hover:text-slate-900 transition-all p-1"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -328,8 +328,8 @@ export default function ChatWidget() {
             {messages.length === 0 && (
               <div className="text-center py-6">
                 <Image src="/logo.png" alt="Paybacker" width={40} height={40} className="rounded-lg mx-auto mb-3" />
-                <p className="text-white font-medium mb-1">Hi there!</p>
-                <p className="text-slate-400 text-sm mb-3">I can help you organise your finances through conversation. Try asking me to recategorise transactions, find missing subscriptions, check your spending, or dispute a bill.</p>
+                <p className="text-slate-900 font-medium mb-1">Hi there!</p>
+                <p className="text-slate-500 text-sm mb-3">I can help you organise your finances through conversation. Try asking me to recategorise transactions, find missing subscriptions, check your spending, or dispute a bill.</p>
                 <div className="space-y-2">
                   {((userTier === 'essential' || userTier === 'pro')
                     ? [
@@ -366,7 +366,7 @@ export default function ChatWidget() {
                   className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                     msg.role === 'user'
                       ? 'bg-mint-400 text-navy-950'
-                      : 'bg-navy-800 text-slate-200'
+                      : 'bg-slate-100 text-slate-700'
                   }`}
                 >
                   {msg.role === 'user' ? (
@@ -382,10 +382,10 @@ export default function ChatWidget() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-navy-800 rounded-2xl px-4 py-2.5 flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
+                <div className="bg-slate-100 rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 text-slate-500 animate-spin" />
                   {loadingMessage && (
-                    <span className="text-xs text-slate-400">{loadingMessage}</span>
+                    <span className="text-xs text-slate-500">{loadingMessage}</span>
                   )}
                 </div>
               </div>
@@ -432,7 +432,7 @@ export default function ChatWidget() {
                     setLoading(false);
                   }
                 }}
-                className="w-full text-xs text-slate-400 hover:text-mint-400 py-1.5 transition-all"
+                className="w-full text-xs text-slate-500 hover:text-mint-400 py-1.5 transition-all"
               >
                 Talk to a human instead
               </button>
@@ -440,7 +440,7 @@ export default function ChatWidget() {
           )}
 
           {/* Input */}
-          <div className="p-3 border-t border-navy-700">
+          <div className="p-3 border-t border-slate-200">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -448,7 +448,7 @@ export default function ChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
-                className="flex-1 bg-navy-800 border border-navy-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-mint-400"
+                className="flex-1 bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400"
                 disabled={loading}
               />
               <button

@@ -178,7 +178,7 @@ export default function McpSettingsPage() {
           </p>
           <Link
             href="/dashboard/upgrade"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-colors"
           >
             <Sparkles className="h-4 w-4" />
             Upgrade to Pro
@@ -256,7 +256,7 @@ export default function McpSettingsPage() {
           <li>Generate a token below and copy it (you only see it once).</li>
           <li>
             In a terminal, run:
-            <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
+            <pre className="mt-2 bg-white text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
               npx @paybacker/mcp setup
             </pre>
           </li>
@@ -289,7 +289,7 @@ export default function McpSettingsPage() {
                 </code>
                 <button
                   onClick={() => handleCopy(justMinted)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-sm transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-medium rounded-lg text-sm transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   {copied ? 'Copied' : 'Copy'}
@@ -321,7 +321,7 @@ export default function McpSettingsPage() {
           <button
             onClick={handleCreate}
             disabled={creating}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Generate token

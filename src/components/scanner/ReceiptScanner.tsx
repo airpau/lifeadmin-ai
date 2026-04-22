@@ -125,10 +125,10 @@ export default function ReceiptScanner({ open, onClose, onScanComplete }: Receip
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+      <div className="card shadow-2xl w-full max-w-md p-6 relative">
         <button
           onClick={() => { if (!scanning) onClose(); }}
-          className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all"
+          className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
           disabled={scanning}
         >
           <X className="h-5 w-5" />
@@ -139,16 +139,16 @@ export default function ReceiptScanner({ open, onClose, onScanComplete }: Receip
             <Camera className="h-5 w-5 text-mint-400" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">Scan Receipt or Bill</h3>
-            <p className="text-slate-400 text-sm">Upload or take a photo to extract details</p>
+            <h3 className="text-lg font-bold text-slate-900">Scan Receipt or Bill</h3>
+            <p className="text-slate-500 text-sm">Upload or take a photo to extract details</p>
           </div>
         </div>
 
         {scanning ? (
           <div className="text-center py-12">
             <Loader2 className="h-12 w-12 text-mint-400 animate-spin mx-auto mb-4" />
-            <p className="text-white font-semibold mb-2">Scanning your receipt...</p>
-            <p className="text-slate-400 text-sm transition-opacity duration-500">
+            <p className="text-slate-900 font-semibold mb-2">Scanning your receipt...</p>
+            <p className="text-slate-500 text-sm transition-opacity duration-500">
               {SCANNING_TIPS[tipIndex]}
             </p>
           </div>
@@ -163,11 +163,11 @@ export default function ReceiptScanner({ open, onClose, onScanComplete }: Receip
               className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
                 dragActive
                   ? 'border-mint-400 bg-mint-400/5'
-                  : 'border-navy-600 hover:border-mint-400/50 hover:bg-navy-800/50'
+                  : 'border-navy-600 hover:border-mint-400/50 hover:bg-slate-100'
               }`}
             >
               <Upload className="h-10 w-10 text-slate-500 mx-auto mb-3" />
-              <p className="text-white font-medium mb-1">
+              <p className="text-slate-900 font-medium mb-1">
                 Drop your receipt here or click to browse
               </p>
               <p className="text-slate-500 text-sm">
@@ -177,7 +177,7 @@ export default function ReceiptScanner({ open, onClose, onScanComplete }: Receip
 
             {/* Camera input for mobile */}
             <div className="mt-3">
-              <label className="flex items-center justify-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-medium px-4 py-3 rounded-xl transition-all text-sm cursor-pointer w-full">
+              <label className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-100 text-slate-900 font-medium px-4 py-3 rounded-xl transition-all text-sm cursor-pointer w-full">
                 <Camera className="h-4 w-4" />
                 Take Photo
                 <input
@@ -208,7 +208,7 @@ export default function ReceiptScanner({ open, onClose, onScanComplete }: Receip
           </div>
         )}
 
-        <div className="flex items-start gap-2 mt-4 bg-navy-950/30 rounded-lg px-3 py-2">
+        <div className="flex items-start gap-2 mt-4 bg-white rounded-lg px-3 py-2">
           <FileText className="h-3.5 w-3.5 text-mint-400 shrink-0 mt-0.5" />
           <p className="text-xs text-slate-500">
             Our AI reads your receipt and extracts the provider, amount, date, and line items. Your image is stored securely.

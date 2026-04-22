@@ -62,8 +62,8 @@ export default function ConsentRenewalBanner({
       <div className="flex items-start gap-3 flex-1">
         <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
         <div className="flex-1">
-          <p className="text-sm text-slate-200">
-            Your <span className="font-medium text-white">{bankName}</span> connection
+          <p className="text-sm text-slate-700">
+            Your <span className="font-medium text-slate-900">{bankName}</span> connection
             {daysLeft > 0
               ? ` expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`
               : ' has expired'}

@@ -95,23 +95,23 @@ export default function LeadsList() {
     <div>
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
-          <p className="text-2xl font-bold text-white">{leads.length}</p>
-          <p className="text-slate-400 text-xs">Total leads</p>
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <p className="text-2xl font-bold text-slate-900">{leads.length}</p>
+          <p className="text-slate-500 text-xs">Total leads</p>
         </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
           <p className="text-2xl font-bold text-mint-400">{newCount}</p>
-          <p className="text-slate-400 text-xs">New (uncontacted)</p>
+          <p className="text-slate-500 text-xs">New (uncontacted)</p>
         </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
           <p className="text-2xl font-bold text-green-400">{convertedCount}</p>
-          <p className="text-slate-400 text-xs">Converted</p>
+          <p className="text-slate-500 text-xs">Converted</p>
         </div>
-        <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
-          <p className="text-2xl font-bold text-white">
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <p className="text-2xl font-bold text-slate-900">
             {leads.length > 0 ? `${((convertedCount / leads.length) * 100).toFixed(0)}%` : '0%'}
           </p>
-          <p className="text-slate-400 text-xs">Conversion rate</p>
+          <p className="text-slate-500 text-xs">Conversion rate</p>
         </div>
       </div>
 
@@ -122,7 +122,7 @@ export default function LeadsList() {
           <select
             value={filterPlatform}
             onChange={(e) => setFilterPlatform(e.target.value)}
-            className="bg-navy-800 border border-navy-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-mint-400"
+            className="bg-slate-100 border border-slate-200 text-slate-900 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-mint-400"
           >
             <option value="all">All platforms</option>
             <option value="facebook_dm">Facebook DMs</option>
@@ -136,7 +136,7 @@ export default function LeadsList() {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="bg-navy-800 border border-navy-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-mint-400"
+          className="bg-slate-100 border border-slate-200 text-slate-900 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-mint-400"
         >
           <option value="all">All statuses</option>
           {STATUS_OPTIONS.map(s => (
@@ -146,7 +146,7 @@ export default function LeadsList() {
 
         <button
           onClick={fetchLeads}
-          className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 text-slate-400 hover:text-white text-sm px-3 py-1.5 rounded-lg transition-all"
+          className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-100 text-slate-500 hover:text-slate-900 text-sm px-3 py-1.5 rounded-lg transition-all"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Refresh
@@ -161,14 +161,14 @@ export default function LeadsList() {
       ) : leads.length === 0 ? (
         <div className="text-center py-12">
           <MessageCircle className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400">No leads found</p>
+          <p className="text-slate-500">No leads found</p>
           <p className="text-slate-500 text-sm mt-1">Leads are captured from Facebook DMs, Instagram comments, and social engagement.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {leads.map(lead => {
-            const platform = PLATFORM_LABELS[lead.platform] || { label: lead.platform, color: 'bg-slate-500/20 text-slate-400' };
-            const statusColor = STATUS_COLORS[lead.status] || 'bg-slate-500/20 text-slate-400';
+            const platform = PLATFORM_LABELS[lead.platform] || { label: lead.platform, color: 'bg-slate-500/20 text-slate-500' };
+            const statusColor = STATUS_COLORS[lead.status] || 'bg-slate-500/20 text-slate-500';
             const isExpanded = expandedId === lead.id;
             const timeAgo = (() => {
               const diff = Date.now() - new Date(lead.created_at).getTime();
@@ -180,10 +180,10 @@ export default function LeadsList() {
             })();
 
             return (
-              <div key={lead.id} className="bg-navy-900 border border-navy-700/50 rounded-xl overflow-hidden">
+              <div key={lead.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 {/* Main row */}
                 <div
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-navy-800/50 transition-all"
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-100 transition-all"
                   onClick={() => {
                     setExpandedId(isExpanded ? null : lead.id);
                     setEditingNotes(lead.notes || '');
@@ -191,7 +191,7 @@ export default function LeadsList() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-white text-sm font-medium truncate">{lead.name || lead.platform_user_id || 'Unknown'}</p>
+                      <p className="text-slate-900 text-sm font-medium truncate">{lead.name || lead.platform_user_id || 'Unknown'}</p>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${platform.color}`}>{platform.label}</span>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusColor}`}>{lead.status}</span>
                     </div>
@@ -205,33 +205,33 @@ export default function LeadsList() {
 
                 {/* Expanded detail */}
                 {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-navy-700/50 pt-3 space-y-3">
+                  <div className="px-4 pb-4 border-t border-slate-200 pt-3 space-y-3">
                     {lead.first_message && (
                       <div>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">First message</p>
-                        <p className="text-slate-300 text-sm bg-navy-800 rounded-lg p-3">{lead.first_message}</p>
+                        <p className="text-slate-700 text-sm bg-slate-100 rounded-lg p-3">{lead.first_message}</p>
                       </div>
                     )}
 
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Email</p>
-                        <p className="text-white">{lead.email || 'Not captured'}</p>
+                        <p className="text-slate-900">{lead.email || 'Not captured'}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Platform ID</p>
-                        <p className="text-white text-xs font-mono">{lead.platform_user_id || 'N/A'}</p>
+                        <p className="text-slate-900 text-xs font-mono">{lead.platform_user_id || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Captured</p>
-                        <p className="text-white">{new Date(lead.created_at).toLocaleString('en-GB')}</p>
+                        <p className="text-slate-900">{new Date(lead.created_at).toLocaleString('en-GB')}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Status</p>
                         <select
                           value={lead.status}
                           onChange={(e) => updateLead(lead.id, { status: e.target.value })}
-                          className="bg-navy-800 border border-navy-700/50 text-white text-sm rounded-lg px-2 py-1 focus:outline-none focus:border-mint-400 w-full"
+                          className="bg-slate-100 border border-slate-200 text-slate-900 text-sm rounded-lg px-2 py-1 focus:outline-none focus:border-mint-400 w-full"
                         >
                           {STATUS_OPTIONS.map(s => (
                             <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
@@ -247,7 +247,7 @@ export default function LeadsList() {
                         value={editingNotes}
                         onChange={(e) => setEditingNotes(e.target.value)}
                         rows={2}
-                        className="w-full bg-navy-800 border border-navy-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-mint-400 resize-none"
+                        className="w-full bg-slate-100 border border-slate-200 text-slate-900 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-mint-400 resize-none"
                         placeholder="Add internal notes..."
                       />
                       {editingNotes !== (lead.notes || '') && (

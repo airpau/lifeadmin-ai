@@ -74,10 +74,10 @@ export default function SpendingPage() {
           <p className="text-slate-600">Connect your bank account to see where your money goes</p>
         </div>
         <div className="card shadow-sm p-12 text-center">
-          <BarChart3 className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+          <BarChart3 className="h-16 w-16 text-slate-700 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-slate-900 mb-2">No spending data yet</h3>
           <p className="text-slate-600 mb-6">Connect your bank account to get personalised spending insights.</p>
-          <Link href="/dashboard/subscriptions" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-lg transition-all">
+          <Link href="/dashboard/subscriptions" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all">
             Connect Bank Account
           </Link>
         </div>
@@ -258,7 +258,7 @@ export default function SpendingPage() {
             <Lock className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
             <p className="text-slate-900 font-semibold mb-1">See all {category_breakdown.length} categories</p>
             <p className="text-slate-600 text-sm mb-3">Upgrade to Essential to unlock full spending breakdown</p>
-            <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+            <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
               Upgrade Plan
             </Link>
           </div>
@@ -302,7 +302,7 @@ export default function SpendingPage() {
                 <Lock className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
                 <p className="text-slate-900 font-semibold mb-1">Pro feature</p>
                 <p className="text-slate-600 text-sm mb-3">See your biggest transactions with Pro</p>
-                <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+                <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
                   Upgrade to Pro
                 </Link>
               </div>
@@ -315,7 +315,7 @@ export default function SpendingPage() {
       <div className="bg-gradient-to-r from-emerald-50 to-emerald-100/60 border border-emerald-200 rounded-2xl p-6 text-center">
         <p className="text-emerald-700 font-semibold mb-2">Based on your spending, we can help you save</p>
         <p className="text-slate-600 text-sm mb-4">Check our deals page for alternatives to your most expensive bills</p>
-        <Link href="/dashboard/deals" className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-lg transition-all">
+        <Link href="/dashboard/deals" className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all">
           View Deals <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
