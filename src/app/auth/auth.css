@@ -1,0 +1,362 @@
+/*
+ * Auth pages — scoped additions on top of .m-land-root.
+ *
+ * Used by /auth/login, /auth/signup, /join. Those routes mount their
+ * content inside `<div className="m-land-root">` and import BOTH
+ * `@/app/(marketing)/styles.css` (for nav-shell/footer tokens) and this
+ * file (for the auth-card + form primitives below).
+ */
+
+/* Auth shell --------------------------------------------------------- */
+.m-land-root .auth-shell {
+  min-height: calc(100vh - 80px);
+  display: grid;
+  place-items: center;
+  padding: 48px 20px 80px;
+}
+.m-land-root .auth-wrap {
+  width: 100%;
+  max-width: 460px;
+}
+
+.m-land-root .auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+  margin: 0 auto 20px;
+  width: fit-content;
+}
+.m-land-root .auth-brand .pay { color: var(--text-primary); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; }
+.m-land-root .auth-brand .backer { color: var(--accent-mint-deep); font-weight: 700; font-size: 22px; letter-spacing: -0.02em; }
+
+.m-land-root .auth-head {
+  text-align: center;
+  margin: 0 0 28px;
+}
+.m-land-root .auth-head h1 {
+  font-size: clamp(28px, 3.5vw, 34px);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+  line-height: 1.15;
+  margin: 0 0 10px;
+  color: var(--text-primary);
+}
+.m-land-root .auth-head p {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.m-land-root .auth-card {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+  padding: 32px 32px 28px;
+  box-shadow: var(--shadow-md);
+}
+
+/* Google / OAuth button --------------------------------------------- */
+.m-land-root .oauth-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--r-input);
+  background: #fff;
+  border: 1px solid var(--divider);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+.m-land-root .oauth-btn:hover {
+  background: #F8FAFC;
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+/* OR divider -------------------------------------------------------- */
+.m-land-root .oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+}
+.m-land-root .oauth-divider::before,
+.m-land-root .oauth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--divider);
+}
+.m-land-root .oauth-divider span {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+/* Segmented tabs (Password / Magic Link) ---------------------------- */
+.m-land-root .seg-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface-elevated);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  gap: 2px;
+  margin-bottom: 18px;
+}
+.m-land-root .seg-tabs button {
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+}
+.m-land-root .seg-tabs button.is-active {
+  background: var(--accent-mint);
+  color: #052E1C;
+}
+
+/* Form fields ------------------------------------------------------- */
+.m-land-root .field { margin-bottom: 14px; }
+.m-land-root .field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.m-land-root .field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.m-land-root .field label .optional { font-weight: 500; color: var(--text-tertiary); font-size: 12.5px; }
+.m-land-root .field label a {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent-mint-deep);
+  text-decoration: none;
+}
+.m-land-root .field label a:hover { text-decoration: underline; }
+
+.m-land-root .field-control {
+  position: relative;
+}
+.m-land-root .field-control svg.lead {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.m-land-root .field input {
+  width: 100%;
+  padding: 12px 14px;
+  padding-left: 38px;
+  font-size: 15px;
+  color: var(--text-primary);
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  font-family: inherit;
+}
+.m-land-root .field input.no-icon { padding-left: 14px; }
+.m-land-root .field input::placeholder { color: #9BA3AF; }
+.m-land-root .field input:focus {
+  border-color: var(--accent-mint-deep);
+  box-shadow: 0 0 0 3px var(--accent-mint-wash);
+}
+.m-land-root .field .hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* Form error -------------------------------------------------------- */
+.m-land-root .form-error {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border-radius: var(--r-input);
+  font-size: 13.5px;
+  color: #B4263B;
+  background: #FEF2F2;
+  border: 1px solid #FEE2E2;
+}
+
+/* Submit ------------------------------------------------------------ */
+.m-land-root .auth-submit {
+  width: 100%;
+  padding: 13px 18px;
+  border-radius: var(--r-pill);
+  border: none;
+  cursor: pointer;
+  background: var(--accent-mint);
+  color: #052E1C;
+  font-weight: 600;
+  font-size: 15px;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  box-shadow: var(--shadow-mint);
+  margin-top: 8px;
+}
+.m-land-root .auth-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #2CC48A;
+}
+.m-land-root .auth-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Footer link in card ---------------------------------------------- */
+.m-land-root .auth-foot {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.m-land-root .auth-foot a {
+  color: var(--accent-mint-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+.m-land-root .auth-foot a:hover { text-decoration: underline; }
+
+.m-land-root .auth-finepr {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--divider);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.m-land-root .auth-finepr a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+/* Check / sent screens --------------------------------------------- */
+.m-land-root .auth-sent {
+  text-align: center;
+  padding: 12px 4px 8px;
+}
+.m-land-root .auth-sent .icon {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--accent-mint-wash);
+  display: grid; place-items: center;
+  margin: 0 auto 18px;
+  color: var(--accent-mint-deep);
+}
+.m-land-root .auth-sent h3 {
+  font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px;
+}
+.m-land-root .auth-sent p { font-size: 15px; color: var(--text-secondary); margin: 0 0 16px; }
+.m-land-root .auth-sent p strong { color: var(--text-primary); }
+.m-land-root .auth-sent a.back {
+  color: var(--accent-mint-deep); font-weight: 600; text-decoration: none;
+}
+.m-land-root .auth-sent a.back:hover { text-decoration: underline; }
+
+/* /join referral landing ------------------------------------------- */
+.m-land-root .join-hero {
+  text-align: center;
+  padding: 32px 4px 8px;
+}
+.m-land-root .join-hero .gift {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(194, 65, 12, 0.18);
+  color: var(--accent-orange-deep);
+  display: grid; place-items: center;
+  margin: 0 auto 18px;
+}
+.m-land-root .join-hero h1 {
+  font-size: clamp(28px, 3.5vw, 34px);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+  color: var(--text-primary);
+  margin: 0 0 12px;
+}
+.m-land-root .join-hero p.lead {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 0 0 24px;
+}
+.m-land-root .join-perks {
+  text-align: left;
+  display: grid;
+  gap: 10px;
+  margin: 0 0 24px;
+}
+.m-land-root .join-perks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.m-land-root .join-perks li svg { color: var(--accent-mint-deep); margin-top: 2px; flex-shrink: 0; }
+
+.m-land-root .join-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: var(--r-pill);
+  background: var(--accent-mint);
+  color: #052E1C;
+  font-weight: 600;
+  font-size: 16px;
+  text-decoration: none;
+  box-shadow: var(--shadow-mint);
+  transition: transform 150ms ease, background 150ms ease;
+}
+.m-land-root .join-cta:hover { transform: translateY(-1px); background: #2CC48A; }
+.m-land-root .join-note { font-size: 12.5px; color: var(--text-tertiary); margin-top: 10px; text-align: center; }
+
+/* Loading fallback ------------------------------------------------- */
+.m-land-root .auth-loading {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+}
+.m-land-root .auth-loading .spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--divider);
+  border-top-color: var(--accent-mint-deep);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Responsive ------------------------------------------------------- */
+@media (max-width: 520px) {
+  .m-land-root .auth-card { padding: 24px 22px 22px; }
+  .m-land-root .field-row { grid-template-columns: 1fr; gap: 0; }
+  .m-land-root .field-row .field { margin-bottom: 14px; }
+}
