@@ -21,17 +21,77 @@ function isTransactionInMonth(timestamp: string | null | undefined, monthKey: st
 }
 
 /**
- * Client-side deduplication of bank transactions.
- * Matches the DB-level deduplicate_bank_transactions RPC logic:
- * same amount + same date + same merchant/description → keep only the first (newest sync).
- * This catches duplicates from overlapping TrueLayer/Yapily connections.
+ * Strip the Faster Payment metadata suffix injected by TrueLayer into settled descriptions.
+ * "B FRASER BEN RENT RM6 FP 15/04/26 0637 500000001749510782" → "B FRASER BEN RENT RM6"
+ */
+function stripFPSuffix(desc: string): string {
+  return desc.replace(/\s+FP\s+\d{2}\/\d{2}\/\d{2}.*/i, '').trim();
+}
+
+/**
+ * Bidirectional substring match for merchant name deduplication.
+ * Returns true when either string contains the other (case-insensitive).
+ * Minimum length of 4 prevents false positives on short tokens.
+ */
+function merchantsMatch(a: string, b: string): boolean {
+  if (!a || !b || a.length < 4 || b.length < 4) return false;
+  const na = a.toLowerCase();
+  const nb = b.toLowerCase();
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+/**
+ * Client-side deduplication of bank transactions. Two cases:
+ *
+ * Case 1 — Cross-connection duplicates:
+ *   Same amount + date + exact merchant string from two bank connections.
+ *
+ * Case 2 — Pending → Settled duplicates:
+ *   TrueLayer assigns a different transaction_id to the pending and settled
+ *   versions of the same payment. The pending row has a short description
+ *   ("Ben Rent Rm6"); the settled row has the full Faster Payment string
+ *   ("B FRASER BEN RENT RM6 FP 15/04/26 0637 500000001749510782"). We strip
+ *   the FP suffix and use bidirectional substring matching to detect these.
+ *   Applies to both incoming (positive) and outgoing (negative) transactions.
+ *
+ * The DB trigger trg_reconcile_pending_on_settle is the primary defence;
+ * this is a client-side safety net for any rows that arrive in the same
+ * sync batch before the trigger can fire.
  */
 function deduplicateTransactions(txns: any[]): any[] {
+  type SettledEntry = { amt: number; date: string; accountId: string; desc: string; descNorm: string };
+  const settled: SettledEntry[] = [];
+  for (const txn of txns) {
+    if (!txn.is_pending) {
+      const raw = (txn.merchant_name || txn.description || '').toLowerCase().trim();
+      settled.push({
+        amt: parseFloat(String(txn.amount)) || 0,
+        date: (txn.timestamp || '').substring(0, 10),
+        accountId: txn.account_id || '',
+        desc: raw,
+        descNorm: stripFPSuffix(raw),
+      });
+    }
+  }
+
   const seen = new Map<string, boolean>();
   return txns.filter(txn => {
-    const date = (txn.timestamp || '').substring(0, 10); // YYYY-MM-DD
+    const date     = (txn.timestamp || '').substring(0, 10);
     const merchant = (txn.merchant_name || txn.description || '').toLowerCase().trim();
-    const amt = parseFloat(String(txn.amount)) || 0;
+    const amt      = parseFloat(String(txn.amount)) || 0;
+
+    // Case 2: drop pending rows that have a matching settled counterpart.
+    if (txn.is_pending) {
+      const hasSettled = settled.some(s =>
+        s.amt === amt &&
+        s.date === date &&
+        s.accountId === (txn.account_id || '') &&
+        (merchantsMatch(merchant, s.desc) || merchantsMatch(merchant, s.descNorm))
+      );
+      if (hasSettled) return false;
+    }
+
+    // Case 1: drop exact duplicates (same amount + date + merchant string).
     const key = `${amt}|${date}|${merchant}`;
     if (seen.has(key)) return false;
     seen.set(key, true);
