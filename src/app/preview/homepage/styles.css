@@ -1544,3 +1544,53 @@
   .m-v2-root .hero-visual--live { padding-top: 0; padding-bottom: 8px; }
   .m-v2-root .hero-demo-frame { max-width: 100%; }
 }
+
+/* ============================================================
+   Mobile-responsive demos — transform: scale() approach.
+
+   The 7 product demos (Disputes, Pocket Agent, Money Hub,
+   Subscriptions, Export, Deals, MCP) are hand-tuned at 980×612.5
+   with fixed pixel offsets inside (column widths, cursor coords,
+   card insets). Reflowing their internals for 430px-wide phones
+   would squash everything. Instead we render each demo at its
+   native 980×612.5 and proportionally scale the whole stage to
+   fit the available container width.
+
+   Container queries let each wrapper size itself independently,
+   so feature-stage (in light/dark sections) and demo-slot (in
+   deals + MCP sections, including the inset --ink wrapper) all
+   scale correctly without measuring viewport.
+   ============================================================ */
+.m-v2-root .feature-stage,
+.m-v2-root .demo-slot {
+  container-type: inline-size;
+  container-name: demowrap;
+  width: 100%;
+}
+
+/* When the wrapper is narrower than the demo's native width, render
+   the demo at 980×612.5 and scale it down to fit. */
+@container demowrap (max-width: 900px) {
+  .m-v2-root .feature-stage > .demo-stage,
+  .m-v2-root .demo-slot > .demo-stage {
+    width: 980px;
+    height: 612.5px;
+    max-width: none;
+    aspect-ratio: auto;
+    margin: 0;
+    transform-origin: top left;
+    transform: scale(calc(100cqw / 980));
+  }
+}
+
+/* The wrapper itself must reserve the scaled height so the page
+   layout doesn't collapse around the now-transformed child. */
+@media (max-width: 900px) {
+  .m-v2-root .feature-stage,
+  .m-v2-root .demo-slot {
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    position: relative;
+    display: block;
+  }
+}
