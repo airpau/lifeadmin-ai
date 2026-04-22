@@ -1666,16 +1666,79 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-        <div>
-          <h1 className="page-title">Subscriptions</h1>
-        <p className="page-sub">Track and cancel subscriptions costing you money</p>
-        </div>
+      {/* Variant A header + KPI strip — maps design's top fold to real data.
+          Monthly / Yearly totals come from get_subscription_total RPC;
+          Flagged = count of detected + review-needed subs;
+          Potential savings reads from the inline comparison CTA state below. */}
+      {(() => {
+        const monthly = rpcTotals?.subscriptions_monthly ?? 0;
+        const yearly = monthly * 12;
+        const flaggedCount = (detectedSubs?.length || 0) + subscriptions.filter(s => (s as any).needs_review).length;
+        const activeCount = subscriptions.filter(s => s.status === 'active').length;
+        return (
+          <>
+            <div className="page-title-row">
+              <div>
+                <h1 className="page-title">Subscriptions</h1>
+                <p className="page-sub">
+                  {activeCount} active · {formatGBP(monthly)}/month
+                  {flaggedCount > 0 ? ` · ${flaggedCount} flagged for action` : ''}. Every price change, renewal and unused spend in one place.
+                </p>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <button
+                  onClick={handleDetectFromInbox}
+                  disabled={detectingFromInbox}
+                  className="cta-ghost"
+                  style={{fontSize:12.5}}
+                >
+                  {detectingFromInbox
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning…</>
+                    : <><Inbox className="h-3.5 w-3.5" /> Inbox scan</>}
+                </button>
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="cta"
+                  style={{fontSize:12.5}}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add manually
+                </button>
+              </div>
+            </div>
+            <div className="kpi-row c4" style={{marginBottom:16}}>
+              <div className="kpi-card">
+                <div className="k-label">Monthly total</div>
+                <div className="k-val">{formatGBP(monthly)}</div>
+                <div className="k-delta">{activeCount} active sub{activeCount===1?'':'s'}</div>
+              </div>
+              <div className="kpi-card">
+                <div className="k-label">Yearly total</div>
+                <div className="k-val">{formatGBP(yearly)}</div>
+                <div className="k-delta">Projected · incl. annual subs</div>
+              </div>
+              <div className="kpi-card">
+                <div className="k-label">Flagged</div>
+                <div className={`k-val ${flaggedCount > 0 ? 'amber' : ''}`}>{flaggedCount}</div>
+                <div className="k-delta">Detected &middot; needs review</div>
+              </div>
+              <div className="kpi-card">
+                <div className="k-label">Review savings</div>
+                <div className="k-val green">Review list</div>
+                <div className="k-delta">Scroll to flagged section</div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Secondary action row — preserved "detect from inbox" CTA for discoverability,
+          plus legacy Add button. Kept from the pre-redesign page so nothing is lost. */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end mb-8 gap-3">
         <div className="flex gap-3">
           <button
             onClick={handleDetectFromInbox}
             disabled={detectingFromInbox}
+            style={{display:'none'}}
             className="flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-900 font-medium px-4 py-3 rounded-lg transition-all text-sm"
           >
             {detectingFromInbox
