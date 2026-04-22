@@ -21,6 +21,11 @@ const SPENDING_CATEGORY_ALIASES: Record<string, string> = {
   loan: 'loans',
   utility: 'energy',
   transport: 'travel',
+  // Bank-provided "BILL_PAYMENT" raw category should collapse into 'bills'
+  // so the spending breakdown doesn't show two separate rows.
+  bill_payment: 'bills',
+  billpayment: 'bills',
+  'bill-payment': 'bills',
 };
 
 type OverrideMap = Map<string, string>;
@@ -159,6 +164,34 @@ export function resolveMoneyHubTransaction(
   if (amount > 0) {
     if (resolvedOverride === 'transfers' || isTransferLikeTransaction(txn, effectiveIncomeType)) {
       return { amount, kind: 'transfer', spendingCategory: 'transfers', incomeType: 'transfer' };
+    }
+
+    // User override wins for positive-amount transactions too.
+    // If the user has explicitly tagged this as a non-income category
+    // (e.g. 'loans', 'mortgage', 'credit'), respect it — exclude from income totals.
+    // We mirror the spending-branch logic: resolvedOverride (from the overrides
+    // table — strong signal) is honoured outright, while storedCategory (which
+    // migrations can also set) is honoured only for non-soft categories.
+    if (resolvedOverride && resolvedOverride !== 'income') {
+      return {
+        amount,
+        kind: 'transfer',
+        spendingCategory: resolvedOverride,
+        incomeType: null,
+      };
+    }
+    if (
+      storedCategory &&
+      storedCategory !== 'income' &&
+      storedCategory !== 'transfers' &&
+      !SOFT_SPENDING_CATEGORIES.has(storedCategory)
+    ) {
+      return {
+        amount,
+        kind: 'transfer',
+        spendingCategory: storedCategory,
+        incomeType: null,
+      };
     }
 
     const hasRealIncomeType = !!effectiveIncomeType && !isExcludedIncomeType(effectiveIncomeType);

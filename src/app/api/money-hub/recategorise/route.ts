@@ -40,11 +40,24 @@ export async function POST(request: NextRequest) {
 
     // ─── Income type recategorisation ──────────────────────────────────────
     if (newIncomeType) {
+      // When the user reclassifies to a real income type, clear any conflicting
+      // user_category spending override (e.g. if they'd previously marked it 'loans').
+      const incomePatch: Record<string, any> = { income_type: newIncomeType, user_category: null };
+
       if (transactionId) {
         await admin.from('bank_transactions')
-          .update({ income_type: newIncomeType })
+          .update(incomePatch)
           .eq('id', transactionId)
           .eq('user_id', user.id);
+
+        // Also clear any per-transaction override row (best-effort)
+        try {
+          await admin.from('money_hub_category_overrides')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('transaction_id', transactionId);
+        } catch { /* silent */ }
+
         return NextResponse.json({ success: true, updated: 1, transactionId, incomeType: newIncomeType });
       }
 
@@ -64,11 +77,20 @@ export async function POST(request: NextRequest) {
           for (let i = 0; i < ids.length; i += 50) {
             const batch = ids.slice(i, i + 50);
             const { count } = await admin.from('bank_transactions')
-              .update({ income_type: newIncomeType })
+              .update(incomePatch)
               .in('id', batch);
             if (count) updated += count;
           }
         }
+
+        // Remove any stale merchant-level override that would force back to a spending category (best-effort)
+        const corePattern = merchantPattern.toLowerCase().trim();
+        try {
+          await admin.from('money_hub_category_overrides')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('merchant_pattern', corePattern);
+        } catch { /* silent */ }
 
         await learnFromCorrection({
           rawName: merchantPattern,
@@ -122,16 +144,28 @@ export async function POST(request: NextRequest) {
       if (applyToAll !== false) {
         const ilikePattern = `%${overridePattern}%`;
         const { data: matching } = await admin.from('bank_transactions')
-          .select('id')
+          .select('id, amount')
           .eq('user_id', user.id)
           .gte('timestamp', sixMonthsAgo.toISOString())
           .or(`merchant_name.ilike.${ilikePattern},description.ilike.${ilikePattern}`)
           .limit(500);
 
         if (matching && matching.length > 0) {
-          const ids = matching.map(t => t.id);
-          for (let i = 0; i < ids.length; i += 50) {
-            const batch = ids.slice(i, i + 50);
+          // Split into positive-amount (income side) and negative-amount (spending side).
+          // For positive amounts, also exclude from income totals by setting
+          // income_type = 'credit_loan' (which isExcludedIncomeType treats as non-income).
+          const positiveIds = matching.filter(t => Number(t.amount) > 0).map(t => t.id);
+          const negativeIds = matching.filter(t => Number(t.amount) <= 0).map(t => t.id);
+
+          for (let i = 0; i < positiveIds.length; i += 50) {
+            const batch = positiveIds.slice(i, i + 50);
+            const { count } = await admin.from('bank_transactions')
+              .update({ user_category: newCategory, income_type: 'credit_loan' })
+              .in('id', batch);
+            if (count) updated += count;
+          }
+          for (let i = 0; i < negativeIds.length; i += 50) {
+            const batch = negativeIds.slice(i, i + 50);
             const { count } = await admin.from('bank_transactions')
               .update({ user_category: newCategory })
               .in('id', batch);
@@ -158,14 +192,20 @@ export async function POST(request: NextRequest) {
 
     // Single transaction override
     if (transactionId) {
-      // Need metadata for learning engine
+      // Need metadata for learning engine and to decide whether to exclude from income
       const { data: txnData } = await admin.from('bank_transactions')
         .select('amount, description, merchant_name')
         .eq('id', transactionId)
         .single();
-        
+
+      const txnPatch: Record<string, any> = { user_category: newCategory };
+      // For positive-amount transactions, also exclude from income by flagging credit_loan
+      if (txnData && Number(txnData.amount) > 0 && newCategory !== 'income') {
+        txnPatch.income_type = 'credit_loan';
+      }
+
       await admin.from('bank_transactions')
-        .update({ user_category: newCategory })
+        .update(txnPatch)
         .eq('id', transactionId)
         .eq('user_id', user.id);
 
