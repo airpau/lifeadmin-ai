@@ -766,9 +766,11 @@ export default function ProfilePage() {
       )}
 
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="page-title">Profile</h1>
-        <p className="page-sub">Manage your account and view your stats</p>
+      <div className="page-title-row">
+        <div>
+          <h1 className="page-title">Profile</h1>
+          <p className="page-sub">Manage your account and view your stats</p>
+        </div>
       </div>
 
       {/* Account Info */}
