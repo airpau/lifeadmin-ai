@@ -1,4 +1,15 @@
-# Active Sessions — Last Updated 20 Apr 2026 18:00 UTC
+# Active Sessions — Last Updated 22 Apr 2026 18:00 UTC
+
+## Latest: Business Monitor — 22 Apr 2026 (evening)
+- 5 PRs merged to production today:
+  - #150: fix(watchdog): fail loudly on OAuth refresh failures + tighten price alerts
+  - #149: feat(dashboard): Claude Design shell chrome — Phase 1 foundation
+  - #148: fix(homepage): restore demos + competitor matrix lost in 10e4614
+  - #146: fix(homepage): remove "Preview · Homepage v2" badge from production
+  - #145: docs: Open Banking source-of-truth audit
+- 3 new PRs opened today: #147 (bank dedup Faster Payments), #122 (email targeted savings alert), #120 (Codex P1/P2 bundle)
+- 30 open PRs in queue — review backlog building
+- Evening Telegram check-in sent to Paul
 
 ## Latest: Business Monitor — 20 Apr 2026 (evening)
 - 4 PRs merged to production today:
