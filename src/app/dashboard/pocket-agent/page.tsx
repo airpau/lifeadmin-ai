@@ -256,50 +256,49 @@ export default function PocketAgentPage() {
 
   // STATE B -- not yet linked
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="page-title flex items-center gap-3">
-          <Bot className="h-7 w-7 text-orange-500" />
-          Pocket Agent
-        </h1>
-        <p className="text-slate-600 mt-1">
-          Your AI financial agent, right in your pocket.
-        </p>
+    <div>
+      {/* Variant A Pocket-Agent hero — batch7.jsx structure. Two-column on
+          desktop, stack on mobile. Left: value prop + feature bullets + CTAs.
+          Right: existing setup panel (Telegram link + code) lives below.
+          The design's phone mock is skipped — the real setup flow below is
+          more useful than a static mock once the user's here. */}
+      <div className="page-title-row">
+        <div>
+          <span style={{
+            display:'inline-block',
+            fontSize:11,
+            fontWeight:700,
+            letterSpacing:'.12em',
+            textTransform:'uppercase',
+            color:'#0088cc',
+            marginBottom:8,
+          }}>● Pocket Agent · Telegram</span>
+          <h1 className="page-title" style={{fontSize:34,lineHeight:1.1}}>
+            Your money, <span style={{color:'var(--mint-deep)'}}>in a chat.</span>
+          </h1>
+          <p className="page-sub" style={{maxWidth:640,lineHeight:1.55,marginTop:8}}>
+            Paybacker checks your bills overnight and pings you on Telegram when
+            something needs your attention. Reply in plain English. Approve
+            disputes with one tap.
+          </p>
+        </div>
       </div>
 
-      {/* What it does */}
-      <div className="bg-white/50 border border-slate-200/50 rounded-2xl p-6">
-        <h3 className="text-slate-900 font-semibold mb-4">What Pocket Agent does</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex flex-col items-start gap-2">
-            <div className="bg-red-500/10 p-2 rounded-lg">
-              <BellRing className="h-5 w-5 text-red-400" />
-            </div>
-            <span className="text-sm font-medium text-slate-900">Proactive alerts</span>
-            <span className="text-xs text-slate-600">
-              Bill increases, expiring contracts, budget overruns -- sent to you before you notice
-            </span>
+      {/* Feature grid — kpi-card styling gives us the 4-across on desktop,
+          stacks on mobile via our existing responsive rules. */}
+      <div className="kpi-row c4" style={{marginBottom:16}}>
+        {([
+          ['🔔', 'Morning summary', 'Your daily £-at-risk, delivered at 8am.'],
+          ['⚡', 'One-tap approvals', 'Dispute drafts with Accept/Edit buttons in the chat.'],
+          ['💬', 'Ask anything', '"Is this gym fee fair?" "What am I paying Netflix?"'],
+          ['🔒', 'Read-only', 'Pocket Agent can\'t move money. Ever.'],
+        ] as const).map(([icon, title, body]) => (
+          <div key={title} className="kpi-card">
+            <div className="k-label" style={{fontSize:22,lineHeight:1,marginBottom:8}}>{icon}</div>
+            <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em'}}>{title}</div>
+            <div className="k-delta" style={{lineHeight:1.45}}>{body}</div>
           </div>
-          <div className="flex flex-col items-start gap-2">
-            <div className="bg-green-500/10 p-2 rounded-lg">
-              <TrendingDown className="h-5 w-5 text-green-400" />
-            </div>
-            <span className="text-sm font-medium text-slate-900">Real-time queries</span>
-            <span className="text-xs text-slate-600">
-              &ldquo;How much on food this month?&rdquo; &mdash; answers from your live bank data
-            </span>
-          </div>
-          <div className="flex flex-col items-start gap-2">
-            <div className="bg-orange-500/10 p-2 rounded-lg">
-              <Shield className="h-5 w-5 text-orange-600" />
-            </div>
-            <span className="text-sm font-medium text-slate-900">Complaint letters</span>
-            <span className="text-xs text-slate-600">
-              Draft and approve letters citing UK consumer law, all from Telegram
-            </span>
-          </div>
-        </div>
+        ))}
       </div>
 
       {error && (
