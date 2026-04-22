@@ -216,12 +216,12 @@ export default function TelegramSettingsPage() {
           <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-slate-500">Linked</span>
-              <p className="text-slate-300">{formatDate(status.session.linked_at)}</p>
+              <p className="text-slate-700">{formatDate(status.session.linked_at)}</p>
             </div>
             {status.session.last_message_at && (
               <div>
                 <span className="text-slate-500">Last message</span>
-                <p className="text-slate-300">{formatDate(status.session.last_message_at)}</p>
+                <p className="text-slate-700">{formatDate(status.session.last_message_at)}</p>
               </div>
             )}
           </div>
@@ -322,7 +322,7 @@ export default function TelegramSettingsPage() {
               <button
                 onClick={generateCode}
                 disabled={generating}
-                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-300 transition-colors"
+                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-700 transition-colors"
               >
                 {generating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

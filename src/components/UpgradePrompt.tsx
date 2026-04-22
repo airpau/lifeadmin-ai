@@ -45,7 +45,7 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
-        <div className="relative bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+        <div className="relative card p-8 max-w-md w-full shadow-2xl">
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-mint-400/10 border border-mint-400/30 mb-4">
               <Sparkles className="h-8 w-8 text-mint-400" />

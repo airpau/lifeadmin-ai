@@ -93,15 +93,15 @@ export default function RotatingCaptionsLoader({
     return (
       <div
         className={
-          'rounded-xl border border-white/10 bg-navy-800/50 p-5 flex flex-col items-center text-center gap-3 ' +
+          'rounded-xl border border-white/10 bg-slate-100 p-5 flex flex-col items-center text-center gap-3 ' +
           (className || '')
         }
       >
         <Loader2 className="h-6 w-6 text-mint-400 animate-spin" />
         {heading && (
-          <p className="text-white font-semibold text-sm">{heading}</p>
+          <p className="text-slate-900 font-semibold text-sm">{heading}</p>
         )}
-        <p className="text-white/80 text-sm flex items-center gap-2">
+        <p className="text-slate-900/80 text-sm flex items-center gap-2">
           <span className="text-base" aria-hidden>
             {current.icon}
           </span>
@@ -115,7 +115,7 @@ export default function RotatingCaptionsLoader({
   return (
     <div
       className={
-        'flex items-center gap-2 text-sm text-white/80 ' + (className || '')
+        'flex items-center gap-2 text-sm text-slate-900/80 ' + (className || '')
       }
       role="status"
       aria-live="polite"

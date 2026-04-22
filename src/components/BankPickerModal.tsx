@@ -76,7 +76,7 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-white border border-slate-200 rounded-2xl w-full max-w-lg p-10 text-center shadow-2xl">
+        <div className="relative card w-full max-w-lg p-10 text-center shadow-2xl">
           <Loader2 className="h-8 w-8 text-amber-500 animate-spin mx-auto mb-4" />
           <p className="text-slate-900 font-semibold">Connecting to your bank...</p>
           <p className="text-slate-500 text-sm mt-1">
@@ -117,7 +117,7 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
+      <div className="relative card w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200 flex-shrink-0">
           <div>

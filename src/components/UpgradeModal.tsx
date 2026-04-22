@@ -25,9 +25,9 @@ export default function UpgradeModal({ open, onClose, used, limit, tier }: Upgra
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Monthly Limit Reached</h2>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Monthly Limit Reached</h2>
           <p className="text-gray-400">
-            You&apos;ve used <span className="text-white font-semibold">{used} of {limit}</span> complaint{limit !== 1 ? 's' : ''} this month on the{' '}
+            You&apos;ve used <span className="text-slate-900 font-semibold">{used} of {limit}</span> complaint{limit !== 1 ? 's' : ''} this month on the{' '}
             <span className="text-yellow-400 capitalize">{tier}</span> plan.
           </p>
         </div>
@@ -59,7 +59,7 @@ export default function UpgradeModal({ open, onClose, used, limit, tier }: Upgra
           </button>
           <button
             onClick={onClose}
-            className="w-full py-3 px-6 text-gray-400 hover:text-white transition-colors text-sm"
+            className="w-full py-3 px-6 text-gray-400 hover:text-slate-900 transition-colors text-sm"
           >
             Maybe later
           </button>

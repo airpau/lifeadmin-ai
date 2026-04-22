@@ -56,14 +56,14 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
   const totalSpent = categories.reduce((s: number, c: any) => s + c.total, 0);
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 flex flex-col h-full">
+    <div className="card p-5 flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+        <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-purple-400" />
           Spending Breakdown
         </h3>
         {totalSpent > 0 && (
-          <span className="text-slate-400 text-sm">£{fmtNum(totalSpent)} total</span>
+          <span className="text-slate-500 text-sm">£{fmtNum(totalSpent)} total</span>
         )}
       </div>
 
@@ -81,14 +81,14 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
             }
           }}
           placeholder="Search transactions..."
-          className="w-full bg-navy-950/50 border border-navy-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all font-medium"
+          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 transition-all font-medium"
         />
       </div>
       
       <div className="space-y-4 flex-1">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">By Category</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">By Category</p>
             <span className="text-slate-500 text-[10px]">Click row for details</span>
           </div>
           {categories.length === 0 ? (
@@ -100,18 +100,18 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
               return (
                 <div 
                   key={c.category} 
-                  className="mb-2 cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors group"
+                  className="mb-2 cursor-pointer hover:bg-slate-100 p-2 -mx-2 rounded-lg transition-colors group"
                   onClick={() => setDrillCategory(c.category)}
                 >
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-300 flex items-center gap-2 group-hover:text-mint-400 transition-colors">
+                    <span className="text-slate-700 flex items-center gap-2 group-hover:text-mint-400 transition-colors">
                       <span className="text-base">{meta.icon}</span>
                       {meta.label}
                       <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
                     </span>
-                    <span className="text-white font-medium group-hover:text-mint-400">£{fmtNum(c.total)}</span>
+                    <span className="text-slate-900 font-medium group-hover:text-mint-400">£{fmtNum(c.total)}</span>
                   </div>
-                  <div className="w-full bg-navy-800 rounded-full h-1.5">
+                  <div className="w-full bg-slate-100 rounded-full h-1.5">
                     <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
                   </div>
                 </div>
@@ -133,13 +133,13 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
         </div>
 
         <div>
-          <p className="text-xs text-slate-400 uppercase tracking-wider mb-2 font-semibold">Top Merchants</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 font-semibold">Top Merchants</p>
           {!isPro ? (
             <LockedSection title="Top Merchants">
               <div className="space-y-2 opacity-30 pointer-events-none">
-                <div className="h-4 bg-navy-700 rounded w-full" />
-                <div className="h-4 bg-navy-700 rounded w-4/5" />
-                <div className="h-4 bg-navy-700 rounded w-3/4" />
+                <div className="h-4 bg-slate-100 rounded w-full" />
+                <div className="h-4 bg-slate-100 rounded w-4/5" />
+                <div className="h-4 bg-slate-100 rounded w-3/4" />
               </div>
             </LockedSection>
           ) : topMerchants.length === 0 ? (
@@ -148,10 +148,10 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
             topMerchants.slice(0, 5).map((m: any) => (
               <div key={m.merchant} className="mb-2">
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-300 capitalize">{m.merchant}</span>
-                  <span className="text-white font-medium">£{fmtNum(m.total)}</span>
+                  <span className="text-slate-700 capitalize">{m.merchant}</span>
+                  <span className="text-slate-900 font-medium">£{fmtNum(m.total)}</span>
                 </div>
-                <div className="w-full bg-navy-800 rounded-full h-1.5">
+                <div className="w-full bg-slate-100 rounded-full h-1.5">
                   <div className="bg-blue-400 h-1.5 rounded-full" style={{ width: `${(m.total / (topMerchants[0]?.total || 1)) * 100}%` }} />
                 </div>
               </div>
@@ -174,10 +174,10 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
 
 function LockedSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+    <div className="bg-white border border-slate-200 rounded-xl p-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-white backdrop-blur-sm z-10 flex flex-col items-center justify-center">
         <Lock className="h-6 w-6 text-slate-500 mb-2" />
-        <p className="text-white font-semibold text-xs mb-1">Upgrade to unlock {title}</p>
+        <p className="text-slate-900 font-semibold text-xs mb-1">Upgrade to unlock {title}</p>
         <Link href="/pricing" className="text-mint-400 text-[10px] hover:text-mint-300">View plans</Link>
       </div>
       {children}
