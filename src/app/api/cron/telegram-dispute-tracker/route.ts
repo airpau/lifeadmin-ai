@@ -78,22 +78,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, message: 'No active sessions', sent: 0 });
   }
 
-  // Filter to Pro users
+  // Filter to Pro users (includes onboarding trial users)
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, subscription_tier, subscription_status, stripe_subscription_id')
+    .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .in('id', sessions.map((s) => s.user_id));
 
   const proUserIds = new Set(
     (profiles ?? [])
       .filter((p) => {
         const hasStripe = !!p.stripe_subscription_id;
-        return (
-          p.subscription_tier === 'pro' &&
+        const isActivePro = p.subscription_tier === 'pro' &&
           (hasStripe
             ? ['active', 'trialing'].includes(p.subscription_status ?? '')
-            : p.subscription_status === 'trialing')
-        );
+            : p.subscription_status === 'trialing');
+        const isOnboardingTrial = !!p.trial_ends_at &&
+          p.trial_ends_at > new Date().toISOString() &&
+          !p.trial_converted_at &&
+          !p.trial_expired_at;
+        return isActivePro || (!hasStripe && isOnboardingTrial);
       })
       .map((p) => p.id),
   );

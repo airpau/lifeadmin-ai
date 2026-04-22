@@ -102,11 +102,18 @@ export async function GET(request: Request) {
       }).eq('id', user.id);
     }
 
-    const { data: profile } = await admin.from('profiles').select('subscription_tier').eq('id', user.id).single();
+    const { data: profile } = await admin.from('profiles')
+      .select('subscription_tier, trial_ends_at, trial_converted_at, trial_expired_at')
+      .eq('id', user.id).single();
     const tier = profile?.subscription_tier || 'free';
     const isTestUser = user.email === 'sheva.tests.2026@outlook.com';
-    const isPaid = isTestUser || tier === 'essential' || tier === 'pro';
-    const isPro = isTestUser || tier === 'pro';
+    const isOnboardingTrial = !!(profile?.trial_ends_at &&
+      new Date(profile.trial_ends_at) > new Date() &&
+      !profile?.trial_converted_at &&
+      !profile?.trial_expired_at);
+    const effectiveTier = (isTestUser || isOnboardingTrial) ? 'pro' : tier;
+    const isPaid = effectiveTier === 'essential' || effectiveTier === 'pro';
+    const isPro = effectiveTier === 'pro';
 
     const url = new URL(request.url);
     const now = new Date();

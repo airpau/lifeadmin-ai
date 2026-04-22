@@ -19,13 +19,15 @@ export async function GET(req: NextRequest) {
   const admin = getAdmin();
   const now = new Date().toISOString();
 
-  // Find all users whose trial has lapsed and hasn't been converted or marked expired
+  // Find all users whose trial has lapsed and hasn't been converted or marked expired.
+  // Exclude users with an active Stripe subscription — they should never be downgraded here.
   const { data: lapsed, error } = await admin
     .from('profiles')
     .select('id, email, subscription_tier')
     .lt('trial_ends_at', now)
     .is('trial_converted_at', null)
     .is('trial_expired_at', null)
+    .is('stripe_subscription_id', null)
     .not('trial_ends_at', 'is', null);
 
   if (error) {
