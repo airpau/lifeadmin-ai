@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { EXCLUDED_SAVINGS_CATEGORIES } from '@/lib/savings-utils';
 
 function getAdmin() {
   return createClient(
@@ -19,7 +20,9 @@ export interface PriceIncrease {
   newDate: string;
 }
 
-// Categories where amounts vary naturally -- skip these
+// Categories where amounts vary naturally — skip outright. Loans/mortgage/
+// council_tax/credit etc. are handled via EXCLUDED_SAVINGS_CATEGORIES (shared
+// with the Money Hub deals detector) so the two stay in lockstep.
 const VARIABLE_CATEGORIES = new Set([
   'groceries', 'fuel', 'eating_out', 'shopping', 'cash', 'transfers',
   'income', 'other', 'transport', 'gambling',
@@ -28,14 +31,49 @@ const VARIABLE_CATEGORIES = new Set([
   'CREDIT', 'INTEREST', 'OTHER',
 ]);
 
-// Only these transaction categories can be recurring bills
+// Only these transaction categories can be recurring bills. Loans / mortgages
+// / council tax / credit were removed Apr 2026 — their amounts fluctuate with
+// repayment schedules or billing cycles, which the std-dev filter wasn't
+// catching (see Funding Circle + Winchester Council in real user data).
 const RECURRING_CATEGORIES = new Set([
   'DIRECT_DEBIT', 'STANDING_ORDER',
   // Mapped internal categories
   'energy', 'broadband', 'mobile', 'streaming', 'insurance',
-  'mortgage', 'loans', 'credit', 'council_tax', 'water',
-  'fitness', 'software', 'bills',
+  'water', 'fitness', 'software', 'bills',
 ]);
+
+function looksLikeTransferToSelf(
+  description: string,
+  merchantName: string | null,
+  userNameTokens: string[],
+): boolean {
+  if (userNameTokens.length === 0) return false;
+  const haystack = `${merchantName ?? ''} ${description}`.toLowerCase();
+  // Require at least two user-name tokens to appear — a single common first
+  // name would false-positive on any retailer that happens to share it.
+  const matches = userNameTokens.filter((t) => haystack.includes(t));
+  return matches.length >= 2;
+}
+
+async function loadUserNameTokens(userId: string): Promise<string[]> {
+  const db = getAdmin();
+  try {
+    const { data } = await db
+      .from('profiles')
+      .select('first_name, last_name, full_name')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!data) return [];
+    const raw = [data.first_name, data.last_name, data.full_name]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const tokens = Array.from(new Set(raw.split(/\s+/).filter((t) => t.length >= 3)));
+    return tokens;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Detect price increases in recurring payments for a user.
@@ -44,6 +82,7 @@ const RECURRING_CATEGORIES = new Set([
  */
 export async function detectPriceIncreases(userId: string): Promise<PriceIncrease[]> {
   const supabase = getAdmin();
+  const userNameTokens = await loadUserNameTokens(userId);
 
   // Fetch last 6 months of debit transactions
   const sixMonthsAgo = new Date();
@@ -78,9 +117,14 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
 
     // Use user_category if set, otherwise category
     const cat = tx.user_category || tx.category || '';
-    if (VARIABLE_CATEGORIES.has(cat)) continue;
+    const catLower = cat.toLowerCase();
+    if (VARIABLE_CATEGORIES.has(cat) || EXCLUDED_SAVINGS_CATEGORIES.has(catLower)) continue;
     // Only track categories that represent recurring bills
     if (!RECURRING_CATEGORIES.has(cat)) continue;
+
+    // Transfers to self (e.g. "PAUL AIREY … HALIFAX VIA MOBILE — PYMT") can
+    // otherwise look like huge price rises when amounts vary. Skip them.
+    if (looksLikeTransferToSelf(tx.description || '', tx.merchant_name, userNameTokens)) continue;
 
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;
@@ -116,8 +160,9 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
-    // Need at least 2 months of data
-    if (monthlyPayments.length < 2) continue;
+    // Need at least 3 months of data — a single comparison against one
+    // previous month turned out to be too noisy in real user data.
+    if (monthlyPayments.length < 3) continue;
 
     const latest = monthlyPayments[monthlyPayments.length - 1];
     const previous = monthlyPayments.slice(0, -1);
@@ -128,17 +173,17 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     // Calculate average of previous payments
     const avgPrevious = previous.reduce((sum, p) => sum + p.amount, 0) / previous.length;
 
-    // Check previous payments were roughly consistent (std dev < 20% of mean)
-    // This ensures we're comparing recurring payments, not random purchases
+    // Require previous payments to be tight (std dev < 15% of mean). Loan /
+    // council-tax style schedules used to slip through at 20%.
     const variance = previous.reduce((sum, p) => sum + Math.pow(p.amount - avgPrevious, 2), 0) / previous.length;
     const stdDev = Math.sqrt(variance);
-    if (avgPrevious > 0 && stdDev / avgPrevious > 0.20) continue;
+    if (avgPrevious > 0 && stdDev / avgPrevious > 0.15) continue;
 
     // Calculate increase
     const increasePct = ((latest.amount - avgPrevious) / avgPrevious) * 100;
 
-    // Flag if increase > 2%
-    if (increasePct <= 2) continue;
+    // Require ≥5% increase (old 2% was catching rounding noise)
+    if (increasePct < 5) continue;
 
     const annualImpact = (latest.amount - avgPrevious) * 12;
 

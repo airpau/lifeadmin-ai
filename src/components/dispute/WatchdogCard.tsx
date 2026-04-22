@@ -21,6 +21,7 @@ import { Loader2, Mail, Link2, RefreshCw, CheckCircle2, AlertCircle, X, Search, 
 
 interface LinkedThread {
   id: string;
+  email_connection_id: string | null;
   provider: 'gmail' | 'outlook' | 'imap';
   thread_id: string;
   subject: string | null;
@@ -129,6 +130,18 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   const hasStaleEmail =
     emailConnections !== null &&
     emailConnections.some((c) => c.status === 'needs_reauth' || c.status === 'expired');
+
+  // When a thread is linked, find the specific connection backing it so we can
+  // surface a reconnect CTA if that connection's tokens have died. Falls back
+  // to any same-provider connection when the link is older than the
+  // email_connection_id column (best-effort for older rows).
+  const linkedConnection =
+    linked && emailConnections
+      ? emailConnections.find((c) => c.id === linked.email_connection_id) ??
+        emailConnections.find((c) => c.provider_type === linked.provider)
+      : null;
+  const linkedConnectionStale =
+    !!linkedConnection && linkedConnection.status !== 'active';
 
   const openPicker = async () => {
     setPickerOpen(true);
@@ -274,6 +287,30 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
         </div>
       ) : linked ? (
         <>
+          {linkedConnectionStale && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3 flex items-start gap-3">
+              <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-300">
+                  {linked.provider === 'gmail'
+                    ? 'Gmail'
+                    : linked.provider === 'outlook'
+                    ? 'Outlook'
+                    : 'Email'}{' '}
+                  needs reconnecting
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  We can't fetch new replies until the connection is restored. Replies sent since then will import automatically once you reconnect.
+                </p>
+                <a
+                  href="/dashboard/profile"
+                  className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 font-semibold rounded-md text-xs transition-colors"
+                >
+                  <Link2 className="h-3.5 w-3.5" /> Reconnect in Profile
+                </a>
+              </div>
+            </div>
+          )}
           <div className="bg-navy-950 rounded-lg p-3 mb-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="text-xs uppercase tracking-wide text-mint-400 font-semibold">
