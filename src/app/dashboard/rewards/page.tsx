@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   Gift, Star, Trophy, Crown, Loader2, Check, Clock, Copy, Share2,
-  Lock, ChevronDown, ChevronUp, ArrowRight, Flame, Heart, Target,
+  Lock, ChevronDown, ChevronUp, ArrowRight, Flame, Heart, Target, Sparkles,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import ChallengeCard from '@/components/rewards/ChallengeCard';
@@ -249,8 +249,20 @@ export default function RewardsPage() {
     }
   });
 
+  const earnedCount = data.badges.length;
+  const totalBadges = ALL_BADGES.length;
+  const subscribedReferrals = referrals?.totalSubscribed ?? 0;
+  const pendingReferrals = referrals?.pendingUpgrades ?? 0;
+  const totalReferrals = referrals?.totalReferred ?? 0;
+  const tierProgressPct = nextTier?.minPoints
+    ? Math.min(100, (data.lifetime / nextTier.minPoints) * 100)
+    : 100;
+  const pointsToNextTier = nextTier?.minPoints
+    ? Math.max(0, nextTier.minPoints - data.lifetime)
+    : 0;
+
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       {/* Success banner */}
       {redeemSuccess && (
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2 animate-pulse">
@@ -258,27 +270,107 @@ export default function RewardsPage() {
         </div>
       )}
 
-      {/* ═══ SECTION 1: Hero Stats Bar ═══ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white border rounded-2xl p-5 text-center" style={{ borderColor: data.tierInfo.color + '44' }}>
-          <TierIcon className="h-8 w-8 mx-auto mb-2" style={{ color: data.tierInfo.color }} />
-          <p className="text-lg font-bold text-slate-900">{data.tierInfo.label}</p>
-          <p className="text-slate-500 text-xs">{data.tierInfo.multiplier}x points</p>
+      {/* Variant A header (batch4 Rewards) */}
+      <div className="page-title-row" style={{ marginBottom: 14 }}>
+        <div>
+          <h1 className="page-title">Rewards</h1>
+          <p className="page-sub">
+            Earn points for every bill fought, subscription cancelled, and friend referred. Redeem for Paybacker discounts, free months, or charity donations.
+          </p>
         </div>
-        <div className="card shadow-sm p-5 text-center">
-          <p className="text-4xl font-bold text-emerald-600">{data.balance.toLocaleString()}</p>
-          <p className="text-slate-500 text-xs">Points balance</p>
-        </div>
-        <div className="card shadow-sm p-5 text-center">
-          <p className="text-2xl font-bold text-slate-700">{data.lifetime.toLocaleString()}</p>
-          <p className="text-slate-500 text-xs">Lifetime earned</p>
-        </div>
-        <div className="card shadow-sm p-5 text-center">
-          <div className="flex items-center justify-center gap-1 mb-1">
-            <Flame className="h-5 w-5 text-orange-400" />
-            <p className="text-2xl font-bold text-orange-400">{data.currentStreak}</p>
+        <a className="cta" href="#redemptions">
+          <Sparkles className="h-3.5 w-3.5" /> Redeem points
+        </a>
+      </div>
+
+      {/* ═══ Hero: tier gradient card + KPI stack ═══ */}
+      <div
+        style={{ gap: 14, marginBottom: 14 }}
+        className="rewards-hero-grid grid grid-cols-1 md:grid-cols-[1.6fr_1fr]"
+      >
+        <div
+          style={{
+            background:
+              data.tier === 'platinum'
+                ? 'linear-gradient(135deg,#6366F1 0%,#8B5CF6 100%)'
+                : data.tier === 'gold'
+                  ? 'linear-gradient(135deg,#F59E0B 0%,#D97706 100%)'
+                  : data.tier === 'silver'
+                    ? 'linear-gradient(135deg,#64748B 0%,#475569 100%)'
+                    : 'linear-gradient(135deg,#F59E0B 0%,#EA580C 100%)',
+            color: '#fff',
+            borderRadius: 14,
+            padding: 22,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute', top: -60, right: -60,
+              width: 220, height: 220, borderRadius: '50%',
+              background: 'rgba(255,255,255,.08)',
+            }}
+          />
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 22 }}>{tierEmojis[data.tier] || '⭐'}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase' }}>
+                {data.tierInfo.label} tier · {data.tierInfo.multiplier}× points
+              </span>
+            </div>
+            <div style={{ fontSize: 64, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1 }}>
+              {data.balance.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,.9)', marginTop: 4 }}>
+              points available · {data.lifetime.toLocaleString()} lifetime
+            </div>
+
+            {nextTier ? (
+              <div style={{ marginTop: 22, background: 'rgba(0,0,0,.15)', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ fontSize: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Progress to <strong>{tierEmojis[nextTier.key] || ''} {nextTier.label}</strong></span>
+                  <span style={{ fontWeight: 600 }}>
+                    {data.lifetime.toLocaleString()} / {(nextTier.minPoints || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(255,255,255,.25)', borderRadius: 999, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${tierProgressPct}%`, background: '#FEF3C7', borderRadius: 999 }} />
+                </div>
+                <div style={{ fontSize: 11, marginTop: 8, opacity: 0.85 }}>
+                  {pointsToNextTier.toLocaleString()} points away — keep the streak up.
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 22, background: 'rgba(0,0,0,.15)', borderRadius: 12, padding: '12px 14px', fontSize: 12 }}>
+                You've hit the top tier — enjoy 3× points and white-glove support.
+              </div>
+            )}
           </div>
-          <p className="text-slate-500 text-xs">{data.currentStreak === 1 ? 'Month' : 'Months'} streak</p>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="kpi-card">
+            <div className="k-label">🔥 Active streak</div>
+            <div className="k-val">{data.currentStreak} {data.currentStreak === 1 ? 'month' : 'months'}</div>
+            <div className="k-delta">Best: {data.longestStreak || data.currentStreak} months</div>
+          </div>
+          <div className="kpi-card">
+            <div className="k-label">👥 Referrals</div>
+            <div className="k-val">
+              {subscribedReferrals}
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}> / {totalReferrals}</span>
+            </div>
+            <div className="k-delta">{pendingReferrals} pending upgrade</div>
+          </div>
+          <div className="kpi-card">
+            <div className="k-label">🎖 Badges earned</div>
+            <div className="k-val">
+              {earnedCount}
+              <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}> / {totalBadges}</span>
+            </div>
+            <div className="k-delta">{Math.max(0, totalBadges - earnedCount)} left to unlock</div>
+          </div>
         </div>
       </div>
 
