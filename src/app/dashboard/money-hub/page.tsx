@@ -458,7 +458,7 @@ export default function MoneyHubPage() {
   // ─── Loading / Error / Empty states ───────────────────────────────────
 
   if (loading && !data) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 text-mint-400 animate-spin" /></div>;
+    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 text-emerald-600 animate-spin" /></div>;
   }
 
   if (error) {
@@ -466,8 +466,8 @@ export default function MoneyHubPage() {
       <div className="max-w-2xl mx-auto py-20 text-center">
         <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-8">
           <p className="text-red-400 font-semibold mb-2">Money Hub failed to load</p>
-          <p className="text-slate-400 text-sm mb-4">{error}</p>
-          <button onClick={() => { setLoading(true); setError(null); refreshData(); }} className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-4 py-2 rounded-xl text-sm">Retry</button>
+          <p className="text-slate-600 text-sm mb-4">{error}</p>
+          <button onClick={() => { setLoading(true); setError(null); refreshData(); }} className="bg-orange-500 hover:bg-amber-400 text-black font-semibold px-4 py-2 rounded-xl text-sm">Retry</button>
         </div>
       </div>
     );
@@ -477,14 +477,14 @@ export default function MoneyHubPage() {
     return (
       <div className="max-w-7xl">
         <div className="text-center py-10 mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-mint-400/10 border border-mint-400/20 mb-4">
-            <Wallet className="h-8 w-8 text-mint-400" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-200 mb-4">
+            <Wallet className="h-8 w-8 text-emerald-600" />
           </div>
-          <h2 className="text-3xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Connect your bank to unlock Money Hub</h2>
-          <p className="text-slate-400 max-w-md mx-auto mb-6">
+          <h2 className="text-3xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Connect your bank to unlock Money Hub</h2>
+          <p className="text-slate-600 max-w-md mx-auto mb-6">
             We analyse your Open Banking transactions to build a complete financial picture — spending, income, subscriptions, budgets, and savings goals.
           </p>
-          <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="inline-flex items-center gap-2 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all">
+          <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-all">
             <Building2 className="h-5 w-5" /> Connect Bank Account
           </button>
           <p className="text-slate-500 text-xs mt-3">FCA regulated via Yapily · Read-only access · Takes 2 minutes</p>
@@ -498,12 +498,12 @@ export default function MoneyHubPage() {
               {[
                 { label: 'Monthly income', value: '£3,200', color: 'text-green-400' },
                 { label: 'Monthly outgoings', value: '£2,140', color: 'text-red-400' },
-                { label: 'Savings rate', value: '33.1%', color: 'text-mint-400' },
+                { label: 'Savings rate', value: '33.1%', color: 'text-emerald-600' },
                 { label: 'Subscriptions', value: '£127/mo', color: 'text-amber-400' },
               ].map(item => (
-                <div key={item.label} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+                <div key={item.label} className="bg-white border border-slate-200/50 rounded-2xl p-5">
                   <p className={`text-3xl font-bold ${item.color}`}>{item.value}</p>
-                  <p className="text-slate-400 text-sm mt-1">{item.label}</p>
+                  <p className="text-slate-600 text-sm mt-1">{item.label}</p>
                 </div>
               ))}
             </div>
@@ -515,10 +515,10 @@ export default function MoneyHubPage() {
             { icon: '🔔', title: 'Price increase alerts', desc: 'Know the moment any bill goes up' },
             { icon: '🎯', title: 'Budget planner', desc: 'Set limits and get alerts when approaching them' },
           ].map(f => (
-            <div key={f.title} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-4">
+            <div key={f.title} className="bg-white border border-slate-200/50 rounded-2xl p-4">
               <span className="text-2xl">{f.icon}</span>
-              <p className="text-white font-semibold text-sm mt-2">{f.title}</p>
-              <p className="text-slate-400 text-xs mt-1">{f.desc}</p>
+              <p className="text-slate-900 font-semibold text-sm mt-2">{f.title}</p>
+              <p className="text-slate-600 text-xs mt-1">{f.desc}</p>
             </div>
           ))}
         </div>
@@ -579,10 +579,10 @@ export default function MoneyHubPage() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-heading)] flex items-center gap-3">
-            <Wallet className="h-9 w-9 text-mint-400" /> Money Hub
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)] flex items-center gap-3">
+            <Wallet className="h-9 w-9 text-emerald-600" /> Money Hub
           </h1>
-          <p className="text-slate-400 mt-1 text-sm">{syncTierText}</p>
+          <p className="text-slate-600 mt-1 text-sm">{syncTierText}</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -597,7 +597,7 @@ export default function MoneyHubPage() {
               const next = cur < months.length - 1 ? months[cur + 1] : months[months.length - 1];
               setSelectedMonth(next); refreshData(next); fetchExpectedBills(next);
             }}
-            className="text-slate-400 hover:text-white p-1.5 rounded transition-colors"
+            className="text-slate-600 hover:text-slate-900 p-1.5 rounded transition-colors"
             title="Previous month"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -605,7 +605,7 @@ export default function MoneyHubPage() {
           <select
             value={selectedMonth || data.selectedMonth}
             onChange={(e) => { setSelectedMonth(e.target.value); refreshData(e.target.value); fetchExpectedBills(e.target.value); }}
-            className="bg-navy-800 border border-navy-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-mint-400"
+            className="bg-slate-100 border border-slate-200/50 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-mint-400"
           >
             <option value="">This month</option>
             {Array.from({ length: 12 }, (_, i) => {
@@ -625,7 +625,7 @@ export default function MoneyHubPage() {
               if (cur > 0) { setSelectedMonth(months[cur - 1]); refreshData(months[cur - 1]); fetchExpectedBills(months[cur - 1]); }
             }}
             disabled={!selectedMonth}
-            className="text-slate-400 hover:text-white p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="text-slate-600 hover:text-slate-900 p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Next month"
           >
             <ArrowRight className="h-4 w-4" />
@@ -634,7 +634,7 @@ export default function MoneyHubPage() {
           <button
             onClick={handleSync}
             disabled={syncing || !canSync}
-            className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm transition-all"
+            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 px-4 py-2 rounded-lg text-sm transition-all"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             {syncing ? 'Syncing...' : 'Sync'}
@@ -649,7 +649,7 @@ export default function MoneyHubPage() {
           <p className="text-sky-300 text-sm flex-1">
             Your financial data is powered by FCA-regulated Open Banking. Read-only access ensures your accounts stay secure. Balances are not shown for regulatory compliance.
           </p>
-          <button onClick={() => { setShowFcaBanner(false); try { localStorage.setItem('pb_fca_banner_dismissed', 'true'); } catch { /* silent */ } }} className="text-slate-500 hover:text-white">
+          <button onClick={() => { setShowFcaBanner(false); try { localStorage.setItem('pb_fca_banner_dismissed', 'true'); } catch { /* silent */ } }} className="text-slate-500 hover:text-slate-900">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -657,24 +657,24 @@ export default function MoneyHubPage() {
 
       {/* Expired bank connection warning — per-bank reconnect */}
       {expiredConnections.length > 0 && !bankPromptDismissed && (
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
+        <div className="bg-orange-500/10 border border-amber-500/20 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-400" />
               <p className="text-amber-300 font-semibold text-sm">Bank connection{expiredConnections.length > 1 ? 's' : ''} expired</p>
             </div>
-            <button onClick={() => { setBankPromptDismissed(true); localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString()); }} className="text-slate-500 hover:text-white"><X className="h-4 w-4" /></button>
+            <button onClick={() => { setBankPromptDismissed(true); localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString()); }} className="text-slate-500 hover:text-slate-900"><X className="h-4 w-4" /></button>
           </div>
           <div className="space-y-2">
             {expiredConnections.map((conn) => (
-              <div key={conn.id} className="flex items-center justify-between bg-navy-950/40 rounded-lg px-3 py-2">
+              <div key={conn.id} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-amber-400" />
-                  <span className="text-white text-sm font-medium">{conn.bank_name || 'Bank'}</span>
+                  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
                   <span className="text-slate-500 text-xs">· expired</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
+                  <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
                   <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -688,7 +688,7 @@ export default function MoneyHubPage() {
 
       {/* Active bank connections — with disconnect option */}
       {activeConnections.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+        <div className="bg-white border border-slate-200/50 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-green-400" />
@@ -697,10 +697,10 @@ export default function MoneyHubPage() {
           </div>
           <div className="space-y-2">
             {activeConnections.map((conn) => (
-              <div key={conn.id} className="flex items-center justify-between bg-navy-950/40 rounded-lg px-3 py-2">
+              <div key={conn.id} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-green-400" />
-                  <span className="text-white text-sm font-medium">{conn.bank_name || 'Bank'}</span>
+                  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
                   <span className="text-slate-500 text-xs">· active</span>
                 </div>
                 <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title="Disconnect this bank">
@@ -724,9 +724,9 @@ export default function MoneyHubPage() {
 
       {/* Expected Bills (for the selected month) */}
       {expectedBills.length > 0 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+            <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2">
               <Clock className="h-5 w-5 text-amber-400" />
               Expected Bills
               <span className="text-slate-500 text-sm font-normal">£{fmtNum(expectedBillsTotal)} expected</span>
@@ -750,7 +750,7 @@ export default function MoneyHubPage() {
                 <div key={bill.bill_key || bill.name} className={`rounded-xl p-3 border ${statusColor}`}>
                   <div className="flex items-center justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-400 line-through' : 'text-white'}`}>{bill.name}</p>
+                      <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-600 line-through' : 'text-slate-900'}`}>{bill.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</span>}
                         {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
@@ -763,7 +763,7 @@ export default function MoneyHubPage() {
                     {!bill.paid && bill.bill_key && (
                       <button
                         onClick={() => dismissBill(bill)}
-                        className="text-slate-600 hover:text-slate-400 transition-colors p-0.5"
+                        className="text-slate-600 hover:text-slate-600 transition-colors p-0.5"
                         title="Dismiss this expected bill"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -783,7 +783,7 @@ export default function MoneyHubPage() {
                   {bill.bill_key && bill.paid && (
                     <button
                       onClick={() => markBillPaid(bill, false)}
-                      className="mt-2 text-[10px] text-slate-600 hover:text-slate-400 transition-colors underline underline-offset-2"
+                      className="mt-2 text-[10px] text-slate-600 hover:text-slate-600 transition-colors underline underline-offset-2"
                     >
                       Unmark paid
                     </button>
@@ -802,15 +802,15 @@ export default function MoneyHubPage() {
       {/* Price Increase Alerts */}
       {priceIncreasAlerts.length > 0 && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-5">
-          <h3 className="text-white font-semibold text-lg flex items-center gap-2 mb-4">
+          <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2 mb-4">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             Price Increases Detected
           </h3>
           <div className="space-y-2">
             {priceIncreasAlerts.slice(0, 5).map((alert: any) => (
-              <div key={alert.id} className="bg-navy-950/50 rounded-xl p-3 border border-navy-800 flex items-center justify-between">
+              <div key={alert.id} className="bg-slate-50/50 rounded-xl p-3 border border-navy-800 flex items-center justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm text-white font-medium">{alert.title || 'Price increase'}</p>
+                  <p className="text-sm text-slate-900 font-medium">{alert.title || 'Price increase'}</p>
                   <p className="text-xs text-slate-500">{alert.details || alert.description || ''}</p>
                 </div>
                 {alert.value_gbp > 0 && (
@@ -829,23 +829,23 @@ export default function MoneyHubPage() {
       </div>
 
       {/* Ask Paybacker about your money — MCP prompt strip */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+      <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="min-w-0">
-            <h3 className="text-white font-semibold text-lg flex items-center gap-2 flex-wrap">
-              <MessageCircle className="h-5 w-5 text-mint-400" />
+            <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2 flex-wrap">
+              <MessageCircle className="h-5 w-5 text-emerald-600" />
               Ask Paybacker about your money
-              <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-mint-400 bg-mint-400/10 border border-mint-400/30">
+              <span className="text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-500/10 border border-emerald-200">
                 Pro
               </span>
             </h3>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-slate-600 text-sm mt-1">
               Connect the Paybacker Assistant to your desktop AI app and ask plain-English questions about your own transactions, subscriptions, budgets, and disputes. Read-only — it can&apos;t move money or change anything.
             </p>
           </div>
           <Link
             href={isPro ? '/dashboard/settings/mcp' : '/docs/paybacker-assistant'}
-            className="whitespace-nowrap text-xs bg-mint-500/10 border border-mint-400/30 text-mint-400 hover:bg-mint-500/20 hover:text-mint-300 px-3 py-1.5 rounded-full transition-colors"
+            className="whitespace-nowrap text-xs bg-mint-500/10 border border-emerald-200 text-emerald-600 hover:bg-emerald-600/20 hover:text-mint-300 px-3 py-1.5 rounded-full transition-colors"
           >
             {isPro ? 'Generate token →' : 'Setup guide →'}
           </Link>
@@ -861,7 +861,7 @@ export default function MoneyHubPage() {
           ].map((q) => (
             <div
               key={q}
-              className="bg-navy-950/50 border border-navy-800 rounded-xl px-3 py-2 text-sm text-slate-200"
+              className="bg-slate-50/50 border border-navy-800 rounded-xl px-3 py-2 text-sm text-slate-200"
             >
               &ldquo;{q}&rdquo;
             </div>
@@ -870,7 +870,7 @@ export default function MoneyHubPage() {
         {!isPro && (
           <p className="text-xs text-slate-500 mt-4">
             The Paybacker Assistant is a Pro feature.{' '}
-            <Link href="/pricing" className="text-mint-400 hover:text-mint-300">
+            <Link href="/pricing" className="text-emerald-600 hover:text-mint-300">
               Upgrade for £9.99/mo
             </Link>{' '}
             to unlock it.
@@ -880,32 +880,32 @@ export default function MoneyHubPage() {
 
       {/* Financial Action Centre (Pro) */}
       {isPro && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+            <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2">
               <Zap className="h-5 w-5 text-amber-400" />
               Financial Action Centre
               {facItems.length > 0 && (
-                <span className="text-xs font-normal text-slate-400 ml-1">
+                <span className="text-xs font-normal text-slate-600 ml-1">
                   {facCounts.overdue > 0 && <span className="text-red-400 font-semibold">{facCounts.overdue} overdue · </span>}
                   {facCounts.due_soon > 0 && <span className="text-amber-400 font-semibold">{facCounts.due_soon} due soon · </span>}
                   {facItems.length} tracked
                 </span>
               )}
             </h3>
-            <Link href="/dashboard/deals" className="text-mint-400 hover:text-mint-300 text-sm font-medium">Browse deals →</Link>
+            <Link href="/dashboard/deals" className="text-emerald-600 hover:text-mint-300 text-sm font-medium">Browse deals →</Link>
           </div>
 
           {/* Email scan results / alerts */}
           <div className="mb-5">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+              <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5 text-purple-400" /> Inbox Scan
               </p>
               <button
                 onClick={() => scanInbox(false)}
                 disabled={scanning}
-                className="text-xs text-mint-400 hover:text-mint-300 font-medium disabled:opacity-50"
+                className="text-xs text-emerald-600 hover:text-mint-300 font-medium disabled:opacity-50"
               >
                 {scanning ? 'Scanning...' : (alerts.length > 0 ? 'Re-scan' : 'Scan Now')}
               </button>
@@ -913,12 +913,12 @@ export default function MoneyHubPage() {
             {alerts.length > 0 ? (
               <div className="space-y-2">
                 {alerts.slice(0, 5).map((a: any) => (
-                  <div key={a.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg p-3 border border-navy-800">
+                  <div key={a.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg p-3 border border-navy-800">
                     <div className="min-w-0">
-                      <p className="text-sm text-white font-medium truncate">{a.title}</p>
+                      <p className="text-sm text-slate-900 font-medium truncate">{a.title}</p>
                       {a.details && <p className="text-xs text-slate-500 truncate">{a.details}</p>}
                     </div>
-                    {a.value_gbp > 0 && <span className="text-mint-400 text-sm font-semibold whitespace-nowrap ml-2">Save £{fmtNum(a.value_gbp)}</span>}
+                    {a.value_gbp > 0 && <span className="text-emerald-600 text-sm font-semibold whitespace-nowrap ml-2">Save £{fmtNum(a.value_gbp)}</span>}
                   </div>
                 ))}
               </div>
@@ -930,12 +930,12 @@ export default function MoneyHubPage() {
           {/* Subscriptions with bank deduplication */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+              <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold flex items-center gap-1.5">
                 <Building2 className="h-3.5 w-3.5 text-amber-400" /> Tracked Subscriptions
               </p>
               <div className="flex items-center gap-3">
                 {facLoading && <Loader2 className="h-3 w-3 text-slate-500 animate-spin" />}
-                <Link href="/dashboard/subscriptions" className="text-xs text-mint-400 hover:text-mint-300 font-medium">View all →</Link>
+                <Link href="/dashboard/subscriptions" className="text-xs text-emerald-600 hover:text-mint-300 font-medium">View all →</Link>
               </div>
             </div>
 
@@ -962,7 +962,7 @@ export default function MoneyHubPage() {
                         </span>
                       );
                       if (item.bankStatus === 'due_soon') return (
-                        <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-orange-500/10 text-amber-400 border border-amber-500/20 rounded-full px-2 py-0.5 whitespace-nowrap">
                           <Clock className="h-2.5 w-2.5" /> Due soon
                         </span>
                       );
@@ -974,11 +974,11 @@ export default function MoneyHubPage() {
                     })();
 
                     return (
-                      <div key={item.id} className={`rounded-lg border transition-colors ${isEditing ? 'bg-navy-800 border-mint-400/40' : 'bg-navy-950/50 border-navy-800'}`}>
+                      <div key={item.id} className={`rounded-lg border transition-colors ${isEditing ? 'bg-slate-100 border-mint-400/40' : 'bg-slate-50/50 border-navy-800'}`}>
                         <div className="flex items-center gap-2 p-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm text-white font-medium truncate">{item.provider_name}</span>
+                              <span className="text-sm text-slate-900 font-medium truncate">{item.provider_name}</span>
                               {statusBadge}
                             </div>
                             {item.matchedTxn && (
@@ -998,7 +998,7 @@ export default function MoneyHubPage() {
                             </span>
                             <button
                               onClick={() => isEditing ? setFacEditId(null) : openFacEdit(item)}
-                              className="p-1 rounded text-slate-400 hover:text-white hover:bg-navy-700 transition-colors"
+                              className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors"
                               title="Edit"
                             >
                               <Pencil className="h-3.5 w-3.5" />
@@ -1015,25 +1015,25 @@ export default function MoneyHubPage() {
 
                         {/* Inline edit form */}
                         {isEditing && (
-                          <div className="px-3 pb-3 border-t border-navy-700 pt-3">
+                          <div className="px-3 pb-3 border-t border-slate-200 pt-3">
                             <div className="grid grid-cols-3 gap-2 mb-2">
                               <div>
-                                <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Amount (£)</label>
+                                <label className="text-[10px] text-slate-600 uppercase tracking-wider block mb-1">Amount (£)</label>
                                 <input
                                   type="number"
                                   step="0.01"
                                   min="0"
                                   value={facEditFields.amount}
                                   onChange={e => setFacEditFields(f => ({ ...f, amount: e.target.value }))}
-                                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-mint-400"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-mint-400"
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Frequency</label>
+                                <label className="text-[10px] text-slate-600 uppercase tracking-wider block mb-1">Frequency</label>
                                 <select
                                   value={facEditFields.billing_cycle}
                                   onChange={e => setFacEditFields(f => ({ ...f, billing_cycle: e.target.value }))}
-                                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-mint-400"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-mint-400"
                                 >
                                   <option value="weekly">Weekly</option>
                                   <option value="monthly">Monthly</option>
@@ -1043,11 +1043,11 @@ export default function MoneyHubPage() {
                                 </select>
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-400 uppercase tracking-wider block mb-1">Category</label>
+                                <label className="text-[10px] text-slate-600 uppercase tracking-wider block mb-1">Category</label>
                                 <select
                                   value={facEditFields.category}
                                   onChange={e => setFacEditFields(f => ({ ...f, category: e.target.value }))}
-                                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-mint-400"
+                                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-900 focus:outline-none focus:border-mint-400"
                                 >
                                   {['streaming', 'software', 'fitness', 'broadband', 'mobile', 'utility', 'insurance', 'loan', 'credit_card', 'mortgage', 'council_tax', 'transport', 'shopping', 'charity', 'other'].map(c => (
                                     <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
@@ -1066,14 +1066,14 @@ export default function MoneyHubPage() {
                               )}
                               <button
                                 onClick={() => setFacEditId(null)}
-                                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 bg-navy-800 hover:bg-navy-700 rounded-lg transition-colors"
+                                className="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                               >
                                 Cancel
                               </button>
                               <button
                                 onClick={() => saveFacEdit(item.id)}
                                 disabled={facSaving}
-                                className="text-xs text-navy-950 font-semibold px-3 py-1.5 bg-mint-400 hover:bg-mint-300 disabled:opacity-50 rounded-lg transition-colors"
+                                className="text-xs text-white font-semibold px-3 py-1.5 bg-emerald-500 hover:bg-mint-300 disabled:opacity-50 rounded-lg transition-colors"
                               >
                                 {facSaving ? 'Saving...' : 'Save'}
                               </button>
@@ -1087,7 +1087,7 @@ export default function MoneyHubPage() {
                   {facItems.length > 8 && (
                     <button
                       onClick={() => setFacShowAll(v => !v)}
-                      className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-white py-2 transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 py-2 transition-colors"
                     >
                       {facShowAll ? <><ChevronUp className="h-3.5 w-3.5" /> Show less</> : <><ChevronDown className="h-3.5 w-3.5" /> Show all {facItems.length} subscriptions</>}
                     </button>
@@ -1118,10 +1118,10 @@ export default function MoneyHubPage() {
               return (
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                    <p className="text-xs text-slate-600 uppercase tracking-wider font-semibold flex items-center gap-1.5">
                       <Zap className="h-3.5 w-3.5 text-green-400" /> Cheaper Alternatives Found
                     </p>
-                    <span className="text-xs text-mint-400 font-medium">Save £{fmtNum(filteredTotal)}/year</span>
+                    <span className="text-xs text-emerald-600 font-medium">Save £{fmtNum(filteredTotal)}/year</span>
                   </div>
                   <p className="text-xs text-slate-500 mb-3">We found cheaper deals for {validDeals.length} of your subscriptions. Click &quot;Switch&quot; to go directly to the provider.</p>
                   <div className="max-h-[300px] overflow-y-auto space-y-2 custom-scrollbar">
@@ -1131,13 +1131,13 @@ export default function MoneyHubPage() {
                         <div key={`deal-${idx}`} className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-sm text-white font-medium truncate">{deal.subscriptionName}</p>
-                              <p className="text-xs text-slate-400">£{fmtNum(deal.currentPrice)}/mo → £{fmtNum(deal.dealPrice)}/mo via {deal.dealProvider}</p>
+                              <p className="text-sm text-slate-900 font-medium truncate">{deal.subscriptionName}</p>
+                              <p className="text-xs text-slate-600">£{fmtNum(deal.currentPrice)}/mo → £{fmtNum(deal.dealPrice)}/mo via {deal.dealProvider}</p>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-green-400 text-sm font-semibold">Save £{fmtNum(deal.annualSaving)}/yr</p>
                               {deal.dealUrl ? (
-                                <a href={deal.dealUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-mint-400 hover:text-mint-300 font-medium flex items-center gap-1 justify-end mt-1">
+                                <a href={deal.dealUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 hover:text-mint-300 font-medium flex items-center gap-1 justify-end mt-1">
                                   Switch <ExternalLink className="h-3 w-3" />
                                 </a>
                               ) : null}
@@ -1158,10 +1158,10 @@ export default function MoneyHubPage() {
           })()}
 
           {/* Manage Subscriptions quick link */}
-          <Link href="/dashboard/subscriptions" className="bg-navy-950/50 border border-navy-800 rounded-xl p-3 text-left hover:border-mint-400/30 transition-all flex items-center gap-3">
+          <Link href="/dashboard/subscriptions" className="bg-slate-50/50 border border-navy-800 rounded-xl p-3 text-left hover:border-emerald-200 transition-all flex items-center gap-3">
             <Building2 className="h-5 w-5 text-amber-400 shrink-0" />
             <div>
-              <p className="text-white font-medium text-sm">{facItems.length > 0 ? `Manage ${facItems.length} subscriptions` : 'Subscription Audit'}</p>
+              <p className="text-slate-900 font-medium text-sm">{facItems.length > 0 ? `Manage ${facItems.length} subscriptions` : 'Subscription Audit'}</p>
               <p className="text-slate-500 text-xs">Review, cancel, or switch</p>
             </div>
           </Link>
@@ -1175,7 +1175,7 @@ export default function MoneyHubPage() {
         <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <MessageCircle className="h-5 w-5 text-purple-400" />
-            <p className="text-slate-300 text-sm">Unlock the AI Financial Assistant, email scanning, and unlimited budgets & goals.</p>
+            <p className="text-slate-700 text-sm">Unlock the AI Financial Assistant, email scanning, and unlimited budgets & goals.</p>
           </div>
           <Link href="/pricing" className="text-purple-400 hover:text-purple-300 text-sm font-semibold whitespace-nowrap">Upgrade to Pro</Link>
         </div>
@@ -1186,43 +1186,43 @@ export default function MoneyHubPage() {
         <>
           <button
             onClick={() => setChatOpen(!chatOpen)}
-            className="fixed bottom-6 right-6 z-50 bg-gradient-to-br from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 text-white p-4 rounded-full shadow-2xl transition-all"
+            className="fixed bottom-6 right-6 z-50 bg-gradient-to-br from-purple-500 to-blue-600 hover:from-purple-400 hover:to-blue-500 text-slate-900 p-4 rounded-full shadow-2xl transition-all"
             title="Financial AI Assistant"
           >
             <MessageCircle className="h-6 w-6" />
           </button>
 
           {chatOpen && (
-            <div className="fixed bottom-20 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl flex flex-col" style={{ height: '480px' }}>
+            <div className="fixed bottom-20 right-6 z-50 w-96 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col" style={{ height: '480px' }}>
               <div className="p-4 border-b border-navy-800 flex items-center justify-between">
                 <div>
-                  <h3 className="text-white font-semibold text-sm">AI Financial Assistant</h3>
+                  <h3 className="text-slate-900 font-semibold text-sm">AI Financial Assistant</h3>
                   <p className="text-slate-500 text-[10px]">Ask about your finances, recategorise transactions, and more</p>
                 </div>
-                <button onClick={() => setChatOpen(false)} className="text-slate-500 hover:text-white"><X className="h-4 w-4" /></button>
+                <button onClick={() => setChatOpen(false)} className="text-slate-500 hover:text-slate-900"><X className="h-4 w-4" /></button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                 {chatMessages.length === 0 && (
                   <div className="text-center py-8">
                     <MessageCircle className="h-8 w-8 text-purple-400 mx-auto mb-3" />
-                    <p className="text-slate-400 text-sm">Ask me anything about your finances.</p>
+                    <p className="text-slate-600 text-sm">Ask me anything about your finances.</p>
                     <div className="flex flex-wrap gap-2 justify-center mt-4">
                       {['Where am I spending the most?', 'Show my income breakdown', 'How can I save more?'].map(q => (
-                        <button key={q} onClick={() => { setChatInput(q); }} className="text-xs bg-navy-800 hover:bg-navy-700 text-slate-300 px-3 py-1.5 rounded-lg transition-colors">{q}</button>
+                        <button key={q} onClick={() => { setChatInput(q); }} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors">{q}</button>
                       ))}
                     </div>
                   </div>
                 )}
                 {chatMessages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-purple-500/20 text-purple-100' : 'bg-navy-800 text-slate-200'}`}>
+                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${m.role === 'user' ? 'bg-purple-500/20 text-purple-100' : 'bg-slate-100 text-slate-200'}`}>
                       {m.content}
                     </div>
                   </div>
                 ))}
                 {chatLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-navy-800 px-3 py-2 rounded-xl"><Loader2 className="h-4 w-4 text-mint-400 animate-spin" /></div>
+                    <div className="bg-slate-100 px-3 py-2 rounded-xl"><Loader2 className="h-4 w-4 text-emerald-600 animate-spin" /></div>
                   </div>
                 )}
                 <div ref={chatEndRef} />
@@ -1234,9 +1234,9 @@ export default function MoneyHubPage() {
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
                     placeholder="Ask about your finances..."
-                    className="flex-1 bg-navy-800 border border-navy-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-400"
+                    className="flex-1 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-purple-400"
                   />
-                  <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()} className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white p-2 rounded-lg transition-colors">
+                  <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()} className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-slate-900 p-2 rounded-lg transition-colors">
                     <Send className="h-4 w-4" />
                   </button>
                 </div>

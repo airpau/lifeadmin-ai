@@ -55,24 +55,24 @@ function ProfileStatsSection({ supabase, fallbackRecovered }: { supabase: Return
 
   return (
     <div className="grid md:grid-cols-2 gap-6 mb-6">
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6">
         <div className="bg-blue-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
           <CheckCircle2 className="h-6 w-6 text-blue-500" />
         </div>
-        <h3 className="text-3xl font-bold text-white mb-1">
+        <h3 className="text-3xl font-bold text-slate-900 mb-1">
           {lettersWritten}
         </h3>
-        <p className="text-slate-400 text-sm">Letters written</p>
+        <p className="text-slate-600 text-sm">Letters written</p>
       </div>
 
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6">
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6">
         <div className="bg-purple-500/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
           <Clock className="h-6 w-6 text-purple-500" />
         </div>
-        <h3 className="text-3xl font-bold text-white mb-1">
+        <h3 className="text-3xl font-bold text-slate-900 mb-1">
           {activeDisputes}
         </h3>
-        <p className="text-slate-400 text-sm">Active disputes</p>
+        <p className="text-slate-600 text-sm">Active disputes</p>
       </div>
     </div>
   );
@@ -182,19 +182,19 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
   };
 
   return (
-    <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-      <h2 className="text-xl font-bold text-white mb-6">Connected Accounts & Integrations</h2>
+    <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+      <h2 className="text-xl font-bold text-slate-900 mb-6">Connected Accounts & Integrations</h2>
       <div className="space-y-4">
         {/* Email */}
-        <div className="p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
+        <div className="p-4 bg-slate-50/50 rounded-lg border border-slate-200/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center">
                 <Mail className="h-6 w-6 text-red-400" />
               </div>
               <div>
-                <h3 className="text-white font-semibold">Email Accounts</h3>
-                <p className="text-sm text-slate-400">
+                <h3 className="text-slate-900 font-semibold">Email Accounts</h3>
+                <p className="text-sm text-slate-600">
                   {emailConns.length > 0
                     ? `${emailConns.length} email account${emailConns.length !== 1 ? 's' : ''} connected`
                     : 'Scan emails for bills and subscriptions'}
@@ -202,7 +202,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setShowConnectModal(true)} className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+              <button onClick={() => setShowConnectModal(true)} className="text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-200 hover:bg-emerald-500/20 transition-all">
                 {emailConns.length > 0 ? '+ Add Email' : 'Connect'}
               </button>
             </div>
@@ -213,7 +213,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                 <div key={e.id} className="flex items-center justify-between text-sm pr-2">
                   <div className="flex items-center gap-2 text-sm z-10 w-full min-w-0 pr-4">
                     <div className={`w-1.5 h-1.5 rounded-full ${e.status === 'active' ? 'bg-green-400' : 'bg-amber-400'}`} />
-                    <span className="text-slate-300 capitalize">{e.provider_type === 'google' ? 'Gmail' : e.provider_type === 'outlook' ? 'Outlook' : e.provider_type}</span>
+                    <span className="text-slate-700 capitalize">{e.provider_type === 'google' ? 'Gmail' : e.provider_type === 'outlook' ? 'Outlook' : e.provider_type}</span>
                     <span className="text-slate-500 truncate">· {e.email_address}</span>
                   </div>
                   <button onClick={() => handleDisconnectEmail(e.id)} className="text-slate-500 hover:text-red-400 text-xs shrink-0">
@@ -226,15 +226,15 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
         </div>
 
         {/* Bank */}
-        <div className="p-4 bg-navy-950/50 rounded-lg border border-navy-700/50">
+        <div className="p-4 bg-slate-50/50 rounded-lg border border-slate-200/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
                 <CreditCard className="h-6 w-6 text-blue-400" />
               </div>
               <div>
-                <h3 className="text-white font-semibold">Bank Accounts</h3>
-                <p className="text-sm text-slate-400">
+                <h3 className="text-slate-900 font-semibold">Bank Accounts</h3>
+                <p className="text-sm text-slate-600">
                   {activeBanks.length > 0
                     ? `${activeBanks.reduce((sum, b) => sum + (b.account_display_names?.length || 1), 0)} account${activeBanks.reduce((sum, b) => sum + (b.account_display_names?.length || 1), 0) !== 1 ? 's' : ''} connected`
                     : 'Automatic transaction categorisation'}
@@ -247,7 +247,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   <CheckCircle2 className="h-3.5 w-3.5" /> Connected
                 </span>
               )}
-              <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-mint-400 bg-mint-400/10 px-3 py-1 rounded-full border border-mint-400/30 hover:bg-mint-400/20 transition-all">
+              <a href="/dashboard/subscriptions?connectBank=true" className="text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-200 hover:bg-emerald-500/20 transition-all">
                 {activeBanks.length > 0 ? '+ Add Bank' : 'Connect'}
               </a>
             </div>
@@ -259,15 +259,15 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   ? b.account_display_names.map((name, i) => (
                     <div key={`${b.id}-${i}`} className="flex items-center gap-2 text-sm">
                       <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                      <span className="text-slate-300">{b.bank_name || 'Bank'}</span>
+                      <span className="text-slate-700">{b.bank_name || 'Bank'}</span>
                       <span className="text-slate-500">·</span>
-                      <span className="text-slate-400">{name}</span>
+                      <span className="text-slate-600">{name}</span>
                     </div>
                   ))
                   : (
                     <div key={b.id} className="flex items-center gap-2 text-sm">
                       <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                      <span className="text-slate-300">{b.bank_name || 'Bank Account'}</span>
+                      <span className="text-slate-700">{b.bank_name || 'Bank Account'}</span>
                     </div>
                   )
               ))}
@@ -279,60 +279,60 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
       {/* Connect Email Modal */}
       {showConnectModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
-          <div className="bg-navy-900 border border-navy-700 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-all"
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
             >
               <X className="h-5 w-5" />
             </button>
 
             <div className="flex items-center gap-3 mb-6">
-              <div className="bg-mint-400/10 w-10 h-10 rounded-xl flex items-center justify-center">
-                <Mail className="h-5 w-5 text-mint-400" />
+              <div className="bg-emerald-500/10 w-10 h-10 rounded-xl flex items-center justify-center">
+                <Mail className="h-5 w-5 text-emerald-600" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Connect Email</h3>
-                <p className="text-slate-400 text-sm">Works with Gmail, Outlook, Yahoo, iCloud, and more</p>
+                <h3 className="text-lg font-bold text-slate-900">Connect Email</h3>
+                <p className="text-slate-600 text-sm">Works with Gmail, Outlook, Yahoo, iCloud, and more</p>
               </div>
             </div>
 
             <div className="space-y-4">
               {/* Provider selector */}
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Choose your email provider</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Choose your email provider</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                      onClick={() => { window.location.href = '/api/auth/google?returnPath=/dashboard/profile'; }}
-                    className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
                   >
                     <span className="text-xl">📧</span>
                     <div>
-                      <p className="text-white text-sm font-medium">Gmail</p>
+                      <p className="text-slate-900 text-sm font-medium">Gmail</p>
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
                   </button>
                   <button
                      onClick={() => { window.location.href = '/api/outlook/auth?returnPath=/dashboard/profile'; }}
-                    className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
+                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left"
                   >
                     <span className="text-xl">📬</span>
                     <div>
-                      <p className="text-white text-sm font-medium">Outlook</p>
+                      <p className="text-slate-900 text-sm font-medium">Outlook</p>
                       <p className="text-slate-500 text-[10px]">One-click connect</p>
                     </div>
                   </button>
-                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">📨</span>
                     <div>
-                      <p className="text-white text-sm font-medium">Yahoo Mail</p>
+                      <p className="text-slate-900 text-sm font-medium">Yahoo Mail</p>
                       <p className="text-slate-500 text-[10px]">App password required</p>
                     </div>
                   </button>
-                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-navy-950 border border-navy-700 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
+                  <button onClick={() => { setImapMode(true); setConnectEmail(''); }} className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-mint-400/50 rounded-lg px-4 py-3 transition-all text-left">
                     <span className="text-xl">✉️</span>
                     <div>
-                      <p className="text-white text-sm font-medium">Other</p>
+                      <p className="text-slate-900 text-sm font-medium">Other</p>
                       <p className="text-slate-500 text-[10px]">iCloud, BT, Sky, etc.</p>
                     </div>
                   </button>
@@ -343,17 +343,17 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
               {imapMode && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
                     <input
                       type="email"
                       value={connectEmail}
                       onChange={(e) => setConnectEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
                       autoFocus
                     />
                     {detectedProvider && connectEmail.length > 3 && connectEmail.includes('@') && (
-                      <p className="text-xs text-mint-400 mt-1.5 flex items-center gap-1">
+                      <p className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1">
                         <CheckCircle2 className="h-3 w-3" />
                         Detected: {detectedProvider.name}
                       </p>
@@ -361,19 +361,19 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1.5">Password or App Password</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Password or App Password</label>
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={connectPassword}
                         onChange={(e) => setConnectPassword(e.target.value)}
                         placeholder="Your email password"
-                        className="w-full bg-navy-950 border border-navy-700 rounded-lg px-4 py-2.5 pr-10 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 pr-10 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-mint-400/50 text-sm"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
                       >
                          <Lock className="h-4 w-4" />
                       </button>
@@ -381,7 +381,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   </div>
 
                   {detectedProvider?.note && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
+                    <div className="bg-orange-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5">
                       <p className="text-xs text-amber-400 leading-relaxed">{detectedProvider.note}</p>
                     </div>
                   )}
@@ -389,7 +389,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                   <button
                     onClick={handleConnectEmail}
                     disabled={connecting || !connectEmail || !connectEmail.includes('@') || !connectPassword}
-                    className="w-full flex items-center justify-center gap-2 bg-mint-400 hover:bg-mint-500 disabled:opacity-50 disabled:cursor-not-allowed text-navy-950 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm"
                   >
                     {connecting ? (
                       <><Loader2 className="h-4 w-4 animate-spin" /> Connecting...</>
@@ -406,7 +406,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
                 </div>
               )}
 
-              <div className="flex items-start gap-2 bg-navy-950/50 rounded-lg px-3 py-2">
+              <div className="flex items-start gap-2 bg-slate-50/50 rounded-lg px-3 py-2">
                 <Sparkles className="h-3.5 w-3.5 text-green-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-500">
                   Gmail and Outlook use secure OAuth (no password stored). Other providers use encrypted IMAP. Read-only access. We never send emails from your account.
@@ -717,8 +717,8 @@ export default function ProfilePage() {
 
   const subscriptionBadge = () => {
     const colors = {
-      free: 'bg-slate-500/10 text-slate-400 border-slate-500/30',
-      essential: 'bg-mint-400/10 text-mint-400 border-mint-400/30',
+      free: 'bg-slate-500/10 text-slate-600 border-slate-500/30',
+      essential: 'bg-emerald-500/10 text-emerald-600 border-emerald-200',
       pro: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
     };
 
@@ -735,24 +735,24 @@ export default function ProfilePage() {
     const tierLabel = tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : 'Free';
 
     if (!tier || tier === 'free' || !hasActiveStripe) {
-      return <span className="text-white font-semibold">Free Plan</span>;
+      return <span className="text-slate-900 font-semibold">Free Plan</span>;
     }
     if (status === 'active') {
-      return <span className="text-white font-semibold">{tierLabel} — Active</span>;
+      return <span className="text-slate-900 font-semibold">{tierLabel} — Active</span>;
     }
     if (status === 'trialing') {
-      return <span className="text-white font-semibold">{tierLabel} — Trial</span>;
+      return <span className="text-slate-900 font-semibold">{tierLabel} — Trial</span>;
     }
     if (status === 'past_due') {
       return <span className="text-red-400 font-semibold">{tierLabel} — Payment overdue</span>;
     }
     if (status === 'canceled') {
-      return <span className="text-slate-400 font-semibold">{tierLabel} — Cancelled</span>;
+      return <span className="text-slate-600 font-semibold">{tierLabel} — Cancelled</span>;
     }
     if (status === 'paused') {
-      return <span className="text-slate-400 font-semibold">{tierLabel} — Paused</span>;
+      return <span className="text-slate-600 font-semibold">{tierLabel} — Paused</span>;
     }
-    return <span className="text-white font-semibold capitalize">{status || 'Free'}</span>;
+    return <span className="text-slate-900 font-semibold capitalize">{status || 'Free'}</span>;
   };
 
   return (
@@ -767,20 +767,20 @@ export default function ProfilePage() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
-        <p className="text-slate-400">Manage your account and view your stats</p>
+        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
+        <p className="text-slate-600">Manage your account and view your stats</p>
       </div>
 
       {/* Account Info */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gradient-to-br from-mint-400 to-mint-500 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8 text-navy-950" />
+              <User className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">{profile?.full_name || 'User'}</h2>
-              <p className="text-slate-400 flex items-center gap-2 mt-1">
+              <h2 className="text-2xl font-bold text-slate-900">{profile?.full_name || 'User'}</h2>
+              <p className="text-slate-600 flex items-center gap-2 mt-1">
                 <Mail className="h-4 w-4" />
                 {profile?.email}
               </p>
@@ -789,10 +789,10 @@ export default function ProfilePage() {
           {subscriptionBadge()}
         </div>
 
-        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-navy-700/50">
+        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-slate-200/50">
           <div>
             <p className="text-sm text-slate-500 mb-1">Member since</p>
-            <p className="text-white font-semibold">{memberSince}</p>
+            <p className="text-slate-900 font-semibold">{memberSince}</p>
           </div>
           <div>
             <p className="text-sm text-slate-500 mb-1">Subscription status</p>
@@ -802,14 +802,14 @@ export default function ProfilePage() {
       </div>
 
       {/* Personal Details */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-mint-400" />
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-emerald-600" />
             Personal Details
           </h2>
           {!editing && (
-            <button onClick={startEditing} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-all">
+            <button onClick={startEditing} className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-all">
               <Pencil className="h-4 w-4" />
               Edit
             </button>
@@ -827,56 +827,56 @@ export default function ProfilePage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">First name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">First name</label>
                 <input
                   type="text"
                   value={editForm.first_name}
                   onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
                   placeholder="First name"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">Last name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Last name</label>
                 <input
                   type="text"
                   value={editForm.last_name}
                   onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
                   placeholder="Last name"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Phone number</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone number</label>
               <input
                 type="tel"
                 value={editForm.phone}
                 onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
                 placeholder="07xxx xxxxxx"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Address</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
               <input
                 type="text"
                 value={editForm.address}
                 onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
                 placeholder="House number, street, city"
               />
             </div>
 
             <div className="max-w-xs">
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Postcode</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Postcode</label>
               <input
                 type="text"
                 value={editForm.postcode}
                 onChange={(e) => setEditForm({ ...editForm, postcode: e.target.value })}
-                className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm uppercase"
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm uppercase"
                 placeholder="SW1A 1AA"
                 maxLength={8}
               />
@@ -887,14 +887,14 @@ export default function ProfilePage() {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setEditing(false)}
-                className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all text-sm"
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveProfile}
                 disabled={saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 {saving ? 'Saving...' : 'Save Changes'}
@@ -905,39 +905,39 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Name</p>
-              <p className="text-white text-sm">{profile?.full_name || 'Not set'}</p>
+              <p className="text-slate-900 text-sm">{profile?.full_name || 'Not set'}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Phone</p>
-              <p className="text-white text-sm">{profile?.phone || 'Not set'}</p>
+              <p className="text-slate-900 text-sm">{profile?.phone || 'Not set'}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Address</p>
-              <p className="text-white text-sm">{profile?.address || 'Not set'}</p>
+              <p className="text-slate-900 text-sm">{profile?.address || 'Not set'}</p>
             </div>
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Postcode</p>
-              <p className="text-white text-sm">{profile?.postcode || 'Not set'}</p>
+              <p className="text-slate-900 text-sm">{profile?.postcode || 'Not set'}</p>
             </div>
           </div>
         )}
       </div>
 
       {/* Security Details */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-6">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-mint-400"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-6">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
           Security
         </h2>
         
         <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">New Password <span className="text-slate-500 font-normal">(min 8 characters)</span></label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">New Password <span className="text-slate-500 font-normal">(min 8 characters)</span></label>
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-2.5 bg-navy-950 border border-navy-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
+              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200/50 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:border-mint-400 text-sm"
               placeholder="••••••••"
              />
           </div>
@@ -949,7 +949,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={passwordLoading || newPassword.length < 8}
-            className="px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
           >
             {passwordLoading ? 'Updating...' : 'Update Password'}
           </button>
@@ -968,18 +968,18 @@ export default function ProfilePage() {
         const percent = Math.round((filledCount / fields.length) * 100);
         if (percent === 100) return null;
         return (
-          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-5 mb-6">
+          <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5 mb-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-white">Profile {percent}% complete</p>
+              <p className="text-sm font-semibold text-slate-900">Profile {percent}% complete</p>
               <p className="text-xs text-slate-500">{filledCount}/{fields.length} fields</p>
             </div>
-            <div className="w-full bg-navy-800 rounded-full h-2 mb-3">
+            <div className="w-full bg-slate-100 rounded-full h-2 mb-3">
               <div
                 className="bg-gradient-to-r from-mint-400 to-mint-500 h-2 rounded-full transition-all duration-500"
                 style={{ width: `${percent}%` }}
               />
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-600">
               Complete your profile to auto-fill complaint letters.
               {!profile?.full_name && ' Add your name.'}
               {!profile?.phone && ' Add your phone number.'}
@@ -987,7 +987,7 @@ export default function ProfilePage() {
               {!profile?.postcode && ' Add your postcode.'}
             </p>
             {!editing && (
-              <button onClick={startEditing} className="mt-2 text-xs text-mint-400 hover:text-mint-300 font-medium transition-all">
+              <button onClick={startEditing} className="mt-2 text-xs text-emerald-600 hover:text-mint-300 font-medium transition-all">
                 Complete profile
               </button>
             )}
@@ -1005,9 +1005,9 @@ export default function ProfilePage() {
         const trialDays = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : null;
 
         return (
-          <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-mint-400" />
+          <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-600" />
               Your Plan
             </h2>
             <div className="flex items-center justify-between">
@@ -1015,12 +1015,12 @@ export default function ProfilePage() {
                 <span className={`inline-block text-sm font-semibold px-3 py-1 rounded-full ${
                   isTrialUser ? 'bg-amber-400/10 text-amber-400' :
                   effectiveTier === 'pro' ? 'bg-brand-400/10 text-brand-400' :
-                  effectiveTier === 'essential' ? 'bg-mint-400/10 text-mint-400' :
-                  'bg-slate-400/10 text-slate-400'
+                  effectiveTier === 'essential' ? 'bg-emerald-500/10 text-emerald-600' :
+                  'bg-slate-400/10 text-slate-600'
                 }`}>
                   {isTrialUser ? 'Pro Trial' : effectiveTier === 'pro' ? 'Pro' : effectiveTier === 'essential' ? 'Essential' : 'Free'}
                 </span>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-slate-600 text-sm mt-2">
                   {isTrialUser
                     ? `Free for 14 days${trialDays !== null ? ` — ${trialDays} days left on your free trial` : ''}`
                     : effectiveTier === 'free'
@@ -1031,15 +1031,15 @@ export default function ProfilePage() {
                 </p>
               </div>
               {isTrialUser ? (
-                <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Subscribe to keep Pro
                 </Link>
               ) : effectiveTier === 'free' ? (
-                <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Upgrade Plan
                 </Link>
               ) : (
-                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900 px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   {portalLoading ? 'Loading...' : 'Manage Billing'}
                 </button>
               )}
@@ -1052,9 +1052,9 @@ export default function ProfilePage() {
       <ConnectedAccountsSection supabase={supabase} searchParams={searchParams} />
 
       {/* Financial Reports */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-mint-400" />
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-emerald-600" />
           Financial Reports
         </h2>
 
@@ -1064,7 +1064,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => handleGenerateReport('annual')}
                 disabled={reportLoading}
-                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+                className="flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
               >
                 {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                 {reportLoading ? 'Generating...' : 'Generate Annual Report'}
@@ -1072,7 +1072,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => handleGenerateReport('on_demand')}
                 disabled={reportLoading}
-                className="flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
               >
                 Quick Summary
               </button>
@@ -1085,17 +1085,17 @@ export default function ProfilePage() {
             {/* Saved reports list */}
             {savedReports.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-slate-300 mb-2">Saved Reports</h3>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Saved Reports</h3>
                 <div className="space-y-2">
                   {savedReports.map((r) => (
                     <div
                       key={r.id}
-                      className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/50"
+                      className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/50"
                     >
                       <div className="flex items-center gap-3">
-                        <FileText className="h-4 w-4 text-mint-400" />
+                        <FileText className="h-4 w-4 text-emerald-600" />
                         <div>
-                          <p className="text-white text-sm font-medium capitalize">
+                          <p className="text-slate-900 text-sm font-medium capitalize">
                             {r.report_type === 'annual' ? `${r.year} Annual Report` : 'Summary Report'}
                           </p>
                           <p className="text-xs text-slate-500">
@@ -1115,14 +1115,14 @@ export default function ProfilePage() {
 
             {/* Report display */}
             {showReport && reportData && (
-              <div className="mt-4 pt-4 border-t border-navy-700/50">
+              <div className="mt-4 pt-4 border-t border-slate-200/50">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white">
+                  <h3 className="text-lg font-semibold text-slate-900">
                     {reportType === 'annual' ? 'Annual Report' : 'Financial Summary'}
                   </h3>
                   <button
                     onClick={() => setShowReport(false)}
-                    className="text-sm text-slate-400 hover:text-white transition-all"
+                    className="text-sm text-slate-600 hover:text-slate-900 transition-all"
                   >
                     Close
                   </button>
@@ -1133,7 +1133,7 @@ export default function ProfilePage() {
           </div>
         ) : (
           <div>
-            <p className="text-slate-400 text-sm mb-4">
+            <p className="text-slate-600 text-sm mb-4">
               {effectiveTier === 'essential'
                 ? 'Upgrade to Pro to unlock personalised annual financial reports with PDF download.'
                 : 'Pro users get personalised annual financial reports with spending analysis, savings tracking, and PDF download.'}
@@ -1145,34 +1145,34 @@ export default function ProfilePage() {
 
       {/* Legal links */}
       <div className="flex gap-4 text-xs text-slate-500 mb-6">
-        <a href="/privacy-policy" className="hover:text-white transition-all">Privacy Policy</a>
-        <a href="/terms-of-service" className="hover:text-white transition-all">Terms of Service</a>
+        <a href="/privacy-policy" className="hover:text-slate-900 transition-all">Privacy Policy</a>
+        <a href="/terms-of-service" className="hover:text-slate-900 transition-all">Terms of Service</a>
       </div>
 
       {/* Subscription Management */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-8">
-        <h2 className="text-xl font-bold text-white mb-4">Subscription</h2>
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8">
+        <h2 className="text-xl font-bold text-slate-900 mb-4">Subscription</h2>
         
         {effectiveTier === 'free' ? (
           <div className="text-center py-8">
             <AlertCircle className="h-12 w-12 text-slate-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Upgrade to unlock more</h3>
-            <p className="text-slate-400 mb-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">Upgrade to unlock more</h3>
+            <p className="text-slate-600 mb-6">
               Get unlimited complaints, scanning, and lower success fees
             </p>
             <a
               href="/pricing"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-6 py-3 rounded-lg transition-all"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-mint-400 to-mint-500 hover:from-mint-500 hover:to-mint-600 text-white font-semibold px-6 py-3 rounded-lg transition-all"
             >
               Upgrade Plan
             </a>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-navy-950/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-lg">
               <div>
-                <h3 className="text-white font-semibold capitalize">{effectiveTier} Plan</h3>
-                <p className="text-sm text-slate-400">
+                <h3 className="text-slate-900 font-semibold capitalize">{effectiveTier} Plan</h3>
+                <p className="text-sm text-slate-600">
                   {effectiveTier === 'essential' ? '£4.99/month' : '£9.99/month'}
                 </p>
                 {renewalDate && !pendingChange && (
@@ -1182,7 +1182,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleManageBilling}
                 disabled={portalLoading}
-                className="inline-flex items-center gap-2 bg-navy-800 hover:bg-navy-700 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
+                className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
               >
                 <CreditCard className="h-4 w-4" />
                 {portalLoading ? 'Loading...' : 'Manage Billing'}
@@ -1191,22 +1191,22 @@ export default function ProfilePage() {
 
             {/* Pending downgrade or cancellation notice */}
             {pendingChange && (
-              <div className="flex items-start gap-3 p-4 rounded-lg border bg-mint-400/5 border-mint-400/20">
-                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-mint-400" />
+              <div className="flex items-start gap-3 p-4 rounded-lg border bg-emerald-500/5 border-emerald-200">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-emerald-600" />
                 <div>
                   {pendingChange.type === 'cancel' ? (
                     <>
-                      <p className="text-sm text-mint-400 font-medium">Subscription set to not renew</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-sm text-emerald-600 font-medium">Subscription set to not renew</p>
+                      <p className="text-xs text-slate-600 mt-0.5">
                         Your {effectiveTier} plan will not renew after {pendingChange.date}. You keep full access until then. To continue your subscription, click Manage Billing and reactivate.
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="text-sm text-mint-400 font-medium">
+                      <p className="text-sm text-emerald-600 font-medium">
                         Changing to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-slate-600 mt-0.5">
                         Your plan will change to {pendingChange.tier?.charAt(0).toUpperCase()}{pendingChange.tier?.slice(1)} on {pendingChange.date}. You keep {effectiveTier?.charAt(0).toUpperCase()}{effectiveTier?.slice(1)} access until then.
                       </p>
                     </>
@@ -1225,12 +1225,12 @@ export default function ProfilePage() {
         )}
       </div>
       {/* Pocket Agent */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700/50 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
           <Mail className="h-5 w-5 text-amber-500" />
           Pocket Agent
         </h2>
-        <p className="text-slate-400 text-sm mb-4">
+        <p className="text-slate-600 text-sm mb-4">
           Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
         </p>
         {telegramLinked === true ? (
@@ -1239,7 +1239,7 @@ export default function ProfilePage() {
             <span className="text-green-400 text-sm font-medium">Pocket Agent Connected</span>
             <Link
               href="/dashboard/pocket-agent"
-              className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-xl text-sm font-medium transition-colors border border-navy-700/50"
+              className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors border border-slate-200/50"
             >
               Manage
             </Link>
@@ -1247,38 +1247,38 @@ export default function ProfilePage() {
         ) : (
           <Link
             href="/dashboard/pocket-agent"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-amber-400 rounded-xl text-sm font-medium transition-colors"
           >
             Set Up Pocket Agent
           </Link>
         )}
       </div>
       {/* Data Export — GDPR Right to Portability */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-navy-700 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-          <Download className="h-5 w-5 text-mint-400" />
+      <div className="bg-white backdrop-blur-sm border border-slate-200 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+          <Download className="h-5 w-5 text-emerald-600" />
           Download My Data
         </h2>
-        <p className="text-slate-400 text-sm mb-6">
+        <p className="text-slate-600 text-sm mb-6">
           Download a copy of all your Paybacker data in JSON format — profile, transactions,
           subscriptions, disputes, and more. This is your right under GDPR Article 20.
         </p>
         <button
           onClick={handleExportData}
           disabled={exporting}
-          className="bg-mint-400/10 hover:bg-mint-400/20 border border-mint-400/30 text-mint-400 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50 inline-flex items-center gap-2"
+          className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-200 text-emerald-600 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50 inline-flex items-center gap-2"
         >
           {exporting ? <><Loader2 className="h-4 w-4 animate-spin" /> Preparing export...</> : <><Download className="h-4 w-4" /> Download my data</>}
         </button>
       </div>
 
       {/* Danger Zone — Delete Account */}
-      <div className="bg-navy-900 backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+      <div className="bg-white backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
           <Trash2 className="h-5 w-5 text-red-400" />
           Delete Account
         </h2>
-        <p className="text-slate-400 text-sm mb-6">
+        <p className="text-slate-600 text-sm mb-6">
           Permanently delete your account and all associated data — complaint letters, subscription history,
           email connections, and usage logs. This action cannot be undone.
         </p>
@@ -1299,13 +1299,13 @@ export default function ProfilePage() {
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleting}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50"
+                className="bg-red-600 hover:bg-red-700 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm disabled:opacity-50"
               >
                 {deleting ? 'Deleting...' : 'Yes, delete everything'}
               </button>
               <button
                 onClick={() => setDeleteConfirm(false)}
-                className="bg-navy-800 hover:bg-navy-700 text-white px-5 py-2.5 rounded-lg transition-all text-sm"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-900 px-5 py-2.5 rounded-lg transition-all text-sm"
               >
                 Cancel
               </button>

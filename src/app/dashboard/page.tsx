@@ -19,30 +19,7 @@ import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityW
 import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
-import { calculateTotalSavings, parseComparisonDeals } from '@/lib/savings-utils';
-import RotatingCaptionsLoader, { type LoaderCaption } from '@/components/RotatingCaptionsLoader';
-
-/**
- * Caption decks for the different scans we run. Each deck has its own
- * personality so the user gets a sense of what the system is actually doing.
- */
-const INBOX_SCAN_CAPTIONS: LoaderCaption[] = [
-  { icon: '📬', text: 'Sifting through your inbox for bills and renewals...' },
-  { icon: '🔎', text: 'Hunting for hidden subscriptions...' },
-  { icon: '🧾', text: 'Reading the small print so you don\u2019t have to...' },
-  { icon: '💸', text: 'Looking for price hikes and overcharges...' },
-  { icon: '🛫', text: 'Checking for flight delays worth claiming...' },
-  { icon: '🧠', text: 'Matching emails to your subscriptions...' },
-  { icon: '✨', text: 'Almost there \u2014 lining up your opportunities...' },
-];
-
-const PRICE_DETECT_CAPTIONS: LoaderCaption[] = [
-  { icon: '🏦', text: 'Scanning your bank transactions...' },
-  { icon: '📈', text: 'Spotting direct debits that have quietly gone up...' },
-  { icon: '🧮', text: 'Comparing last month vs this month...' },
-  { icon: '🚨', text: 'Flagging any sneaky price increases...' },
-  { icon: '✨', text: 'Almost done \u2014 saving new alerts...' },
-];
+import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAlertAnnualImpact } from '@/lib/savings-utils';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -65,8 +42,6 @@ export default function DashboardPage() {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialExpired, setTrialExpired] = useState(false);
   const [priceAlerts, setPriceAlerts] = useState<any[]>([]);
-  const [priceAlertsDetecting, setPriceAlertsDetecting] = useState(false);
-  const [priceAlertsLastDetected, setPriceAlertsLastDetected] = useState<string | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [comparisonSaving, setComparisonSaving] = useState(0);
   const [comparisonCount, setComparisonCount] = useState(0);
@@ -227,8 +202,6 @@ export default function DashboardPage() {
     const fetchData = async () => {
       let hasBankConnection = false;
       let hasStoredAlerts = false;
-      let hasEmailConnectionOuter = false;
-      let lastScannedAtOuter: string | null = null;
 
       // Start deals loading in parallel immediately (non-blocking)
       const dealsPromise = (async () => {
@@ -266,23 +239,7 @@ export default function DashboardPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setLoading(false); return; }
 
-        // Compute date windows upfront so we can run all queries in parallel.
-        // Previously these were derived mid-function which forced serial awaits.
-        const now = new Date();
-        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        const todayIso = now.toISOString().split('T')[0];
-        const thirtyDaysIso = thirtyDays.toISOString().split('T')[0];
-
-        // One parallel round-trip for EVERY independent query the page needs on
-        // initial load. The previous implementation issued these sequentially,
-        // which meant 7 extra Supabase round-trips (~2-3s on a cold path) before
-        // the loader could hide. Keep this batch minimal per table and add
-        // conditional fallbacks below only when strictly required.
-        const [
-          profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks,
-          emailConnsRes, scanFindingsRes, subTotalRes, vaultExpiringRes,
-          priceAlertRes, anyAlertsRes,
-        ] = await Promise.all([
+        const [profile, subs, tasks, banks, userTasks, cancelledSubs, resolvedTasks] = await Promise.all([
           supabase.from('profiles').select('subscription_tier, total_money_recovered, founding_member, founding_member_expires, subscription_status, stripe_subscription_id').eq('id', user.id).maybeSingle(),
           supabase.from('subscriptions').select('provider_name, amount, billing_cycle, contract_end_date, status')
             .eq('user_id', user.id).eq('status', 'active').is('dismissed_at', null),
@@ -297,23 +254,6 @@ export default function DashboardPage() {
             .eq('user_id', user.id).eq('status', 'cancelled'),
           supabase.from('tasks').select('money_recovered')
             .eq('user_id', user.id).eq('status', 'resolved'),
-          supabase.from('email_connections')
-            .select('id, email_address, provider_type, status, last_scanned_at')
-            .eq('user_id', user.id).eq('status', 'active'),
-          supabase.from('email_scan_findings').select('*')
-            .eq('user_id', user.id).in('status', ['new', 'reviewing'])
-            .order('created_at', { ascending: false }).limit(30),
-          supabase.rpc('get_subscription_total', { p_user_id: user.id }),
-          supabase.from('contract_extractions').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .not('contract_end_date', 'is', null)
-            .gte('contract_end_date', todayIso)
-            .lte('contract_end_date', thirtyDaysIso),
-          supabase.from('price_increase_alerts').select('*')
-            .eq('user_id', user.id).eq('status', 'active')
-            .order('annual_impact', { ascending: false }),
-          supabase.from('price_increase_alerts').select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id).in('status', ['active', 'dismissed', 'actioned']),
         ]);
 
         setUserTier(profile.data?.subscription_tier || 'free');
@@ -321,17 +261,19 @@ export default function DashboardPage() {
         setBankConnected(hasBankConnection);
         setBankAccounts(banks.data || []);
 
-        // Email connection — prefer email_connections, fall back to legacy gmail_tokens ONLY if needed
-        const emailConns = emailConnsRes.data;
+        // Check email connection (Gmail or IMAP)
+        const { data: emailConns } = await supabase
+          .from('email_connections')
+          .select('id, email_address, provider_type, status, last_scanned_at')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
         if (emailConns && emailConns.length > 0) {
-          hasEmailConnectionOuter = true;
-          lastScannedAtOuter = emailConns[0].last_scanned_at;
           setEmailConnected(true);
           setEmailAddress(emailConns[0].email_address);
-          setEmailLastScanned(lastScannedAtOuter);
+          setEmailLastScanned(emailConns[0].last_scanned_at);
           setEmailAccounts(emailConns.map(e => ({ id: e.id, email_address: e.email_address, provider_type: e.provider_type })));
         } else {
-          // Legacy fallback: gmail_tokens. Only queried when no email_connections row exists.
+          // Also check gmail_tokens table as fallback
           const { data: gmailToken } = await supabase
             .from('gmail_tokens')
             .select('id, email')
@@ -339,13 +281,20 @@ export default function DashboardPage() {
             .limit(1)
             .maybeSingle();
           if (gmailToken) {
-            hasEmailConnectionOuter = true;
             setEmailConnected(true);
             setEmailAddress(gmailToken.email);
           }
         }
 
-        const scanFindings = scanFindingsRes.data;
+        // Load saved email scan opportunities from the centralised email_scan_findings table
+        const { data: scanFindings } = await supabase
+          .from('email_scan_findings')
+          .select('*')
+          .eq('user_id', user.id)
+          .in('status', ['new', 'reviewing'])
+          .order('created_at', { ascending: false })
+          .limit(30);
+
         if (scanFindings && scanFindings.length > 0) {
           const mapped = scanFindings.map((f: any) => {
             const meta = f.metadata || {};
@@ -445,13 +394,13 @@ export default function DashboardPage() {
         setSubscriptionCount(dedupedSubs.length);
         setActiveSubscriptions(subsList);
 
-        // Monthly spend — use the RPC result from the parallel batch; fall back to
-        // client-side calc if the RPC returned null (e.g., first run, no data).
-        const subTotal = subTotalRes.data;
+        // Calculate monthly spend via RPC for consistency with subscriptions page
+        const { data: subTotal } = await supabase.rpc('get_subscription_total', { p_user_id: user.id });
         if (subTotal) {
           setMonthlySpend(subTotal.subscriptions_monthly ?? 0);
           setSpendBreakdown(subTotal);
         } else {
+          // Fallback: client-side calculation
           const monthly = subsList.reduce((sum, s) => {
             const amt = parseFloat(String(s.amount)) || 0;
             if (s.billing_cycle === 'yearly') return sum + amt / 12;
@@ -461,32 +410,47 @@ export default function DashboardPage() {
           setMonthlySpend(monthly);
         }
 
-        // Count contracts expiring within 30 days (subscriptions + vault extractions).
-        // vaultExpiringCount comes from the parallel batch above.
+        // Count contracts expiring within 30 days (subscriptions + vault extractions)
+        const now = new Date();
+        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         const expiringSubs = subsList.filter(s =>
           s.contract_end_date &&
           new Date(s.contract_end_date) >= now &&
           new Date(s.contract_end_date) <= thirtyDays
         ).length;
-        setExpiringContracts(expiringSubs + (vaultExpiringRes.count || 0));
 
-        // Price increase alerts (already fetched in parallel batch above)
-        const priceAlertData = priceAlertRes.data;
+        const { count: vaultExpiringCount } = await supabase
+          .from('contract_extractions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .not('contract_end_date', 'is', null)
+          .gte('contract_end_date', now.toISOString().split('T')[0])
+          .lte('contract_end_date', thirtyDays.toISOString().split('T')[0]);
+
+        setExpiringContracts(expiringSubs + (vaultExpiringCount || 0));
+
+        // Fetch active price increase alerts for display
+        const { data: priceAlertData } = await supabase
+          .from('price_increase_alerts')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .order('annual_impact', { ascending: false });
         setPriceAlerts(priceAlertData || []);
-        hasStoredAlerts = (anyAlertsRes.count || 0) > 0;
 
-        // Seed the "last detected" timestamp from the most recent alert, if we
-        // have any. Users see a meaningful "Last scanned" line even before they
-        // click the Scan button. If there are no alerts, the field stays null
-        // and we fall back to a "scan now" prompt in the UI.
-        if (priceAlertData && priceAlertData.length > 0) {
-          const latest = priceAlertData
-            .map((a: any) => a.detected_at)
-            .filter(Boolean)
-            .sort()
-            .pop();
-          if (latest) setPriceAlertsLastDetected(latest);
-        }
+        // Check if ANY alerts exist (active, dismissed, or actioned) to prevent
+        // re-running detection when all alerts have been dismissed by the user.
+        const { count: anyAlertsCount } = await supabase
+          .from('price_increase_alerts')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('status', ['active', 'dismissed', 'actioned']);
+        hasStoredAlerts = (anyAlertsCount || 0) > 0;
+
+        const priceAlertImpact = (priceAlertData || []).reduce((sum: number, a: any) => {
+          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
+          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
+        }, 0);
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -494,15 +458,9 @@ export default function DashboardPage() {
         setLoading(false);
       }
 
-      // ── On-demand detection (non-blocking, runs after the loader hides) ──
-      //
-      // 1. Bank-side price detection: if the user has bank data but no stored
-      //    alerts yet, run the price-alerts detector now rather than waiting
-      //    for the 8 AM cron.
-      // 2. Inbox scan: if the user has an email connection but the inbox was
-      //    never scanned (or not scanned in the last 24h), kick off a scan in
-      //    the background so the Price Increase Alerts card shows fresh data
-      //    next time they land here. Fire-and-forget.
+      // On-demand price increase detection: if the user has bank data but no
+      // stored alerts yet, run detection immediately rather than waiting for
+      // the 8 AM daily cron. Deduplication in the endpoint prevents double inserts.
       if (hasBankConnection && !hasStoredAlerts) {
         try {
           const detectRes = await fetch('/api/price-alerts/detect', { method: 'POST' });
@@ -514,63 +472,24 @@ export default function DashboardPage() {
           }
         } catch {} // Non-critical
       }
-
-      // 2. Auto-scan the inbox on entry if we have an email connection and the
-      //    inbox has never been scanned (null) or the last scan is >24h old.
-      //    This ensures the Price Increase Alerts card shows reasonably fresh
-      //    data without the user having to click "Scan now" on every visit.
-      //    Fire-and-forget — we don't block on this and UI updates happen via
-      //    the scan's own finish path (email_scan_findings + price_increase_alerts).
-      if (hasEmailConnectionOuter) {
-        const SCAN_STALE_MS = 24 * 60 * 60 * 1000;
-        const isStale =
-          !lastScannedAtOuter ||
-          Date.now() - new Date(lastScannedAtOuter).getTime() > SCAN_STALE_MS;
-        if (isStale) {
-          // Use the same handler the "Scan now" button uses so state is
-          // consistent (loading spinner, refreshed alerts, updated timestamp).
-          scanInboxNow().catch(() => {}); // swallow — non-critical auto-trigger
-        }
-      }
     };
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
-  /**
-   * scanInboxNow
-   *
-   * Triggers a fresh Gmail/email scan and then refreshes every piece of
-   * dashboard state that depends on inbox data:
-   *  - email_scan_findings → emailOpportunities / emailScanResults
-   *  - price_increase_alerts (stored alerts are re-read after scan)
-   *  - email_connections.last_scanned_at → emailLastScanned
-   *
-   * Also used as the auto-trigger inside fetchData, so it must be safe to
-   * invoke without awaiting (callers may `.catch(() => {})`).
-   */
-  const scanInboxNow = async () => {
-    // Explicit manual re-scan: clear the session guard so auto-trigger bookkeeping stays accurate
-    sessionStorage.removeItem('gmailScanFired');
+  const handleEmailScan = async () => {
     setEmailScanning(true);
-    // Set guard immediately (before await) so any parallel auto-trigger sees the flag even while in-flight
-    sessionStorage.setItem('gmailScanFired', '1');
     try {
       const res = await fetch('/api/gmail/scan', { method: 'POST' });
       const data = await res.json();
-
-      // Resolve user once for the follow-up reads.
-      const userId = (await supabase.auth.getUser()).data.user?.id;
-
       if (data.error) {
         // Don't clear existing results on error
         if (emailOpportunities.length === 0) setEmailScanResults(0);
-      } else if (userId) {
-        // Reload from centralised email_scan_findings table so we stay in sync with scanner page.
+      } else if (data.opportunities && data.opportunities.length > 0) {
+        // Reload from centralised email_scan_findings table so we stay in sync with scanner page
         const { data: scanFindings } = await supabase
           .from('email_scan_findings')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', (await supabase.auth.getUser()).data.user!.id)
           .in('status', ['new', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(30);
@@ -596,38 +515,6 @@ export default function DashboardPage() {
           });
           setEmailOpportunities(mapped);
           setEmailScanResults(mapped.length);
-        } else if (emailOpportunities.length === 0) {
-          setEmailScanResults(0);
-        }
-
-        // Refresh stored price-increase alerts (a scan can surface new ones)
-        try {
-          const { data: freshAlerts } = await supabase
-            .from('price_increase_alerts')
-            .select('*')
-            .eq('user_id', userId)
-            .eq('status', 'active')
-            .order('detected_at', { ascending: false });
-          if (freshAlerts) setPriceAlerts(freshAlerts);
-        } catch { /* non-fatal */ }
-
-        // Refresh last-scanned timestamp so the UI reflects "just now"
-        try {
-          const { data: conn } = await supabase
-            .from('email_connections')
-            .select('last_scanned_at')
-            .eq('user_id', userId)
-            .order('last_scanned_at', { ascending: false, nullsFirst: false })
-            .limit(1)
-            .maybeSingle();
-          if (conn?.last_scanned_at) {
-            setEmailLastScanned(conn.last_scanned_at);
-          } else {
-            // If the scanner didn't persist a timestamp, at least use now()
-            setEmailLastScanned(new Date().toISOString());
-          }
-        } catch {
-          setEmailLastScanned(new Date().toISOString());
         }
       } else {
         if (emailOpportunities.length === 0) setEmailScanResults(0);
@@ -639,49 +526,12 @@ export default function DashboardPage() {
     }
   };
 
-  /**
-   * detectPriceAlertsNow
-   *
-   * Runs on-demand price-increase detection against the user's bank
-   * transactions. Normally runs from the 8am cron, but this gives the user a
-   * way to trigger it themselves (e.g. after reconnecting their bank).
-   */
-  const detectPriceAlertsNow = async () => {
-    setPriceAlertsDetecting(true);
-    try {
-      const res = await fetch('/api/price-alerts/detect', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.alerts)) {
-          setPriceAlerts(data.alerts);
-        } else {
-          // No alerts returned in body — re-read from DB so state is fresh.
-          const userId = (await supabase.auth.getUser()).data.user?.id;
-          if (userId) {
-            const { data: fresh } = await supabase
-              .from('price_increase_alerts')
-              .select('*')
-              .eq('user_id', userId)
-              .eq('status', 'active')
-              .order('detected_at', { ascending: false });
-            if (fresh) setPriceAlerts(fresh);
-          }
-        }
-      }
-    } catch {
-      /* non-fatal */
-    } finally {
-      setPriceAlertsLastDetected(new Date().toISOString());
-      setPriceAlertsDetecting(false);
-    }
-  };
-
 
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -700,24 +550,24 @@ export default function DashboardPage() {
       {trialExpired && (
         <div className="mb-6 bg-brand-400/10 border border-brand-400/30 rounded-xl p-5 flex items-center justify-between">
           <div>
-            <p className="text-white font-semibold text-sm">Your free Pro trial has ended</p>
-            <p className="text-slate-400 text-xs mt-1">Upgrade to keep unlimited letters, daily bank sync, spending intelligence, and all Pro features. All your data is safe.</p>
+            <p className="text-slate-900 font-semibold text-sm">Your free Pro trial has ended</p>
+            <p className="text-slate-600 text-xs mt-1">Upgrade to keep unlimited letters, daily bank sync, spending intelligence, and all Pro features. All your data is safe.</p>
           </div>
-          <Link href="/pricing" className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2.5 rounded-xl transition-all text-sm whitespace-nowrap ml-4">
+          <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2.5 rounded-xl transition-all text-sm whitespace-nowrap ml-4">
             Upgrade Now
           </Link>
         </div>
       )}
 
       {trialDaysLeft !== null && trialDaysLeft <= 7 && (
-        <div className="mb-6 bg-mint-400/10 border border-mint-400/30 rounded-xl p-4 flex items-center justify-between">
+        <div className="mb-6 bg-emerald-500/10 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-mint-400" />
-            <p className="text-white text-sm">
-              Pro trial ends in <span className="text-mint-400 font-semibold">{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</span>. Upgrade to keep all features.
+            <Clock className="h-4 w-4 text-emerald-600" />
+            <p className="text-slate-900 text-sm">
+              Pro trial ends in <span className="text-emerald-600 font-semibold">{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</span>. Upgrade to keep all features.
             </p>
           </div>
-          <Link href="/pricing" className="text-mint-400 hover:text-mint-300 text-sm font-medium whitespace-nowrap ml-4">
+          <Link href="/pricing" className="text-emerald-600 hover:text-mint-300 text-sm font-medium whitespace-nowrap ml-4">
             View Plans
           </Link>
         </div>
@@ -732,69 +582,68 @@ export default function DashboardPage() {
       />
 
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
-        <p className="text-slate-400">Your financial snapshot and quick actions</p>
+        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
+        <p className="text-slate-600">Your financial snapshot and quick actions</p>
       </div>
 
       {/* Potential Savings Hero */}
-      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
         <div className="flex items-center gap-2 mb-2">
           <PiggyBank className="h-5 w-5 text-emerald-400" />
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Potential Savings Found</h2>
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Potential Savings Found</h2>
         </div>
         <p className="text-4xl md:text-5xl font-bold text-emerald-400 font-[family-name:var(--font-heading)] mb-1">
           {formatGBP(potentialSavings)}<span className="text-2xl font-normal text-emerald-400/70">/yr</span>
         </p>
-        <p className="text-slate-400 text-sm mb-6">
+        <p className="text-slate-600 text-sm mb-6">
           Based on cheaper subscription alternatives and price increase alerts we&apos;ve detected
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           {(() => {
-            const alertTotal = priceAlerts.reduce((sum, a) => {
-              const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-              return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-            }, 0);
+            const alertTotal = priceAlerts
+              .filter(isPriceAlertValid)
+              .reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0);
             if (alertTotal <= 0) return null;
             return (
               <button
                 onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
-                className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 text-left transition-all"
+                className="flex items-center gap-3 bg-slate-100 hover:bg-slate-100 border border-slate-200 rounded-xl p-3 text-left transition-all"
               >
                 <div className="bg-red-500/10 p-2 rounded-lg text-red-400 h-10 w-10 flex items-center justify-center shrink-0">
                   <TrendingUp className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-white font-semibold">{formatGBP(alertTotal)}/yr</p>
-                  <p className="text-slate-400 text-xs">Price increase alerts</p>
+                  <p className="text-slate-900 font-semibold">{formatGBP(alertTotal)}/yr</p>
+                  <p className="text-slate-600 text-xs">Price increase alerts</p>
                 </div>
               </button>
             );
           })()}
 
-          <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
+          <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-100 hover:bg-slate-100 border border-slate-200 rounded-xl p-3 transition-all">
             <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-400 h-10 w-10 flex items-center justify-center shrink-0">
               <Tag className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-white font-semibold">{formatGBP(comparisonSaving)}/yr</p>
-              <p className="text-slate-400 text-xs">from {comparisonCount} deals</p>
+              <p className="text-slate-900 font-semibold">{formatGBP(comparisonSaving)}/yr</p>
+              <p className="text-slate-600 text-xs">from {comparisonCount} deals</p>
             </div>
           </Link>
 
-          <Link href="/dashboard/complaints" className="flex items-center gap-3 bg-slate-700/50 hover:bg-slate-700/80 border border-slate-600/50 rounded-xl p-3 transition-all">
+          <Link href="/dashboard/complaints" className="flex items-center gap-3 bg-slate-100 hover:bg-slate-100 border border-slate-200 rounded-xl p-3 transition-all">
             <div className="bg-blue-500/10 p-2 rounded-lg text-blue-400 h-10 w-10 flex items-center justify-center shrink-0">
               <FileText className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-white font-semibold">{complaintsGenerated} disputes</p>
-              <p className="text-slate-400 text-xs">Filed</p>
+              <p className="text-slate-900 font-semibold">{complaintsGenerated} disputes</p>
+              <p className="text-slate-600 text-xs">Filed</p>
             </div>
           </Link>
         </div>
 
         <div className="flex">
-          <Link href="/dashboard/subscriptions" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+          <Link href="/dashboard/subscriptions" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
             Review Your Subscriptions <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -803,59 +652,87 @@ export default function DashboardPage() {
       {/* Savings Opportunity Widget */}
       {dealsLoading ? <SavingsSkeleton /> : <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />}
 
-      {/* Price Increase Alerts — rendered inside the consolidated Action Centre
-          below (see the "Action Centre" section). The section used to render
-          here but Paul found the page cluttered; the three action sections
-          (price alerts, email scanner, action items) are now grouped together
-          under a single heading with per-section scan controls. */}
+      {/* Price Increase Alerts */}
+      {priceAlerts.length > 0 && (
+        <div id="price-alerts" className="mb-8">
+          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            Price Increase Alerts ({priceAlerts.length})
+          </h2>
+          <div className="space-y-3">
+            {priceAlerts.map((alert) => (
+              <PriceIncreaseCard
+                key={alert.id}
+                alert={alert}
+                onDismiss={async (id) => {
+                  await fetch('/api/price-alerts', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, status: 'dismissed' }),
+                  });
+                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
+                }}
+                onAction={async (id) => {
+                  await fetch('/api/price-alerts', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, status: 'actioned' }),
+                  });
+                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
-          <CreditCard className="h-6 w-6 text-mint-400 mb-3" />
-          <p className="text-3xl font-bold text-white">{spendBreakdown?.subscriptions_count || subscriptionCount}</p>
-          <p className="text-slate-400 text-sm">Subscriptions & bills</p>
+        <Link href="/dashboard/subscriptions" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
+          <CreditCard className="h-6 w-6 text-emerald-600 mb-3" />
+          <p className="text-3xl font-bold text-slate-900">{spendBreakdown?.subscriptions_count || subscriptionCount}</p>
+          <p className="text-slate-600 text-sm">Subscriptions & bills</p>
         </Link>
-        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
+        <Link href="/dashboard/subscriptions" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
           <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
-          <p className="text-3xl font-bold text-white">{formatGBP(monthlySpend)}</p>
-          <p className="text-slate-400 text-sm">Subscriptions & bills</p>
+          <p className="text-3xl font-bold text-slate-900">{formatGBP(monthlySpend)}</p>
+          <p className="text-slate-600 text-sm">Subscriptions & bills</p>
           {spendBreakdown && (spendBreakdown.mortgages_monthly > 0 || spendBreakdown.loans_monthly > 0 || spendBreakdown.council_tax_monthly > 0) && (
             <p className="text-slate-500 text-xs mt-1 truncate">
               + {formatGBP(spendBreakdown.mortgages_monthly + spendBreakdown.loans_monthly + spendBreakdown.council_tax_monthly)} in mortgages, loans & tax
             </p>
           )}
         </Link>
-        <Link href="/dashboard/complaints" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
+        <Link href="/dashboard/complaints" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
           <FileText className="h-6 w-6 text-blue-400 mb-3" />
-          <p className="text-3xl font-bold text-white">{complaintsGenerated}</p>
-          <p className="text-slate-400 text-sm">Disputes</p>
+          <p className="text-3xl font-bold text-slate-900">{complaintsGenerated}</p>
+          <p className="text-slate-600 text-sm">Disputes</p>
         </Link>
-        <Link href="/dashboard/subscriptions" className="block bg-navy-900 border border-navy-700/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
+        <Link href="/dashboard/subscriptions" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
           <Building2 className="h-6 w-6 text-green-400 mb-3" />
-          <p className="text-3xl font-bold text-white">{bankConnected ? (bankAccounts.some(b => b.status === 'active') ? 'Connected' : 'Expired') : 'Not set up'}</p>
-          <p className="text-slate-400 text-sm">Bank account{bankConnected && !bankAccounts.some(b => b.status === 'active') ? ' · needs reconnect' : ''}</p>
+          <p className="text-3xl font-bold text-slate-900">{bankConnected ? (bankAccounts.some(b => b.status === 'active') ? 'Connected' : 'Expired') : 'Not set up'}</p>
+          <p className="text-slate-600 text-sm">Bank account{bankConnected && !bankAccounts.some(b => b.status === 'active') ? ' · needs reconnect' : ''}</p>
         </Link>
       </div>
 
       {/* Getting Started — connection status & CTAs */}
       {!(bankConnected && emailConnected && complaintsGenerated > 0) && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
           <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="h-5 w-5 text-mint-400" />
-            <h2 className="text-white font-semibold text-lg">Get the most from Paybacker</h2>
+            <Sparkles className="h-5 w-5 text-emerald-600" />
+            <h2 className="text-slate-900 font-semibold text-lg">Get the most from Paybacker</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Bank Account */}
             {(() => {
               const hasActive = bankAccounts.some(b => b.status === 'active');
               const hasExpired = bankConnected && !hasActive;
-              const borderClass = hasActive ? 'border-green-500/30 bg-green-500/5' : hasExpired ? 'border-amber-500/30 bg-amber-500/5' : 'border-amber-500/30 bg-amber-500/5';
+              const borderClass = hasActive ? 'border-green-500/30 bg-green-500/5' : hasExpired ? 'border-amber-500/30 bg-orange-500/5' : 'border-amber-500/30 bg-orange-500/5';
               return (
             <div className={`rounded-xl border p-4 ${borderClass}`}>
               <div className="flex items-center gap-2 mb-2">
-                <Building2 className="h-5 w-5 text-slate-300" />
-                <span className="text-white font-medium text-sm">Bank Account</span>
+                <Building2 className="h-5 w-5 text-slate-700" />
+                <span className="text-slate-900 font-medium text-sm">Bank Account</span>
               </div>
               <div className="flex items-center gap-1.5 mb-3">
                 {hasActive ? (
@@ -882,7 +759,7 @@ export default function DashboardPage() {
                     setBankSyncing(false);
                   }}
                   disabled={bankSyncing}
-                  className="flex items-center gap-1.5 bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white font-medium px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
+                  className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${bankSyncing ? 'animate-spin' : ''}`} />
                   {bankSyncing ? 'Syncing...' : 'Sync Now'}
@@ -890,7 +767,7 @@ export default function DashboardPage() {
               ) : (
                 <button
                   onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-black font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
+                  className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
                 >
                   {hasExpired ? 'Reconnect Bank' : 'Connect Bank'}
                 </button>
@@ -900,10 +777,10 @@ export default function DashboardPage() {
             })()}
 
             {/* Email Inbox */}
-            <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+            <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-orange-500/5'}`}>
               <div className="flex items-center gap-2 mb-2">
-                <Mail className="h-5 w-5 text-slate-300" />
-                <span className="text-white font-medium text-sm">Email Inbox</span>
+                <Mail className="h-5 w-5 text-slate-700" />
+                <span className="text-slate-900 font-medium text-sm">Email Inbox</span>
               </div>
               <div className="flex items-center gap-1.5 mb-3">
                 {emailConnected ? (
@@ -917,16 +794,16 @@ export default function DashboardPage() {
               </div>
               {emailConnected ? (
                 <button
-                  onClick={scanInboxNow}
+                  onClick={handleEmailScan}
                   disabled={emailScanning}
-                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white"
+                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900"
                 >
                   {emailScanning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</> : 'Scan Inbox'}
                 </button>
               ) : (
                 <Link
                   href="/dashboard/profile?connect_email=true"
-                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-mint-400 hover:bg-mint-500 text-navy-950"
+                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-emerald-500 hover:bg-emerald-600 text-white"
                 >
                   Connect Email
                 </Link>
@@ -934,10 +811,10 @@ export default function DashboardPage() {
             </div>
 
             {/* First Letter */}
-            <div className={`rounded-xl border p-4 ${complaintsGenerated > 0 ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+            <div className={`rounded-xl border p-4 ${complaintsGenerated > 0 ? 'border-green-500/30 bg-green-500/5' : 'border-amber-500/30 bg-orange-500/5'}`}>
               <div className="flex items-center gap-2 mb-2">
-                <FileText className="h-5 w-5 text-slate-300" />
-                <span className="text-white font-medium text-sm">First Letter</span>
+                <FileText className="h-5 w-5 text-slate-700" />
+                <span className="text-slate-900 font-medium text-sm">First Letter</span>
               </div>
               <div className="flex items-center gap-1.5 mb-3">
                 {complaintsGenerated > 0 ? (
@@ -953,8 +830,8 @@ export default function DashboardPage() {
                 href="/dashboard/complaints"
                 className={`flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center ${
                   complaintsGenerated > 0
-                    ? 'bg-navy-800 hover:bg-navy-700 text-white font-medium'
-                    : 'bg-mint-400 hover:bg-mint-500 text-navy-950'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-900 font-medium'
+                    : 'bg-emerald-500 hover:bg-emerald-600 text-white'
                 }`}
               >
                 Write Letter
@@ -965,17 +842,17 @@ export default function DashboardPage() {
       )}
 
       {/* Your Connections — collapsible */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
+      <div className="bg-white border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
         <button
           onClick={() => setConnectionsCollapsed(!connectionsCollapsed)}
           className="flex items-center justify-between w-full text-left"
         >
-          <h2 className="text-white font-semibold text-lg">Your Connections</h2>
+          <h2 className="text-slate-900 font-semibold text-lg">Your Connections</h2>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-600">
               {bankAccounts.reduce((c, b) => c + (b.account_display_names?.length || 1), 0)} bank{bankAccounts.reduce((c, b) => c + (b.account_display_names?.length || 1), 0) !== 1 ? 's' : ''}, {emailAccounts.length} email{emailAccounts.length !== 1 ? 's' : ''}
             </span>
-            {connectionsCollapsed ? <ChevronDown className="h-5 w-5 text-slate-400" /> : <ChevronUp className="h-5 w-5 text-slate-400" />}
+            {connectionsCollapsed ? <ChevronDown className="h-5 w-5 text-slate-600" /> : <ChevronUp className="h-5 w-5 text-slate-600" />}
           </div>
         </button>
         {!connectionsCollapsed && <div className="space-y-3 mt-4">
@@ -984,17 +861,17 @@ export default function DashboardPage() {
             bankAccounts.map(b => {
               const isActive = b.status === 'active';
               const statusLabel = isActive ? 'Active' : 'Expired';
-              const statusClass = isActive ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+              const statusClass = isActive ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-amber-400 bg-orange-500/10 border-amber-500/20';
               return (
               (b.account_display_names && b.account_display_names.length > 0)
                 ? b.account_display_names.map((name, i) => (
-                  <div key={`${b.id}-${i}`} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
+                  <div key={`${b.id}-${i}`} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
                         <Building2 className="h-4 w-4 text-blue-400" />
                       </div>
                       <div>
-                        <p className="text-white text-sm font-medium">{b.bank_name || 'Bank'} · {name}</p>
+                        <p className="text-slate-900 text-sm font-medium">{b.bank_name || 'Bank'} · {name}</p>
                         <p className="text-slate-500 text-xs">Bank account</p>
                       </div>
                     </div>
@@ -1008,13 +885,13 @@ export default function DashboardPage() {
                   </div>
                 ))
                 : (
-                  <div key={b.id} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
+                  <div key={b.id} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
                         <Building2 className="h-4 w-4 text-blue-400" />
                       </div>
                       <div>
-                        <p className="text-white text-sm font-medium">{b.bank_name || 'Bank Account'}</p>
+                        <p className="text-slate-900 text-sm font-medium">{b.bank_name || 'Bank Account'}</p>
                         <p className="text-slate-500 text-xs">Bank account</p>
                       </div>
                     </div>
@@ -1030,12 +907,12 @@ export default function DashboardPage() {
               );
             })
           ) : (
-            <div className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30 border-dashed">
+            <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30 border-dashed">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
                   <Building2 className="h-4 w-4 text-blue-400" />
                 </div>
-                <p className="text-slate-400 text-sm">No bank account connected</p>
+                <p className="text-slate-600 text-sm">No bank account connected</p>
               </div>
             </div>
           )}
@@ -1043,13 +920,13 @@ export default function DashboardPage() {
           {/* Email accounts */}
           {emailAccounts.length > 0 ? (
             emailAccounts.map(e => (
-              <div key={e.id} className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30">
+              <div key={e.id} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
                     <Mail className="h-4 w-4 text-purple-400" />
                   </div>
                   <div>
-                    <p className="text-white text-sm font-medium">{e.email_address}</p>
+                    <p className="text-slate-900 text-sm font-medium">{e.email_address}</p>
                     <p className="text-slate-500 text-xs">{e.provider_type || 'Email'} account</p>
                   </div>
                 </div>
@@ -1057,12 +934,12 @@ export default function DashboardPage() {
               </div>
             ))
           ) : (
-            <div className="flex items-center justify-between p-3 bg-navy-950/50 rounded-lg border border-navy-700/30 border-dashed">
+            <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30 border-dashed">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
                   <Mail className="h-4 w-4 text-purple-400" />
                 </div>
-                <p className="text-slate-400 text-sm">No email connected</p>
+                <p className="text-slate-600 text-sm">No email connected</p>
               </div>
             </div>
           )}
@@ -1071,7 +948,7 @@ export default function DashboardPage() {
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-              className="flex items-center gap-1.5 text-sm text-mint-400 bg-mint-400/10 px-3 py-1.5 rounded-lg border border-mint-400/30 hover:bg-mint-400/20 transition-all"
+              className="flex items-center gap-1.5 text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-500/20 transition-all"
             >
               <Building2 className="h-3.5 w-3.5" />
               Add Bank Account
@@ -1089,159 +966,57 @@ export default function DashboardPage() {
 
       {/* Alerts */}
       {expiringContracts > 0 && (
-        <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
+        <div className="bg-emerald-500/10 border border-emerald-200 rounded-2xl p-5 mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-mint-400" />
+            <AlertTriangle className="h-5 w-5 text-emerald-600" />
             <div>
-              <p className="text-white font-semibold text-sm">{expiringContracts} contract{expiringContracts > 1 ? 's' : ''} expiring within 30 days</p>
-              <p className="text-slate-400 text-xs">Review these before they auto-renew at a higher rate</p>
+              <p className="text-slate-900 font-semibold text-sm">{expiringContracts} contract{expiringContracts > 1 ? 's' : ''} expiring within 30 days</p>
+              <p className="text-slate-600 text-xs">Review these before they auto-renew at a higher rate</p>
             </div>
           </div>
-          <Link href="/dashboard/contracts" className="text-mint-400 hover:text-mint-300 text-sm font-medium flex items-center gap-1">
+          <Link href="/dashboard/contracts" className="text-emerald-600 hover:text-mint-300 text-sm font-medium flex items-center gap-1">
             View <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       )}
 
 
-      {/* ===== Your Action Centre ===== */}
-      {/*
-        Consolidated section that groups the three "do something about this"
-        areas of the overview into one visual block with a shared header and
-        explanation. Each subsection below has its own mini-header with a
-        last-scanned timestamp and a scan trigger so the user always knows
-        where the data came from and how to refresh it.
-      */}
-      <div className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2 font-[family-name:var(--font-heading)]">
-              <Sparkles className="h-5 w-5 text-mint-400" />
-              Your Action Centre
-            </h2>
-            <p className="text-slate-400 text-sm mt-1">
-              Everything we&apos;ve spotted that&apos;s worth a few minutes of your time. Each section below pulls from a different source &mdash; you can scan each one on demand.
-            </p>
-          </div>
-        </div>
-
-        {/* ── Subsection 1: Price Increase Alerts (from bank transactions) ── */}
-        <div id="price-alerts" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <div>
-              <p className="text-white font-semibold text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-400" />
-                Price Increase Alerts {priceAlerts.length > 0 ? `(${priceAlerts.length})` : ''}
-              </p>
-              <p className="text-slate-400 text-xs mt-0.5">
-                Detected from your bank transactions &mdash; direct debits that have silently gone up.
-                {priceAlertsLastDetected && (
-                  <> Last scanned: <span className="text-slate-300">{new Date(priceAlertsLastDetected).toLocaleString()}</span></>
-                )}
-              </p>
-            </div>
-            {bankConnected && (
-              <button
-                onClick={detectPriceAlertsNow}
-                disabled={priceAlertsDetecting}
-                className="bg-navy-800 hover:bg-navy-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all whitespace-nowrap self-start sm:self-auto"
-              >
-                {priceAlertsDetecting ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
-                ) : (
-                  <><RefreshCw className="h-3.5 w-3.5" /> Scan bank</>
-                )}
-              </button>
-            )}
-          </div>
-
-          {priceAlertsDetecting && (
-            <RotatingCaptionsLoader
-              active={priceAlertsDetecting}
-              captions={PRICE_DETECT_CAPTIONS}
-              variant="inline"
-              className="mb-3"
-            />
-          )}
-
-          {priceAlerts.length > 0 ? (
-            <div className="space-y-3">
-              {priceAlerts.map((alert) => (
-                <PriceIncreaseCard
-                  key={alert.id}
-                  alert={alert}
-                  onDismiss={async (id) => {
-                    await fetch('/api/price-alerts', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id, status: 'dismissed' }),
-                    });
-                    setPriceAlerts(prev => prev.filter(a => a.id !== id));
-                  }}
-                  onAction={async (id) => {
-                    await fetch('/api/price-alerts', {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id, status: 'actioned' }),
-                    });
-                    setPriceAlerts(prev => prev.filter(a => a.id !== id));
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-4 text-center">
-              <p className="text-slate-500 text-sm">
-                {bankConnected
-                  ? 'No price increases detected. Click "Scan bank" to check again.'
-                  : 'Connect your bank to detect price increases automatically.'}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* ── Subsection 2: Email Scanner Opportunities (from inbox) ── */}
-        {emailConnected ? (
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+      {/* Email Scan Card */}
+      {emailConnected ? (
+        <div className="mb-6">
+          <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Mail className="h-5 w-5 text-purple-400" />
               <div>
-                <p className="text-white font-semibold text-sm flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-purple-400" />
-                  Email Scanner {emailOpportunities.length > 0 ? `(${emailOpportunities.length})` : ''}
+                <p className="text-slate-900 font-semibold text-sm">
+                  {emailScanning ? 'Scanning your emails...' : 'Email Scanner'}
                 </p>
-                <p className="text-slate-400 text-xs mt-0.5">
-                  Subscriptions, bills, refunds and overcharges we&apos;ve found in your inbox.
-                  {emailLastScanned && (
-                    <> Last scanned: <span className="text-slate-300">{new Date(emailLastScanned).toLocaleString()}</span></>
-                  )}
+                <p className="text-slate-600 text-xs">
+                  {emailScanResults !== null
+                    ? `Found ${emailScanResults} opportunities`
+                    : emailAddress
+                      ? `Connected: ${emailAddress}${emailLastScanned ? ` \u00b7 Last scanned: ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
+                      : 'Scan your inbox to find bills, overcharges & savings'}
                 </p>
               </div>
-              <button
-                onClick={scanInboxNow}
-                disabled={emailScanning}
-                className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all whitespace-nowrap self-start sm:self-auto"
-              >
-                {emailScanning ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</>
-                ) : (
-                  <><ScanSearch className="h-3.5 w-3.5" /> Scan inbox</>
-                )}
-              </button>
             </div>
-
-            {emailScanning && (
-              <RotatingCaptionsLoader
-                active={emailScanning}
-                captions={INBOX_SCAN_CAPTIONS}
-                variant="inline"
-                className="mb-3"
-              />
-            )}
+            <button
+              onClick={handleEmailScan}
+              disabled={emailScanning}
+              className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-slate-900 text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap ml-4"
+            >
+              {emailScanning ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
+              ) : (
+                <><ScanSearch className="h-4 w-4" /> Scan Emails</>
+              )}
+            </button>
+          </div>
 
           {/* Scan Results */}
           {emailOpportunities.length > 0 && (
             <div className="mt-3 space-y-2">
-              <p className="text-white font-semibold text-sm px-1">{emailOpportunities.length} opportunities found</p>
+              <p className="text-slate-900 font-semibold text-sm px-1">{emailOpportunities.length} opportunities found</p>
               {emailOpportunities.map((opp: any, i: number) => {
                 const actionLabel: Record<string, { text: string; color: string }> = {
                   track: { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' },
@@ -1250,13 +1025,13 @@ export default function DashboardPage() {
                   dispute: { text: 'Dispute', color: 'bg-orange-600 hover:bg-orange-700' },
                   claim_compensation: { text: 'Claim', color: 'bg-green-600 hover:bg-green-700' },
                   claim_refund: { text: 'Claim Refund', color: 'bg-green-600 hover:bg-green-700' },
-                  monitor: { text: 'Monitor', color: 'bg-navy-700 hover:bg-navy-600' },
+                  monitor: { text: 'Monitor', color: 'bg-slate-200 hover:bg-navy-600' },
                 };
                 const action = actionLabel[opp.suggestedAction] || actionLabel.track;
                 // Determine action based on opportunity type for better routing
                 const effectiveAction = (() => {
                   if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
-                    return { text: 'Find Deal', color: 'bg-mint-400 hover:bg-mint-500 text-navy-950' };
+                    return { text: 'Find Deal', color: 'bg-emerald-500 hover:bg-emerald-600 text-white' };
                   }
                   if (['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) || opp.suggestedAction === 'dispute') {
                     return { text: 'Dispute', color: 'bg-red-500 hover:bg-red-600' };
@@ -1274,7 +1049,7 @@ export default function DashboardPage() {
                 })();
                 const typeColors: Record<string, string> = {
                   subscription: 'text-blue-400 bg-blue-500/10',
-                  renewal: 'text-amber-400 bg-amber-500/10',
+                  renewal: 'text-amber-400 bg-orange-500/10',
                   price_increase: 'text-orange-400 bg-orange-500/10',
                   overcharge: 'text-red-400 bg-red-500/10',
                   utility_bill: 'text-cyan-400 bg-cyan-500/10',
@@ -1285,28 +1060,28 @@ export default function DashboardPage() {
                   insurance_renewal: 'text-emerald-400 bg-emerald-500/10',
                   refund_opportunity: 'text-green-400 bg-green-500/10',
                   loan: 'text-violet-400 bg-violet-500/10',
-                  deal_expiry: 'text-amber-400 bg-amber-500/10',
+                  deal_expiry: 'text-amber-400 bg-orange-500/10',
                   dd_advance_notice: 'text-blue-400 bg-blue-500/10',
                   tax_rebate: 'text-purple-400 bg-purple-500/10',
                   government: 'text-purple-400 bg-purple-500/10',
                 };
-                const typeColor = typeColors[opp.type] || 'text-slate-400 bg-slate-500/10';
+                const typeColor = typeColors[opp.type] || 'text-slate-600 bg-slate-500/10';
                 return (
-                  <div key={opp.id || i} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+                  <div key={opp.id || i} className="bg-white border border-slate-200/50 rounded-xl p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="text-white font-medium text-sm">{opp.title}</p>
+                          <p className="text-slate-900 font-medium text-sm">{opp.title}</p>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${typeColor}`}>
                             {(opp.type || 'opportunity').replace(/_/g, ' ')}
                           </span>
                         </div>
                         <p className="text-slate-500 text-xs">{opp.provider}{opp.category ? ` · ${opp.category}` : ''}{opp.paymentFrequency ? ` · ${opp.paymentFrequency}` : ''}</p>
-                        <p className="text-slate-400 text-xs mt-1 line-clamp-2">{opp.description}</p>
+                        <p className="text-slate-600 text-xs mt-1 line-clamp-2">{opp.description}</p>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button
-                          className={`${effectiveAction.color} text-white text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap transition-all`}
+                          className={`${effectiveAction.color} text-slate-900 text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap transition-all`}
                           onClick={() => {
                             if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
                               const params = new URLSearchParams();
@@ -1352,7 +1127,7 @@ export default function DashboardPage() {
                               await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
                             } catch {}
                           }}
-                          className="text-slate-500 hover:text-slate-300 text-xs transition-all px-1.5 py-1.5"
+                          className="text-slate-500 hover:text-slate-700 text-xs transition-all px-1.5 py-1.5"
                           title="Dismiss"
                         >
                           ✕
@@ -1370,8 +1145,8 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <Mail className="h-5 w-5 text-purple-400" />
             <div>
-              <p className="text-white font-semibold text-sm">Scan your emails for savings</p>
-              <p className="text-slate-400 text-xs">Connect your email to find hidden bills, overcharges, and money-saving opportunities</p>
+              <p className="text-slate-900 font-semibold text-sm">Scan your emails for savings</p>
+              <p className="text-slate-600 text-xs">Connect your email to find hidden bills, overcharges, and money-saving opportunities</p>
             </div>
           </div>
           <Link href="/dashboard/profile?connect_email=true" className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1 whitespace-nowrap ml-4">
@@ -1383,11 +1158,10 @@ export default function DashboardPage() {
       {/* Upgrade trigger: price increases detected */}
       <UpgradeTrigger
         type="price_increase"
-        priceIncreaseCount={priceAlerts.length}
-        priceIncreaseAnnual={priceAlerts.reduce((sum, a) => {
-          const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-          return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-        }, 0)}
+        priceIncreaseCount={priceAlerts.filter(isPriceAlertValid).length}
+        priceIncreaseAnnual={priceAlerts
+          .filter(isPriceAlertValid)
+          .reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0)}
         userTier={userTier}
         className="mb-6"
       />
@@ -1466,23 +1240,18 @@ export default function DashboardPage() {
         const displayTasks = showAllTasks ? filtered : filtered.slice(0, 5);
 
         return (
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-4">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-3">
-              <div>
-                <p className="text-white font-semibold text-sm flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-mint-400" />
-                  Your Action Items ({filtered.length})
-                </p>
-                <p className="text-slate-400 text-xs mt-0.5">
-                  A to-do list of disputes, deals, and subscriptions worth following up. Items here come from your last inbox scan and any bank-detected opportunities.
-                </p>
-              </div>
+          <div className="mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+                <Clock className="h-5 w-5 text-emerald-600" />
+                Your Action Items ({filtered.length})
+              </h2>
               <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide">
                 {['all', 'disputes', 'deals', 'subscriptions'].map(f => (
                   <button
                     key={f}
                     onClick={() => setTaskFilter(f)}
-                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-mint-400 text-navy-950 font-semibold' : 'bg-navy-800 text-slate-400 hover:text-white'}`}
+                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-emerald-500 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
                   >
                     {f}
                   </button>
@@ -1491,7 +1260,7 @@ export default function DashboardPage() {
             </div>
 
             {displayTasks.length === 0 ? (
-              <div className="bg-navy-950/50 border border-dashed border-navy-700/50 rounded-xl p-6 text-center">
+              <div className="bg-slate-50/50 border border-dashed border-slate-200/50 rounded-xl p-6 text-center">
                 <p className="text-slate-500 text-sm">No action items found for this filter.</p>
               </div>
             ) : (
@@ -1499,11 +1268,11 @@ export default function DashboardPage() {
                 {displayTasks.map((task) => {
                   const badge = task.isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
                     : task.needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
-                    : task.needsDeal ? { text: 'Switch and Save', color: 'bg-mint-400/10 text-mint-400' }
+                    : task.needsDeal ? { text: 'Switch and Save', color: 'bg-emerald-500/10 text-emerald-600' }
                     : task.needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
                     : task.isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
-                    : task.isAdmin ? { text: 'Admin Task', color: 'bg-navy-700 text-slate-300' }
-                    : { text: 'Review', color: 'bg-navy-700 text-slate-400' };
+                    : task.isAdmin ? { text: 'Admin Task', color: 'bg-slate-200 text-slate-700' }
+                    : { text: 'Review', color: 'bg-slate-200 text-slate-600' };
 
                   const isHighPriority = task.priority === 'high' || task.urgency === 'immediate';
                   const isSoon = task.urgency === 'soon';
@@ -1516,24 +1285,24 @@ export default function DashboardPage() {
                   const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
 
                   return (
-                    <div key={task.id} className={`bg-navy-900 border rounded-xl p-4 transition-all ${isHighPriority ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : isSoon ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-navy-700/50'}`}>
+                    <div key={task.id} className={`bg-white border rounded-xl p-4 transition-all ${isHighPriority ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : isSoon ? 'border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-slate-200/50'}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {task.urgency === 'immediate' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold border border-red-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
-                        {task.urgency === 'soon' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20 uppercase tracking-widest"><Clock className="h-3 w-3" /> Soon</span>}
-                        {!task.urgency && isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
+                        {task.urgency === 'soon' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-400 font-semibold border border-amber-500/20 uppercase tracking-widest"><Clock className="h-3 w-3" /> Soon</span>}
+                        {!task.urgency && isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-500 font-semibold border border-amber-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
                         {task.provider && <span className="text-slate-500 text-xs">{cleanMerchantName(task.provider)}</span>}
                         {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
                       </div>
-                      <p className="text-white text-sm font-medium">{task.title}</p>
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2 first-letter:capitalize">{task.descText}</p>
+                      <p className="text-slate-900 text-sm font-medium">{task.title}</p>
+                      <p className="text-slate-600 text-xs mt-1 line-clamp-2 first-letter:capitalize">{task.descText}</p>
                       {/* Extracted financial details from email scan */}
                       {(task.paymentAmount || task.contractEndDate || task.nextPaymentDate || task.priceChangeDate || task.previousAmount) && (
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {task.paymentAmount != null && Number(task.paymentAmount) > 0 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-navy-800 text-white font-medium">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-900 font-medium">
                               £{Number(task.paymentAmount).toFixed(2)}{task.paymentFrequency ? `/${task.paymentFrequency === 'monthly' ? 'mo' : task.paymentFrequency === 'yearly' ? 'yr' : task.paymentFrequency === 'quarterly' ? 'qtr' : ''}` : ''}
                             </span>
                           )}
@@ -1543,7 +1312,7 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {task.contractEndDate && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/10 text-amber-400">
                               ends {new Date(task.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
                           )}
@@ -1561,7 +1330,7 @@ export default function DashboardPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-navy-700/50 flex-wrap">
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 flex-wrap">
                     {/* Context-aware primary action */}
                     {task.needsComplaint && (
                       <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
@@ -1574,7 +1343,7 @@ export default function DashboardPage() {
                       </Link>
                     )}
                     {task.needsDeal && (
-                      <Link href="/dashboard/deals" className="bg-mint-400/10 hover:bg-mint-400/20 text-mint-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href="/dashboard/deals" className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <ArrowRight className="h-3 w-3" /> Find Better Deal
                       </Link>
                     )}
@@ -1593,13 +1362,13 @@ export default function DashboardPage() {
                         onClick={async () => {
                           await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
                         }}
-                        className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
+                        className="bg-slate-200 hover:bg-slate-600 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
                       >
                         <CheckCircle2 className="h-3 w-3" /> Mark as Done
                       </button>
                     )}
                     {!task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && !task.isAdmin && (
-                      <Link href={complaintUrl} className="bg-navy-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
+                      <Link href={complaintUrl} className="bg-slate-200 hover:bg-slate-600 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
                         <FileText className="h-3 w-3" /> Start Dispute
                       </Link>
                     )}
@@ -1611,7 +1380,7 @@ export default function DashboardPage() {
                         await supabase.from('tasks').update({ status: 'dismissed', resolved_at: new Date().toISOString() }).eq('id', task.id);
                         setPendingTasks(prev => prev.filter(t => t.id !== task.id));
                       }}
-                      className="text-slate-500 hover:text-slate-400 text-xs transition-all px-3 py-1.5"
+                      className="text-slate-500 hover:text-slate-600 text-xs transition-all px-3 py-1.5"
                     >
                       Remove
                     </button>
@@ -1624,7 +1393,7 @@ export default function DashboardPage() {
             {filtered.length > 5 && (
               <button
                 onClick={() => setShowAllTasks(prev => !prev)}
-                className="w-full mt-3 py-2 text-sm text-mint-400 hover:text-white bg-navy-900/50 hover:bg-navy-800 border border-navy-700/50 rounded-xl transition-all"
+                className="w-full mt-3 py-2 text-sm text-emerald-600 hover:text-slate-900 bg-white/50 hover:bg-slate-100 border border-slate-200/50 rounded-xl transition-all"
               >
                 {showAllTasks ? `Show less` : `Show all ${filtered.length} items`}
               </button>
@@ -1633,79 +1402,76 @@ export default function DashboardPage() {
         );
       })()}
 
-      </div>
-      {/* ===== End of Your Action Centre ===== */}
-
       {/* Quick Actions */}
-      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-        <Sparkles className="h-5 w-5 text-mint-400" />
+      <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
+        <Sparkles className="h-5 w-5 text-emerald-600" />
         Quick Actions
       </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Link
           href="/dashboard/complaints"
-          className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
-          <FileText className="h-8 w-8 text-mint-400 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Write a Complaint Letter</h3>
-          <p className="text-slate-400 text-sm">Generate a formal letter citing UK consumer law. Energy bills, broadband, debt, refunds, and more.</p>
-          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Get started <ArrowRight className="h-3 w-3" /></span>
+          <FileText className="h-8 w-8 text-emerald-600 mb-3" />
+          <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Write a Complaint Letter</h3>
+          <p className="text-slate-600 text-sm">Generate a formal letter citing UK consumer law. Energy bills, broadband, debt, refunds, and more.</p>
+          <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">Get started <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         <Link
           href="/dashboard/subscriptions"
-          className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <CreditCard className="h-8 w-8 text-green-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Track Subscriptions</h3>
-          <p className="text-slate-400 text-sm">See every subscription in one place. Sync from your bank or add manually. Cancel what you don't need.</p>
-          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Manage <ArrowRight className="h-3 w-3" /></span>
+          <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Track Subscriptions</h3>
+          <p className="text-slate-600 text-sm">See every subscription in one place. Sync from your bank or add manually. Cancel what you don't need.</p>
+          <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">Manage <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         <Link
           href="/dashboard/complaints?new=1"
-          className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
         >
           <Building2 className="h-8 w-8 text-purple-500 mb-3" />
-          <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Disputes</h3>
-          <p className="text-slate-400 text-sm">Complaints, HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
-          <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">Start a dispute <ArrowRight className="h-3 w-3" /></span>
+          <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Disputes</h3>
+          <p className="text-slate-600 text-sm">Complaints, HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
+          <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">Start a dispute <ArrowRight className="h-3 w-3" /></span>
         </Link>
 
         {userTier !== 'free' && (
           <Link
             href="/dashboard/money-hub"
-            className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
+            className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/50 transition-all group"
           >
             <BarChart3 className="h-8 w-8 text-sky-500 mb-3" />
-            <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Money Hub</h3>
-            <p className="text-slate-400 text-sm">See where every pound goes. Category breakdown, monthly trends, and smart savings suggestions.</p>
-            <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">View Money Hub <ArrowRight className="h-3 w-3" /></span>
+            <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Money Hub</h3>
+            <p className="text-slate-600 text-sm">See where every pound goes. Category breakdown, monthly trends, and smart savings suggestions.</p>
+            <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">View Money Hub <ArrowRight className="h-3 w-3" /></span>
           </Link>
         )}
 
         {userTier === 'free' && (
           <Link
             href="/pricing"
-            className="bg-navy-900 border border-mint-400/30 rounded-2xl p-6 hover:border-mint-400/50 transition-all group"
+            className="bg-white border border-emerald-200 rounded-2xl p-6 hover:border-mint-400/50 transition-all group"
           >
-            <Sparkles className="h-8 w-8 text-mint-400 mb-3" />
-            <h3 className="text-white font-semibold mb-1 group-hover:text-mint-400 transition-all">Upgrade Your Plan</h3>
-            <p className="text-slate-400 text-sm">Get unlimited complaints, daily bank sync, spending insights, cancellation emails, and renewal reminders.</p>
-            <span className="text-mint-400 text-sm mt-3 flex items-center gap-1">View plans <ArrowRight className="h-3 w-3" /></span>
+            <Sparkles className="h-8 w-8 text-emerald-600 mb-3" />
+            <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Upgrade Your Plan</h3>
+            <p className="text-slate-600 text-sm">Get unlimited complaints, daily bank sync, spending insights, cancellation emails, and renewal reminders.</p>
+            <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">View plans <ArrowRight className="h-3 w-3" /></span>
           </Link>
         )}
       </div>
 
       {/* Quick links */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/dashboard/deals" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
-          <h3 className="text-white font-semibold mb-1">Browse 59 Deals</h3>
+        <Link href="/dashboard/deals" className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
+          <h3 className="text-slate-900 font-semibold mb-1">Browse 59 Deals</h3>
           <p className="text-slate-500 text-xs">Compare energy, broadband, mobile, insurance, and more. Find cheaper alternatives to your current providers.</p>
         </Link>
-        <Link href="/dashboard/subscriptions" className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-mint-400/30 transition-all">
-          <h3 className="text-white font-semibold mb-1">Track Contracts</h3>
+        <Link href="/dashboard/subscriptions" className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
+          <h3 className="text-slate-900 font-semibold mb-1">Track Contracts</h3>
           <p className="text-slate-500 text-xs">Add your subscriptions and contracts with end dates. Get alerts before renewals and find better deals.</p>
         </Link>
       </div>

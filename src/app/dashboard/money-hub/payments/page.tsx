@@ -151,7 +151,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
   };
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4 hover:border-mint-400/30 transition-all relative group/card">
+    <div className="bg-white border border-slate-200/50 rounded-xl p-4 hover:border-emerald-200 transition-all relative group/card">
       {/* Delete (X) button */}
       <button
         onClick={() => setConfirmDelete(true)}
@@ -163,14 +163,14 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
 
       {/* Delete confirmation overlay */}
       {confirmDelete && (
-        <div className="absolute inset-0 bg-navy-950/95 rounded-xl flex flex-col items-center justify-center z-10 p-4">
-          <p className="text-white text-sm font-medium mb-1">Remove {name}?</p>
-          <p className="text-slate-400 text-xs mb-3 text-center">This will hide it from your payments. It won&apos;t be re-added on next sync.</p>
+        <div className="absolute inset-0 bg-slate-50/95 rounded-xl flex flex-col items-center justify-center z-10 p-4">
+          <p className="text-slate-900 text-sm font-medium mb-1">Remove {name}?</p>
+          <p className="text-slate-600 text-xs mb-3 text-center">This will hide it from your payments. It won&apos;t be re-added on next sync.</p>
           <div className="flex gap-2">
             <button onClick={handleDelete} disabled={saving} className="bg-red-500/20 text-red-400 hover:bg-red-500/30 px-3 py-1.5 rounded text-xs font-medium transition-all">
               {saving ? 'Removing...' : 'Yes, remove'}
             </button>
-            <button onClick={() => setConfirmDelete(false)} className="bg-navy-800 text-slate-300 hover:bg-navy-700 px-3 py-1.5 rounded text-xs transition-all">
+            <button onClick={() => setConfirmDelete(false)} className="bg-slate-100 text-slate-700 hover:bg-slate-200 px-3 py-1.5 rounded text-xs transition-all">
               Cancel
             </button>
           </div>
@@ -178,17 +178,17 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
       )}
 
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-navy-800 flex items-center justify-center text-sm font-bold text-slate-300 flex-shrink-0">
+        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-700 flex-shrink-0">
           {initials}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-white font-semibold text-sm truncate">{name}</h3>
+              <h3 className="text-slate-900 font-semibold text-sm truncate">{name}</h3>
               <button
                 onClick={() => setShowCategoryPicker(!showCategoryPicker)}
-                className="flex items-center gap-1 text-slate-500 text-xs hover:text-mint-400 transition-all mt-0.5 group"
+                className="flex items-center gap-1 text-slate-500 text-xs hover:text-emerald-600 transition-all mt-0.5 group"
                 title="Click to change category"
               >
                 <Tag className="h-3 w-3" />
@@ -199,7 +199,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
             <div className="text-right flex-shrink-0 ml-2">
               {editingAmount ? (
                 <div className="flex items-center gap-1">
-                  <span className="text-slate-400 text-sm">£</span>
+                  <span className="text-slate-600 text-sm">£</span>
                   <input
                     type="number"
                     step="0.01"
@@ -208,9 +208,9 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
                     onChange={e => setAmountInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleAmountSave(); if (e.key === 'Escape') setEditingAmount(false); }}
                     autoFocus
-                    className="w-20 bg-navy-800 border border-navy-600 rounded px-1.5 py-0.5 text-white text-sm text-right focus:outline-none focus:border-mint-400"
+                    className="w-20 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-900 text-sm text-right focus:outline-none focus:border-mint-400"
                   />
-                  <button onClick={handleAmountSave} disabled={saving} className="text-mint-400 hover:text-mint-300 p-0.5">
+                  <button onClick={handleAmountSave} disabled={saving} className="text-emerald-600 hover:text-mint-300 p-0.5">
                     <Check className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -222,7 +222,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
                 >
                   {hasAmount ? (
                     <>
-                      <p className="text-mint-400 font-bold group-hover/amt:text-mint-300 transition-colors">
+                      <p className="text-emerald-600 font-bold group-hover/amt:text-mint-300 transition-colors">
                         £{Math.abs(payment.amount).toFixed(2)}
                       </p>
                       <p className="text-slate-500 text-[10px]">{CYCLE_LABELS[payment.billing_cycle] || payment.billing_cycle}</p>
@@ -237,7 +237,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
 
           {/* Category picker */}
           {showCategoryPicker && (
-            <div className="mt-2 bg-navy-950 border border-navy-700 rounded-lg p-2 max-h-48 overflow-y-auto">
+            <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-2 max-h-48 overflow-y-auto">
               <p className="text-xs text-slate-500 mb-1.5 px-1">Change category:</p>
               <div className="grid grid-cols-2 gap-1">
                 {SORTED_CATEGORIES.map(cat => (
@@ -247,8 +247,8 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
                     disabled={saving}
                     className={`text-left text-xs px-2 py-1.5 rounded transition-all flex items-center gap-1.5 ${
                       payment.category === cat.value
-                        ? 'bg-mint-400/20 text-mint-400'
-                        : 'text-slate-400 hover:bg-navy-800 hover:text-white'
+                        ? 'bg-emerald-500/20 text-emerald-600'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     {payment.category === cat.value && <Check className="h-3 w-3" />}
@@ -272,7 +272,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
           </div>
 
           {unusedWarning && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-400 bg-amber-500/10 rounded-lg px-2 py-1">
+            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-400 bg-orange-500/10 rounded-lg px-2 py-1">
               <AlertCircle className="h-3 w-3" />
               Not used in {lastUsedDays}+ days — consider cancelling
             </div>
@@ -280,13 +280,13 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
 
           <div className="flex gap-2 mt-3">
             {['energy', 'broadband', 'mobile', 'insurance', 'streaming', 'software'].includes(payment.category) && (
-              <Link href="/dashboard/deals" className="text-[10px] bg-mint-400/10 text-mint-400 px-2 py-1 rounded transition-all hover:bg-mint-400/20">
+              <Link href="/dashboard/deals" className="text-[10px] bg-emerald-500/10 text-emerald-600 px-2 py-1 rounded transition-all hover:bg-emerald-500/20">
                 Switch & Save
               </Link>
             )}
             <Link
               href={`/dashboard/complaints?new=1&company=${encodeURIComponent(name)}`}
-              className="text-[10px] bg-navy-800 hover:bg-navy-700 text-slate-300 px-2 py-1 rounded transition-all"
+              className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded transition-all"
             >
               Dispute
             </Link>
@@ -361,17 +361,17 @@ export default function PaymentsPage() {
 
   return (
     <div className="max-w-5xl">
-      <Link href="/dashboard/money-hub" className="flex items-center gap-1 text-slate-400 hover:text-white mb-4 text-sm transition-all">
+      <Link href="/dashboard/money-hub" className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
         <ChevronLeft className="h-4 w-4" /> Back to Money Hub
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-4xl font-bold text-white font-[family-name:var(--font-heading)]">Regular Payments</h1>
-        <p className="text-slate-400 mt-1">Click a category to recategorise, click an amount to edit, or hover and press ✕ to remove.</p>
+        <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">Regular Payments</h1>
+        <p className="text-slate-600 mt-1">Click a category to recategorise, click an amount to edit, or hover and press ✕ to remove.</p>
       </div>
 
       {/* Overview with Pie Chart */}
-      <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
+      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-center gap-6">
           {pieData.length > 0 && (
             <div className="w-40 h-40 flex-shrink-0">
@@ -395,7 +395,7 @@ export default function PaymentsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1 w-full">
             <div>
               <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Total monthly</p>
-              <p className="text-2xl font-bold text-white">£{totalMonthly.toFixed(0)}</p>
+              <p className="text-2xl font-bold text-slate-900">£{totalMonthly.toFixed(0)}</p>
             </div>
             <div>
               <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Total payments</p>
@@ -407,7 +407,7 @@ export default function PaymentsPage() {
             </div>
             <div>
               <p className="text-slate-500 text-xs uppercase tracking-wide mb-1">Annual total</p>
-              <p className="text-xl font-bold text-mint-400">£{(totalMonthly * 12).toFixed(0)}</p>
+              <p className="text-xl font-bold text-emerald-600">£{(totalMonthly * 12).toFixed(0)}</p>
             </div>
           </div>
         </div>
@@ -415,7 +415,7 @@ export default function PaymentsPage() {
         {pieData.length > 0 && (
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 justify-center">
             {pieData.map((d) => (
-              <div key={d.name} className="flex items-center gap-1.5 text-xs text-slate-400">
+              <div key={d.name} className="flex items-center gap-1.5 text-xs text-slate-600">
                 <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
                 {d.name}: £{d.value}/mo
               </div>
@@ -435,7 +435,7 @@ export default function PaymentsPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              tab === t.key ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'
+              tab === t.key ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
             }`}
           >
             <t.icon className="h-4 w-4" />
@@ -447,12 +447,12 @@ export default function PaymentsPage() {
       {/* Content */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-mint-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : tabPayments.length === 0 ? (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-12 text-center">
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
           <CreditCard className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400">No {tab.replace('_', ' ')} found</p>
+          <p className="text-slate-600">No {tab.replace('_', ' ')} found</p>
           <p className="text-slate-500 text-sm mt-1">Connect your bank account to auto-detect payments</p>
         </div>
       ) : (
@@ -475,9 +475,9 @@ export default function PaymentsPage() {
 
       {/* Annual total */}
       {tabPayments.length > 0 && (
-        <div className="mt-6 bg-navy-900/50 border border-navy-700/50 rounded-xl p-4 text-center">
-          <p className="text-slate-400 text-sm">
-            Annual cost: <span className="text-white font-bold">
+        <div className="mt-6 bg-white/50 border border-slate-200/50 rounded-xl p-4 text-center">
+          <p className="text-slate-600 text-sm">
+            Annual cost: <span className="text-slate-900 font-bold">
               £{tabPayments.reduce((s, p) => s + annualCost(Math.abs(p.amount || 0), p.billing_cycle), 0).toFixed(0)}
             </span>
           </p>
@@ -486,7 +486,7 @@ export default function PaymentsPage() {
 
       {/* Learning indicator */}
       <div className="mt-4 flex items-center gap-2 text-[10px] text-slate-500 px-1">
-        <Zap className="h-3 w-3 text-mint-400/60" />
+        <Zap className="h-3 w-3 text-emerald-600/60" />
         <span>Paybacker learns from your corrections — categorisation and amounts improve with every edit you make.</span>
       </div>
     </div>
