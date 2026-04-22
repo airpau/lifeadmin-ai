@@ -1,170 +1,395 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
-import PublicNavbar from '@/components/PublicNavbar';
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import type { CSSProperties } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { MarkNav, MarkFoot } from './_shared';
+import './styles.css';
+
+/**
+ * /blog — marketing redesign.
+ *
+ * Design source: design-zip/redesign/batch6.jsx::BlogIndex
+ * Scoped under `.m-blog-root`.
+ *
+ * Preserves the existing data model from master:
+ *   - dynamic posts from Supabase `blog_posts` table (status='published')
+ *   - merged with three hand-coded SEO posts (/blog/broadband-contract-ended,
+ *     /blog/are-you-overpaying-on-energy, /blog/how-to-claim-flight-delay-compensation-uk)
+ *
+ * Design deviation: the design's 5 illustrative posts (broadband-anniversary,
+ * CRA s.49 explainer, etc.) all pre-date the March 2026 launch, so we render
+ * real data in the design layout rather than shipping the fake list.
+ */
 
 export const metadata: Metadata = {
-  title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
+  title: 'The Paybacker Journal — essays on UK consumer law, overcharges, and how to fight back',
   description:
-    "Money-saving tips, switching guides and UK consumer rights advice from Paybacker.",
-  keywords: [
-    "money saving tips UK",
-    "consumer rights advice",
-    "switching guide",
-    "energy saving",
-    "broadband deals",
-  ],
+    'Money-saving guides and UK consumer-rights explainers from the Paybacker team. Flight delay claims, broadband anniversary hikes, energy price cap — the statute, the story, the template.',
+  alternates: { canonical: 'https://paybacker.co.uk/blog' },
   openGraph: {
-    title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
+    title: 'The Paybacker Journal',
     description:
-      "Money-saving tips, switching guides and UK consumer rights advice from Paybacker.",
-    url: "https://paybacker.co.uk/blog",
-    siteName: "Paybacker",
-    type: "website",
-  },
-  twitter: {
-    card: "summary",
-    title: "Blog - Money-Saving Tips and UK Consumer Rights | Paybacker",
-    description:
-      "Money-saving tips, switching guides and UK consumer rights advice from Paybacker.",
-    images: ["/logo.png"],
-  },
-  alternates: {
-    canonical: "https://paybacker.co.uk/blog",
+      'Money-saving guides and UK consumer-rights explainers. One UK overcharge, dissected.',
+    url: 'https://paybacker.co.uk/blog',
+    siteName: 'Paybacker',
+    type: 'website',
   },
 };
 
-const posts = [
+export const revalidate = 3600;
+
+type Post = {
+  title: string;
+  excerpt: string;
+  href: string;
+  date: string;
+  cat: string;
+  gradient: string;
+  emoji: string;
+};
+
+const GRADIENTS = [
+  { bg: 'linear-gradient(135deg, #34D399, #059669)', emoji: '✉' },
+  { bg: 'linear-gradient(135deg, #F59E0B, #D97706)', emoji: '📡' },
+  { bg: 'linear-gradient(135deg, #3B82F6, #2563EB)', emoji: '✈' },
+  { bg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)', emoji: '⚖' },
+  { bg: 'linear-gradient(135deg, #F43F5E, #DC2626)', emoji: '💷' },
+];
+
+// Hand-coded SEO posts that already exist as live pages under /blog/*.
+const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
   {
-    title: "How to Claim Flight Delay Compensation UK - Up to £520",
+    title: 'How to Claim Flight Delay Compensation UK — Up to £520',
     excerpt:
-      "Complete guide to claiming flight delay compensation under UK261 regulations. Claim up to £520 per person for delayed or cancelled flights. You can claim for flights in the last 6 years.",
-    href: "/blog/how-to-claim-flight-delay-compensation-uk",
-    date: "25 March 2026",
+      'Complete guide to claiming flight delay compensation under UK261 regulations. Claim up to £520 per person for delayed or cancelled flights. You can claim for flights in the last 6 years.',
+    href: '/blog/how-to-claim-flight-delay-compensation-uk',
+    date: '25 March 2026',
+    cat: 'Guides',
   },
   {
-    title: "Are You Overpaying on Energy in 2026? Here's How to Find Out",
+    title: 'Are You Overpaying on Energy in 2026? Here\'s How to Find Out',
     excerpt:
-      "The energy price cap hits £1,641 from April 2026. Find out if you're on an expensive standard variable tariff and how switching could save you hundreds.",
-    href: "/blog/are-you-overpaying-on-energy",
-    date: "23 March 2026",
+      'The energy price cap hits £1,641 from April 2026. Find out if you\'re on an expensive standard variable tariff and how switching could save you hundreds.',
+    href: '/blog/are-you-overpaying-on-energy',
+    date: '23 March 2026',
+    cat: 'Guides',
   },
   {
-    title:
-      "Your Broadband Contract Has Ended - You're Probably Being Overcharged",
+    title: 'Your Broadband Contract Has Ended — You\'re Probably Being Overcharged',
     excerpt:
-      "Millions of UK households are out of contract on broadband and overpaying. Find out if your contract has ended and how to save up to £300 a year.",
-    href: "/blog/broadband-contract-ended",
-    date: "23 March 2026",
+      'Millions of UK households are out of contract on broadband and overpaying. Find out if your contract has ended and how to save up to £300 a year.',
+    href: '/blog/broadband-contract-ended',
+    date: '23 March 2026',
+    cat: 'Guides',
   },
 ];
 
-export const revalidate = 3600; // Revalidate every hour
+async function fetchDynamicPosts(): Promise<Post[]> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const { data } = await supabase
+      .from('blog_posts')
+      .select('slug, title, excerpt, published_at, category')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(20);
+    if (!data) return [];
+    return data.map((p, i): Post => {
+      const g = GRADIENTS[i % GRADIENTS.length];
+      return {
+        title: p.title,
+        excerpt: p.excerpt ?? '',
+        href: `/blog/${p.slug}`,
+        date: new Date(p.published_at).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        cat: (p.category as string | null) ?? 'Essay',
+        gradient: g.bg,
+        emoji: g.emoji,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
 
 export default async function BlogIndexPage() {
-  // Fetch dynamic blog posts from database (gracefully skip if env vars absent at build time)
-  let dynamicPosts: { slug: string; title: string; excerpt: string | null; published_at: string }[] | null = null;
-  try {
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-      const { data } = await supabase
-        .from('blog_posts')
-        .select('slug, title, excerpt, published_at')
-        .eq('status', 'published')
-        .order('published_at', { ascending: false })
-        .limit(20);
-      dynamicPosts = data;
-    }
-  } catch {
-    // fall through — static posts shown below
-  }
+  const dynamicPosts = await fetchDynamicPosts();
+  const staticWithArt: Post[] = STATIC_POSTS.map((p, i) => {
+    const g = GRADIENTS[(dynamicPosts.length + i) % GRADIENTS.length];
+    return { ...p, gradient: g.bg, emoji: g.emoji };
+  });
+  const allPosts: Post[] = [...dynamicPosts, ...staticWithArt];
+  const [featured, ...rest] = allPosts;
 
-  // Merge static posts with dynamic ones (dynamic first, then static)
-  const allPosts = [
-    ...(dynamicPosts || []).map(p => ({
-      title: p.title,
-      excerpt: p.excerpt || '',
-      href: `/blog/${p.slug}`,
-      date: new Date(p.published_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
-    })),
-    ...posts,
-  ];
   return (
-    <div className="min-h-screen bg-navy-950">
-      <PublicNavbar />
-      <div className="h-16" />
+    <div className="m-blog-root">
+      <MarkNav active="Blog" />
 
-      <main className="container mx-auto px-6 py-16 max-w-5xl">
-        <div className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">
-            Blog
+      {/* Hero + featured ------------------------------------------- */}
+      <section className="section-light" style={{ paddingTop: 140, paddingBottom: 40 } as CSSProperties}>
+        <div className="wrap">
+          <span className="eyebrow">The Paybacker Journal</span>
+          <h1
+            style={{
+              fontSize: 'var(--fs-h1)',
+              fontWeight: 700,
+              letterSpacing: 'var(--track-tight)',
+              lineHeight: 1.05,
+              margin: '18px 0 40px',
+              maxWidth: 900,
+            } as CSSProperties}
+          >
+            What we&rsquo;re learning as we read every overcharge in Britain.
           </h1>
-          <p className="text-lg text-slate-300 leading-relaxed">
-            Money-saving tips and switching guides for UK consumers
-          </p>
-        </div>
 
-        <div className="grid gap-6">
-          {allPosts.map((post) => (
-            <Link key={post.href} href={post.href} className="block group">
-              <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 hover:border-mint-400/30 transition-all">
-                <p className="text-slate-500 text-sm mb-2">{post.date}</p>
-                <h2 className="text-xl font-bold text-white mb-2 group-hover:text-mint-400 transition-colors">
-                  {post.title}
-                </h2>
-                <p className="text-slate-400 text-sm mb-3">{post.excerpt}</p>
-                <span className="text-mint-400 text-sm font-medium">
-                  Read more &rarr;
-                </span>
+          {featured && (
+            <div
+              style={{
+                background: '#fff',
+                border: '1px solid var(--divider)',
+                borderRadius: 'var(--r-card)',
+                padding: 32,
+                display: 'grid',
+                gridTemplateColumns: '1.2fr 1fr',
+                gap: 40,
+                alignItems: 'center',
+              } as CSSProperties}
+            >
+              <div
+                style={{
+                  height: 400,
+                  borderRadius: 'var(--r-input)',
+                  background: featured.gradient,
+                  position: 'relative',
+                  overflow: 'hidden',
+                } as CSSProperties}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 18,
+                    left: 18,
+                    padding: '6px 12px',
+                    background: 'rgba(255,255,255,0.96)',
+                    borderRadius: 999,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                    letterSpacing: '.08em',
+                    textTransform: 'uppercase',
+                  } as CSSProperties}
+                >
+                  Featured
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 160,
+                    opacity: 0.22,
+                  } as CSSProperties}
+                  aria-hidden="true"
+                >
+                  {featured.emoji}
+                </div>
               </div>
-            </Link>
-          ))}
+              <div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    letterSpacing: 'var(--track-eyebrow)',
+                    textTransform: 'uppercase',
+                    color: 'var(--accent-mint-deep)',
+                    marginBottom: 14,
+                  } as CSSProperties}
+                >
+                  {featured.cat} · {featured.date}
+                </div>
+                <h2
+                  style={{
+                    fontSize: 32,
+                    fontWeight: 700,
+                    letterSpacing: '-.02em',
+                    margin: '0 0 16px',
+                    lineHeight: 1.15,
+                  } as CSSProperties}
+                >
+                  {featured.title}
+                </h2>
+                <p
+                  style={{
+                    fontSize: 16,
+                    lineHeight: 1.6,
+                    color: 'var(--text-secondary)',
+                    margin: '0 0 24px',
+                  } as CSSProperties}
+                >
+                  {featured.excerpt}
+                </p>
+                <Link
+                  href={featured.href}
+                  className="btn btn-mint"
+                  style={{ padding: '12px 20px', fontSize: 14 } as CSSProperties}
+                >
+                  Read the breakdown →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
-      </main>
+      </section>
 
-      <footer className="container mx-auto px-6 py-8 border-t border-navy-700/50 mt-16">
-        <div className="text-center text-slate-500 text-sm space-y-3">
-          <div className="flex flex-wrap justify-center gap-6">
-            <Link href="/about" className="hover:text-white transition-all">
-              About
-            </Link>
-            <Link href="/blog" className="hover:text-white transition-all">
-              Blog
-            </Link>
-            <Link
-              href="/privacy-policy"
-              className="hover:text-white transition-all"
+      {/* Grid of remaining posts ----------------------------------- */}
+      {rest.length > 0 && (
+        <section style={{ padding: '40px 0 80px' } as CSSProperties}>
+          <div className="wrap">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 32,
+              } as CSSProperties}
             >
-              Privacy Policy
-            </Link>
-            <Link
-              href="/terms-of-service"
-              className="hover:text-white transition-all"
-            >
-              Terms of Service
-            </Link>
-            <Link href="/pricing" className="hover:text-white transition-all">
-              Pricing
-            </Link>
-            <a
-              href="mailto:hello@paybacker.co.uk"
-              className="hover:text-white transition-all"
-            >
-              Contact
-            </a>
+              {rest.map((p) => (
+                <Link
+                  key={p.href}
+                  href={p.href}
+                  style={{ textDecoration: 'none', color: 'inherit', cursor: 'pointer' } as CSSProperties}
+                >
+                  <article>
+                    <div
+                      style={{
+                        height: 240,
+                        borderRadius: 'var(--r-card)',
+                        background: p.gradient,
+                        marginBottom: 20,
+                        position: 'relative',
+                        overflow: 'hidden',
+                      } as CSSProperties}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 14,
+                          left: 14,
+                          padding: '5px 11px',
+                          background: 'rgba(255,255,255,0.96)',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: 'var(--text-primary)',
+                          letterSpacing: '.08em',
+                          textTransform: 'uppercase',
+                        } as CSSProperties}
+                      >
+                        {p.cat}
+                      </div>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 110,
+                          opacity: 0.2,
+                        } as CSSProperties}
+                        aria-hidden="true"
+                      >
+                        {p.emoji}
+                      </div>
+                    </div>
+                    <h3
+                      style={{
+                        fontSize: 24,
+                        fontWeight: 700,
+                        letterSpacing: '-.015em',
+                        margin: '0 0 10px',
+                        lineHeight: 1.2,
+                      } as CSSProperties}
+                    >
+                      {p.title}
+                    </h3>
+                    <p
+                      style={{
+                        fontSize: 15.5,
+                        lineHeight: 1.55,
+                        color: 'var(--text-secondary)',
+                        margin: '0 0 16px',
+                      } as CSSProperties}
+                    >
+                      {p.excerpt}
+                    </p>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: 'var(--text-tertiary)',
+                      } as CSSProperties}
+                    >
+                      {p.date}
+                    </div>
+                  </article>
+                </Link>
+              ))}
+            </div>
           </div>
-          <p>
-            Need help? Email{" "}
-            <a
-              href="mailto:support@paybacker.co.uk"
-              className="text-mint-400 hover:text-mint-300"
-            >
-              support@paybacker.co.uk
-            </a>
-          </p>
-          <p>&copy; 2026 Paybacker LTD. All rights reserved.</p>
+        </section>
+      )}
+
+      {/* Newsletter ------------------------------------------------ */}
+      <section id="newsletter" style={{ padding: '40px 0 120px' } as CSSProperties}>
+        <div className="wrap">
+          <div className="newsletter">
+            <div style={{ maxWidth: 520 } as CSSProperties}>
+              <span className="eyebrow on-ink">The Payback · Weekly</span>
+              <h2>One UK overcharge, dissected. Every Friday.</h2>
+              <p>
+                No spam. No &ldquo;7 secrets the banks don&rsquo;t want you to know.&rdquo; Just the story, the statute, the template you can copy.
+              </p>
+            </div>
+            <form className="newsletter-form" action="/api/newsletter" method="post">
+              <label
+                htmlFor="newsletter-email"
+                style={{
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  overflow: 'hidden',
+                  clip: 'rect(0,0,0,0)',
+                } as CSSProperties}
+              >
+                Email address
+              </label>
+              <input
+                id="newsletter-email"
+                name="email"
+                type="email"
+                required
+                placeholder="you@email.com"
+                autoComplete="email"
+              />
+              <button className="btn btn-mint" type="submit" style={{ padding: '14px 22px' } as CSSProperties}>
+                Subscribe
+              </button>
+            </form>
+          </div>
         </div>
-      </footer>
+      </section>
+
+      <MarkFoot />
     </div>
   );
 }
