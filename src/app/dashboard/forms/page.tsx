@@ -187,7 +187,11 @@ export default function FormsPage() {
       </div>
 
       <div className="mb-8">
-        <h1 className="page-title">Forms & Government Letters</h1>
+        <div className="page-title-row">
+        <div>
+          <h1 className="page-title">Forms & Government Letters</h1>
+        </div>
+      </div>
         <p className="page-sub">Official regulatory forms and government letters. For company complaints, use the{' '}
           <a href="/dashboard/complaints" className="text-emerald-600 hover:text-emerald-700 underline underline-offset-2 transition-all">Complaints section</a>.
         </p>

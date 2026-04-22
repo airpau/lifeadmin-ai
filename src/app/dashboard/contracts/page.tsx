@@ -793,7 +793,11 @@ export default function ContractsPage() {
     <div className="max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
+          <div className="page-title-row">
+        <div>
           <h1 className="page-title">My Contracts</h1>
+        </div>
+      </div>
           <p className="text-slate-600 mt-1">Upload your contracts and we find the clauses that matter</p>
         </div>
         <button
