@@ -79,46 +79,46 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
     <div className="space-y-4">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="h-4 w-4 text-green-400" />
-            <span className="text-slate-400 text-xs">Income this month</span>
+            <span className="text-slate-500 text-xs">Income this month</span>
           </div>
           <p className="text-2xl md:text-3xl font-bold text-green-400">£{fmtNum(monthlyIncome)}</p>
         </div>
 
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <TrendingDown className="h-4 w-4 text-amber-400" />
-            <span className="text-slate-400 text-xs">Spent this month</span>
+            <span className="text-slate-500 text-xs">Spent this month</span>
           </div>
           <p className="text-2xl md:text-3xl font-bold text-amber-400">£{fmtNum(monthlyOutgoings)}</p>
         </div>
 
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+        <div className="card p-5">
           <div className="flex items-center gap-2 mb-2">
             <Wallet className="h-4 w-4 text-mint-400" />
-            <span className="text-slate-400 text-xs">Savings Rate</span>
+            <span className="text-slate-500 text-xs">Savings Rate</span>
           </div>
           <p className={`text-2xl md:text-3xl font-bold ${(savingsRate || 0) >= 0 ? 'text-mint-400' : 'text-red-400'}`}>
             {(savingsRate || 0).toFixed(1)}%
           </p>
         </div>
 
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 relative overflow-hidden group">
+        <div className="card p-5 relative overflow-hidden group">
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-4 w-4 text-purple-400" />
-            <span className="text-slate-400 text-xs">Health Score</span>
+            <span className="text-slate-500 text-xs">Health Score</span>
           </div>
           <p className={`text-2xl md:text-3xl font-bold ${data.score >= 80 ? 'text-green-400' : data.score >= 40 ? 'text-amber-400' : 'text-red-400'}`}>
             {data.score}
           </p>
           {/* Hover detail */}
-          <div className="absolute inset-0 bg-navy-800/95 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl">
-            <div className="flex justify-between mb-1"><span className="text-slate-400">Spend</span><span className="text-white">{healthScore?.pillars?.spend?.score || 0}%</span></div>
-            <div className="flex justify-between mb-1"><span className="text-slate-400">Save</span><span className="text-white">{healthScore?.pillars?.save?.score || 0}%</span></div>
-            <div className="flex justify-between mb-1"><span className="text-slate-400">Borrow</span><span className="text-white">{healthScore?.pillars?.borrow?.score || 0}%</span></div>
-            <div className="flex justify-between"><span className="text-slate-400">Plan</span><span className="text-white">{healthScore?.pillars?.plan?.score || 0}%</span></div>
+          <div className="absolute inset-0 bg-slate-100 backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center px-4 text-xs rounded-2xl">
+            <div className="flex justify-between mb-1"><span className="text-slate-500">Spend</span><span className="text-slate-900">{healthScore?.pillars?.spend?.score || 0}%</span></div>
+            <div className="flex justify-between mb-1"><span className="text-slate-500">Save</span><span className="text-slate-900">{healthScore?.pillars?.save?.score || 0}%</span></div>
+            <div className="flex justify-between mb-1"><span className="text-slate-500">Borrow</span><span className="text-slate-900">{healthScore?.pillars?.borrow?.score || 0}%</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Plan</span><span className="text-slate-900">{healthScore?.pillars?.plan?.score || 0}%</span></div>
           </div>
         </div>
       </div>
@@ -127,9 +127,9 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
       {(incomeEntries.length > 0 || spendingCategories.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Income Breakdown */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2">
+              <h3 className="text-slate-900 font-semibold flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-green-400" />
                 Income
               </h3>
@@ -143,18 +143,18 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   return (
                     <div
                       key={entry.type}
-                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
+                      className="group cursor-pointer hover:bg-slate-100 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillIncomeType(entry.type)}
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-green-400 transition-colors">
+                        <span className="text-slate-700 flex items-center gap-2 group-hover:text-green-400 transition-colors">
                           <span>{entry.icon}</span>
                           {entry.label}
                           <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
                         </span>
                         <span className="text-green-400 font-semibold">£{fmtNum(entry.amount)}</span>
                       </div>
-                      <div className="w-full bg-navy-800 rounded-full h-1.5">
+                      <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: entry.color }} />
                       </div>
                     </div>
@@ -174,17 +174,17 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
             )}
 
             {totalIncomeFromBreakdown > 0 && (
-              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-                <span className="text-slate-400">Total</span>
+              <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between text-sm">
+                <span className="text-slate-500">Total</span>
                 <span className="text-green-400 font-bold">£{fmtNum(totalIncomeFromBreakdown)}</span>
               </div>
             )}
           </div>
 
           {/* Spending Breakdown */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
+          <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-semibold flex items-center gap-2">
+              <h3 className="text-slate-900 font-semibold flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-amber-400" />
                 Spending
               </h3>
@@ -199,18 +199,18 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   return (
                     <div
                       key={c.category}
-                      className="group cursor-pointer hover:bg-navy-800/50 p-2 -mx-2 rounded-lg transition-colors"
+                      className="group cursor-pointer hover:bg-slate-100 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillSpendingCategory(c.category)}
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="text-slate-300 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
+                        <span className="text-slate-700 flex items-center gap-2 group-hover:text-amber-400 transition-colors">
                           <span>{meta.icon}</span>
                           {meta.label}
                           <span className="text-slate-500 text-xs">{pct.toFixed(1)}%</span>
                         </span>
                         <span className="text-amber-400 font-semibold">£{fmtNum(c.total)}</span>
                       </div>
-                      <div className="w-full bg-navy-800 rounded-full h-1.5">
+                      <div className="w-full bg-slate-100 rounded-full h-1.5">
                         <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
                       </div>
                     </div>
@@ -230,8 +230,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
             )}
 
             {totalSpentFromBreakdown > 0 && (
-              <div className="mt-3 pt-3 border-t border-navy-800 flex justify-between text-sm">
-                <span className="text-slate-400">Total</span>
+              <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between text-sm">
+                <span className="text-slate-500">Total</span>
                 <span className="text-amber-400 font-bold">£{fmtNum(totalSpentFromBreakdown)}</span>
               </div>
             )}
@@ -241,8 +241,8 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
 
       {/* Monthly Trends */}
       {monthlyTrends.length >= 2 && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h3 className="text-white font-semibold text-lg mb-4 flex items-center gap-2">
+        <div className="card p-5">
+          <h3 className="text-slate-900 font-semibold text-lg mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-blue-400" />
             Monthly Trends
           </h3>
@@ -259,10 +259,10 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   </div>
                   <span className="text-[10px] text-slate-500">{monthLabel}</span>
                   {/* Hover tooltip */}
-                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-navy-950 border border-navy-700 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
+                  <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-white border border-slate-200 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap pointer-events-none">
                     <p className="text-green-400">In: £{fmtNum(t.income)}</p>
                     <p className="text-amber-400">Out: £{fmtNum(t.outgoings)}</p>
-                    <p className="text-slate-300">Net: £{fmtNum(t.income - t.outgoings)}</p>
+                    <p className="text-slate-700">Net: £{fmtNum(t.income - t.outgoings)}</p>
                   </div>
                 </div>
               );

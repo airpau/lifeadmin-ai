@@ -56,9 +56,9 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
   const switchableCount = activeSubs.filter((s: any) => switchableCats.has(s.category)).length;
 
   return (
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 flex flex-col h-full">
+    <div className="card p-5 flex flex-col h-full">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+        <h3 className="text-slate-900 font-semibold text-lg flex items-center gap-2">
           <Calendar className="h-5 w-5 text-amber-400" />
           Regular Payments
         </h3>
@@ -72,7 +72,7 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
         <div className="flex items-center gap-4 mb-4 text-xs">
           <div>
             <span className="text-slate-500">Monthly</span>
-            <p className="text-white font-semibold">£{fmtNum(monthlyTotal)}</p>
+            <p className="text-slate-900 font-semibold">£{fmtNum(monthlyTotal)}</p>
           </div>
           <div className="text-slate-700">|</div>
           <div>
@@ -91,15 +91,15 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
       )}
       
       {!isPro ? (
-        <div className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4 relative overflow-hidden flex-1">
-          <div className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 relative overflow-hidden flex-1">
+          <div className="absolute inset-0 bg-white backdrop-blur-sm z-10 flex flex-col items-center justify-center">
             <Lock className="h-6 w-6 text-slate-500 mb-2" />
-            <p className="text-white font-semibold text-xs mb-1">Upgrade to track subscriptions</p>
+            <p className="text-slate-900 font-semibold text-xs mb-1">Upgrade to track subscriptions</p>
             <Link href="/pricing" className="text-mint-400 text-[10px] hover:text-mint-300">View plans</Link>
           </div>
           <div className="space-y-3 opacity-30 pointer-events-none">
-            <div className="h-10 bg-navy-800 rounded-lg w-full" />
-            <div className="h-10 bg-navy-800 rounded-lg w-full" />
+            <div className="h-10 bg-slate-100 rounded-lg w-full" />
+            <div className="h-10 bg-slate-100 rounded-lg w-full" />
           </div>
         </div>
       ) : (
@@ -122,9 +122,9 @@ export default function ContractsPanel({ data, isPro }: { data: any, isPro: bool
               const cycleLabel = sub.billing_cycle === 'yearly' ? '/yr' : sub.billing_cycle === 'quarterly' ? '/qtr' : '/mo';
               
               return (
-                <div key={sub.id} className="flex items-center justify-between bg-navy-950/50 rounded-xl p-3 border border-navy-800 hover:border-navy-700 transition-colors">
+                <div key={sub.id} className="flex items-center justify-between bg-white rounded-xl p-3 border border-slate-200 hover:border-slate-200 transition-colors">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-white capitalize truncate">{sub.provider_name}</p>
+                    <p className="text-sm font-medium text-slate-900 capitalize truncate">{sub.provider_name}</p>
                     {tag}
                   </div>
                   <p className="text-sm font-semibold text-amber-400 whitespace-nowrap ml-2">

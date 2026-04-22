@@ -134,7 +134,7 @@ export default function TelegramSettingsPage() {
     <div className="max-w-2xl mx-auto p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+        <h1 className="page-title flex items-center gap-3">
           <MessageCircle className="h-7 w-7 text-orange-500" />
           Telegram Bot
         </h1>
@@ -216,12 +216,12 @@ export default function TelegramSettingsPage() {
           <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-slate-500">Linked</span>
-              <p className="text-slate-300">{formatDate(status.session.linked_at)}</p>
+              <p className="text-slate-700">{formatDate(status.session.linked_at)}</p>
             </div>
             {status.session.last_message_at && (
               <div>
                 <span className="text-slate-500">Last message</span>
-                <p className="text-slate-300">{formatDate(status.session.last_message_at)}</p>
+                <p className="text-slate-700">{formatDate(status.session.last_message_at)}</p>
               </div>
             )}
           </div>
@@ -242,7 +242,7 @@ export default function TelegramSettingsPage() {
         </div>
       ) : (
         /* Not connected state */
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
+        <div className="card p-6 space-y-6">
           <div>
             <h3 className="text-slate-900 font-semibold mb-1">Connect your account</h3>
             <p className="text-slate-600 text-sm">
@@ -322,7 +322,7 @@ export default function TelegramSettingsPage() {
               <button
                 onClick={generateCode}
                 disabled={generating}
-                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-300 transition-colors"
+                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-700 transition-colors"
               >
                 {generating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

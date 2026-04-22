@@ -99,11 +99,11 @@ export default function DataExportCard() {
         <button
           onClick={() => handleDownload('xlsx')}
           disabled={downloading !== null}
-          className="flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium text-white bg-[#0F7B6C] hover:bg-[#0b6357] transition-colors rounded-lg py-2.5 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          className="flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium text-slate-900 bg-[#0F7B6C] hover:bg-[#0b6357] transition-colors rounded-lg py-2.5 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {downloading === 'xlsx' ? (
             <>
-              <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
+              <svg className="animate-spin h-4 w-4 text-slate-900" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="42" strokeDashoffset="0" />
               </svg>
               Preparing…

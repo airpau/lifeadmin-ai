@@ -171,14 +171,14 @@ export default function McpSettingsPage() {
           <div className="bg-orange-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
             <Sparkles className="h-8 w-8 text-orange-600" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Pro feature</h2>
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Pro feature</h2>
           <p className="text-slate-600 mb-6">
             The Paybacker Assistant lets a desktop AI app read your transactions, subscriptions,
             budgets and net worth. It&rsquo;s available on the Pro plan.
           </p>
           <Link
             href="/dashboard/upgrade"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-colors"
           >
             <Sparkles className="h-4 w-4" />
             Upgrade to Pro
@@ -194,7 +194,7 @@ export default function McpSettingsPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+        <h1 className="page-title flex items-center gap-3">
           <Terminal className="h-7 w-7 text-emerald-600" />
           Paybacker Assistant (MCP)
         </h1>
@@ -256,7 +256,7 @@ export default function McpSettingsPage() {
           <li>Generate a token below and copy it (you only see it once).</li>
           <li>
             In a terminal, run:
-            <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
+            <pre className="mt-2 bg-white text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
               npx @paybacker/mcp setup
             </pre>
           </li>
@@ -289,7 +289,7 @@ export default function McpSettingsPage() {
                 </code>
                 <button
                   onClick={() => handleCopy(justMinted)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-sm transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-medium rounded-lg text-sm transition-colors"
                 >
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   {copied ? 'Copied' : 'Copy'}
@@ -321,7 +321,7 @@ export default function McpSettingsPage() {
           <button
             onClick={handleCreate}
             disabled={creating}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Generate token
@@ -384,7 +384,7 @@ export default function McpSettingsPage() {
 
       {/* Revoked history */}
       {revoked.length > 0 && (
-        <details className="bg-white border border-slate-200 rounded-2xl">
+        <details className="card">
           <summary className="p-4 text-sm text-slate-600 cursor-pointer hover:text-slate-800">
             Revoked tokens ({revoked.length})
           </summary>

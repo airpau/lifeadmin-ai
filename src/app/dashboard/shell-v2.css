@@ -1,0 +1,331 @@
+/* Generated from docs/claude-design-drop-1/redesign/shell.css
+   All selectors scoped under .shell-v2 so the design tokens and utility
+   classes only apply within the dashboard shell. Don't edit directly —
+   re-run the scoping script if the source CSS changes. */
+
+/* ============================================================
+   PAYBACKER · Shell A (clean light) — shared chrome for all pages
+   ============================================================ */
+.shell-v2{
+  --mint:#34D399; --mint-deep:#059669; --mint-wash:#ECFBF3;
+  --orange:#F59E0B; --orange-deep:#D97706; --amber-wash:#FEF3C7;
+  --blue:#3B82F6; --blue-deep:#2563EB; --blue-wash:#EFF6FF;
+  --rose:#F43F5E; --rose-deep:#DC2626; --rose-wash:#FEE2E2;
+  --purple:#8B5CF6; --purple-wash:#EDE9FE;
+  --ink:#0B1220; --ink-2:#111A2E; --ink-3:#1A2440;
+  --paper:#FAFAF7; --paper-2:#F4F4EE;
+  --divider:#E5E7EB; --divider-2:#EEF0F3;
+  --text:#0B1220; --text-2:#4B5563; --text-3:#6B7280; --text-4:#9CA3AF;
+}
+
+
+
+.shell-v2 .page-wrap{max-width:1440px;margin:0 auto;padding:48px 32px 120px}
+.shell-v2 .doc-head{margin-bottom:48px}
+.shell-v2 .eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mint-deep);display:inline-block;padding:6px 10px;background:var(--mint-wash);border-radius:999px}
+.shell-v2 .doc-title{font-size:40px;font-weight:800;letter-spacing:-.02em;margin:16px 0 8px;color:var(--text)}
+.shell-v2 .doc-sub{font-size:17px;color:var(--text-2);max-width:760px;line-height:1.55;margin:0}
+
+.shell-v2 .variant{margin-top:56px;background:#fff;border-radius:24px;border:1px solid var(--divider);overflow:hidden;box-shadow:0 2px 0 rgba(0,0,0,.02)}
+.shell-v2 .variant-head{padding:24px 28px;border-bottom:1px solid var(--divider);display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}
+.shell-v2 .variant-head h2{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.shell-v2 .variant-head .bullet{font-size:13px;color:var(--text-3);max-width:720px;line-height:1.55}
+.shell-v2 .variant-tag{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:#F3F4F6;color:var(--text-2)}
+.shell-v2 .stage{background:var(--paper);padding:24px}
+
+/* === Shell A chrome === */
+.shell-v2 .shell{display:grid;grid-template-columns:240px 1fr;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px -15px rgba(0,0,0,.1),0 2px 6px -3px rgba(0,0,0,.06);min-height:820px}
+
+.shell-v2 .sidebar{background:#fff;padding:18px 12px 16px;border-right:1px solid var(--divider);display:flex;flex-direction:column;gap:4px}
+.shell-v2 .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px;border-bottom:1px solid var(--divider-2);margin-bottom:10px;text-decoration:none;color:inherit}
+.shell-v2 .brand .logo-box{width:30px;height:30px;border-radius:8px;background:var(--ink);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;letter-spacing:-.02em}
+.shell-v2 .brand .brand-name{font-weight:800;font-size:16px;letter-spacing:-.01em}
+.shell-v2 .brand .brand-name span{color:var(--mint-deep)}
+
+.shell-v2 .user-card{padding:10px 8px 12px;border-bottom:1px solid var(--divider-2);margin-bottom:8px;display:flex;gap:10px;align-items:center}
+.shell-v2 .user-card .avatar{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--mint),var(--mint-deep));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12.5px;flex-shrink:0}
+.shell-v2 .user-card .u-name{font-size:13px;font-weight:600;line-height:1.2}
+.shell-v2 .user-card .u-email{font-size:10.5px;color:var(--text-3);line-height:1.2;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shell-v2 .user-card .u-plan{display:inline-block;margin-top:3px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mint-deep);background:var(--mint-wash);padding:1px 5px;border-radius:4px}
+
+.shell-v2 .nav-section-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-4);padding:12px 10px 4px}
+.shell-v2 .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--text-2);cursor:pointer;transition:background .12s;text-decoration:none;min-height:34px}
+.shell-v2 .nav-item:hover{background:var(--paper-2)}
+.shell-v2 .nav-item.active{background:var(--mint-wash);color:var(--mint-deep);font-weight:600}
+.shell-v2 .nav-item .n-icon{width:17px;height:17px;flex-shrink:0;stroke-width:1.75}
+.shell-v2 .nav-item .n-badge{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px}
+.shell-v2 .nav-item .n-badge.new{background:var(--amber-wash);color:var(--orange-deep)}
+.shell-v2 .nav-item .n-badge.count{background:#E0E7FF;color:#4338CA}
+
+.shell-v2 .sidebar-footer{margin-top:auto;padding:10px 8px 2px;border-top:1px solid var(--divider-2)}
+.shell-v2 .upgrade-card{background:linear-gradient(135deg,#ECFBF3,#FEF3C7);border-radius:11px;padding:12px;margin-bottom:8px}
+.shell-v2 .upgrade-card h5{margin:0 0 4px;font-size:12.5px;font-weight:700}
+.shell-v2 .upgrade-card p{margin:0 0 8px;font-size:11px;color:var(--text-2);line-height:1.35}
+.shell-v2 .upgrade-card .btn{display:block;text-align:center;background:var(--ink);color:#fff;padding:7px;font-size:11px;font-weight:700;border-radius:7px;text-decoration:none}
+
+.shell-v2 .main{display:flex;flex-direction:column}
+.shell-v2 .topbar{display:flex;align-items:center;gap:14px;padding:10px 22px;border-bottom:1px solid var(--divider);background:#fff;min-height:54px}
+.shell-v2 .crumb{font-size:13px;color:var(--text-3);display:flex;align-items:center;gap:6px}
+.shell-v2 .crumb strong{color:var(--text);font-weight:600}
+.shell-v2 .crumb svg{width:13px;height:13px;opacity:.5}
+.shell-v2 .searchbar{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--paper-2);border:1px solid var(--divider);padding:5px 12px;border-radius:9px;width:240px;font-size:12.5px;color:var(--text-3)}
+.shell-v2 .searchbar svg{width:13px;height:13px}
+.shell-v2 .searchbar kbd{margin-left:auto;font-size:10px;padding:2px 5px;border:1px solid var(--divider);background:#fff;border-radius:4px;color:var(--text-3);font-family:inherit}
+.shell-v2 .topbar-actions{display:flex;align-items:center;gap:8px}
+.shell-v2 .icon-btn{width:34px;height:34px;border-radius:9px;border:1px solid var(--divider);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.shell-v2 .icon-btn svg{width:15px;height:15px;stroke:var(--text-2);stroke-width:1.75}
+.shell-v2 .icon-btn .dot{position:absolute;top:7px;right:7px;width:7px;height:7px;background:var(--orange);border-radius:50%;border:2px solid #fff}
+.shell-v2 .theme-toggle{display:inline-flex;align-items:center;gap:4px;padding:3px;background:var(--paper-2);border:1px solid var(--divider);border-radius:999px}
+.shell-v2 .theme-toggle button{border:0;background:transparent;width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-3)}
+.shell-v2 .theme-toggle button.on{background:#fff;color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.shell-v2 .theme-toggle svg{width:13px;height:13px;stroke-width:1.75}
+
+.shell-v2 .main-inner{padding:24px 28px;background:var(--paper);flex:1}
+.shell-v2 .page-title-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:16px;flex-wrap:wrap}
+.shell-v2 .page-title{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 4px;line-height:1.15}
+.shell-v2 .page-sub{font-size:13.5px;color:var(--text-2);margin:0;max-width:680px;line-height:1.5}
+.shell-v2 .cta{display:inline-flex;align-items:center;gap:6px;background:var(--mint);color:var(--ink);padding:9px 13px;font-size:13px;font-weight:700;border-radius:10px;border:0;cursor:pointer;text-decoration:none}
+.shell-v2 .cta svg{width:13px;height:13px}
+.shell-v2 .cta-ghost{background:#fff;border:1px solid var(--divider);color:var(--text);padding:9px 13px;font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.shell-v2 .cta-ghost svg{width:13px;height:13px}
+.shell-v2 .cta-danger{background:#fff;border:1px solid #FCA5A5;color:var(--rose-deep);padding:9px 13px;font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+
+.shell-v2 .card{background:#fff;border:1px solid var(--divider);border-radius:14px;padding:18px}
+.shell-v2 .card h3{margin:0 0 12px;font-size:15.5px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+.shell-v2 .card h3 svg{width:15px;height:15px;color:var(--mint-deep)}
+.shell-v2 .card h3 .count-tag{margin-left:auto;font-size:12px;color:var(--text-3);font-weight:500}
+
+/* KPI cards */
+.shell-v2 .kpi-row{display:grid;gap:12px}
+.shell-v2 .kpi-row.c4{grid-template-columns:repeat(4,1fr)}
+.shell-v2 .kpi-row.c3{grid-template-columns:repeat(3,1fr)}
+.shell-v2 .kpi-card{background:#fff;border:1px solid var(--divider);border-radius:13px;padding:14px 16px}
+.shell-v2 .kpi-card .k-label{font-size:11.5px;color:var(--text-3);font-weight:500;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.shell-v2 .kpi-card .k-label svg{width:13px;height:13px}
+.shell-v2 .kpi-card .k-val{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.shell-v2 .kpi-card .k-val.green{color:var(--mint-deep)}
+.shell-v2 .kpi-card .k-val.red{color:var(--rose-deep)}
+.shell-v2 .kpi-card .k-val.amber{color:var(--orange-deep)}
+.shell-v2 .kpi-card .k-delta{font-size:11px;color:var(--text-3);margin-top:4px}
+.shell-v2 .kpi-card .k-delta .up{color:var(--mint-deep);font-weight:600}
+.shell-v2 .kpi-card .k-delta .down{color:var(--rose-deep);font-weight:600}
+
+/* pills */
+.shell-v2 .pill{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.04em;display:inline-block}
+.shell-v2 .pill.amb{background:var(--amber-wash);color:var(--orange-deep)}
+.shell-v2 .pill.red{background:var(--rose-wash);color:var(--rose-deep)}
+.shell-v2 .pill.grn{background:var(--mint-wash);color:var(--mint-deep)}
+.shell-v2 .pill.blu{background:var(--blue-wash);color:var(--blue-deep)}
+.shell-v2 .pill.gry{background:#F3F4F6;color:var(--text-2)}
+.shell-v2 .pill.pur{background:var(--purple-wash);color:#6D28D9}
+
+/* service logo squares */
+.shell-v2 .svc{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;flex-shrink:0;letter-spacing:.02em}
+.shell-v2 .svc-lg{width:40px;height:40px;font-size:12px;border-radius:10px}
+.shell-v2 .svc.svc-sky{background:#0072C9}
+.shell-v2 .svc.svc-netflix{background:#E50914}
+.shell-v2 .svc.svc-spotify{background:#1DB954}
+.shell-v2 .svc.svc-virgin{background:#E10A0A}
+.shell-v2 .svc.svc-amazon{background:#FF9900;color:#111}
+.shell-v2 .svc.svc-gym{background:#111}
+.shell-v2 .svc.svc-dropbox{background:#0061FF}
+.shell-v2 .svc.svc-apple{background:#000}
+.shell-v2 .svc.svc-google{background:#4285F4}
+.shell-v2 .svc.svc-ee{background:#00B5B5}
+.shell-v2 .svc.svc-british-gas{background:#00A0DC}
+.shell-v2 .svc.svc-octopus{background:#170446}
+.shell-v2 .svc.svc-lloyds{background:#006A4D}
+.shell-v2 .svc.svc-natwest{background:#5A287D}
+.shell-v2 .svc.svc-barclaycard{background:#00AEEF}
+.shell-v2 .svc.svc-santander{background:#EC0000}
+.shell-v2 .svc.svc-funding{background:#2E1A47}
+.shell-v2 .svc.svc-disney{background:#113CCF}
+.shell-v2 .svc.svc-{background:#6B7280}
+
+/* table */
+.shell-v2 .tbl{width:100%;border-collapse:collapse}
+.shell-v2 .tbl th,.shell-v2 .tbl td{padding:11px 14px;border-bottom:1px solid var(--divider-2);font-size:13px;text-align:left;vertical-align:middle}
+.shell-v2 .tbl th{font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;background:var(--paper);border-bottom:1px solid var(--divider)}
+.shell-v2 .tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.shell-v2 .tbl tr:last-child td{border-bottom:0}
+.shell-v2 .tbl tr:hover td{background:var(--paper)}
+.shell-v2 .tbl .chk{width:16px;height:16px;border:1.5px solid var(--divider);border-radius:4px;display:inline-block;vertical-align:-3px;cursor:pointer}
+.shell-v2 .tbl .row-svc{display:flex;align-items:center;gap:10px}
+.shell-v2 .tbl .row-svc .rs-name{font-weight:600;color:var(--text);line-height:1.2}
+.shell-v2 .tbl .row-svc .rs-sub{font-size:11px;color:var(--text-3);line-height:1.2;margin-top:2px}
+
+/* tab bar */
+.shell-v2 .tabs{display:flex;gap:2px;background:var(--paper-2);padding:3px;border-radius:10px;border:1px solid var(--divider);margin-bottom:16px}
+.shell-v2 .tabs button{background:transparent;border:0;padding:7px 14px;font-size:12.5px;font-weight:600;color:var(--text-3);cursor:pointer;border-radius:7px;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.shell-v2 .tabs button.on{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.shell-v2 .tabs button .t-count{font-size:10px;padding:1px 5px;background:#E5E7EB;color:var(--text-2);border-radius:4px;font-weight:700}
+.shell-v2 .tabs button.on .t-count{background:var(--mint-wash);color:var(--mint-deep)}
+
+/* filter chip row */
+.shell-v2 .filter-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.shell-v2 .f-chip{padding:6px 11px;font-size:12px;border:1px solid var(--divider);background:#fff;border-radius:999px;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.shell-v2 .f-chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.shell-v2 .f-chip svg{width:12px;height:12px}
+
+/* progress bars */
+.shell-v2 .bar{height:6px;background:#F3F4F6;border-radius:999px;overflow:hidden;margin-top:6px}
+.shell-v2 .bar .fill{height:100%;background:var(--mint);border-radius:999px}
+.shell-v2 .bar .fill.red{background:var(--rose)}.bar .fill.amb{background:var(--orange)}.bar .fill.blu{background:var(--blue)}.bar .fill.pur{background:var(--purple)}
+
+/* ─── Wrapper + mobile responsive rules (additive) ─────────────────────── */
+.shell-v2 {
+  min-height: 100vh;
+  background: #EEF0F3;
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.shell-v2 .page-wrap,
+.shell-v2 .main-inner {
+  font-feature-settings: 'ss01', 'cv11';
+}
+.shell-v2 .shell-v2-signout {
+  background: transparent;
+  border: 0;
+  width: 100%;
+  cursor: pointer;
+  color: var(--text-2);
+  font: inherit;
+  margin-top: 4px;
+}
+.shell-v2 .shell-v2-signout:hover { background: var(--paper-2); }
+.shell-v2 .shell-v2-bell-slot { display: inline-flex; align-items: center; }
+
+/* Desktop-first: mobile chrome hidden above 980px */
+.shell-v2-mob-header { display: none; }
+.shell-v2-drawer-backdrop,
+.shell-v2-drawer { display: none; }
+
+/* Searchbar placeholder column handling */
+.shell-v2 .searchbar-placeholder {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 979.98px) {
+  .shell-v2 > .shell > .sidebar { display: none; }
+  .shell-v2 > .shell { grid-template-columns: 1fr; border-radius: 0; min-height: auto; }
+  .shell-v2 .topbar .searchbar,
+  .shell-v2 .topbar .theme-toggle,
+  .shell-v2 .topbar .crumb { display: none; }
+  .shell-v2 .topbar { padding: 10px 16px; }
+  .shell-v2 .main-inner { padding: 18px 16px 32px; }
+
+  .shell-v2-mob-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid var(--divider);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+  .shell-v2-mob-header .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
+  .shell-v2-mob-header .brand .logo-box { width: 30px; height: 30px; border-radius: 8px; background: var(--ink); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 14px; }
+  .shell-v2-mob-header .brand .brand-name { font-weight: 800; font-size: 16px; }
+  .shell-v2-mob-header .brand .brand-name span { color: var(--mint-deep); }
+  .shell-v2-mob-actions { display: flex; align-items: center; gap: 6px; }
+
+  .shell-v2-drawer-backdrop {
+    display: block;
+    position: fixed; inset: 0;
+    background: rgba(11, 18, 32, 0.4);
+    z-index: 50;
+  }
+  .shell-v2-drawer {
+    display: block;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: min(300px, 86vw);
+    background: #fff;
+    z-index: 51;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.25);
+    overflow-y: auto;
+  }
+  .shell-v2-drawer .sidebar {
+    border-right: 0;
+    padding-top: 52px;
+  }
+  .shell-v2-drawer-close {
+    position: absolute;
+    top: 10px; right: 10px;
+    z-index: 2;
+  }
+}
+
+/* ─── Overview page: responsive 2-col grid ──────────────────────────────
+   Design spec (Variant A): 2fr main column + 1fr sidebar on desktop.
+   Collapses to single column on narrow viewports so the sidebar cards
+   drop under the main content instead of cramming.
+*/
+.shell-v2 .overview-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .shell-v2 .overview-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── KPI row responsive: c4 collapses 4→2→1 on narrower viewports ─── */
+@media (max-width: 1100px) {
+  .shell-v2 .kpi-row.c4 { grid-template-columns: repeat(2, 1fr); }
+  .shell-v2 .kpi-row.c3 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .shell-v2 .kpi-row.c4,
+  .shell-v2 .kpi-row.c3 {
+    grid-template-columns: 1fr;
+  }
+  /* Page-title row stacks the CTA cluster below the heading on phones */
+  .shell-v2 .page-title-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .shell-v2 .page-title { font-size: 22px; }
+  .shell-v2 .page-sub { font-size: 13px; }
+  /* Hero Action Centre + embedded cards breathe on narrow screens */
+  .shell-v2 .main-inner { padding: 18px 14px 32px; }
+  .shell-v2 .card { padding: 14px; }
+}
+
+/* Danger variant of .cta used by PriceIncreaseCard */
+.shell-v2 .cta-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--rose-wash);
+  color: var(--rose-deep);
+  border: 1px solid #FCA5A5;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 9px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.shell-v2 .cta-danger:hover { background: #FEE2E2; }
+
+/* ─── Dispute compose: 2-col grid with right rail (batch7 DisputeCompose) ─── */
+.shell-v2 .compose-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+.shell-v2 .compose-eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mint-deep);display:inline-block;margin-bottom:10px}
+.shell-v2 .compose-rail .rail-label{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-bottom:14px}
+.shell-v2 .compose-rail .provider-chip{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#F3F4F6;border-radius:10px}
+.shell-v2 .compose-rail .provider-chip .avatar{width:36px;height:36px;border-radius:8px;background:var(--mint-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.shell-v2 .compose-rail .outcome-amount{font-size:32px;font-weight:700;letter-spacing:-.02em;color:var(--mint-deep);margin-bottom:4px}
+.shell-v2 .compose-rail .rail-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text-2);margin-top:8px}
+.shell-v2 .compose-disclaimer{padding:14px 18px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;font-size:12.5px;color:#78350F;line-height:1.5}
+@media (max-width: 1100px) {
+  .shell-v2 .compose-grid { grid-template-columns: 1fr; }
+}

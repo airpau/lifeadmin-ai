@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Tag, Loader2, Clock, AlertTriangle, Zap, Trophy, CheckCircle2, Info, X } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
@@ -281,7 +282,7 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleClick}
-            className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
+            className="flex items-center gap-1 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
           >
             View Deal →
           </a>
@@ -445,7 +446,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleClick}
-          className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
+          className="flex items-center gap-1 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
         >
           View Deal →
         </a>
@@ -631,12 +632,90 @@ export default function DealsPage() {
     );
   }
 
+  // Total potential savings — sum the largest annual £ figure parsed from
+  // each eligible category's "saving" copy ("Save up to £150/yr"), times
+  // the user's matching subscription count in that category.
+  const parseSavingGBP = (s: string): number => {
+    const m = (s || '').match(/£\s*([\d,]+)/);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) || 0 : 0;
+  };
+  const potentialAnnualSaving = (() => {
+    let total = 0;
+    for (const cat of Object.keys(urgentSubsByCategory)) {
+      const deals = DEALS[cat] || [];
+      const subs = urgentSubsByCategory[cat] || [];
+      if (!deals.length || !subs.length) continue;
+      const best = deals.reduce((max, d) => {
+        return parseSavingGBP(d.saving) > parseSavingGBP(max.saving) ? d : max;
+      }, deals[0]);
+      total += parseSavingGBP(best.saving) * subs.length;
+    }
+    return Math.round(total);
+  })();
+  const dealsCount = Object.values(DEALS).reduce((n, arr) => n + (arr?.length || 0), 0) + verifiedDeals.length;
+
   return (
     <div className="max-w-7xl">
-      {/* Hero */}
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Find Better Deals</h1>
-        <p className="text-slate-600">Personalised savings based on your contracts and bills.</p>
+      {/* Variant A header */}
+      <div className="page-title-row">
+        <div>
+          <h1 className="page-title">Find Better Deals</h1>
+          <p className="page-sub">Personalised savings based on your contracts and bills.</p>
+        </div>
+      </div>
+
+      {/* Hero strip (batch7 DealsMarketplace) */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg,#34D399 0%,#059669 100%)',
+          borderRadius: 18,
+          padding: '28px 32px',
+          color: '#fff',
+          marginBottom: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 24,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '.12em',
+              textTransform: 'uppercase',
+              opacity: 0.85,
+            }}
+          >
+            Deals · updated weekly
+          </span>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-.015em', margin: '8px 0 6px', color: '#fff' }}>
+            {dealsCount} verified deals
+            {potentialAnnualSaving > 0 && <>, £{potentialAnnualSaving.toLocaleString()} in potential savings.</>}
+            {potentialAnnualSaving === 0 && ' tailored to your subscriptions.'}
+          </h2>
+          <p style={{ fontSize: 13.5, opacity: 0.9, margin: 0, lineHeight: 1.5, maxWidth: 560 }}>
+            We compare your current bills against every deal a UK household could switch to. No affiliate tricks — if
+            it&apos;s the best deal, we show it.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/subscriptions"
+          style={{
+            padding: '12px 20px',
+            fontSize: 13.5,
+            fontWeight: 700,
+            background: '#fff',
+            color: '#059669',
+            borderRadius: 12,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Match against my bills →
+        </Link>
       </div>
 
       {/* Category filter tabs */}
@@ -738,7 +817,7 @@ export default function DealsPage() {
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="h-5 w-5 text-slate-500" />
-                  <h2 className="text-xl font-bold text-slate-900">{category}</h2>
+                  <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category}</h2>
                 </div>
                 <div className="bg-slate-100/30 border border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
                   <Info className="h-5 w-5 text-slate-500 flex-shrink-0" />
@@ -789,7 +868,7 @@ export default function DealsPage() {
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="h-5 w-5 text-slate-500" />
-                  <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
+                  <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category} Deals</h2>
                 </div>
                 <div className="bg-slate-100/30 border border-dashed border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
                   <Info className="h-5 w-5 text-emerald-600 flex-shrink-0" />
@@ -813,7 +892,7 @@ export default function DealsPage() {
             <section key={category}>
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="h-5 w-5 text-emerald-600" />
-                <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
+                <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category} Deals</h2>
               </div>
 
               {matchingSubs.length > 0 && (
@@ -858,7 +937,7 @@ export default function DealsPage() {
                           }).catch(() => {});
                           capture('best_deal_clicked', { provider: bestDeal.deal.provider, plan: bestDeal.deal.plan_name, savings: bestDeal.savingsYearly });
                         }}
-                        className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-xl transition-all text-sm"
+                        className="inline-flex items-center gap-1.5 cta transition-all text-sm"
                       >
                         Switch Now →
                       </a>

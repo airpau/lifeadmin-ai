@@ -150,9 +150,14 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 // Active statuses that can be changed via the status dropdown
 const ACTIVE_STATUSES = ['open', 'in_progress', 'awaiting_response', 'escalated', 'ombudsman'];
 
-// Check if a dispute is resolved/closed
+// Check if a dispute is terminal (closed for any reason — won, partial, lost, or user-closed)
 function isResolved(status: string): boolean {
-  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed', 'won', 'partial', 'lost', 'withdrawn'].includes(status);
+  return ['resolved_won', 'resolved_partial', 'resolved_lost', 'closed'].includes(status);
+}
+
+// Check if a dispute was actually won (for money-recovered badges)
+function isWon(status: string): boolean {
+  return ['resolved_won', 'resolved_partial'].includes(status);
 }
 
 // Dispute summary type
@@ -226,10 +231,10 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="relative card w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-xl font-bold text-slate-900 truncate">{title}</h2>
+            <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{title}</h2>
             {(() => {
               const count = rightsPills?.length ?? 0;
               if (count >= 3) return (
@@ -303,7 +308,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
             {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             {copied ? 'Copied!' : 'Copy Letter'}
           </button>
-          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 py-3 rounded-lg transition-all font-semibold">
+          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold">
             <Download className="h-4 w-4" /> Download PDF
           </button>
         </div>
@@ -493,7 +498,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           <button
             type="submit"
             disabled={saving || uploading || !content.trim()}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
+            className="w-full cta font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
             {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
@@ -554,7 +559,7 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl">
+      <div className="relative card w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Resolve Dispute</h2>
@@ -709,7 +714,7 @@ function DisputeProgressTracker({ dispute, providerInfo }: {
   const fillWidthPct = ((currentStage - 1) / totalSteps) * 100; // 0 to 83.33%
 
   return (
-    <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+    <div className="card mb-6">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Dispute Progress</p>
       <div className="relative pb-1">
         {/* Background track */}
@@ -792,7 +797,7 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl"
+        className="relative card w-full max-w-lg shadow-2xl"
       >
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
@@ -1041,14 +1046,68 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         />
       )}
 
-      {/* Back + header */}
-      <button onClick={onBack} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
-        <ChevronLeft className="h-4 w-4" /> Back to all disputes
+      {/* Back link + Variant A dispute-detail header (batch7 DisputeDetail).
+          Data-wired: dispute.provider_name, issue_type, disputed_amount,
+          money_recovered (nullable), status label + resolved flag. */}
+      <button
+        onClick={onBack}
+        className="cta-ghost"
+        style={{marginBottom:14,fontSize:12.5,padding:'6px 10px'}}
+      >
+        <ChevronLeft className="h-3.5 w-3.5" /> Back to all disputes
       </button>
 
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+      <div className="page-title-row" style={{marginBottom:14}}>
+        <div>
+          <h1 className="page-title" style={{fontSize:26}}>{dispute.provider_name}</h1>
+          <p className="page-sub">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
+        </div>
+      </div>
+
+      {/* Top status strip — 4 tiles, Variant A pattern */}
+      <div className="kpi-row c4" style={{marginBottom:16}}>
+        <div className="kpi-card">
+          <div className="k-label">Status</div>
+          <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em'}}>{statusConf.label}</div>
+          <div className="k-delta">{isResolved(dispute.status) ? 'Resolved' : 'In progress'}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="k-label">Refund target</div>
+          <div className="k-val amber">
+            {dispute.disputed_amount && dispute.disputed_amount > 0
+              ? `£${dispute.disputed_amount.toFixed(2)}`
+              : '—'}
+          </div>
+          <div className="k-delta">Amount being disputed</div>
+        </div>
+        <div className="kpi-card">
+          <div className="k-label">Provider</div>
+          <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+            {dispute.provider_name}
+          </div>
+          <div className="k-delta">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="k-label">Money recovered</div>
+          <div className="k-val green">
+            {dispute.money_recovered && dispute.money_recovered > 0
+              ? `£${Number(dispute.money_recovered).toFixed(2)}`
+              : '—'}
+          </div>
+          <div className="k-delta">
+            {dispute.money_recovered && dispute.money_recovered > 0
+              ? 'Won · credited'
+              : 'Awaiting outcome'}
+          </div>
+        </div>
+      </div>
+
+      {/* Legacy detail card retained for the status-change dropdown + resolve
+          action. The h1/subtitle inside are now hidden — the page-title-row
+          above replaces them visually. */}
+      <div className="card mb-6">
         <div className="flex items-start justify-between mb-3">
-          <div>
+          <div style={{display:'none'}}>
             <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
               {dispute.provider_name}
             </h1>
@@ -1136,7 +1195,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
       {/* Provider Info Card */}
       {providerInfo && (
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+        <div className="card mb-6">
           <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
           <div className="grid sm:grid-cols-2 gap-3 text-xs">
             {providerInfo.cancellation_method && (
@@ -1197,7 +1256,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </button>
             <button
               onClick={generateFollowUp}
-              className="flex items-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
+              className="flex items-center gap-2 px-3 py-2 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
             >
               {generating ? (
                 <>
@@ -1215,7 +1274,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
 
         {(!dispute.correspondence || dispute.correspondence.length === 0) ? (
-          <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+          <div className="card p-12 text-center">
             <MessageSquare className="h-16 w-16 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-600 mb-2">No correspondence yet</p>
             <p className="text-slate-500 text-sm mb-6">Generate your first letter or add what the company has sent you</p>
@@ -1229,7 +1288,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write your first letter
@@ -1426,7 +1485,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
+                className="flex items-center justify-center gap-2 px-5 py-3 cta font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write next letter
@@ -1450,7 +1509,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       </div>
 
       {/* Contract Upload Section */}
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+      <div className="card mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="h-5 w-5 text-purple-400" />
           <h2 className="text-lg font-bold text-slate-900">Your contract</h2>
@@ -1804,7 +1863,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   if (generating) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+        <div className="card p-12 text-center">
           <div className="relative mx-auto w-20 h-20 mb-6">
             <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
@@ -1819,8 +1878,18 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     );
   }
 
+  const providerInitials = (formData.provider_name || '?')
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || '?';
+  const issueLabel = ISSUE_TYPE_LABELS[formData.issue_type] || formData.issue_type;
+  const disputedAmountNum = parseFloat(formData.disputed_amount || '0') || 0;
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div>
       <UpgradeModal
         open={upgradeModal.open}
         onClose={() => setUpgradeModal((m) => ({ ...m, open: false }))}
@@ -1841,13 +1910,21 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         />
       )}
 
-      <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
-        <ChevronLeft className="h-4 w-4" /> Back
+      <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-3 text-sm transition-all">
+        <ChevronLeft className="h-4 w-4" /> Back to Disputes
       </button>
 
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
-        <p className="text-slate-600 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
+      <div style={{marginBottom:14}}>
+        <span className="compose-eyebrow">● Step 2 of 4 · Draft details</span>
+        <h1 className="page-title">Start your dispute.</h1>
+        <p className="page-sub">Give us the facts and we&apos;ll draft a letter in under 30 seconds — citing the exact UK law that protects you.</p>
+      </div>
+
+      <div className="compose-grid">
+      <div>
+      <div className="card">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Tell us what happened</h2>
+        <p className="text-slate-600 text-sm mb-6">Every field helps us draft a sharper letter. Required fields are marked *.</p>
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -2032,6 +2109,57 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
           </div>
         </form>
       </div>
+      </div>
+
+      {/* Right rail — live preview of send-to + expected outcome */}
+      <aside className="compose-rail">
+        <div className="card" style={{marginBottom:14}}>
+          <div className="rail-label">Send to</div>
+          {formData.provider_name ? (
+            <>
+              <div className="provider-chip">
+                <div className="avatar">{providerInitials}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{formData.provider_name}</div>
+                  <div style={{fontSize:12,color:'var(--text-3)'}}>{issueLabel}</div>
+                </div>
+              </div>
+              <div style={{fontSize:11.5,color:'var(--text-3)',lineHeight:1.55,marginTop:12}}>
+                We&apos;ll look up the provider&apos;s complaints inbox when you send. If we can&apos;t find one, you can paste an address.
+              </div>
+            </>
+          ) : (
+            <div style={{fontSize:13,color:'var(--text-3)',padding:'14px 4px'}}>Enter the company name on the left to preview where we&apos;ll send this.</div>
+          )}
+        </div>
+
+        <div className="card" style={{marginBottom:14}}>
+          <div className="rail-label">Expected outcome</div>
+          {disputedAmountNum > 0 ? (
+            <>
+              <div className="outcome-amount">£{disputedAmountNum.toLocaleString('en-GB',{maximumFractionDigits:2})}</div>
+              <div style={{fontSize:12,color:'var(--text-3)',marginBottom:8}}>{formData.desired_outcome || 'refund / compensation target'}</div>
+            </>
+          ) : (
+            <div style={{fontSize:13,color:'var(--text-3)',marginBottom:10}}>Add an amount on the left to show your refund target.</div>
+          )}
+          <div className="rail-row" style={{borderTop:'1px solid var(--divider)',paddingTop:10}}>
+            <span>AI draft time</span><strong>~28s</strong>
+          </div>
+          <div className="rail-row">
+            <span>Cites UK law</span><strong>Yes</strong>
+          </div>
+          <div className="rail-row">
+            <span>Letter limit</span>
+            <strong>{usageInfo?.limit === null ? 'Unlimited' : usageInfo ? `${usageInfo.used}/${usageInfo.limit}` : '—'}</strong>
+          </div>
+        </div>
+
+        <div className="compose-disclaimer">
+          <strong>Please review before sending.</strong> AI-generated letters are for guidance only and do not constitute legal advice. You remain responsible for the accuracy of claims and details.
+        </div>
+      </aside>
+      </div>
     </div>
   );
 }
@@ -2133,7 +2261,7 @@ function GuidedTour({ onComplete }: { onComplete: () => void }) {
             </div>
             <div className="flex gap-2">
               <button onClick={onComplete} className="text-slate-500 hover:text-slate-700 text-xs transition-all">Skip</button>
-              <button onClick={handleNext} className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
+              <button onClick={handleNext} className="cta text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
                 {step === TOUR_STEPS.length - 1 ? 'Got it' : 'Next'}
               </button>
             </div>
@@ -2200,66 +2328,55 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   };
 
   return (
-    <div className="max-w-5xl">
+    <div>
       {showTour && <GuidedTour onComplete={completeTour} />}
 
-      <div className="flex items-center justify-between mb-6">
+      {/* Variant A header + KPI strip — maps Disputes Centre design to real summary data. */}
+      <div className="page-title-row">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">Disputes</h1>
-          <p className="text-slate-600 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
+          <h1 className="page-title">Disputes Centre</h1>
+          <p className="page-sub">
+            {summary && (summary.total_open > 0 || summary.total_resolved > 0)
+              ? <>
+                  {summary.total_open} open · {summary.total_resolved} resolved ·{' '}
+                  <strong style={{color:'var(--mint-deep)'}}>£{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} recovered</strong> so far.
+                </>
+              : <>Manage complaints, generate legal letters, and track your cases.</>}
+          </p>
         </div>
-        <button
-          id="tour-new-btn"
-          onClick={onNew}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
-        >
-          <Plus className="h-4 w-4" />
-          New dispute
-        </button>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button
+            id="tour-new-btn"
+            onClick={onNew}
+            className="cta"
+            style={{fontSize:12.5}}
+          >
+            <Plus className="h-3.5 w-3.5" /> New dispute
+          </button>
+        </div>
       </div>
 
-      {/* Dispute Summary Stats */}
       {summary && (summary.total_open > 0 || summary.total_resolved > 0) && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <Scale className="h-4 w-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{summary.total_open}</p>
-            <p className="text-slate-500 text-xs mt-0.5">Active Disputes</p>
+        <div className="kpi-row c4" style={{marginBottom:16}}>
+          <div className="kpi-card">
+            <div className="k-label"><Scale className="h-3.5 w-3.5" /> Active disputes</div>
+            <div className="k-val">{summary.total_open}</div>
+            <div className="k-delta">Open cases · awaiting action or reply</div>
           </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <CheckCircle className="h-4 w-4 text-green-400" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{summary.total_resolved}</p>
-            <p className="text-slate-500 text-xs mt-0.5">Resolved</p>
+          <div className="kpi-card">
+            <div className="k-label"><CheckCircle className="h-3.5 w-3.5" /> Won &amp; settled</div>
+            <div className="k-val">{summary.total_resolved}</div>
+            <div className="k-delta">Full or partial wins</div>
           </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <PoundSterling className="h-4 w-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              £{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">Being Disputed</p>
+          <div className="kpi-card">
+            <div className="k-label"><PoundSterling className="h-3.5 w-3.5" /> Being disputed</div>
+            <div className="k-val amber">£{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+            <div className="k-delta">In-flight · sum across open cases</div>
           </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4 text-green-400" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-green-400">
-              £{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">Total Recovered</p>
+          <div className="kpi-card">
+            <div className="k-label"><TrendingUp className="h-3.5 w-3.5" /> Total recovered</div>
+            <div className="k-val green">£{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="k-delta">Lifetime · from resolved disputes</div>
           </div>
         </div>
       )}
@@ -2288,13 +2405,13 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : disputes.length === 0 ? (
-        <div id="tour-list" className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+        <div id="tour-list" className="card p-12 text-center">
           <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-600 mb-2">No disputes yet</p>
           <p className="text-slate-500 text-sm mb-6">Start your first dispute and we will write the perfect complaint letter</p>
           <button
             onClick={onNew}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
+            className="inline-flex items-center gap-2 px-6 py-3 cta font-semibold rounded-lg transition-all"
           >
             <Plus className="h-4 w-4" /> Start a dispute
           </button>
@@ -2308,7 +2425,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                 key={d.id}
                 id={idx === 0 ? 'tour-card' : undefined}
                 onClick={() => onSelect(d.id)}
-                className="w-full text-left bg-white border border-slate-200/50 rounded-2xl p-6 hover:border-emerald-500/30 transition-all"
+                className="w-full text-left card hover:border-emerald-500/30 transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">

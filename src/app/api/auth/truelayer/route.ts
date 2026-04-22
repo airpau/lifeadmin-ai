@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { PLAN_LIMITS, getEffectiveTier } from '@/lib/plan-limits';
 
 const TRUELAYER_AUTH_URL = process.env.TRUELAYER_AUTH_URL || 'https://auth.truelayer.com';
 
@@ -11,14 +12,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Check bank connection limits by tier
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('subscription_tier')
-    .eq('id', user.id)
-    .single();
-
-  const tier = profile?.subscription_tier || 'free';
+  // Bank-connection cap per tier comes from the single PLAN_LIMITS source
+  // of truth now (Free=2, Essential=3, Pro=∞). Previously hard-coded to
+  // 1/2/∞ here — that stayed stale during the April 2026 matrix rewrite.
+  const tier = await getEffectiveTier(user.id);
+  const maxBanks = PLAN_LIMITS[tier].maxBanks;
 
   const { data: existingConnections } = await supabase
     .from('bank_connections')
@@ -28,16 +26,14 @@ export async function GET(request: Request) {
 
   const connectionCount = existingConnections?.length || 0;
 
-  // Tier connection limits: Free=1, Essential=2, Pro=unlimited
-  const maxConnections = tier === 'pro' ? Infinity : tier === 'essential' ? 2 : 1;
-  if (connectionCount >= maxConnections) {
+  if (maxBanks !== null && connectionCount >= maxBanks) {
     return NextResponse.json({
       error: tier === 'free'
-        ? 'Free plan allows 1 bank connection. Upgrade to Essential for 2, or Pro for unlimited.'
-        : 'Essential plan allows 2 bank connections. Upgrade to Pro for unlimited banks.',
+        ? `Free plan allows ${maxBanks} bank connections. Upgrade to Essential for 3, or Pro for unlimited.`
+        : `Essential plan allows ${maxBanks} bank connections. Upgrade to Pro for unlimited banks.`,
       upgradeRequired: true,
       tier,
-      maxConnections,
+      maxConnections: maxBanks,
     }, { status: 403 });
   }
 
