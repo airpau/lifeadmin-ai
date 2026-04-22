@@ -1822,8 +1822,10 @@
    768px — stack side-by-side sections vertically
    ============================================================ */
 @media (max-width: 768px) {
-  /* Hide floating sticky CTA pill — it overlaps demo content on mobile */
+  /* Hide floating sticky CTA pill — it overlaps demo content on mobile.
+     Belt-and-suspenders: JS also blocks visible=true at ≤768px. */
   .m-v2-root .sticky-cta { display: none !important; }
+  .mobile-hidden { display: none !important; }
   .m-v2-root .why-grid,
   .m-v2-root .subs-grid,
   .m-v2-root .assistant-grid,

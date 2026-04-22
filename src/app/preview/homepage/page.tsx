@@ -579,6 +579,8 @@ function StickyCTA() {
     let ticking = false;
     const update = () => {
       ticking = false;
+      // Never show on mobile — fixed pill overlaps demo content on small screens.
+      if (window.innerWidth <= 768) { setVisible(false); return; }
       const y = window.scrollY;
       const finalCta = document.querySelector('.m-v2-root .final-cta');
       const finalTop = finalCta
@@ -604,7 +606,7 @@ function StickyCTA() {
   }, []);
 
   return (
-    <div className={`sticky-cta${visible ? ' shown' : ''}`} aria-hidden={!visible}>
+    <div className={`sticky-cta mobile-hidden${visible ? ' shown' : ''}`} aria-hidden={!visible}>
       <span>Find your overcharges in 30s — no card, no catch.</span>
       <Link href="/auth/signup">Start free →</Link>
     </div>
