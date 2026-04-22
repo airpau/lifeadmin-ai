@@ -234,23 +234,23 @@ export default function HomepageV2Preview() {
       {/* Floating pill nav ------------------------------------------ */}
       <div className={`nav-shell${navScrolled ? ' scrolled' : ''}`} id="navShell">
         <nav className="nav-pill" aria-label="Primary">
-          <a className="nav-logo" href="#">
+          <a className="nav-logo" href="/">
             <span className="pay">Pay</span>
             <span className="backer">backer</span>
           </a>
           <div className="nav-links">
-            <a href="#how">About</a>
+            <a href="/about">About</a>
             <a href="#pricing">Pricing</a>
             <a href="#deals">Deals</a>
             <a href="#paybacker-assistant">Assistant</a>
-            <a href="#">Blog</a>
-            <a href="#">FAQ</a>
+            <a href="/blog">Blog</a>
+            <a href="#faq">FAQ</a>
           </div>
           <div className="nav-cta-row">
-            <a className="nav-signin" href="#">
+            <a className="nav-signin" href="/auth/login">
               Sign in
             </a>
-            <a className="nav-start" href="#">
+            <a className="nav-start" href="/auth/signup">
               Start Free
             </a>
           </div>
@@ -564,13 +564,13 @@ export default function HomepageV2Preview() {
               <div className="num">
                 {stats && stats.avgSavingsPerUser > 0
                   ? formatGBP(stats.avgSavingsPerUser)
-                  : '£8,029'}
+                  : '£1,000+'}
                 <span className="unit">/yr</span>
               </div>
               <div className="underline" />
               <div className="blurb">
-                Most came from forgotten subscriptions and quiet price hikes we flagged
-                automatically — the kind nobody reads the email for.
+                Most UK households are overcharged by £1,000+ a year — forgotten subscriptions,
+                quiet price hikes, and unfair bills we flag automatically.
               </div>
             </div>
             <div className="stat-card reveal">
@@ -1816,48 +1816,73 @@ export default function HomepageV2Preview() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#">Disputes Centre</a>
-              <a href="#">Money Hub</a>
-              <a href="#">Pocket Agent</a>
-              <a href="#">Deals</a>
-              <a href="#">Pricing</a>
+              <a href="/how-it-works">Disputes Centre</a>
+              <a href="/how-it-works">Money Hub</a>
+              <a href="/how-it-works">Pocket Agent</a>
+              <a href="/deals">Deals</a>
+              <a href="/pricing">Pricing</a>
             </div>
             <div className="footer-col">
               <h5>Company</h5>
-              <a href="#">About</a>
-              <a href="#">Blog</a>
-              <a href="#">Press</a>
-              <a href="#">Careers</a>
-              <a href="#">Contact</a>
+              <a href="/about">About</a>
+              <a href="/blog">Blog</a>
+              <a href="/about">Press</a>
+              <a href="/careers">Careers</a>
+              <a href="mailto:hello@paybacker.co.uk">Contact</a>
             </div>
             <div className="footer-col">
               <h5>Legal</h5>
-              <a href="#">Privacy</a>
-              <a href="#">Terms</a>
-              <a href="#">Cookies</a>
-              <a href="#">ICO notice</a>
-              <a href="#">Complaints</a>
+              <a href="/legal/privacy">Privacy</a>
+              <a href="/legal/terms">Terms</a>
+              <a href="/cookie-policy">Cookies</a>
+              <a href="/legal/privacy">ICO notice</a>
+              <a href="mailto:hello@paybacker.co.uk">Complaints</a>
             </div>
             <div className="footer-col">
               <h5>Connect</h5>
               <div className="footer-socials" style={{ marginBottom: '14px' }}>
-                <a href="#" aria-label="X">
+                <a
+                  href="https://x.com/PaybackerUK"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="X"
+                >
                   𝕏
                 </a>
-                <a href="#" aria-label="Instagram">
+                <a
+                  href="https://www.instagram.com/paybacker.co.uk/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Instagram"
+                >
                   ◎
                 </a>
-                <a href="#" aria-label="Facebook">
+                <a
+                  href="https://www.facebook.com/profile.php?id=61579563073310"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Facebook"
+                >
                   f
                 </a>
-                <a href="#" aria-label="TikTok">
+                <a
+                  href="https://www.tiktok.com/@paybacker.co.uk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="TikTok"
+                >
                   ♪
                 </a>
-                <a href="#" aria-label="LinkedIn">
+                <a
+                  href="https://www.linkedin.com/company/112575954/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="LinkedIn"
+                >
                   in
                 </a>
               </div>
-              <a href="#">hello@paybacker.co.uk</a>
+              <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>
             </div>
           </div>
           <div className="footer-bottom">
