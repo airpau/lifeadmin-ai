@@ -1,0 +1,213 @@
+/*
+ * Paybacker Assistant docs — scoped stylesheet.
+ *
+ * Adds documentation-specific primitives (code blocks, tool cards,
+ * troubleshoot collapsibles, info notes) on top of the shared marketing
+ * design system. Inherits tokens from .m-land-root via the consumer
+ * page importing (marketing)/styles.css alongside this file.
+ */
+
+/* Code blocks ----------------------------------------------------------- */
+.m-land-root .doc-code {
+  display: block;
+  background: #0B1220;
+  color: #E5E7EB;
+  border-radius: var(--r-input);
+  padding: 18px 20px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: auto;
+  margin: 0 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.m-land-root .doc-code-small {
+  padding: 14px 16px;
+  font-size: 13px;
+}
+.m-land-root .doc-code-inline {
+  background: #F3F4F6;
+  color: var(--accent-orange-deep);
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+  font-weight: 500;
+}
+
+/* Tools grid ------------------------------------------------------------ */
+.m-land-root .tool-list {
+  max-width: 760px;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+.m-land-root .tool-card {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
+}
+.m-land-root .tool-card code {
+  display: inline-block;
+  color: var(--accent-orange-deep);
+  font-weight: 700;
+  font-size: 14.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-bottom: 8px;
+}
+.m-land-root .tool-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+/* Prereq / numbered step (vertical list) -------------------------------- */
+.m-land-root .doc-step {
+  max-width: 760px;
+  margin: 0 auto 28px;
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+  padding: 28px 32px;
+  box-shadow: var(--shadow-sm);
+}
+.m-land-root .doc-step-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.m-land-root .doc-step-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent-mint);
+  color: #052E1C;
+  font-weight: 700;
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.m-land-root .doc-step h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: var(--track-tight);
+}
+.m-land-root .doc-step p {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  margin: 0 0 14px;
+}
+.m-land-root .doc-step p:last-child { margin-bottom: 0; }
+.m-land-root .doc-step a {
+  color: var(--accent-mint-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+.m-land-root .doc-step a:hover { text-decoration: underline; }
+
+/* Notes / tip box ------------------------------------------------------- */
+.m-land-root .doc-note {
+  background: var(--accent-mint-wash);
+  border: 1px solid rgba(5, 150, 105, 0.15);
+  border-radius: var(--r-input);
+  padding: 14px 18px;
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.55;
+  margin: 16px 0 0;
+}
+
+/* Troubleshoot collapsibles -------------------------------------------- */
+.m-land-root .troubleshoot-list {
+  max-width: 760px;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+.m-land-root .troubleshoot {
+  background: #fff;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  padding: 18px 22px;
+}
+.m-land-root .troubleshoot summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 15.5px;
+  color: var(--text-primary);
+  list-style: none;
+}
+.m-land-root .troubleshoot summary::-webkit-details-marker { display: none; }
+.m-land-root .troubleshoot summary::after {
+  content: '+';
+  float: right;
+  color: var(--accent-mint-deep);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+}
+.m-land-root .troubleshoot[open] summary::after { content: '−'; }
+.m-land-root .troubleshoot p,
+.m-land-root .troubleshoot ul {
+  margin: 12px 0 0;
+  font-size: 14.5px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+.m-land-root .troubleshoot ul {
+  list-style: disc;
+  padding-left: 22px;
+  display: grid;
+  gap: 6px;
+}
+.m-land-root .troubleshoot a {
+  color: var(--accent-mint-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+.m-land-root .troubleshoot a:hover { text-decoration: underline; }
+
+/* Beta pill on hero ----------------------------------------------------- */
+.m-land-root .beta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  background: #F3F4F6;
+  border-radius: var(--r-pill);
+  margin-left: 8px;
+}
+
+/* Docs footnote --------------------------------------------------------- */
+.m-land-root .doc-footnote {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-top: 40px;
+}
+.m-land-root .doc-footnote a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.m-land-root .doc-footnote a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* Responsive tweaks ---------------------------------------------------- */
+@media (max-width: 640px) {
+  .m-land-root .doc-step { padding: 22px 24px; }
+  .m-land-root .doc-code { padding: 14px 16px; font-size: 13px; }
+  .m-land-root .tool-card { padding: 16px 18px; }
+}
