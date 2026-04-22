@@ -205,6 +205,28 @@ function Nav() {
     };
   }, []);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close drawer on route change / anchor click / esc
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const navLinks: ReadonlyArray<readonly [string, string]> = [
+    ['How it works', '#how'],
+    ['Product', '#features'],
+    ['Deals', '#deals'],
+    ['Pricing', '#pricing'],
+    ['Stories', '#testimonials'],
+  ];
+
   return (
     <>
       <div className={`nav-shell${scrolled ? ' scrolled' : ''}`}>
@@ -214,11 +236,9 @@ function Nav() {
             <span className="backer">backer</span>
           </Link>
           <div className="nav-links">
-            <a href="#how">How it works</a>
-            <a href="#pillars">Product</a>
-            <a href="#deals">Deals</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#testimonials">Stories</a>
+            {navLinks.map(([label, href]) => (
+              <a key={href} href={href}>{label}</a>
+            ))}
           </div>
           <div className="nav-cta-row">
             <Link className="nav-signin" href="/auth/login">
@@ -227,6 +247,16 @@ function Nav() {
             <Link className="nav-start" href="/auth/signup">
               Start free
             </Link>
+            <button
+              type="button"
+              className="nav-burger"
+              aria-label="Open menu"
+              aria-expanded={menuOpen}
+              aria-controls="m-v2-mob-menu"
+              onClick={() => setMenuOpen(true)}
+            >
+              <span /><span /><span />
+            </button>
           </div>
         </nav>
       </div>
@@ -235,6 +265,42 @@ function Nav() {
         aria-hidden="true"
         style={{ ['--progress' as string]: 'var(--m-v2-progress, 0)' } as CSSVarProperties}
       />
+
+      {/* Mobile drawer — full-screen sheet that covers the page while open. */}
+      {menuOpen && (
+        <>
+          <div className="nav-drawer-backdrop" onClick={() => setMenuOpen(false)} />
+          <div id="m-v2-mob-menu" className="nav-drawer" role="dialog" aria-modal="true" aria-label="Site navigation">
+            <div className="nav-drawer-head">
+              <Link className="nav-logo" href="/" onClick={() => setMenuOpen(false)}>
+                <span className="pay">Pay</span>
+                <span className="backer">backer</span>
+              </Link>
+              <button
+                type="button"
+                className="nav-drawer-close"
+                aria-label="Close menu"
+                onClick={() => setMenuOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="nav-drawer-links">
+              {navLinks.map(([label, href]) => (
+                <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>
+              ))}
+            </div>
+            <div className="nav-drawer-ctas">
+              <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
+                Sign in
+              </Link>
+              <Link className="btn btn-mint" href="/auth/signup" onClick={() => setMenuOpen(false)}>
+                Start free 14-day trial
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -669,18 +735,9 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== Trust strip ========== */}
-      <section className="trust-strip section-light">
-        <div className="wrap">
-          <div className="trust-row">
-            <div className="trust-item"><div className="ring">ICO</div>Registered data controller</div>
-            <div className="trust-item"><div className="ring">FCA</div>Open Banking via Yapily</div>
-            <div className="trust-item"><div className="ring">GDPR</div>UK data residency</div>
-            <div className="trust-item"><div className="ring">£</div>Stripe-secured payments</div>
-            <div className="trust-item"><div className="ring">UK</div>Paybacker LTD · 15289174</div>
-          </div>
-        </div>
-      </section>
+      {/* Trust strip removed — same credentials already appear in the
+          compact `.trust-bar` above the hero so the lower block was
+          pure duplication pushing real content further down. */}
 
       {/* ========== Stats (mint wash) ========== */}
       <section className="stats-section section-mint" id="stats">
@@ -726,15 +783,16 @@ export default function HomepageV3PreviewPage() {
             </Reveal>
 
             <Reveal className="stat-card" delay={160}>
-              <div className="label">Paybacker success fee</div>
+              <div className="label">Of your refund you keep</div>
               <div className="num">
-                <Counter to={0} />
+                <Counter to={100} />
                 <span className="unit">%</span>
               </div>
               <div className="underline" />
               <div className="blurb">
-                Competitors take 15–30% of what you recover. We charge a flat monthly
-                subscription — every £ you get back is yours.
+                Paybacker takes 0% of your refund. Competitors take 15–30% of what
+                you recover — we just charge a flat monthly subscription, so every
+                £ you get back stays yours.
               </div>
             </Reveal>
           </div>
@@ -1347,9 +1405,9 @@ export default function HomepageV3PreviewPage() {
             </div>
             <div className="footer-col">
               <h5>Product</h5>
-              <a href="#pillars">Disputes Centre</a>
-              <a href="#pillars">Money Hub</a>
-              <a href="#pillars">Pocket Agent</a>
+              <a href="#features">Disputes Centre</a>
+              <a href="#features">Money Hub</a>
+              <a href="#features">Pocket Agent</a>
               <a href="#deals">Deals</a>
               <Link href="/pricing">Pricing</Link>
             </div>

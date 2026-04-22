@@ -1909,4 +1909,150 @@
 
   /* Pricing card CTA buttons */
   .m-v2-root .price-card .btn { width: 100%; justify-content: center; }
+
+  /* "Generate letter" button inside the demo form — previously 10px
+     horizontal padding made the label feel cramped on mobile. */
+  .m-v2-root .mini-form button { padding: 12px 16px; font-size: 14px; }
+}
+
+/* ============================================================
+   Mobile nav drawer — shown when Nav's hamburger is active.
+   Desktop hides .nav-burger and drawer; mobile hides .nav-links
+   and shows .nav-burger via the existing 980px breakpoint.
+   ============================================================ */
+.m-v2-root .nav-burger {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--divider, #E5E7EB);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  padding: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+.m-v2-root .nav-burger span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text-primary, #0B1220);
+  border-radius: 2px;
+}
+
+@media (max-width: 980px) {
+  .m-v2-root .nav-burger { display: inline-flex; }
+  /* Replace "Start free" button with the burger on very narrow viewports
+     so the pill doesn't fight for space. Keep Start free visible down to
+     480px then hide so only burger remains. */
+}
+@media (max-width: 480px) {
+  .m-v2-root .nav-start { display: none; }
+}
+
+.m-v2-root .nav-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 18, 32, 0.5);
+  z-index: 90;
+  backdrop-filter: blur(4px);
+}
+.m-v2-root .nav-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, 92vw);
+  background: #fff;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.35);
+  animation: drawerIn 240ms ease-out;
+}
+@keyframes drawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.m-v2-root .nav-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--divider, #E5E7EB);
+}
+.m-v2-root .nav-drawer-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-secondary, #4B5563);
+  border-radius: 10px;
+}
+.m-v2-root .nav-drawer-close:hover { background: #F3F4F6; }
+.m-v2-root .nav-drawer-links {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px;
+  flex: 1;
+}
+.m-v2-root .nav-drawer-links a {
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary, #0B1220);
+  text-decoration: none;
+  border-radius: 10px;
+}
+.m-v2-root .nav-drawer-links a:hover { background: #F3F4F6; }
+.m-v2-root .nav-drawer-ctas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px 24px;
+  border-top: 1px solid var(--divider, #E5E7EB);
+}
+.m-v2-root .nav-drawer-ctas .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ============================================================
+   Demo stage responsive scaling — the product demos are built at
+   a fixed virtual 980×612 layout (absolutely-positioned panels,
+   flex:0 0 340px left columns etc) and break on narrow viewports.
+   Treat the demo-stage as a container and scale its inner content
+   to match the available width. Everything inside the stage stays
+   on its original virtual canvas so animations don't reflow.
+   ============================================================ */
+.m-v2-root .demo-stage { container-type: inline-size; }
+
+@container (max-width: 820px) {
+  .m-v2-root .demo-stage {
+    aspect-ratio: auto;
+    /* Height = top label (56px) + the inset-bottom gap (40px) +
+       the content frame scaled by (100cqw - inset-x) / 892.
+       892 = 980 content width - 88 inset-x (44 left + 44 right). */
+    height: calc(56px + 40px + 516px * ((100cqw - 88px) / 892));
+    overflow: hidden;
+  }
+  /* The inline-styled inset wrapper becomes the scaled frame. The
+     style attr on the element sets `position: absolute; inset:
+     56px 44px 40px 44px; display: flex; gap: 16px;` — we lock its
+     intrinsic size to the desktop 892x516 content area so children
+     render as designed, then transform-scale it down to the
+     container width. */
+  .m-v2-root .demo-stage > div[style*="position: absolute"] {
+    inset: 56px auto auto 44px !important;
+    width: 892px !important;
+    height: 516px !important;
+    transform: scale(calc((100cqw - 88px) / 892));
+    transform-origin: top left;
+  }
 }
