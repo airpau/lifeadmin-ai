@@ -262,3 +262,18 @@
     z-index: 2;
   }
 }
+
+/* ─── Overview page: responsive 2-col grid ──────────────────────────────
+   Design spec (Variant A): 2fr main column + 1fr sidebar on desktop.
+   Collapses to single column on narrow viewports so the sidebar cards
+   drop under the main content instead of cramming.
+*/
+.shell-v2 .overview-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 14px;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .shell-v2 .overview-grid { grid-template-columns: 1fr; }
+}
