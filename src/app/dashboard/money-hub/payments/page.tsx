@@ -208,9 +208,9 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
                     onChange={e => setAmountInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleAmountSave(); if (e.key === 'Escape') setEditingAmount(false); }}
                     autoFocus
-                    className="w-20 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-900 text-sm text-right focus:outline-none focus:border-mint-400"
+                    className="w-20 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 text-slate-900 text-sm text-right focus:outline-none focus:border-emerald-500"
                   />
-                  <button onClick={handleAmountSave} disabled={saving} className="text-emerald-600 hover:text-mint-300 p-0.5">
+                  <button onClick={handleAmountSave} disabled={saving} className="text-emerald-600 hover:text-emerald-500 p-0.5">
                     <Check className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -222,13 +222,13 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
                 >
                   {hasAmount ? (
                     <>
-                      <p className="text-emerald-600 font-bold group-hover/amt:text-mint-300 transition-colors">
+                      <p className="text-emerald-600 font-bold group-hover/amt:text-emerald-500 transition-colors">
                         £{Math.abs(payment.amount).toFixed(2)}
                       </p>
                       <p className="text-slate-500 text-[10px]">{CYCLE_LABELS[payment.billing_cycle] || payment.billing_cycle}</p>
                     </>
                   ) : (
-                    <p className="text-amber-400/80 text-xs italic hover:text-amber-300">Set amount →</p>
+                    <p className="text-amber-600/80 text-xs italic hover:text-amber-300">Set amount →</p>
                   )}
                 </button>
               )}
@@ -272,7 +272,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
           </div>
 
           {unusedWarning && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-400 bg-orange-500/10 rounded-lg px-2 py-1">
+            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600 bg-orange-500/10 rounded-lg px-2 py-1">
               <AlertCircle className="h-3 w-3" />
               Not used in {lastUsedDays}+ days — consider cancelling
             </div>
@@ -455,7 +455,7 @@ export default function PaymentsPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              tab === t.key ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+              tab === t.key ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'
             }`}
           >
             <t.icon className="h-4 w-4" />

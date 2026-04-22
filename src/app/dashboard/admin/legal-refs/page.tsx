@@ -32,14 +32,14 @@ interface LegalRef {
 
 const STATUS_CONFIG: Record<string, { label: string; icon: typeof CheckCircle; className: string }> = {
   current: { label: 'Current', icon: CheckCircle, className: 'text-green-400 bg-green-500/10' },
-  updated: { label: 'Auto-updated', icon: RefreshCw, className: 'text-emerald-600 bg-mint-400/10' },
-  needs_review: { label: 'Needs review', icon: AlertTriangle, className: 'text-amber-400 bg-amber-500/10' },
+  updated: { label: 'Auto-updated', icon: RefreshCw, className: 'text-emerald-600 bg-emerald-500/10' },
+  needs_review: { label: 'Needs review', icon: AlertTriangle, className: 'text-amber-600 bg-amber-100' },
   outdated: { label: 'Outdated', icon: AlertTriangle, className: 'text-red-400 bg-red-500/10' },
 };
 
 const STRENGTH_CONFIG: Record<string, string> = {
   strong: 'text-green-400',
-  moderate: 'text-amber-400',
+  moderate: 'text-amber-600',
   weak: 'text-red-400',
 };
 
@@ -189,7 +189,7 @@ export default function LegalRefsAdminPage() {
           <button
             onClick={runVerification}
             disabled={verifying}
-            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
           >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {verifying ? 'Verifying...' : 'Run Verification'}
@@ -210,8 +210,8 @@ export default function LegalRefsAdminPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Current', count: counts.current, className: 'border-green-500/20 bg-green-500/5', textClass: 'text-green-400' },
-          { label: 'Auto-updated', count: counts.updated, className: 'border-mint-400/20 bg-mint-400/5', textClass: 'text-emerald-600' },
-          { label: 'Needs review', count: counts.needs_review, className: 'border-amber-500/20 bg-amber-500/5', textClass: 'text-amber-400' },
+          { label: 'Auto-updated', count: counts.updated, className: 'border-emerald-500/20 bg-emerald-500/5', textClass: 'text-emerald-600' },
+          { label: 'Needs review', count: counts.needs_review, className: 'border-amber-200 bg-amber-50', textClass: 'text-amber-600' },
           { label: 'Outdated', count: counts.outdated, className: 'border-red-500/20 bg-red-500/5', textClass: 'text-red-400' },
         ].map(card => (
           <button
@@ -234,13 +234,13 @@ export default function LegalRefsAdminPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search references..."
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 text-sm focus:outline-none focus:border-mint-400"
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500"
           />
         </div>
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-mint-400"
+          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-emerald-500"
         >
           <option value="all">All statuses</option>
           <option value="current">Current</option>
@@ -251,7 +251,7 @@ export default function LegalRefsAdminPage() {
         <select
           value={filterCategory}
           onChange={e => setFilterCategory(e.target.value)}
-          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-mint-400"
+          className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-emerald-500"
         >
           <option value="all">All categories</option>
           {categories.map(cat => (
@@ -300,7 +300,7 @@ export default function LegalRefsAdminPage() {
                       )}
                       <p className="text-slate-600 text-xs mt-1 line-clamp-2 max-w-sm">{ref.summary}</p>
                       {ref.verification_notes && (
-                        <p className="text-amber-400/70 text-[11px] mt-1 line-clamp-1">{ref.verification_notes}</p>
+                        <p className="text-amber-600/70 text-[11px] mt-1 line-clamp-1">{ref.verification_notes}</p>
                       )}
                     </td>
                     <td className="px-5 py-4">
@@ -336,7 +336,7 @@ export default function LegalRefsAdminPage() {
                         href={ref.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-mint-300 transition-colors whitespace-nowrap"
+                        className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-500 transition-colors whitespace-nowrap"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         View source
