@@ -450,30 +450,6 @@ export function createUserBot(): Bot<UserBotContext> {
       );
     }
 
-    // Verify Pro subscription
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
-      .eq('id', linkCode.user_id)
-      .single();
-
-    const tier = profile?.subscription_tier;
-    const status = profile?.subscription_status;
-    const hasStripe = !!profile?.stripe_subscription_id;
-    const isPro =
-      tier === 'pro' &&
-      (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
-
-    if (!isPro) {
-      const linkUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
-      return ctx.reply(
-        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
-          `Pro gives you real-time spending insights, smart budget alerts, AI-drafted complaint letters citing UK consumer law, and proactive bill-increase detection — all for *£9.99/month*.\n\n` +
-          `Once upgraded, generate a fresh link code from your dashboard and come back here.`,
-        { parse_mode: 'Markdown', reply_markup: linkUpgradeKeyboard },
-      );
-    }
-
     // Create or update session
     await supabase.from('telegram_sessions').upsert(
       {
@@ -1953,36 +1929,8 @@ Return JSON: { "subject": "...", "body": "..." }`;
       );
     }
 
-    // Verify Pro subscription + check rate limit in parallel
-    const [profileResult, rateLimitResult] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('subscription_tier, subscription_status, stripe_subscription_id')
-        .eq('id', session.user_id)
-        .single(),
-      checkRateLimit(supabase, session.user_id),
-    ]);
-
-    if (profileResult.error) {
-      console.error('[UserBot] Profile lookup error:', profileResult.error);
-    }
-    const profile = profileResult.data;
-
-    const tier = profile?.subscription_tier;
-    const status = profile?.subscription_status;
-    const hasStripe = !!profile?.stripe_subscription_id;
-    const isPro =
-      tier === 'pro' &&
-      (hasStripe ? ['active', 'trialing'].includes(status ?? '') : status === 'trialing');
-
-    if (!isPro) {
-      const chatUpgradeKeyboard = new InlineKeyboard().url('Upgrade to Pro →', 'https://paybacker.co.uk/dashboard/upgrade');
-      return ctx.reply(
-        `To unlock Pocket Agent, upgrade to *Pro*.\n\n` +
-          `Pro gives you real-time access to your spending, budgets, subscriptions, and disputes — plus AI-drafted complaint letters and proactive bill alerts — all for *£9.99/month*.`,
-        { parse_mode: 'Markdown', reply_markup: chatUpgradeKeyboard },
-      );
-    }
+    // Check rate limit
+    const rateLimitResult = await checkRateLimit(supabase, session.user_id);
 
     if (!rateLimitResult) {
       return ctx.reply(
