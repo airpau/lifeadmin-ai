@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Tag, Loader2, Clock, AlertTriangle, Zap, Trophy, CheckCircle2, Info, X } from 'lucide-react';
 import { capture } from '@/lib/posthog';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
@@ -631,14 +632,83 @@ export default function DealsPage() {
     );
   }
 
+  // Total potential savings — sum of the biggest-saver deal per eligible
+  // subscription category, matching what the cards below render individually.
+  const potentialAnnualSaving = (() => {
+    let total = 0;
+    for (const cat of Object.keys(urgentSubsByCategory) as (keyof typeof DEALS)[]) {
+      const deals = DEALS[cat] || [];
+      const subs = urgentSubsByCategory[cat] || [];
+      if (!deals.length || !subs.length) continue;
+      const best = deals.reduce((max, d) => (d.save > max.save ? d : max), deals[0]);
+      total += (best.save || 0) * subs.length;
+    }
+    return Math.round(total);
+  })();
+  const dealsCount = Object.values(DEALS).reduce((n, arr) => n + (arr?.length || 0), 0) + verifiedDeals.length;
+
   return (
     <div className="max-w-7xl">
-      {/* Hero */}
+      {/* Variant A header */}
       <div className="page-title-row">
         <div>
           <h1 className="page-title">Find Better Deals</h1>
           <p className="page-sub">Personalised savings based on your contracts and bills.</p>
         </div>
+      </div>
+
+      {/* Hero strip (batch7 DealsMarketplace) */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg,#34D399 0%,#059669 100%)',
+          borderRadius: 18,
+          padding: '28px 32px',
+          color: '#fff',
+          marginBottom: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 24,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 280 }}>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '.12em',
+              textTransform: 'uppercase',
+              opacity: 0.85,
+            }}
+          >
+            Deals · updated weekly
+          </span>
+          <h2 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-.015em', margin: '8px 0 6px', color: '#fff' }}>
+            {dealsCount} verified deals
+            {potentialAnnualSaving > 0 && <>, £{potentialAnnualSaving.toLocaleString()} in potential savings.</>}
+            {potentialAnnualSaving === 0 && ' tailored to your subscriptions.'}
+          </h2>
+          <p style={{ fontSize: 13.5, opacity: 0.9, margin: 0, lineHeight: 1.5, maxWidth: 560 }}>
+            We compare your current bills against every deal a UK household could switch to. No affiliate tricks — if
+            it&apos;s the best deal, we show it.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/subscriptions"
+          style={{
+            padding: '12px 20px',
+            fontSize: 13.5,
+            fontWeight: 700,
+            background: '#fff',
+            color: '#059669',
+            borderRadius: 12,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Match against my bills →
+        </Link>
       </div>
 
       {/* Category filter tabs */}
