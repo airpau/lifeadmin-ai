@@ -1,657 +1,536 @@
-'use client';
-
-import { useState, useEffect } from 'react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import { PRICE_IDS } from '@/lib/stripe';
-import Image from 'next/image';
-import { Check, Sparkles, TrendingUp, Zap, Users, Gift, MessageCircle, Bot, X } from 'lucide-react';
-import { WAITLIST_MODE } from '@/lib/config';
-import PublicNavbar from '@/components/PublicNavbar';
-import { capture } from '@/lib/posthog';
-import { motion } from 'framer-motion';
+import type { CSSProperties } from 'react';
+import './styles.css';
 
-const plans = [
-  {
-    name: 'Free',
-    price: { monthly: 0, yearly: 0 },
-    description: 'See what Paybacker can do for you',
-    features: [
-      'Pocket Agent — AI chat on Telegram',
-      '3 AI letters per month (complaints, HMRC, flights, more)',
-      'Upload and scan bills with AI',
-      'Unlimited subscription tracking',
-      'One-time bank scan',
-      'One-time email scan (any provider)',
-      'Basic spending overview',
-      'AI chatbot',
-      'Browse 53+ deals',
-      'Money Recovery Score',
-    ],
-    cta: 'Get started free',
-    waitlistCta: 'Join Waitlist - Free',
-    highlighted: false,
-    trial: false,
-    planKey: 'free' as const,
+/**
+ * /pricing — marketing redesign.
+ *
+ * Design source: design-zip/redesign/batch6.jsx::PricingRecap
+ * Tokens: aliased onto globals.css Tailwind v4 theme in styles.css
+ *
+ * Scoped under `.m-pricing-root` so styles can't leak onto other routes.
+ * Pricing copy pinned to redesign/CONTENT_SOURCES_OF_TRUTH.md — three
+ * tiers only (Free £0 / Essential £4.99 / Pro £9.99) with 0% success fee.
+ */
+
+export const metadata: Metadata = {
+  title: 'Pricing — Free forever, paid from £4.99/mo. 0% success fee, ever.',
+  description:
+    'Three tiers: Free forever for occasional disputes, Essential £4.99/mo for unlimited letters and bank sync, Pro £9.99/mo for the full sweep. No tier ever takes a cut of your refund.',
+  alternates: { canonical: 'https://paybacker.co.uk/pricing' },
+  openGraph: {
+    title: 'Paybacker pricing — Free forever, paid from £4.99/mo',
+    description:
+      'Three tiers. 0% success fee, ever. £4.99/mo for unlimited UK dispute letters and Yapily bank sync (2 accounts). £9.99/mo for unlimited.',
+    url: 'https://paybacker.co.uk/pricing',
+    siteName: 'Paybacker',
+    type: 'website',
   },
-  {
-    name: 'Essential',
-    price: { monthly: 4.99, yearly: 44.99 },
-    description: 'Automated money management',
-    features: [
-      'Pocket Agent — AI chat on Telegram',
-      'Unlimited AI letters (all 11 types)',
-      '1 bank account with daily auto-sync',
-      'Monthly email re-scans',
-      'Full Money Hub dashboard',
-      'AI cancellation emails with legal context',
-      'Smart bill comparison with deal alerts',
-      'Price increase detection alerts',
-      'Energy tariff monitoring (daily)',
-      'Renewal reminders (30, 14, 7 days)',
-      'Contract tracking with end dates',
-      'Budget planner with spending alerts',
-      'Savings challenges (12 goals)',
-      'Weekly Money Digest email',
-      'Listen to letters (AI voice)',
-    ],
-    cta: 'Subscribe to Essential',
-    waitlistCta: 'Join Waitlist - Essential',
-    highlighted: false,
-    trial: false,
-    planKey: 'essential' as const,
-    priceIds: {
-      monthly: PRICE_IDS.essential_monthly,
-      yearly:  PRICE_IDS.essential_yearly,
-    },
-  },
-  {
-    name: 'Pro',
-    price: { monthly: 9.99, yearly: 94.99 },
-    description: 'Complete financial intelligence',
-    features: [
-      'Pocket Agent — AI chat on Telegram',
-      'Everything in Essential, plus:',
-      'Unlimited bank accounts',
-      'Unlimited email scans',
-      'Full transaction-level spending analysis',
-      'AI financial chatbot (18 tools)',
-      'Paybacker Assistant — ask an AI about your money (MCP)',
-      'CSV & Excel export of transactions',
-      'Savings goals with progress tracking',
-      'Annual financial report (PDF)',
-      'On-demand financial reports',
-      'Priority support',
-    ],
-    cta: 'Subscribe to Pro',
-    waitlistCta: 'Join Waitlist - Pro',
-    highlighted: true,
-    trial: true,
-    planKey: 'pro' as const,
-    priceIds: {
-      monthly: PRICE_IDS.pro_monthly,
-      yearly:  PRICE_IDS.pro_yearly,
-    },
-  },
+};
+
+type CSSVarProperties = CSSProperties & Record<`--${string}`, string | number>;
+
+const SIGNUP_HREF = '/auth/signup';
+const SIGNIN_HREF = '/auth/login';
+
+function MarkNav({ active }: { active: 'About' | 'Pricing' | 'Blog' | 'Careers' }) {
+  const links: ReadonlyArray<readonly [typeof active, string]> = [
+    ['About', '/about'],
+    ['Pricing', '/pricing'],
+    ['Blog', '/blog'],
+    ['Careers', '/careers'],
+  ];
+  return (
+    <div className="nav-shell">
+      <nav className="nav-pill" aria-label="Primary">
+        <Link className="nav-logo" href="/">
+          <span className="pay">Pay</span>
+          <span className="backer">backer</span>
+        </Link>
+        <div className="nav-links">
+          {links.map(([label, href]) => (
+            <Link
+              key={label}
+              href={href}
+              className={active === label ? 'is-active' : undefined}
+              aria-current={active === label ? 'page' : undefined}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+        <div className="nav-cta-row">
+          <Link className="nav-signin" href={SIGNIN_HREF}>Sign in</Link>
+          <Link className="nav-start" href={SIGNUP_HREF}>Start Free</Link>
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+function MarkFoot() {
+  return (
+    <footer>
+      <div className="wrap">
+        <div className="footer-grid">
+          <div className="footer-brand">
+            <div className="logo">
+              <span>Pay</span>
+              <span className="backer">backer</span>
+            </div>
+            <p>The UK&apos;s AI money-back engine. We find what you&apos;re losing and fight to get it back.</p>
+            <p style={{ marginTop: 14, fontSize: 11, color: 'var(--text-on-ink-dim)', maxWidth: 320 }}>
+              AI-generated letters are for guidance only and do not constitute legal advice. For complex disputes, always consult a qualified solicitor.
+            </p>
+          </div>
+          <div className="footer-col">
+            <h5>Product</h5>
+            <Link href="/dashboard/complaints">Disputes Centre</Link>
+            <Link href="/dashboard/money-hub">Money Hub</Link>
+            <Link href="/dashboard">Pocket Agent</Link>
+            <Link href="/deals">Deals</Link>
+            <Link href="/pricing">Pricing</Link>
+          </div>
+          <div className="footer-col">
+            <h5>Company</h5>
+            <Link href="/about">About</Link>
+            <Link href="/blog">Blog</Link>
+            <Link href="/careers">Careers</Link>
+            <a href="mailto:hello@paybacker.co.uk">Contact</a>
+          </div>
+          <div className="footer-col">
+            <h5>Legal</h5>
+            <Link href="/legal/privacy">Privacy</Link>
+            <Link href="/legal/terms">Terms</Link>
+            <Link href="/cookie-policy">Cookies</Link>
+          </div>
+          <div className="footer-col">
+            <h5>Connect</h5>
+            <div className="footer-socials" style={{ marginBottom: 14 }}>
+              <a href="https://x.com/PaybackerUK" aria-label="X" target="_blank" rel="noopener noreferrer">𝕏</a>
+              <a href="https://www.instagram.com/paybacker.co.uk/" aria-label="Instagram" target="_blank" rel="noopener noreferrer">◎</a>
+              <a href="https://www.facebook.com/profile.php?id=61579563073310" aria-label="Facebook" target="_blank" rel="noopener noreferrer">f</a>
+              <a href="https://www.tiktok.com/@paybacker.co.uk" aria-label="TikTok" target="_blank" rel="noopener noreferrer">♪</a>
+              <a href="https://www.linkedin.com/company/112575954/" aria-label="LinkedIn" target="_blank" rel="noopener noreferrer">in</a>
+            </div>
+            <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <div>© 2026 Paybacker LTD · Company no. 15289174 · Registered in England &amp; Wales</div>
+          <div>paybacker.co.uk · Made in London 🇬🇧</div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// "On a typical £216 refund" math table — figures pre-computed from the
+// percentage ranges so we don't claim anything stronger than the
+// 15–30% band that's already on the homepage.
+const MATH_ROWS: ReadonlyArray<{
+  label: string;
+  keep: string;
+  note: string;
+  highlight: boolean;
+}> = [
+  { label: 'Competitor A (30%)', keep: '£151.20', note: 'lost £64.80', highlight: false },
+  { label: 'Competitor B (25%)', keep: '£162.00', note: 'lost £54.00', highlight: false },
+  { label: 'Competitor C (15–20%)', keep: '£172–183', note: 'lost £32–43', highlight: false },
+  { label: 'Paybacker (0%)', keep: '£216.00', note: 'you keep £216', highlight: true },
+];
+
+const COMPARE_ROWS: ReadonlyArray<readonly [string, string, string, string]> = [
+  ['AI dispute letters', '3 / month', 'Unlimited', 'Unlimited'],
+  ['Bank sync (read-only, FCA via Yapily)', '—', '2 accounts', 'Unlimited'],
+  ['Email inbox scan', '—', '•', '•'],
+  ['Subscription tracker', 'Manual only', '•', '•'],
+  ['Public deals marketplace', '•', '•', '•'],
+  ['Pocket Agent in Telegram', '—', '•', '•'],
+  ['Deal alerts on bill changes', '—', '—', '•'],
+  ['Priority human review', '—', '—', '•'],
+  ['Success fee on refunds', '0%', '0%', '0%'],
+];
+
+const FAQS: ReadonlyArray<readonly [string, string]> = [
+  [
+    'What does "Founding Member · locked-in forever" actually mean?',
+    'If you join on Essential (£4.99) or Pro (£9.99), that price is guaranteed for as long as you stay subscribed — even after we raise prices for new customers. Cancel and resubscribe later, you go to the then-current price.',
+  ],
+  [
+    'How do you make money if you don\u2019t take a cut of refunds?',
+    'Flat subscription revenue. We\u2019re deliberately small and deliberately cheap — we\u2019d rather grow slowly and keep the incentives clean than take 25% of your refund like everyone else.',
+  ],
+  [
+    'Is my bank data safe?',
+    'We use Yapily (FCA-authorised) for read-only bank sync. We never see your password. We never initiate payments. Full audit log in Settings \u2192 Connected accounts. ICO registered, UK-based, GDPR compliant.',
+  ],
+  [
+    'Can I cancel anytime?',
+    'Yes — one click, no "are you sure" theatre, no 30-day notice. You keep access until the end of your current month.',
+  ],
+  [
+    'What if a dispute letter doesn\u2019t get me a refund?',
+    'Most letters do succeed. When they don\u2019t, we provide next-step guidance (Ombudsman, CMA, small-claims) and all the evidence logged. You never pay per-dispute.',
+  ],
 ];
 
 export default function PricingPage() {
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [loading, setLoading] = useState<string | null>(null);
-  const [waitlistEmail, setWaitlistEmail] = useState('');
-  const [waitlistName, setWaitlistName] = useState('');
-  const [waitlistPlan, setWaitlistPlan] = useState<string | null>(null);
-  const [waitlistSuccess, setWaitlistSuccess] = useState(false);
-  const [waitlistError, setWaitlistError] = useState('');
-  const [foundingSpots, setFoundingSpots] = useState<number | null>(null);
-  const router = useRouter();
-  const supabase = createClient();
-
-  useEffect(() => {
-    fetch('/api/founding-member')
-      .then(r => r.json())
-      .then(d => { if (d.active) setFoundingSpots(d.remaining); })
-      .catch(() => {});
-  }, []);
-
-  const handleSubscribe = async (priceId: string | undefined, planName: string) => {
-    if (!priceId) {
-      router.push('/auth/signup');
-      return;
-    }
-
-    // Verify user is logged in before calling checkout
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push(`/auth/login?redirect=/pricing`);
-      return;
-    }
-
-    setLoading(planName);
-
-    try {
-      capture('checkout_started', { priceId, billingCycle, planName });
-      console.log('Stripe checkout: sending request', { priceId, billingCycle });
-      const res = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId, billingCycle }),
-      });
-
-      console.log('Stripe checkout: response status', res.status);
-      const text = await res.text();
-      console.log('Stripe checkout: response body', text);
-
-      let data: any;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(`Server returned invalid response (status ${res.status}): ${text.substring(0, 200)}`);
-      }
-
-      if (data.url) {
-        // Store transaction data before Stripe redirect (for Awin tracking on return)
-        // Note: orderRef will be overridden by subscription ID from sync response
-        const tier = planName.toLowerCase();
-        sessionStorage.setItem('awin_checkout', JSON.stringify({ tier }));
-        window.location.href = data.url;
-      } else if (data.alreadySubscribed) {
-        alert('You are already on this plan.');
-        setLoading(null);
-      } else {
-        throw new Error(data.error || `No checkout URL returned (status ${res.status})`);
-      }
-    } catch (error: any) {
-      console.error('Subscription error:', error);
-      alert(error.message || 'Failed to start subscription. Please try again.');
-      setLoading(null);
-    }
-  };
-
-  const handleWaitlistPlan = (planKey: string) => {
-    setWaitlistPlan(planKey);
-    setWaitlistSuccess(false);
-    setWaitlistError('');
-  };
-
-  const handleWaitlistSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading('waitlist');
-    setWaitlistError('');
-
-    try {
-      const res = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: waitlistName,
-          email: waitlistEmail,
-          plan_preference: waitlistPlan,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to join waitlist');
-      }
-
-      setWaitlistSuccess(true);
-      setWaitlistEmail('');
-      setWaitlistName('');
-    } catch (err: any) {
-      setWaitlistError(err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(null);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-navy-950">
-      <PublicNavbar />
+    <div className="m-pricing-root">
+      <MarkNav active="Pricing" />
 
-      {/* Spacer for fixed navbar */}
-      <div className="h-16" />
+      {/* HERO */}
+      <section
+        className="section-light glow-wrap"
+        style={{ '--glow-opacity': 0.18, paddingTop: 140, paddingBottom: 60 } as CSSVarProperties}
+      >
+        <div className="wrap" style={{ textAlign: 'center' }}>
+          <span className="eyebrow" style={{ color: 'var(--accent-orange-deep)' }}>
+            ● Three tiers — Founding rates locked in forever
+          </span>
+          <h1
+            style={{
+              fontSize: 'var(--fs-display)',
+              lineHeight: 0.96,
+              fontWeight: 700,
+              letterSpacing: 'var(--track-tight)',
+              margin: '18px auto 24px',
+              maxWidth: 1040,
+            }}
+          >
+            <span style={{ display: 'block', color: 'var(--text-primary)' }}>Free forever.</span>
+            <span style={{ display: 'block', color: 'var(--accent-mint-deep)' }}>Paid from £4.99/mo.</span>
+            <span style={{ display: 'block', color: 'var(--accent-orange-deep)' }}>We never take a cut.</span>
+          </h1>
+          <p
+            style={{
+              fontSize: 19,
+              color: 'var(--text-secondary)',
+              maxWidth: 700,
+              lineHeight: 1.5,
+              margin: '0 auto 32px',
+            }}
+          >
+            Start free for occasional disputes. Pay £4.99/mo when you want unlimited letters and bank sync. £9.99/mo for the full sweep across every account. No tier ever charges a success fee on your refund.
+          </p>
+        </div>
+      </section>
 
-      {/* Waitlist Banner */}
-      {WAITLIST_MODE && (
-        <div className="bg-mint-400/5 border-b border-mint-400/20">
-          <div className="container mx-auto px-4 md:px-6 py-3 text-center">
-            <p className="text-mint-400 text-sm font-medium">
-              Launching soon - join the waitlist for early access and 30% off your first month
-            </p>
+      {/* PRICING GRID */}
+      <section className="pricing-section" style={{ paddingTop: 40 }}>
+        <div className="wrap">
+          <div className="pricing-grid">
+            <div className="price-card">
+              <div className="tier">Free</div>
+              <div className="price">
+                £0<span className="per">/forever</span>
+              </div>
+              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
+              <ul>
+                <li>3 AI dispute letters / month</li>
+                <li>Manual subscription tracker</li>
+                <li>Public deals marketplace</li>
+              </ul>
+              <Link className="btn btn-ghost cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
+                Start free →
+              </Link>
+            </div>
+
+            <div className="price-card featured">
+              <span className="ribbon">Most popular</span>
+              <div className="tier">Essential</div>
+              <div className="price">
+                £4.99<span className="per">/month</span>
+              </div>
+              <div className="founding">Founding member · locked-in forever</div>
+              <ul>
+                <li>Unlimited AI dispute letters</li>
+                <li>Bank sync — 2 accounts</li>
+                <li>Email inbox scan</li>
+                <li>Pocket Agent in Telegram</li>
+              </ul>
+              <Link className="btn btn-mint cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
+                Start 14-day trial →
+              </Link>
+            </div>
+
+            <div className="price-card">
+              <div className="tier">Pro</div>
+              <div className="price">
+                £9.99<span className="per">/month</span>
+              </div>
+              <div className="founding">Founding member · locked-in forever</div>
+              <ul>
+                <li>Everything in Essential</li>
+                <li>Unlimited bank &amp; email connections</li>
+                <li>Deal alerts on bill changes</li>
+                <li>Priority human review on complex disputes</li>
+              </ul>
+              <Link className="btn btn-ghost cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
+                Go Pro →
+              </Link>
+            </div>
+          </div>
+          <p className="compare-link">
+            <a href="#compare">See the full feature comparison ↓</a>
+          </p>
+        </div>
+      </section>
+
+      {/* THE MATH */}
+      <section style={{ padding: '120px 0', background: 'var(--accent-mint-wash)' }}>
+        <div className="wrap">
+          <div
+            className="math-grid"
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 56, alignItems: 'center' }}
+          >
+            <div>
+              <span className="eyebrow">The math</span>
+              <h2
+                style={{
+                  fontSize: 'var(--fs-h2)',
+                  fontWeight: 700,
+                  letterSpacing: 'var(--track-tight)',
+                  margin: '12px 0 16px',
+                  lineHeight: 1.05,
+                }}
+              >
+                Three tiers. Zero success fees.
+              </h2>
+              <p style={{ fontSize: 16.5, lineHeight: 1.6, color: 'var(--text-secondary)', margin: 0 }}>
+                Whichever tier you pick, we never take a cut of your refund. Competitors charge 15–30% on a successful dispute — on a typical £216 refund, that&apos;s up to £65 out of your pocket. Our revenue comes from the flat subscription, so the incentive stays clean: the more we help you, the longer you stay.
+              </p>
+            </div>
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 'var(--r-card)',
+                border: '1px solid var(--divider)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  padding: '16px 24px',
+                  borderBottom: '1px solid var(--divider)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 'var(--track-eyebrow)',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-tertiary)',
+                }}
+              >
+                On a typical £216 refund
+              </div>
+              {MATH_ROWS.map((row) => (
+                <div
+                  key={row.label}
+                  style={{
+                    padding: '16px 24px',
+                    borderBottom: '1px solid var(--divider)',
+                    display: 'grid',
+                    gridTemplateColumns: '1.4fr 1fr 1.3fr',
+                    gap: 14,
+                    alignItems: 'center',
+                    background: row.highlight ? 'var(--accent-mint-wash)' : '#fff',
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: row.highlight ? 700 : 500 }}>{row.label}</div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      letterSpacing: '-.01em',
+                      color: row.highlight ? 'var(--accent-mint-deep)' : 'var(--text-primary)',
+                    }}
+                  >
+                    {row.keep}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: row.highlight ? 'var(--accent-mint-deep)' : 'var(--text-tertiary)',
+                      fontWeight: row.highlight ? 700 : 400,
+                    }}
+                  >
+                    {row.note}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      )}
+      </section>
 
-      {/* Hero */}
-      <div className="container mx-auto px-4 md:px-6 py-8 md:py-12 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8">
-            <TrendingUp className="h-4 w-4" />
-            AI-powered consumer rights for UK households
+      {/* COMPARISON TABLE */}
+      <section id="compare" style={{ padding: '120px 0' }}>
+        <div className="wrap">
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
+            <span className="eyebrow">Full comparison</span>
+            <h2
+              style={{
+                fontSize: 'var(--fs-h2)',
+                fontWeight: 700,
+                letterSpacing: 'var(--track-tight)',
+                margin: '12px 0 0',
+                lineHeight: 1.05,
+              }}
+            >
+              What&apos;s actually included.
+            </h2>
           </div>
-
-          <h1 className="font-[family-name:var(--font-heading)] text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-            Simple, transparent pricing
-          </h1>
-
-          {/* Founding Member Banner */}
-          {foundingSpots !== null && foundingSpots > 0 ? (
-            <div className="bg-mint-400/10 border border-mint-400/30 rounded-2xl px-6 py-4 max-w-2xl mx-auto mb-8">
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <Gift className="h-5 w-5 text-mint-400" />
-                <p className="text-mint-400 font-bold text-lg">Try Pro FREE for 14 days</p>
-              </div>
-              <p className="text-slate-400 text-sm">Full Pro access for 14 days. No card required. Cancel anytime.</p>
-            </div>
-          ) : (
-            <div className="bg-brand-400/10 border border-brand-400/30 rounded-2xl px-6 py-4 max-w-2xl mx-auto mb-8">
-              <p className="text-brand-400 font-semibold text-lg">Founding member pricing</p>
-              <p className="text-slate-400 text-sm mt-1">Price increases after our first 1,000 members</p>
-            </div>
-          )}
-
-          <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
-            Choose the plan that fits your needs. All plans include our AI agents working 24/7 to get your money back.
-          </p>
-        </motion.div>
-
-        {/* Billing Toggle */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-          className="flex items-center justify-center gap-4 mb-8"
-        >
-          <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-white' : 'text-slate-500'}`}>
-            Monthly
-          </span>
-          <button
-            onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
-            className="relative w-14 h-7 bg-navy-800 border border-navy-700/50 rounded-full transition-all"
+          <div
+            style={{
+              background: '#fff',
+              border: '1px solid var(--divider)',
+              borderRadius: 'var(--r-card)',
+              overflow: 'hidden',
+            }}
           >
             <div
-              className={`absolute top-1 left-1 w-5 h-5 bg-mint-400 rounded-full transition-transform ${
-                billingCycle === 'yearly' ? 'translate-x-7' : ''
-              }`}
-            />
-          </button>
-          <span className={`text-sm font-medium ${billingCycle === 'yearly' ? 'text-white' : 'text-slate-500'}`}>
-            Yearly
-            <span className="ml-2 text-mint-400 text-xs">(Save 17%)</span>
-          </span>
-        </motion.div>
-
-        {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto items-start">
-          {plans.map((plan, index) => {
-            const price = billingCycle === 'monthly' ? plan.price.monthly : plan.price.yearly;
-            const priceId = plan.priceIds?.[billingCycle];
-
-            return (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
-                className={`relative bg-navy-900 border rounded-2xl p-8 transition-all ${
-                  plan.highlighted
-                    ? 'border-mint-400/50 ring-2 ring-mint-400/50 scale-100 md:scale-105'
-                    : 'border-navy-700/50'
-                }`}
+              className="compare-table-head"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                background: 'var(--surface-base)',
+                padding: '18px 28px',
+                fontSize: 12,
+                fontWeight: 600,
+                letterSpacing: 'var(--track-eyebrow)',
+                textTransform: 'uppercase',
+                color: 'var(--text-tertiary)',
+              }}
+            >
+              <div>Feature</div>
+              <div style={{ textAlign: 'center' }}>Free</div>
+              <div style={{ textAlign: 'center', color: 'var(--accent-mint-deep)' }}>Essential · £4.99</div>
+              <div style={{ textAlign: 'center' }}>Pro · £9.99</div>
+            </div>
+            {COMPARE_ROWS.map((row) => (
+              <div
+                key={row[0]}
+                className="compare-table-row"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                  padding: '18px 28px',
+                  borderTop: '1px solid var(--divider)',
+                  fontSize: 14.5,
+                  alignItems: 'center',
+                }}
               >
-                {plan.highlighted && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-mint-400 text-navy-950 px-4 py-1 rounded-full text-sm font-semibold">
-                    Recommended
-                  </div>
-                )}
-
-                {plan.planKey && (
-                  <div className="mb-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
-                    <Bot className="h-5 w-5 text-amber-400 flex-shrink-0" />
-                    <span className="text-amber-400 text-sm font-semibold">Includes Pocket Agent</span>
-                    <Sparkles className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                  </div>
-                )}
-
-                {plan.planKey !== 'free' && (
-                  <div className="mb-4">
-                    <span className="inline-block bg-mint-400/10 text-mint-400 text-xs font-semibold px-3 py-1 rounded-full border border-mint-400/20">
-                      Founding Member Pricing
-                    </span>
-                  </div>
-                )}
-
-                <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-white">{plan.name}</h3>
-                    {plan.trial && !WAITLIST_MODE && (
-                      <span className="bg-mint-400/10 text-mint-400 text-xs font-medium px-2 py-0.5 rounded-full border border-mint-400/20">
-                        14-day free trial
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-300 text-sm mb-4">{plan.description}</p>
-
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-3xl md:text-5xl font-bold text-white">&pound;{price}</span>
-                    {price > 0 && (
-                      <span className="text-slate-400">
-                        /{billingCycle === 'monthly' ? 'mo' : 'yr'}
-                      </span>
-                    )}
-                  </div>
-
-                  {billingCycle === 'yearly' && price > 0 && (
-                    <p className="text-sm text-slate-400">
-                      &pound;{(price / 12).toFixed(2)}/month billed annually
-                      <span className="ml-2 inline-block bg-mint-400/10 text-mint-400 text-xs font-semibold px-2 py-0.5 rounded-full border border-mint-400/20">Best Value</span>
-                    </p>
-                  )}
-                </div>
-
-                {WAITLIST_MODE ? (
-                  <button
-                    onClick={() => handleWaitlistPlan(plan.planKey)}
-                    className={`w-full py-3 rounded-xl font-semibold transition-all ${
-                      plan.highlighted
-                        ? 'bg-mint-400 hover:bg-mint-500 text-navy-950'
-                        : 'bg-navy-800 hover:bg-navy-700 text-white border border-navy-700/50'
-                    }`}
+                <div style={{ color: 'var(--text-primary)' }}>{row[0]}</div>
+                {row.slice(1).map((value, j) => (
+                  <div
+                    key={j}
+                    style={{
+                      textAlign: 'center',
+                      color:
+                        value === '•'
+                          ? 'var(--accent-mint-deep)'
+                          : value === '—'
+                          ? '#D1D5DB'
+                          : 'var(--text-secondary)',
+                      fontWeight: value === '•' ? 700 : 500,
+                      fontSize: value === '•' ? 18 : 14,
+                    }}
                   >
-                    {plan.waitlistCta}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleSubscribe(priceId, plan.name)}
-                    disabled={loading === plan.name}
-                    className={`w-full py-3 rounded-xl font-semibold transition-all ${
-                      plan.highlighted
-                        ? 'bg-mint-400 hover:bg-mint-500 text-navy-950'
-                        : 'bg-navy-800 hover:bg-navy-700 text-white border border-navy-700/50'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {loading === plan.name ? 'Loading...' : plan.cta}
-                  </button>
-                )}
-                {plan.trial && !WAITLIST_MODE && (
-                  <p className="text-xs text-slate-500 text-center mt-2 mb-4">
-                    No card required during trial. Cancel anytime.
-                  </p>
-                )}
-                {(!plan.trial || WAITLIST_MODE) && <div className="mb-6" />}
-
-                <ul className="space-y-3">
-                  {plan.features.map((feature, i) => {
-                    const isPocketAgent = feature.startsWith('Pocket Agent');
-                    return (
-                      <li key={i} className={`flex items-start gap-3 ${isPocketAgent ? 'bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 -mx-1' : ''}`}>
-                        {isPocketAgent ? (
-                          <MessageCircle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                        ) : (
-                          <Check className="h-5 w-5 text-mint-400 flex-shrink-0 mt-0.5" />
-                        )}
-                        <span className={`text-sm ${isPocketAgent ? 'text-amber-300 font-semibold' : 'text-slate-300'}`}>{feature}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Waitlist modal/form when a plan is selected */}
-        {WAITLIST_MODE && waitlistPlan && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-8 max-w-md w-full shadow-2xl">
-              {waitlistSuccess ? (
-                <div className="text-center py-4">
-                  <div className="bg-mint-400/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Check className="h-8 w-8 text-mint-400" />
+                    {value}
                   </div>
-                  <h3 className="font-[family-name:var(--font-heading)] text-2xl font-bold text-white mb-2">You&apos;re on the list!</h3>
-                  <p className="text-slate-400 mb-2">We&apos;ll be in touch when we launch.</p>
-                  <p className="text-mint-400 text-sm font-medium mb-6">You&apos;ll get 30% off your first month as an early supporter.</p>
-                  <button
-                    onClick={() => setWaitlistPlan(null)}
-                    className="text-slate-400 hover:text-white text-sm"
-                  >
-                    Close
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleWaitlistSubmit} className="space-y-4">
-                  <div className="text-center mb-2">
-                    <h3 className="font-[family-name:var(--font-heading)] text-xl font-bold text-white mb-1">
-                      Join the waitlist - {waitlistPlan.charAt(0).toUpperCase() + waitlistPlan.slice(1)} plan
-                    </h3>
-                    <p className="text-slate-400 text-sm">Get early access and 30% off your first month.</p>
-                  </div>
-
-                  <div>
-                    <input
-                      type="text"
-                      required
-                      value={waitlistName}
-                      onChange={(e) => setWaitlistName(e.target.value)}
-                      className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                      placeholder="Your name"
-                    />
-                  </div>
-
-                  <div>
-                    <input
-                      type="email"
-                      required
-                      value={waitlistEmail}
-                      onChange={(e) => setWaitlistEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-navy-950 border border-navy-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-mint-400 focus:ring-1 focus:ring-mint-400"
-                      placeholder="you@example.com"
-                    />
-                  </div>
-
-                  {waitlistError && (
-                    <p className="text-red-400 text-sm">{waitlistError}</p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading === 'waitlist'}
-                    className="w-full bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {loading === 'waitlist' ? 'Joining...' : 'Join Waitlist'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setWaitlistPlan(null)}
-                    className="w-full text-slate-400 hover:text-white text-sm py-2"
-                  >
-                    Cancel
-                  </button>
-                </form>
-              )}
-            </div>
+                ))}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      </section>
 
-        {/* Plan Comparison Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.5 }}
-          className="mt-16 max-w-4xl mx-auto"
-        >
-          <h2 className="font-[family-name:var(--font-heading)] text-2xl md:text-3xl font-bold text-white text-center mb-8">
-            Compare plans
+      {/* FAQ */}
+      <section style={{ padding: '0 0 120px' }}>
+        <div className="wrap" style={{ maxWidth: 820 }}>
+          <span className="eyebrow">Common questions</span>
+          <h2
+            style={{
+              fontSize: 'var(--fs-h2)',
+              fontWeight: 700,
+              letterSpacing: 'var(--track-tight)',
+              margin: '12px 0 32px',
+              lineHeight: 1.05,
+            }}
+          >
+            Things people ask first.
           </h2>
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-navy-700/50">
-                  <th className="text-left text-slate-400 font-medium px-6 py-4">Feature</th>
-                  <th className="text-center text-slate-400 font-medium px-4 py-4">Free</th>
-                  <th className="text-center text-slate-400 font-medium px-4 py-4">Essential</th>
-                  <th className="text-center text-white font-semibold px-4 py-4">Pro</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-navy-700/30">
-                <tr className="bg-amber-500/5">
-                  <td className="px-6 py-4 text-white font-medium flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-amber-400" />
-                    Pocket Agent
-                    <span className="bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded">NEW</span>
-                  </td>
-                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
-                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
-                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">AI complaint letters</td>
-                  <td className="text-center px-4 py-4 text-slate-400">3/month</td>
-                  <td className="text-center px-4 py-4 text-slate-300">Unlimited</td>
-                  <td className="text-center px-4 py-4 text-white font-medium">Unlimited</td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">Bank accounts</td>
-                  <td className="text-center px-4 py-4 text-slate-400">One-time scan</td>
-                  <td className="text-center px-4 py-4 text-slate-300">1 (daily sync)</td>
-                  <td className="text-center px-4 py-4 text-white font-medium">Unlimited</td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">Email inbox scans</td>
-                  <td className="text-center px-4 py-4 text-slate-400">One-time</td>
-                  <td className="text-center px-4 py-4 text-slate-300">Monthly</td>
-                  <td className="text-center px-4 py-4 text-white font-medium">Unlimited</td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">Spending analysis</td>
-                  <td className="text-center px-4 py-4 text-slate-400">Top 5</td>
-                  <td className="text-center px-4 py-4 text-slate-300">Full dashboard</td>
-                  <td className="text-center px-4 py-4 text-white font-medium">Transaction-level</td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">AI financial chatbot</td>
-                  <td className="text-center px-4 py-4 text-slate-400">Basic</td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4 text-white font-medium">18 tools</td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">Financial reports</td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4 text-white font-medium">Annual + on-demand</td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 text-slate-300">Priority support</td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4"><X className="h-4 w-4 text-slate-600 mx-auto" /></td>
-                  <td className="text-center px-4 py-4"><Check className="h-4 w-4 text-mint-400 mx-auto" /></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-
-        {/* Trust Section */}
-        <div className="mt-16 pt-16 border-t border-navy-700/50">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-              className="text-center"
+          {FAQS.map(([question, answer]) => (
+            <details
+              key={question}
+              style={{ padding: '22px 24px', borderBottom: '1px solid var(--divider)', cursor: 'pointer' }}
             >
-              <Zap className="h-8 w-8 text-mint-400 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-white mb-2">Instant Setup</h3>
-              <p className="text-slate-400 text-sm">
-                Start saving money in minutes. No technical setup required.
+              <summary
+                style={{
+                  fontSize: 17,
+                  fontWeight: 600,
+                  letterSpacing: '-.01em',
+                  listStyle: 'none',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {question}
+                <span style={{ fontSize: 22, color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 16 }}>+</span>
+              </summary>
+              <p style={{ fontSize: 15.5, lineHeight: 1.65, color: 'var(--text-secondary)', margin: '14px 0 0' }}>
+                {answer}
               </p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-              className="text-center"
-            >
-              <TrendingUp className="h-8 w-8 text-mint-400 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-white mb-2">Legally Grounded</h3>
-              <p className="text-slate-400 text-sm">
-                Every letter cites the exact UK consumer law that applies - Consumer Rights Act 2015, Ofcom, FCA rules.
-              </p>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.7 }}
-              className="text-center"
-            >
-              <Sparkles className="h-8 w-8 text-mint-400 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-white mb-2">Cancel Anytime</h3>
-              <p className="text-slate-400 text-sm">
-                No lock-in. Cancel your subscription whenever you want.
-              </p>
-            </motion.div>
-          </div>
+            </details>
+          ))}
         </div>
-      </div>
+      </section>
 
-      {/* Footer matching landing page */}
-      <footer className="border-t border-navy-700/50 bg-navy-950">
-        <div className="container mx-auto px-4 md:px-6 py-16">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
-            <div>
-              <h4 className="text-white font-semibold text-sm mb-4">Product</h4>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="/pricing" className="text-slate-500 hover:text-white transition-all">Pricing</Link></li>
-                <li><Link href="/deals" className="text-slate-500 hover:text-white transition-all">Deals</Link></li>
-                <li><Link href="/auth/signup" className="text-slate-500 hover:text-white transition-all">Get Started</Link></li>
-                <li><Link href="/auth/login" className="text-slate-500 hover:text-white transition-all">Sign In</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold text-sm mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="/blog" className="text-slate-500 hover:text-white transition-all">Blog</Link></li>
-                <li><Link href="/about" className="text-slate-500 hover:text-white transition-all">About</Link></li>
-                <li><Link href="/deals" className="text-slate-500 hover:text-white transition-all">Deal Comparison</Link></li>
-                <li><Link href="/docs/paybacker-assistant" className="text-slate-500 hover:text-white transition-all">Paybacker Assistant</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold text-sm mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="/privacy-policy" className="text-slate-500 hover:text-white transition-all">Privacy Policy</Link></li>
-                <li><Link href="/terms-of-service" className="text-slate-500 hover:text-white transition-all">Terms of Service</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold text-sm mb-4">Contact</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="mailto:hello@paybacker.co.uk" className="text-slate-500 hover:text-white transition-all">hello@paybacker.co.uk</a></li>
-                <li><a href="mailto:support@paybacker.co.uk" className="text-slate-500 hover:text-white transition-all">support@paybacker.co.uk</a></li>
-              </ul>
-            </div>
+      {/* FINAL CTA */}
+      <section
+        className="final-cta section-ink glow-wrap"
+        style={{ '--glow-opacity': 0.14, padding: '120px 0' } as CSSVarProperties}
+      >
+        <div className="wrap">
+          <h2 style={{ fontSize: 'clamp(48px,6vw,72px)' }}>
+            Stop overpaying.
+            <br />
+            Start <span className="mint">fighting</span> back.
+          </h2>
+          <p style={{ textAlign: 'center', color: 'var(--text-on-ink-dim)', marginTop: 24, fontSize: 17 }}>
+            Free forever tier. Paid plans from £4.99/mo. Keep 100% of your refunds, every tier.
+          </p>
+          <div
+            style={{
+              textAlign: 'center',
+              marginTop: 36,
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <Link className="btn btn-mint" href={SIGNUP_HREF}>
+              Start free →
+            </Link>
+            <Link
+              className="btn btn-ghost on-ink"
+              style={{ color: 'var(--accent-mint)', borderColor: 'rgba(52,211,153,.3)' }}
+              href={SIGNUP_HREF}
+            >
+              Try Essential 14 days free →
+            </Link>
           </div>
-          <div className="border-t border-navy-700/50 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={24} height={24} className="rounded-lg" />
-              <span className="text-slate-500 text-sm">&copy; 2026 Paybacker LTD. All rights reserved.</span>
-            </div>
-            <div className="flex items-center gap-2 text-slate-600 text-xs">
-              <span>🇬🇧 Made in the UK</span>
-            </div>
-          </div>
+          <p style={{ textAlign: 'center', marginTop: 20, color: 'var(--text-on-ink-dim)', fontSize: 13 }}>
+            No card. Cancel anytime. Your data stays in the UK.
+          </p>
         </div>
-      </footer>
+      </section>
+
+      <MarkFoot />
     </div>
   );
 }
