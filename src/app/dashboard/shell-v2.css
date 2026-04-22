@@ -316,3 +316,16 @@
   cursor: pointer;
 }
 .shell-v2 .cta-danger:hover { background: #FEE2E2; }
+
+/* ─── Dispute compose: 2-col grid with right rail (batch7 DisputeCompose) ─── */
+.shell-v2 .compose-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+.shell-v2 .compose-eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mint-deep);display:inline-block;margin-bottom:10px}
+.shell-v2 .compose-rail .rail-label{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-bottom:14px}
+.shell-v2 .compose-rail .provider-chip{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#F3F4F6;border-radius:10px}
+.shell-v2 .compose-rail .provider-chip .avatar{width:36px;height:36px;border-radius:8px;background:var(--mint-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0}
+.shell-v2 .compose-rail .outcome-amount{font-size:32px;font-weight:700;letter-spacing:-.02em;color:var(--mint-deep);margin-bottom:4px}
+.shell-v2 .compose-rail .rail-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text-2);margin-top:8px}
+.shell-v2 .compose-disclaimer{padding:14px 18px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;font-size:12.5px;color:#78350F;line-height:1.5}
+@media (max-width: 1100px) {
+  .shell-v2 .compose-grid { grid-template-columns: 1fr; }
+}

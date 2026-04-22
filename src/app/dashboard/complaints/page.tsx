@@ -1873,8 +1873,18 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
     );
   }
 
+  const providerInitials = (formData.provider_name || '?')
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || '?';
+  const issueLabel = ISSUE_TYPE_LABELS[formData.issue_type] || formData.issue_type;
+  const disputedAmountNum = parseFloat(formData.disputed_amount || '0') || 0;
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div>
       <UpgradeModal
         open={upgradeModal.open}
         onClose={() => setUpgradeModal((m) => ({ ...m, open: false }))}
@@ -1895,13 +1905,21 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         />
       )}
 
-      <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
-        <ChevronLeft className="h-4 w-4" /> Back
+      <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-3 text-sm transition-all">
+        <ChevronLeft className="h-4 w-4" /> Back to Disputes
       </button>
 
+      <div style={{marginBottom:14}}>
+        <span className="compose-eyebrow">● Step 2 of 4 · Draft details</span>
+        <h1 className="page-title">Start your dispute.</h1>
+        <p className="page-sub">Give us the facts and we&apos;ll draft a letter in under 30 seconds — citing the exact UK law that protects you.</p>
+      </div>
+
+      <div className="compose-grid">
+      <div>
       <div className="card">
-        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Start a new dispute</h2>
-        <p className="text-slate-600 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Tell us what happened</h2>
+        <p className="text-slate-600 text-sm mb-6">Every field helps us draft a sharper letter. Required fields are marked *.</p>
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -2085,6 +2103,57 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
             </button>
           </div>
         </form>
+      </div>
+      </div>
+
+      {/* Right rail — live preview of send-to + expected outcome */}
+      <aside className="compose-rail">
+        <div className="card" style={{marginBottom:14}}>
+          <div className="rail-label">Send to</div>
+          {formData.provider_name ? (
+            <>
+              <div className="provider-chip">
+                <div className="avatar">{providerInitials}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{formData.provider_name}</div>
+                  <div style={{fontSize:12,color:'var(--text-3)'}}>{issueLabel}</div>
+                </div>
+              </div>
+              <div style={{fontSize:11.5,color:'var(--text-3)',lineHeight:1.55,marginTop:12}}>
+                We&apos;ll look up the provider&apos;s complaints inbox when you send. If we can&apos;t find one, you can paste an address.
+              </div>
+            </>
+          ) : (
+            <div style={{fontSize:13,color:'var(--text-3)',padding:'14px 4px'}}>Enter the company name on the left to preview where we&apos;ll send this.</div>
+          )}
+        </div>
+
+        <div className="card" style={{marginBottom:14}}>
+          <div className="rail-label">Expected outcome</div>
+          {disputedAmountNum > 0 ? (
+            <>
+              <div className="outcome-amount">£{disputedAmountNum.toLocaleString('en-GB',{maximumFractionDigits:2})}</div>
+              <div style={{fontSize:12,color:'var(--text-3)',marginBottom:8}}>{formData.desired_outcome || 'refund / compensation target'}</div>
+            </>
+          ) : (
+            <div style={{fontSize:13,color:'var(--text-3)',marginBottom:10}}>Add an amount on the left to show your refund target.</div>
+          )}
+          <div className="rail-row" style={{borderTop:'1px solid var(--divider)',paddingTop:10}}>
+            <span>AI draft time</span><strong>~28s</strong>
+          </div>
+          <div className="rail-row">
+            <span>Cites UK law</span><strong>Yes</strong>
+          </div>
+          <div className="rail-row">
+            <span>Letter limit</span>
+            <strong>{usageInfo?.limit === null ? 'Unlimited' : usageInfo ? `${usageInfo.used}/${usageInfo.limit}` : '—'}</strong>
+          </div>
+        </div>
+
+        <div className="compose-disclaimer">
+          <strong>Please review before sending.</strong> AI-generated letters are for guidance only and do not constitute legal advice. You remain responsible for the accuracy of claims and details.
+        </div>
+      </aside>
       </div>
     </div>
   );
