@@ -189,7 +189,7 @@ export default function LegalRefsAdminPage() {
           <button
             onClick={runVerification}
             disabled={verifying}
-            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+            className="flex items-center gap-2 cta font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
           >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {verifying ? 'Verifying...' : 'Run Verification'}
@@ -271,7 +271,7 @@ export default function LegalRefsAdminPage() {
       <p className="text-slate-700 text-sm mb-4">Showing {filtered.length} of {refs.length} references</p>
 
       {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

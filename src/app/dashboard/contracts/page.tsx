@@ -253,7 +253,7 @@ function ContractDetail({ contract, onBack, onDelete }: {
       </button>
 
       {/* Header */}
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+      <div className="card mb-6">
         <div className="flex items-start justify-between mb-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
@@ -294,7 +294,7 @@ function ContractDetail({ contract, onBack, onDelete }: {
 
       {/* Key terms */}
       {terms.length > 0 && (
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+        <div className="card mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Key terms</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             {terms.map((term) => (
@@ -523,7 +523,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-md shadow-2xl my-4">
+      <div className="relative card w-full max-w-md shadow-2xl my-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <h2 className="text-lg font-bold text-slate-900">Add a contract</h2>
@@ -869,7 +869,7 @@ export default function ContractsPage() {
               <button
                 key={c.id}
                 onClick={() => setSelectedContract(c)}
-                className="text-left bg-white border border-slate-200/50 rounded-2xl p-5 hover:border-orange-600/30 transition-all"
+                className="text-left card hover:border-orange-600/30 transition-all"
               >
                 <div className="flex items-start justify-between mb-2">
                   <Shield className="h-5 w-5 text-purple-400" />

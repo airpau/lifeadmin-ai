@@ -384,7 +384,7 @@ export default function McpSettingsPage() {
 
       {/* Revoked history */}
       {revoked.length > 0 && (
-        <details className="bg-white border border-slate-200 rounded-2xl">
+        <details className="card">
           <summary className="p-4 text-sm text-slate-600 cursor-pointer hover:text-slate-800">
             Revoked tokens ({revoked.length})
           </summary>

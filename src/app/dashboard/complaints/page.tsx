@@ -226,7 +226,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="relative card w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <h2 className="text-xl font-bold text-slate-900 truncate">{title}</h2>
@@ -303,7 +303,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
             {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             {copied ? 'Copied!' : 'Copy Letter'}
           </button>
-          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 py-3 rounded-lg transition-all font-semibold">
+          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold">
             <Download className="h-4 w-4" /> Download PDF
           </button>
         </div>
@@ -493,7 +493,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           <button
             type="submit"
             disabled={saving || uploading || !content.trim()}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
+            className="w-full cta font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
           >
             {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
@@ -554,7 +554,7 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl">
+      <div className="relative card w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Resolve Dispute</h2>
@@ -709,7 +709,7 @@ function DisputeProgressTracker({ dispute, providerInfo }: {
   const fillWidthPct = ((currentStage - 1) / totalSteps) * 100; // 0 to 83.33%
 
   return (
-    <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+    <div className="card mb-6">
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Dispute Progress</p>
       <div className="relative pb-1">
         {/* Background track */}
@@ -792,7 +792,7 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl"
+        className="relative card w-full max-w-lg shadow-2xl"
       >
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
@@ -1046,7 +1046,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         <ChevronLeft className="h-4 w-4" /> Back to all disputes
       </button>
 
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+      <div className="card mb-6">
         <div className="flex items-start justify-between mb-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
@@ -1136,7 +1136,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
       {/* Provider Info Card */}
       {providerInfo && (
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+        <div className="card mb-6">
           <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
           <div className="grid sm:grid-cols-2 gap-3 text-xs">
             {providerInfo.cancellation_method && (
@@ -1197,7 +1197,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </button>
             <button
               onClick={generateFollowUp}
-              className="flex items-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
+              className="flex items-center gap-2 px-3 py-2 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
             >
               {generating ? (
                 <>
@@ -1215,7 +1215,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
 
         {(!dispute.correspondence || dispute.correspondence.length === 0) ? (
-          <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+          <div className="card p-12 text-center">
             <MessageSquare className="h-16 w-16 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-600 mb-2">No correspondence yet</p>
             <p className="text-slate-500 text-sm mb-6">Generate your first letter or add what the company has sent you</p>
@@ -1229,7 +1229,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write your first letter
@@ -1426,7 +1426,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
+                className="flex items-center justify-center gap-2 px-5 py-3 cta font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write next letter
@@ -1450,7 +1450,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       </div>
 
       {/* Contract Upload Section */}
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+      <div className="card mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Shield className="h-5 w-5 text-purple-400" />
           <h2 className="text-lg font-bold text-slate-900">Your contract</h2>
@@ -1804,7 +1804,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   if (generating) {
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+        <div className="card p-12 text-center">
           <div className="relative mx-auto w-20 h-20 mb-6">
             <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
@@ -1845,7 +1845,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         <ChevronLeft className="h-4 w-4" /> Back
       </button>
 
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6">
+      <div className="card">
         <h2 className="text-xl font-bold text-slate-900 mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
         <p className="text-slate-600 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
 
@@ -2133,7 +2133,7 @@ function GuidedTour({ onComplete }: { onComplete: () => void }) {
             </div>
             <div className="flex gap-2">
               <button onClick={onComplete} className="text-slate-500 hover:text-slate-700 text-xs transition-all">Skip</button>
-              <button onClick={handleNext} className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
+              <button onClick={handleNext} className="cta text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
                 {step === TOUR_STEPS.length - 1 ? 'Got it' : 'Next'}
               </button>
             </div>
@@ -2211,7 +2211,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         <button
           id="tour-new-btn"
           onClick={onNew}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 cta font-semibold rounded-lg transition-all"
         >
           <Plus className="h-4 w-4" />
           New dispute
@@ -2221,7 +2221,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       {/* Dispute Summary Stats */}
       {summary && (summary.total_open > 0 || summary.total_resolved > 0) && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+          <div className="card">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
                 <Scale className="h-4 w-4 text-amber-600" />
@@ -2230,7 +2230,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             <p className="text-2xl font-bold text-slate-900">{summary.total_open}</p>
             <p className="text-slate-500 text-xs mt-0.5">Active Disputes</p>
           </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+          <div className="card">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
                 <CheckCircle className="h-4 w-4 text-green-400" />
@@ -2239,7 +2239,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             <p className="text-2xl font-bold text-slate-900">{summary.total_resolved}</p>
             <p className="text-slate-500 text-xs mt-0.5">Resolved</p>
           </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+          <div className="card">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
                 <PoundSterling className="h-4 w-4 text-amber-600" />
@@ -2250,7 +2250,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             </p>
             <p className="text-slate-500 text-xs mt-0.5">Being Disputed</p>
           </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+          <div className="card">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
                 <TrendingUp className="h-4 w-4 text-green-400" />
@@ -2288,13 +2288,13 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : disputes.length === 0 ? (
-        <div id="tour-list" className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+        <div id="tour-list" className="card p-12 text-center">
           <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-600 mb-2">No disputes yet</p>
           <p className="text-slate-500 text-sm mb-6">Start your first dispute and we will write the perfect complaint letter</p>
           <button
             onClick={onNew}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
+            className="inline-flex items-center gap-2 px-6 py-3 cta font-semibold rounded-lg transition-all"
           >
             <Plus className="h-4 w-4" /> Start a dispute
           </button>
@@ -2308,7 +2308,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                 key={d.id}
                 id={idx === 0 ? 'tour-card' : undefined}
                 onClick={() => onSelect(d.id)}
-                className="w-full text-left bg-white border border-slate-200/50 rounded-2xl p-6 hover:border-emerald-500/30 transition-all"
+                className="w-full text-left card hover:border-emerald-500/30 transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">

@@ -104,7 +104,7 @@ export default function AnnualReportPage() {
         <button
           onClick={handleDownloadPDF}
           disabled={pdfLoading}
-          className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-4 py-2 rounded-xl transition-all disabled:opacity-50 text-sm"
+          className="flex items-center gap-2 cta-ghost font-semibold px-4 py-2 rounded-xl transition-all disabled:opacity-50 text-sm"
         >
           {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {pdfLoading ? 'Generating PDF…' : 'Download PDF'}
@@ -121,13 +121,13 @@ export default function AnnualReportPage() {
       </div>
 
       {/* Executive Summary */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+      <div className="card p-6 mb-6">
         <h2 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2"><FileText className="h-5 w-5 text-emerald-600" />Executive Summary</h2>
         <p className="text-slate-700 text-sm leading-relaxed">{data.executiveSummary}</p>
       </div>
 
       {/* Financial Health Score */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+      <div className="card p-6 mb-6">
         <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Shield className="h-5 w-5 text-emerald-600" />Financial Health Score</h2>
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <div className="relative w-32 h-32 flex-shrink-0">
@@ -158,7 +158,7 @@ export default function AnnualReportPage() {
       </div>
 
       {/* Income vs Spending Overview */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+      <div className="card p-6 mb-6">
         <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Wallet className="h-5 w-5 text-emerald-600" />Income & Spending</h2>
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-slate-100/50 rounded-xl p-4 border border-slate-200 text-center">
@@ -194,7 +194,7 @@ export default function AnnualReportPage() {
 
       {/* Spending by Category */}
       {data.spendingByCategory.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+        <div className="card p-6 mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Target className="h-5 w-5 text-emerald-600" />Spending by Category</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="h-64">
@@ -225,7 +225,7 @@ export default function AnnualReportPage() {
 
       {/* Subscription Deep Dive */}
       {data.subscriptionsList.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+        <div className="card p-6 mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2"><CreditCard className="h-5 w-5 text-emerald-600" />Subscriptions</h2>
           <p className="text-sm text-slate-600 mb-4">{data.activeSubscriptions} active &middot; {formatGBP(data.monthlySubscriptionCost)}/mo &middot; {formatGBP(data.annualSubscriptionCost)}/yr</p>
           <div className="space-y-2">
@@ -258,7 +258,7 @@ export default function AnnualReportPage() {
 
       {/* Price Increase Analysis */}
       {data.priceAlerts.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+        <div className="card p-6 mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2"><TrendingUp className="h-5 w-5 text-red-400" />Price Increases Detected</h2>
           <p className="text-sm text-slate-600 mb-4">Total annual impact: <span className="text-red-400 font-semibold">{formatGBP(data.totalPriceIncreaseImpact)}/yr</span></p>
           <div className="space-y-2">
@@ -300,7 +300,7 @@ export default function AnnualReportPage() {
 
       {/* Disputes */}
       {data.disputes.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+        <div className="card p-6 mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-blue-400" />Disputes & Complaints ({data.totalDisputes})</h2>
           <div className="space-y-2">
             {data.disputes.map(d => (
@@ -324,7 +324,7 @@ export default function AnnualReportPage() {
       )}
 
       {/* Connected Accounts & Data Quality */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+      <div className="card p-6 mb-6">
         <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2"><Building2 className="h-5 w-5 text-emerald-600" />Data Quality & Connections</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <div className="bg-slate-100/50 rounded-xl p-3 border border-slate-200 text-center">
@@ -370,7 +370,7 @@ export default function AnnualReportPage() {
 
       {/* Top Merchants */}
       {data.topMerchants.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
+        <div className="card p-6 mb-6">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Top Merchants</h2>
           <div className="space-y-2">
             {data.topMerchants.slice(0, 10).map((m, i) => {
@@ -398,7 +398,7 @@ export default function AnnualReportPage() {
           {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Download PDF
         </button>
-        <Link href="/dashboard/profile" className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-6 py-3 rounded-xl transition-all">
+        <Link href="/dashboard/profile" className="flex items-center gap-2 cta-ghost font-semibold px-6 py-3 rounded-xl transition-all">
           <ArrowLeft className="h-4 w-4" /> Back to Profile
         </Link>
       </div>

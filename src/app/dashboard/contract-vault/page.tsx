@@ -236,7 +236,7 @@ export default function ContractVaultPage() {
       </div>
 
       {/* Upload Section */}
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-8">
+      <div className="card p-8">
         <h2 className="text-sm font-semibold text-orange-600 uppercase tracking-wider mb-4 flex items-center gap-2">
           <Upload className="h-4 w-4" /> Upload Contract
         </h2>
@@ -324,7 +324,7 @@ export default function ContractVaultPage() {
 
           {/* Subscription Contracts Section */}
           {subscriptionContracts.length === 0 && uploadedContracts.length === 0 ? (
-            <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+            <div className="card p-12 text-center">
               <FolderLock className="h-10 w-10 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-900 font-semibold mb-1">No contracts yet</p>
               <p className="text-slate-600 text-sm mb-6">
@@ -342,7 +342,7 @@ export default function ContractVaultPage() {
               <>
                 {/* Stats */}
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-white border border-slate-200/50 rounded-xl p-4 text-center">
+                  <div className="card text-center">
                     <p className="text-2xl font-bold text-slate-900">{subscriptionContracts.length}</p>
                     <p className="text-slate-600 text-xs mt-0.5">Total Contracts</p>
                   </div>
@@ -350,7 +350,7 @@ export default function ContractVaultPage() {
                     <p className="text-2xl font-bold text-orange-600">{expiringSoon.length}</p>
                     <p className="text-slate-600 text-xs mt-0.5">Expiring Soon</p>
                   </div>
-                  <div className="bg-white border border-slate-200/50 rounded-xl p-4 text-center">
+                  <div className="card text-center">
                     <p className="text-2xl font-bold text-emerald-400">
                       £{subscriptionContracts.reduce((sum, c) => sum + (c.amount || 0), 0).toFixed(2)}
                     </p>

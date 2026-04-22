@@ -73,7 +73,7 @@ export default function SpendingPage() {
           <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
           <p className="text-slate-600">Connect your bank account to see where your money goes</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-12 text-center">
+        <div className="card shadow-sm p-12 text-center">
           <BarChart3 className="h-16 w-16 text-slate-300 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-slate-900 mb-2">No spending data yet</h3>
           <p className="text-slate-600 mb-6">Connect your bank account to get personalised spending insights.</p>
@@ -99,7 +99,7 @@ export default function SpendingPage() {
 
       {/* Summary Cards — Monthly Averages */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+        <div className="card shadow-sm p-5">
           <p className="text-slate-500 text-xs mb-1">Average monthly spend</p>
           <p className="text-2xl font-bold text-slate-900">£{summary.monthly_avg_spend?.toLocaleString() || Math.round(summary.total_spend / Math.max(summary.months_analysed, 1)).toLocaleString()}</p>
         </div>
@@ -107,7 +107,7 @@ export default function SpendingPage() {
           <p className="text-slate-500 text-xs mb-1">Average monthly income</p>
           <p className="text-2xl font-bold text-green-600">£{summary.monthly_avg_income?.toLocaleString() || Math.round(summary.total_income / Math.max(summary.months_analysed, 1)).toLocaleString()}</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+        <div className="card shadow-sm p-5">
           <p className="text-slate-500 text-xs mb-1">This month so far</p>
           <p className="text-2xl font-bold text-slate-900">£{summary.current_month_spend.toLocaleString()}</p>
           {summary.month_change_percent !== 0 && (
@@ -117,14 +117,14 @@ export default function SpendingPage() {
             </div>
           )}
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+        <div className="card shadow-sm p-5">
           <p className="text-slate-500 text-xs mb-1">Last month</p>
           <p className="text-2xl font-bold text-slate-900">£{summary.previous_month_spend.toLocaleString()}</p>
         </div>
       </div>
 
       {/* Monthly Breakdown — Spend vs Income */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8">
+      <div className="card shadow-sm p-6 mb-8">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Monthly Overview</h2>
         <p className="text-slate-500 text-xs mb-4">Spend vs income over the last {summary.months_analysed} months</p>
         <div className="space-y-4">
@@ -165,7 +165,7 @@ export default function SpendingPage() {
       </div>
 
       {/* Category Breakdown — Expandable */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8">
+      <div className="card shadow-sm p-6 mb-8">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Where your money goes</h2>
         <p className="text-slate-500 text-xs mb-4">Monthly average per category · click to expand</p>
         <div className="space-y-2">
@@ -266,7 +266,7 @@ export default function SpendingPage() {
       </div>
 
       {/* Biggest Transactions — Pro only */}
-      <div className={`bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8 ${!isPro ? 'relative' : ''}`}>
+      <div className={`card shadow-sm p-6 mb-8 ${!isPro ? 'relative' : ''}`}>
         <h2 className="text-lg font-bold text-slate-900 mb-1">Biggest Transactions</h2>
         <p className="text-slate-500 text-xs mb-4">Your largest single payments</p>
 

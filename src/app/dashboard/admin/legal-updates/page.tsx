@@ -368,7 +368,7 @@ export default function LegalUpdatesAdminPage() {
           return (
             <div
               key={item.id}
-              className="bg-white border border-slate-200/50 rounded-2xl overflow-hidden"
+              className="card overflow-hidden"
             >
               {/* Item header */}
               <button

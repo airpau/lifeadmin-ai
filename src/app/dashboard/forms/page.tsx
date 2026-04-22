@@ -215,7 +215,7 @@ export default function FormsPage() {
           {loadingHistory ? (
             <div className="text-center py-12"><Loader2 className="h-8 w-8 text-emerald-600 animate-spin mx-auto" /></div>
           ) : selectedHistoryTask ? (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+            <div className="card shadow-sm p-6">
               <button onClick={() => setSelectedHistoryTask(null)} className="text-slate-500 hover:text-slate-900 text-sm mb-4 flex items-center gap-1">
                 ← Back to history
               </button>
@@ -244,7 +244,7 @@ export default function FormsPage() {
               )}
             </div>
           ) : historyTasks.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-12 text-center">
+            <div className="card shadow-sm p-12 text-center">
               <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
               <p className="text-slate-600 mb-2">No letters generated yet</p>
               <button onClick={() => setActiveTab('generate')} className="text-emerald-600 text-sm hover:text-emerald-700">Generate your first letter</button>
@@ -301,7 +301,7 @@ export default function FormsPage() {
           </div>
 
           {/* Details form */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+          <div className="card shadow-sm p-6">
             {selectedForm ? (
               <div className="space-y-4">
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -386,7 +386,7 @@ export default function FormsPage() {
             </button>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-6">
+          <div className="card shadow-sm p-6 mb-6">
             <pre
               className="text-sm text-slate-800 whitespace-pre-wrap font-mono leading-relaxed"
               onCopy={(e) => {
@@ -399,7 +399,7 @@ export default function FormsPage() {
           </div>
 
           {result.legalReferences?.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
+            <div className="card mb-6">
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Legal References</h3>
               <ul className="text-xs text-slate-600 space-y-1">
                 {result.legalReferences.map((ref: string, i: number) => (
@@ -410,7 +410,7 @@ export default function FormsPage() {
           )}
 
           {result.nextSteps?.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
+            <div className="card mb-6">
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Next Steps</h3>
               <ol className="text-sm text-slate-700 space-y-2">
                 {result.nextSteps.map((step: string, i: number) => (
@@ -421,7 +421,7 @@ export default function FormsPage() {
           )}
 
           {result.estimatedSuccess && (
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
+            <div className="card mb-6">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 text-sm">Estimated success rate</span>
                 <span className={`font-bold ${result.estimatedSuccess >= 70 ? 'text-green-600' : result.estimatedSuccess >= 50 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -433,7 +433,7 @@ export default function FormsPage() {
 
           <div className="flex gap-3">
             <button onClick={handleCopy}
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 py-3 rounded-lg transition-all">
+              className="flex-1 flex items-center justify-center gap-2 cta-ghost py-3 rounded-lg transition-all">
               {copied ? <><CheckCircle className="h-4 w-4" /> Copied!</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
             </button>
             <button onClick={handlePDF}
