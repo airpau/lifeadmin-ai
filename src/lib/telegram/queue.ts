@@ -154,6 +154,14 @@ export function buildActionButtons(
         ],
       ];
 
+    case 'budget_overrun':
+      return [
+        [
+          { text: '📊 See transactions', callback_data: `palert_txns_${alertId}` },
+          { text: '🔕 Dismiss',         callback_data: `palert_dismiss_${alertId}` },
+        ],
+      ];
+
     case 'dispute_response':
       return [
         [

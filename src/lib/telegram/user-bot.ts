@@ -120,6 +120,7 @@ READ TOOLS — Core:
 - get_subscriptions — All subscriptions and recurring payments; filter by status/category/provider
 - get_contracts — Active contracts (broadband, mobile, mortgage, etc.) with end dates
 - get_budget_status — Budget limits vs actual spend for the current month
+- get_budget_transactions — ALL transactions for a specific budget category and month; use this (not list_transactions) when the user asks to see what makes up a budget total (e.g. "show my grocery transactions", "what's in my food budget?", "break down my energy spend")
 - get_upcoming_renewals — Subscriptions and contracts renewing within 30 days
 - get_price_alerts — Active price increase alerts on recurring payments
 - get_disputes — Dispute/complaint cases and their status
@@ -175,6 +176,7 @@ WRITE TOOLS:
 RULES:
 - ALWAYS call the relevant tool before answering — never make up numbers or say "I can't access that"
 - draft_dispute_letter is TERMINAL: call it exactly once when asked for a complaint letter. Do NOT call search_legal_rights first. Do NOT call anything after it.
+- For budget drill-downs (user asks to see transactions behind a budget total), ALWAYS use get_budget_transactions — never use list_transactions for this. get_budget_transactions uses the same classification engine as the budget dashboard so totals always match.
 - generate_cancellation_email: call once when user wants to cancel a specific provider. Returns a ready-to-send letter.
 - create_support_ticket: only use when the user genuinely needs human support, not for questions you can answer yourself.
 - DO IT with a tool — never suggest the user "go to the dashboard" for something you can do here.
@@ -1723,6 +1725,42 @@ Return JSON: { "subject": "...", "body": "..." }`;
     } catch (err) {
       console.error('[UserBot] palert_add_sub_ error:', err);
       if (chatId) await ctx.api.sendMessage(chatId, 'Failed to add subscription. Please try again.');
+    }
+  });
+
+  // Show all transactions for a budget-overrun alert category
+  bot.callbackQuery(/^palert_txns_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Loading transactions...' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    let categoryName = 'budget';
+
+    try {
+      const [alertRes, sessionRes] = await Promise.all([
+        supabase.from('telegram_pending_alerts').select('*').eq('id', alertId).single(),
+        supabase.from('telegram_sessions').select('user_id').eq('telegram_chat_id', chatId).eq('is_active', true).single(),
+      ]);
+      const alert = alertRes.data;
+      const session = sessionRes.data;
+
+      if (!alert || !session) {
+        await ctx.api.sendMessage(chatId, 'This alert has expired. Ask me to show your budget transactions directly.');
+        return;
+      }
+
+      categoryName = alert.provider_name ?? 'other';
+      const result = await executeToolCall('get_budget_transactions', { category: categoryName }, session.user_id);
+      const chunks = splitMessage(result.text);
+      for (const chunk of chunks) {
+        await ctx.api.sendMessage(chatId, chunk, { parse_mode: 'Markdown' });
+      }
+    } catch (err) {
+      console.error('[UserBot] palert_txns_ error:', err);
+      try {
+        await ctx.api.sendMessage(chatId, `Ask me: "Show my ${categoryName} transactions this month"`);
+      } catch { /* silent */ }
     }
   });
 
