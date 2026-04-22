@@ -186,9 +186,12 @@ export default function SignupPage() {
         if (awinAwc) sessionStorage.setItem('awin_awc', awinAwc);
         sessionStorage.setItem('awin_ref', `signup-${data.user!.id}`);
 
+        // Fresh signups land on the onboarding wizard (Connect bank → Scan
+        // inbox → First win). Users who signed up via a ?redirect= param
+        // get sent to that target instead so deep-links still work.
         const destination = redirectTo
           ? `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}signup=1`
-          : '/dashboard?signup=1';
+          : '/onboarding?signup=1';
         router.push(destination);
         router.refresh();
       } else {
