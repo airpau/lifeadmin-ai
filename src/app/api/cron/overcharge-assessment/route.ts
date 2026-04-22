@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { runAssessment } from '@/lib/overcharge-engine';
 import { sendOverchargeAlert } from '@/lib/email/overcharge-alerts';
 import { canSendEmail } from '@/lib/email-rate-limit';
+// NOTE: we must insert into `tasks` after every successful send so that
+// canSendEmail()'s query correctly counts this send toward the daily cap.
 
 export const maxDuration = 120;
 
@@ -94,14 +96,24 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (profile && ['essential', 'pro'].includes(profile.subscription_tier || '')) {
-        const allowed = await canSendEmail(supabase, userId, 'overcharge_alert');
-        if (allowed && highScore.length > 0) {
+        const rateCheck = await canSendEmail(supabase, userId, 'overcharge_alert');
+        if (rateCheck.allowed && highScore.length > 0) {
           const sent = await sendOverchargeAlert(
             profile.email,
             profile.name || 'there',
             assessments.filter(a => a.overchargeScore >= 40) // Include medium+ in email
           );
-          if (sent) totalEmails++;
+          if (sent) {
+            // Record the send so canSendEmail() counts it toward today's cap
+            await supabase.from('tasks').insert({
+              user_id: userId,
+              type: 'overcharge_alert',
+              title: `Overcharge alert: ${highScore.length} item${highScore.length === 1 ? '' : 's'}`,
+              description: `Overcharge assessment email sent — top score: ${highScore[0]?.overchargeScore ?? 0}/100`,
+              status: 'completed',
+            });
+            totalEmails++;
+          }
         }
       }
     } catch (err) {
