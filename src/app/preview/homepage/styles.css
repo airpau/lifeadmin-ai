@@ -1188,37 +1188,30 @@
    Feature sections (merged copy + demo) + comparison matrix
    ============================================================ */
 
-/* Hero: swap 3-card composition for a live Disputes demo frame */
-.m-v2-root .hero-visual--live { height: 620px; }
+/* Hero: clean centred Disputes demo — no rotation, no overlays.
+   The demo IS the centrepiece. Let it breathe. */
+.m-v2-root .hero-visual--live {
+  height: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 8px;
+}
 .m-v2-root .hero-demo-frame {
-  position: absolute;
-  right: 0; top: 20px;
-  width: min(560px, 90%);
-  transform: rotate(-3deg);
-  --r: -3deg;
+  position: relative;
+  width: 100%;
+  max-width: 620px;
   border-radius: 20px;
   box-shadow: var(--shadow-xl);
   overflow: hidden;
-  z-index: 2;
   background: #fff;
-  transition: transform 220ms cubic-bezier(0.22,1,0.36,1);
 }
 .m-v2-root .hero-demo-frame .demo-stage {
   max-width: none;
+  width: 100%;
   border-radius: 20px;
   border: none;
   box-shadow: none;
-}
-.m-v2-root .mini-card--hero {
-  width: 220px; height: auto; padding: 18px;
-  left: -12px; top: 180px;
-  z-index: 3;
-}
-.m-v2-root .mini-card--hero .big { margin-bottom: 4px; }
-.m-v2-root .agent-bubble--hero {
-  right: auto; left: 10%; bottom: 30px;
-  width: 260px;
-  z-index: 3;
 }
 
 /* Shared: centred section head modifier */
@@ -1240,9 +1233,11 @@
   background: #FAFAF7;
 }
 
-/* Each feature = copy + live demo side by side */
+/* Each feature = copy stacked above the live demo. The demo gets the
+   full design width (~960px) it was hand-tuned for, instead of being
+   squashed into a side-by-side column. */
 .m-v2-root .feature-section {
-  padding: 56px 0 88px;
+  padding: 72px 0 104px;
   background: #FAFAF7;
 }
 .m-v2-root .feature-section--alt { background: #FFFFFF; }
@@ -1252,19 +1247,28 @@
 }
 
 .m-v2-root .feature-grid {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(440px, 1.2fr);
-  gap: 56px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  max-width: 1180px;
+  gap: 48px;
+  max-width: 1080px;
   margin: 0 auto;
 }
-.m-v2-root .feature-grid--reverse .feature-stage { order: -1; }
+/* Reverse modifier becomes a no-op now we're stacked — copy always above */
+.m-v2-root .feature-grid--reverse .feature-stage { order: 0; }
 
-.m-v2-root .feature-copy { display: flex; flex-direction: column; gap: 18px; }
-.m-v2-root .feature-copy .eyebrow { font-size: 12px; align-self: flex-start; }
+.m-v2-root .feature-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: center;
+  align-items: center;
+  max-width: 720px;
+  width: 100%;
+}
+.m-v2-root .feature-copy .eyebrow { font-size: 12px; align-self: center; }
 .m-v2-root .feature-copy h3 {
-  font-size: clamp(26px, 3.2vw, 40px);
+  font-size: clamp(28px, 3.4vw, 42px);
   font-weight: 700;
   line-height: 1.12;
   letter-spacing: -0.02em;
@@ -1291,6 +1295,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  text-align: left;
+  align-self: center;
+  max-width: 560px;
 }
 .m-v2-root .feature-bullets li {
   position: relative;
@@ -1321,7 +1328,7 @@
 }
 .m-v2-root .feature-stage .demo-stage {
   width: 100%;
-  max-width: 640px;
+  max-width: 960px;
 }
 
 .m-v2-root .feature-cta-row {
@@ -1329,6 +1336,7 @@
   gap: 12px;
   margin-top: 4px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* Comparison matrix */
@@ -1433,20 +1441,13 @@
 
 @media (max-width: 980px) {
   .m-v2-root .features-intro { padding: 72px 0 16px; }
-  .m-v2-root .feature-section { padding: 40px 0 64px; }
-  .m-v2-root .feature-grid,
-  .m-v2-root .feature-grid--reverse {
-    grid-template-columns: 1fr;
-    gap: 32px;
-  }
-  .m-v2-root .feature-grid--reverse .feature-stage { order: 0; }
+  .m-v2-root .feature-section { padding: 48px 0 72px; }
+  .m-v2-root .feature-grid { gap: 32px; }
   .m-v2-root .feature-stage .demo-stage { max-width: 100%; }
   .m-v2-root .compare-section { padding: 64px 0; }
 }
 
 @media (max-width: 480px) {
-  .m-v2-root .hero-visual--live { height: auto; min-height: 520px; padding-bottom: 40px; }
-  .m-v2-root .hero-demo-frame { position: relative; right: auto; top: auto; transform: none; --r: 0deg; width: 100%; margin: 0 auto 24px; }
-  .m-v2-root .mini-card--hero { position: relative; left: auto; top: auto; width: 100%; margin-bottom: 14px; transform: none; --r: 0deg; }
-  .m-v2-root .agent-bubble--hero { position: relative; right: auto; left: auto; bottom: auto; width: 100%; transform: none; --r: 0deg; }
+  .m-v2-root .hero-visual--live { padding-top: 0; padding-bottom: 8px; }
+  .m-v2-root .hero-demo-frame { max-width: 100%; }
 }
