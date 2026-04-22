@@ -1249,8 +1249,10 @@
   max-width: 1080px;
   margin: 0 auto;
 }
-/* Reverse modifier becomes a no-op now we're stacked — copy always above */
-.m-v2-root .feature-grid--reverse .feature-stage { order: 0; }
+/* Hard guarantee: copy is always painted above the demo, regardless of
+   any source-order accidents (legacy --reverse rows, etc). */
+.m-v2-root .feature-grid .feature-copy { order: 0; }
+.m-v2-root .feature-grid .feature-stage { order: 1; }
 
 .m-v2-root .feature-copy {
   display: flex;
