@@ -562,10 +562,7 @@ export default function HomepageV2Preview() {
             <div className="stat-card reveal">
               <div className="label">Average potential savings</div>
               <div className="num">
-                {stats && stats.avgSavingsPerUser > 0
-                  ? formatGBP(stats.avgSavingsPerUser)
-                  : '£1,000+'}
-                <span className="unit">/yr</span>
+                £1,000+<span className="unit">/yr</span>
               </div>
               <div className="underline" />
               <div className="blurb">
