@@ -21,15 +21,22 @@ export function isDealValid(deal: { category?: string | null; currentPrice?: num
   return true;
 }
 
+export function priceAlertAnnualImpact(a: any): number {
+  const diff = (parseFloat(a?.new_amount) || 0) - (parseFloat(a?.old_amount) || 0);
+  if (diff > 0) return diff * 12;
+  return parseFloat(a?.annual_impact) || 0;
+}
+
+export function isPriceAlertValid(a: any): boolean {
+  return priceAlertAnnualImpact(a) > 0;
+}
+
 export function calculateTotalSavings(deals: any[], priceAlerts: any[]): number {
   const validDeals = (deals || []).filter(isDealValid);
   const dealsTotal = validDeals.reduce((sum, d) => sum + (d.annualSaving || 0), 0);
-  
-  const alertTotal = (priceAlerts || []).reduce((sum, a) => {
-    const diff = (parseFloat(a.new_amount) || 0) - (parseFloat(a.old_amount) || 0);
-    return sum + (diff > 0 ? diff * 12 : (parseFloat(a.annual_impact) || 0));
-  }, 0);
-  
+
+  const alertTotal = (priceAlerts || []).reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0);
+
   return dealsTotal + alertTotal;
 }
 
