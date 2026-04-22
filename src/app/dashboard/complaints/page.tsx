@@ -1041,14 +1041,68 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         />
       )}
 
-      {/* Back + header */}
-      <button onClick={onBack} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
-        <ChevronLeft className="h-4 w-4" /> Back to all disputes
+      {/* Back link + Variant A dispute-detail header (batch7 DisputeDetail).
+          Data-wired: dispute.provider_name, issue_type, disputed_amount,
+          money_recovered (nullable), status label + resolved flag. */}
+      <button
+        onClick={onBack}
+        className="cta-ghost"
+        style={{marginBottom:14,fontSize:12.5,padding:'6px 10px'}}
+      >
+        <ChevronLeft className="h-3.5 w-3.5" /> Back to all disputes
       </button>
 
+      <div className="page-title-row" style={{marginBottom:14}}>
+        <div>
+          <h1 className="page-title" style={{fontSize:26}}>{dispute.provider_name}</h1>
+          <p className="page-sub">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
+        </div>
+      </div>
+
+      {/* Top status strip — 4 tiles, Variant A pattern */}
+      <div className="kpi-row c4" style={{marginBottom:16}}>
+        <div className="kpi-card">
+          <div className="k-label">Status</div>
+          <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em'}}>{statusConf.label}</div>
+          <div className="k-delta">{isResolved(dispute.status) ? 'Resolved' : 'In progress'}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="k-label">Refund target</div>
+          <div className="k-val amber">
+            {dispute.disputed_amount && dispute.disputed_amount > 0
+              ? `£${dispute.disputed_amount.toFixed(2)}`
+              : '—'}
+          </div>
+          <div className="k-delta">Amount being disputed</div>
+        </div>
+        <div className="kpi-card">
+          <div className="k-label">Provider</div>
+          <div className="k-val" style={{fontSize:15,fontWeight:700,letterSpacing:'-.01em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+            {dispute.provider_name}
+          </div>
+          <div className="k-delta">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</div>
+        </div>
+        <div className="kpi-card">
+          <div className="k-label">Money recovered</div>
+          <div className="k-val green">
+            {dispute.money_recovered && dispute.money_recovered > 0
+              ? `£${Number(dispute.money_recovered).toFixed(2)}`
+              : '—'}
+          </div>
+          <div className="k-delta">
+            {dispute.money_recovered && dispute.money_recovered > 0
+              ? 'Won · credited'
+              : 'Awaiting outcome'}
+          </div>
+        </div>
+      </div>
+
+      {/* Legacy detail card retained for the status-change dropdown + resolve
+          action. The h1/subtitle inside are now hidden — the page-title-row
+          above replaces them visually. */}
       <div className="card mb-6">
         <div className="flex items-start justify-between mb-3">
-          <div>
+          <div style={{display:'none'}}>
             <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
               {dispute.provider_name}
             </h1>
