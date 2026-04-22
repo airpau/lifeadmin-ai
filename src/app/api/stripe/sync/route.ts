@@ -55,12 +55,16 @@ export async function POST() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('stripe_customer_id, subscription_tier, founding_member')
+      .select('stripe_customer_id, subscription_tier')
       .eq('id', user.id)
       .single();
 
     if (!profile?.stripe_customer_id) {
-      return NextResponse.json({ synced: false, tier: 'free', reason: 'No Stripe customer' });
+      return NextResponse.json({
+        synced: true,
+        tier: profile?.subscription_tier || 'free',
+        reason: 'No Stripe customer — stored tier is authoritative',
+      });
     }
 
     // Fetch active/trialing subs
@@ -71,29 +75,24 @@ export async function POST() {
 
     const allSubs = [...(activeSubs.data || []), ...(trialingSubs.data || [])];
 
+    // IMPORTANT: this route is PROMOTE-ONLY. We never downgrade a user
+    // here — that was the root cause of the April 2026 founder
+    // downgrade incident. Demotion is now webhook-driven only:
+    // customer.subscription.deleted / .updated with status=canceled
+    // in /api/stripe/webhooks explicitly writes subscription_tier='free'.
+    //
+    // If the user has no active Stripe sub but the profile still says
+    // essential/pro, we leave it alone. Either:
+    //   (a) their webhook just hasn't landed yet (race condition — retry);
+    //   (b) they were granted a tier manually (admin grant, comped);
+    //   (c) they're on an onboarding trial (trial_ends_at still in future).
+    // None of these justify a silent tier wipe on every dashboard mount.
     if (allSubs.length === 0) {
-      // Founding members were granted Essential/Pro manually and typically have
-      // no Stripe subscription at all. Never downgrade them here — the profile
-      // tier is authoritative for this cohort. See also commit 35ee3d1 which
-      // added a similar guard to the webhook-triggered path; this closes the
-      // matching hole on the dashboard-mount sync path.
-      if (profile.founding_member === true) {
-        return NextResponse.json({
-          synced: true,
-          tier: profile.subscription_tier || 'free',
-          reason: 'founding_member',
-        });
-      }
-      if (profile.subscription_tier !== 'free') {
-        const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-        await admin.from('profiles').update({
-          subscription_tier: 'free',
-          subscription_status: null,
-          stripe_subscription_id: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', user.id);
-      }
-      return NextResponse.json({ synced: true, tier: 'free' });
+      return NextResponse.json({
+        synced: true,
+        tier: profile.subscription_tier || 'free',
+        reason: 'No active Stripe sub — stored tier preserved (promote-only policy)',
+      });
     }
 
     // Get full subscription details directly
