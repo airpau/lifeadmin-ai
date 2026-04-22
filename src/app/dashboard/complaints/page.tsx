@@ -379,10 +379,11 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
         const fd = new FormData();
         fd.append('file', attachedFile);
         const uploadRes = await fetch(`/api/disputes/${disputeId}/upload`, { method: 'POST', body: fd });
-        if (uploadRes.ok) {
-          const fileData = await uploadRes.json();
-          attachments = [{ url: fileData.url, filename: fileData.filename, type: fileData.type, size: fileData.size }];
+        if (!uploadRes.ok) {
+          throw new Error('Attachment failed to upload — please try again.');
         }
+        const fileData = await uploadRes.json();
+        attachments = [{ url: fileData.url, filename: fileData.filename, type: fileData.type, size: fileData.size }];
         setUploading(false);
       }
 
