@@ -47,7 +47,7 @@ const roleColors: Record<string, string> = {
   cfraudo: 'text-red-400',
   exec_assistant: 'text-cyan-400',
   support_lead: 'text-amber-400',
-  support_agent: 'text-slate-400',
+  support_agent: 'text-slate-500',
 };
 
 const roleBgColors: Record<string, string> = {
@@ -170,16 +170,16 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-800 border-b border-slate-700">
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-100 border-b border-slate-200">
           <div className="flex items-center gap-3">
             <div className="bg-amber-500/20 p-2 rounded-lg">
               <Users className="h-5 w-5 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-white font-semibold">Executive Meeting Room</h2>
-              <p className="text-slate-400 text-xs">15 agents online — speak to your AI team directly</p>
+              <h2 className="text-slate-900 font-semibold">Executive Meeting Room</h2>
+              <p className="text-slate-500 text-xs">15 agents online — speak to your AI team directly</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -188,7 +188,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
               {['cfo', 'cto', 'cao', 'cmo', 'head_of_ads', 'cco', 'cgo', 'cro', 'clo', 'cio', 'cxo', 'cfraudo', 'exec_assistant', 'support_lead', 'support_agent'].map((role) => {
                 const Icon = roleIcons[role] || Bot;
                 return (
-                  <div key={role} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-slate-800 ${roleBgColors[role]}`}>
+                  <div key={role} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 border-slate-200 ${roleBgColors[role]}`}>
                     <Icon className={`h-3 w-3 ${roleColors[role]}`} />
                   </div>
                 );
@@ -214,7 +214,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
                 {ending ? 'Saving...' : 'End Meeting'}
               </button>
             )}
-            <button onClick={onClose} className="text-slate-400 hover:text-white p-1">
+            <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-1">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -225,7 +225,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
           {messages.length === 0 && (
             <div className="text-center py-16">
               <Users className="h-12 w-12 text-amber-500/30 mx-auto mb-4" />
-              <p className="text-white font-medium mb-2">Meeting room ready</p>
+              <p className="text-slate-900 font-medium mb-2">Meeting room ready</p>
               <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
                 Type a message to address your AI executive team. All agents will respond
                 from their area of expertise — like a real boardroom meeting.
@@ -264,7 +264,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
             }
 
             const Icon = roleIcons[msg.agentRole || ''] || Bot;
-            const color = roleColors[msg.agentRole || ''] || 'text-slate-400';
+            const color = roleColors[msg.agentRole || ''] || 'text-slate-500';
             const bgColor = roleBgColors[msg.agentRole || ''] || 'bg-slate-500/10 border-slate-500/30';
 
             return (
@@ -274,7 +274,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
                 </div>
                 <div className="max-w-[75%]">
                   <p className={`text-xs ${color} mb-1 font-medium`}>{msg.agent}</p>
-                  <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-slate-200">
+                  <div className="bg-slate-100 border border-slate-200 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-slate-700">
                     {msg.content}
                   </div>
                   <div className="mt-1">
@@ -296,9 +296,9 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
 
           {loading && (
             <div className="flex gap-3 items-center">
-              <div className="bg-slate-800 rounded-2xl px-4 py-3 flex items-center gap-2">
+              <div className="bg-slate-100 rounded-2xl px-4 py-3 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 text-amber-500 animate-spin" />
-                <span className="text-slate-400 text-sm">Agents are responding...</span>
+                <span className="text-slate-500 text-sm">Agents are responding...</span>
               </div>
             </div>
           )}
@@ -307,7 +307,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
         </div>
 
         {/* Input */}
-        <div className="p-4 border-t border-slate-700 bg-slate-800/50">
+        <div className="p-4 border-t border-slate-200 bg-slate-800/50">
           <div className="flex items-center gap-3">
             <input
               type="text"
@@ -315,7 +315,7 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Address your executive team..."
-              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              className="flex-1 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:border-amber-500"
               disabled={loading}
             />
             <button

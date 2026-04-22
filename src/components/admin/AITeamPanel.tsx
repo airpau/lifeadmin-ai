@@ -132,7 +132,7 @@ export default function AITeamPanel() {
     <div>
       {/* Health summary bar */}
       {summary && (
-        <div className="rounded-2xl border border-slate-800 bg-[#0a1628]/60 p-4 mb-4">
+        <div className="rounded-2xl border border-slate-200 bg-[#0a1628]/60 p-4 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
@@ -159,7 +159,7 @@ export default function AITeamPanel() {
               <span className="text-slate-500 text-xs">{summary.total} Paperclip agents</span>
               <button
                 onClick={load}
-                className="text-slate-400 hover:text-white transition-colors"
+                className="text-slate-500 hover:text-slate-900 transition-colors"
                 title="Refresh"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -180,25 +180,25 @@ export default function AITeamPanel() {
               key={agent.id}
               className={`rounded-2xl border overflow-hidden transition-colors ${
                 agent.status === 'healthy'
-                  ? 'border-slate-800 bg-[#0a1628]/60'
+                  ? 'border-slate-200 bg-[#0a1628]/60'
                   : agent.status === 'warning'
                   ? 'border-[#f59e0b]/20 bg-[#0a1628]/60'
                   : agent.status === 'missed'
                   ? 'border-red-500/20 bg-[#0a1628]/60'
-                  : 'border-slate-800 bg-[#0a1628]/40'
+                  : 'border-slate-200 bg-[#0a1628]/40'
               }`}
             >
               {/* Card header */}
               <div className="p-4">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-slate-800/60 flex-shrink-0 mt-0.5">
-                    <Icon className="h-4 w-4 text-slate-300" />
+                    <Icon className="h-4 w-4 text-slate-700" />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <StatusDot status={agent.status} />
-                      <h3 className="text-white text-sm font-semibold leading-none">{agent.name}</h3>
+                      <h3 className="text-slate-900 text-sm font-semibold leading-none">{agent.name}</h3>
                       <StatusLabel status={agent.status} />
                     </div>
                     <p className="text-slate-500 text-xs mb-2">{agent.role}</p>
@@ -208,13 +208,13 @@ export default function AITeamPanel() {
                       <span className="text-slate-600 text-xs font-mono">{agent.schedule}</span>
                       <div className="flex items-center gap-1 text-slate-500 text-xs">
                         <Clock className="h-3 w-3" />
-                        Last: <span className="text-slate-400">{timeAgo(agent.last_run)}</span>
+                        Last: <span className="text-slate-500">{timeAgo(agent.last_run)}</span>
                       </div>
                       {agent.next_run && (
                         <div className="flex items-center gap-1 text-slate-500 text-xs">
                           Next: <span className={
                             agent.status === 'missed' ? 'text-red-400' :
-                            agent.status === 'warning' ? 'text-[#f59e0b]' : 'text-slate-400'
+                            agent.status === 'warning' ? 'text-[#f59e0b]' : 'text-slate-500'
                           }>{timeUntil(agent.next_run)}</span>
                         </div>
                       )}
@@ -222,7 +222,7 @@ export default function AITeamPanel() {
 
                     {/* Latest summary */}
                     {agent.latest_summary && (
-                      <p className="text-slate-400 text-xs mt-2 line-clamp-2 leading-relaxed">
+                      <p className="text-slate-500 text-xs mt-2 line-clamp-2 leading-relaxed">
                         {agent.latest_summary.slice(0, 160)}{agent.latest_summary.length > 160 ? '...' : ''}
                       </p>
                     )}
@@ -230,7 +230,7 @@ export default function AITeamPanel() {
 
                   <button
                     onClick={() => setExpanded(isExpanded ? null : agent.id)}
-                    className="text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0 mt-1"
+                    className="text-slate-500 hover:text-slate-700 transition-colors flex-shrink-0 mt-1"
                   >
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
@@ -239,7 +239,7 @@ export default function AITeamPanel() {
 
               {/* Expanded: recent log entries */}
               {isExpanded && (
-                <div className="border-t border-slate-800 bg-slate-950/30">
+                <div className="border-t border-slate-200 bg-white/30">
                   {agent.recent_entries.length === 0 ? (
                     <p className="text-slate-500 text-xs text-center py-5">
                       No business_log entries yet for <code className="font-mono">{agent.id}</code>
@@ -249,14 +249,14 @@ export default function AITeamPanel() {
                       {agent.recent_entries.map((entry, i) => (
                         <div key={entry.id} className="px-4 py-3">
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <span className="text-white text-xs font-medium leading-tight">
+                            <span className="text-slate-900 text-xs font-medium leading-tight">
                               {entry.title}
                             </span>
                             <span className="text-slate-600 text-xs flex-shrink-0">
                               {timeAgo(entry.created_at)}
                             </span>
                           </div>
-                          <p className="text-slate-400 text-xs leading-relaxed">
+                          <p className="text-slate-500 text-xs leading-relaxed">
                             {entry.content.slice(0, 200)}{entry.content.length > 200 ? '...' : ''}
                           </p>
                           {i === 0 && agent.recent_entries.length > 1 && (
