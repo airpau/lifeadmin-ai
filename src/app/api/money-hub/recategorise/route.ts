@@ -152,15 +152,23 @@ export async function POST(request: NextRequest) {
 
         if (matching && matching.length > 0) {
           // Split into positive-amount (income side) and negative-amount (spending side).
-          // For positive amounts, also exclude from income totals by setting
-          // income_type = 'credit_loan' (which isExcludedIncomeType treats as non-income).
+          // For positive amounts re-tagged as a NON-income category, also stamp
+          // income_type='credit_loan' so Money Hub excludes them from monthly
+          // income (isExcludedIncomeType). But if the user is reclassifying TO
+          // 'income', clear income_type so the classifier can re-detect
+          // income_type naturally from the transaction's own signals.
           const positiveIds = matching.filter(t => Number(t.amount) > 0).map(t => t.id);
           const negativeIds = matching.filter(t => Number(t.amount) <= 0).map(t => t.id);
+
+          const isIncomeRecat = newCategory === 'income';
+          const positivePatch = isIncomeRecat
+            ? { user_category: newCategory, income_type: null }
+            : { user_category: newCategory, income_type: 'credit_loan' };
 
           for (let i = 0; i < positiveIds.length; i += 50) {
             const batch = positiveIds.slice(i, i + 50);
             const { count } = await admin.from('bank_transactions')
-              .update({ user_category: newCategory, income_type: 'credit_loan' })
+              .update(positivePatch)
               .in('id', batch);
             if (count) updated += count;
           }
@@ -199,9 +207,14 @@ export async function POST(request: NextRequest) {
         .single();
 
       const txnPatch: Record<string, any> = { user_category: newCategory };
-      // For positive-amount transactions, also exclude from income by flagging credit_loan
-      if (txnData && Number(txnData.amount) > 0 && newCategory !== 'income') {
-        txnPatch.income_type = 'credit_loan';
+      // For positive-amount transactions:
+      // - re-tagged as a non-income category → stamp 'credit_loan' so Money Hub
+      //   excludes it from monthly income
+      // - re-tagged TO 'income' → clear any stale income_type so the classifier
+      //   can re-detect it (was previously left untouched, which occasionally
+      //   left a credit_loan flag in place that still suppressed income)
+      if (txnData && Number(txnData.amount) > 0) {
+        txnPatch.income_type = newCategory === 'income' ? null : 'credit_loan';
       }
 
       await admin.from('bank_transactions')
