@@ -49,31 +49,59 @@ Paybacker is an AI-powered savings platform for UK consumers. It helps people di
 
 ## PRICING
 
-**Free:**
+_Updated 2026-04-22 after Emma-matched tier review — see
+`src/lib/plan-limits.ts` for the authoritative matrix._
+
+**Free — £0:**
+- 2 bank connections with daily auto-sync
+- 1 email connection with 30-min Watchdog dispute-reply polling
+- Unlimited dispute thread links (email-thread monitoring)
 - 3 AI letters per month
 - Unlimited manual subscription tracking
-- One-time bank scan
-- One-time email inbox scan
-- One-time opportunity scan
 - Basic spending overview (top 5 categories)
+- Pocket Agent (Telegram bot)
 - AI chatbot
 
-**Essential — £4.99/month or £44.99/year (Founding Member Pricing):**
+**Essential — £4.99/month or £44.99/year:**
+- 3 bank connections with daily auto-sync
+- 3 email connections with 30-min Watchdog polling
 - Unlimited AI letters
-- 1 bank account with daily auto-sync
-- Monthly email and opportunity re-scans
-- Full spending intelligence dashboard
-- Cancellation emails with legal context
+- AI cancellation emails with legal context
 - Renewal reminders (30/14/7 days)
-- Contract end date tracking
+- Full spending intelligence dashboard with all 20+ categories
+- Money Hub Budgets + Savings Goals
+- Price-increase alerts via email
+- Contract end-date tracking
+- Pocket Agent (Telegram bot)
 
-**Pro — £9.99/month or £94.99/year (Founding Member Pricing):**
+**Pro — £9.99/month or £94.99/year:**
+- Unlimited bank connections
+- Unlimited email connections
 - Everything in Essential
-- Unlimited bank accounts
-- Unlimited email and opportunity scans
+- Money Hub Top Merchants
+- Price-increase alerts via Telegram (instant)
+- Export (CSV / PDF)
+- Paybacker Assistant (MCP integration)
 - Full transaction-level analysis
 - Priority support
+- On-demand bank sync (manual refresh)
 - Automated cancellations (coming soon)
+
+### System rules (tier logic)
+- Paid tiers are **never auto-demoted**. `/api/stripe/sync` promotes
+  only. Demotion is webhook-driven (`customer.subscription.deleted`).
+- **No 14-day Pro trial** — it produced silent downgrades at expiry.
+  `TrialBanner` still flags an active trial when `trial_ends_at` is
+  explicitly set, but we don't grant trials automatically on signup.
+- `getEffectiveTier(userId)` trusts `profile.subscription_tier` as
+  source of truth. Single override: an active onboarding trial
+  (`trial_ends_at > now() && !trial_converted_at && !trial_expired_at`)
+  returns `'pro'` for the trial window.
+- Bank/email caps are enforced at the connect endpoints
+  (`/api/auth/truelayer`, `/api/auth/google`, `/api/auth/microsoft`,
+  `/api/auth/yapily`) reading `PLAN_LIMITS[tier].maxBanks` /
+  `maxEmails`. Over-cap attempts return 403 (bank APIs) or redirect
+  to `/dashboard/profile?email_limit_reached=1` (OAuth flows).
 
 ---
 
@@ -241,14 +269,14 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 - Securely connects bank accounts (read-only)
 - Automatically detects all subscriptions and recurring payments
 - Spending intelligence dashboard with 20+ categories
-- Free: one-time scan. Essential: 1 bank with daily sync. Pro: unlimited banks
+- Free: 2 banks with daily auto-sync. Essential: 3 banks with daily auto-sync. Pro: unlimited banks + on-demand manual sync.
 
 ### 4. Email Inbox Scanning
 - Connect Gmail or Outlook (read-only, Google OAuth verified)
 - Scans up to 2 years of email history
 - Opportunity Scanner: finds overcharges, forgotten subscriptions, flight delay opportunities, debt disputes
 - Smart action buttons: Add to Subscriptions, Write Complaint Letter, Claim Compensation, Create Task, Dismiss
-- Free: one-time scan. Essential: monthly. Pro: unlimited
+- Free: 1 email account with 30-min auto-sync for dispute replies. Essential: 3 email accounts. Pro: unlimited.
 
 ### 5. AI Cancellation Emails
 - Generates cancellation email citing UK consumer law for any subscription
