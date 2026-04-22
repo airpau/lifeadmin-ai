@@ -1811,10 +1811,19 @@
 .m-v2-root .mini-letter-cta { display: block; font-size: 12px; color: var(--accent-mint-deep); font-weight: 600; text-decoration: none; }
 .m-v2-root .mini-letter-cta:hover { text-decoration: underline; }
 
+/* Smooth-scroll anchor offset — prevents fixed nav (~64px) clipping
+   section headings when jumping to an anchor. */
+.m-v2-root section,
+.m-v2-root [id] {
+  scroll-margin-top: 80px;
+}
+
 /* ============================================================
    768px — stack side-by-side sections vertically
    ============================================================ */
 @media (max-width: 768px) {
+  /* Hide floating sticky CTA pill — it overlaps demo content on mobile */
+  .m-v2-root .sticky-cta { display: none !important; }
   .m-v2-root .why-grid,
   .m-v2-root .subs-grid,
   .m-v2-root .assistant-grid,
