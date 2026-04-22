@@ -197,7 +197,7 @@ export default function AdminPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
       </div>
     );
   }
@@ -207,8 +207,8 @@ export default function AdminPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <ShieldAlert className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
-          <p className="text-slate-400">Admin access only.</p>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Access Denied</h1>
+          <p className="text-slate-600">Admin access only.</p>
         </div>
       </div>
     );
@@ -216,23 +216,23 @@ export default function AdminPage() {
 
   const tierColor = (tier: string) => {
     if (tier === 'pro') return 'text-purple-400 bg-purple-500/10';
-    if (tier === 'essential') return 'text-mint-400 bg-mint-400/10';
-    return 'text-slate-400 bg-navy-500/10';
+    if (tier === 'essential') return 'text-emerald-600 bg-emerald-500/10';
+    return 'text-slate-600 bg-navy-500/10';
   };
 
   return (
     <div className="max-w-7xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+          <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
             <ShieldAlert className="h-10 w-10 text-red-500" />
             Admin Dashboard
           </h1>
-          <p className="text-slate-400">Business metrics and member management</p>
+          <p className="text-slate-600">Business metrics and member management</p>
         </div>
         <button
           onClick={() => setMeetingOpen(true)}
-          className="bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
+          className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
         >
           <Users className="h-4 w-4" />
           Call a Meeting
@@ -244,28 +244,28 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex gap-2 mb-6">
         <button onClick={() => { setTab('overview'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           Overview
         </button>
         <button onClick={() => { setTab('members'); loadMembers(); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           Members
         </button>
         <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           <Ticket className="h-4 w-4" /> Tickets
         </button>
         <button onClick={() => { setTab('leads'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           <Users className="h-4 w-4" /> Leads
         </button>
         <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-mint-400 text-navy-950' : 'bg-navy-800 text-slate-400 hover:text-white'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           <Brain className="h-4 w-4" /> AI Team
         </button>
         <Link
           href="/dashboard/admin/legal-refs"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-navy-800 text-slate-400 hover:text-white"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
         >
           <Shield className="h-4 w-4" /> Legal Refs
         </Link>
@@ -276,36 +276,36 @@ export default function AdminPage() {
         <>
           {/* Revenue Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-navy-900 border border-green-500/30 rounded-2xl p-5">
+            <div className="bg-white border border-green-500/30 rounded-2xl p-5">
               <Banknote className="h-6 w-6 text-green-500 mb-2" />
-              <p className="text-3xl font-bold text-white">£{metrics.revenue.mrr}</p>
-              <p className="text-slate-400 text-sm">MRR</p>
+              <p className="text-3xl font-bold text-slate-900">£{metrics.revenue.mrr}</p>
+              <p className="text-slate-600 text-sm">MRR</p>
             </div>
-            <div className="bg-navy-900 border border-green-500/30 rounded-2xl p-5">
+            <div className="bg-white border border-green-500/30 rounded-2xl p-5">
               <TrendingUp className="h-6 w-6 text-green-500 mb-2" />
-              <p className="text-3xl font-bold text-white">£{metrics.revenue.arr}</p>
-              <p className="text-slate-400 text-sm">ARR</p>
+              <p className="text-3xl font-bold text-slate-900">£{metrics.revenue.arr}</p>
+              <p className="text-slate-600 text-sm">ARR</p>
             </div>
-            <div className="bg-navy-900 border border-mint-400/30 rounded-2xl p-5">
-              <CreditCard className="h-6 w-6 text-mint-400 mb-2" />
-              <p className="text-3xl font-bold text-white">{metrics.revenue.paying_customers}</p>
-              <p className="text-slate-400 text-sm">Paying customers</p>
+            <div className="bg-white border border-emerald-200 rounded-2xl p-5">
+              <CreditCard className="h-6 w-6 text-emerald-600 mb-2" />
+              <p className="text-3xl font-bold text-slate-900">{metrics.revenue.paying_customers}</p>
+              <p className="text-slate-600 text-sm">Paying customers</p>
             </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-              <Users className="h-6 w-6 text-slate-400 mb-2" />
-              <p className="text-3xl font-bold text-white">{metrics.revenue.free_users}</p>
-              <p className="text-slate-400 text-sm">Free users</p>
+            <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+              <Users className="h-6 w-6 text-slate-600 mb-2" />
+              <p className="text-3xl font-bold text-slate-900">{metrics.revenue.free_users}</p>
+              <p className="text-slate-600 text-sm">Free users</p>
             </div>
           </div>
 
           {/* Tier Breakdown */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
-            <h3 className="text-white font-semibold mb-3">Plan Distribution</h3>
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+            <h3 className="text-slate-900 font-semibold mb-3">Plan Distribution</h3>
             <div className="flex gap-4">
               {Object.entries(metrics.tier_breakdown).map(([tier, count]) => (
                 <div key={tier} className="flex items-center gap-2">
                   <span className={`px-2 py-1 rounded text-xs font-semibold ${tierColor(tier)}`}>{tier}</span>
-                  <span className="text-white font-bold">{count}</span>
+                  <span className="text-slate-900 font-bold">{count}</span>
                 </div>
               ))}
             </div>
@@ -315,7 +315,7 @@ export default function AdminPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[
               { label: 'Total Users', value: metrics.overview.total_users, icon: Users, color: 'text-blue-500' },
-              { label: 'Waitlist', value: metrics.overview.waitlist_signups, icon: Mail, color: 'text-mint-400' },
+              { label: 'Waitlist', value: metrics.overview.waitlist_signups, icon: Mail, color: 'text-emerald-600' },
               { label: 'Subscriptions Tracked', value: metrics.overview.active_subscriptions, icon: CreditCard, color: 'text-green-500' },
               { label: 'Bank Connections', value: metrics.overview.bank_connections, icon: Building2, color: 'text-purple-500' },
               { label: 'Bank Transactions', value: metrics.overview.bank_transactions, icon: Database, color: 'text-cyan-500' },
@@ -323,9 +323,9 @@ export default function AdminPage() {
               { label: 'AI Agent Runs', value: metrics.overview.agent_runs, icon: Bot, color: 'text-pink-500' },
               { label: 'Merchant Rules', value: metrics.overview.merchant_rules, icon: BarChart3, color: 'text-emerald-500' },
             ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
+              <div key={label} className="bg-white border border-slate-200/50 rounded-xl p-4">
                 <Icon className={`h-5 w-5 ${color} mb-2`} />
-                <p className="text-2xl font-bold text-white">{value.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-slate-900">{value.toLocaleString()}</p>
                 <p className="text-slate-500 text-xs">{label}</p>
               </div>
             ))}
@@ -333,10 +333,10 @@ export default function AdminPage() {
 
           {/* Deal Health */}
           {dealHealth && (
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+            <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold flex items-center gap-2">
-                  <Tag className="h-5 w-5 text-mint-400" /> Deal Health
+                <h3 className="text-slate-900 font-semibold flex items-center gap-2">
+                  <Tag className="h-5 w-5 text-emerald-600" /> Deal Health
                 </h3>
                 <button
                   onClick={async () => {
@@ -350,27 +350,27 @@ export default function AdminPage() {
                     setVerifyingDeals(false);
                   }}
                   disabled={verifyingDeals}
-                  className="flex items-center gap-1.5 bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${verifyingDeals ? 'animate-spin' : ''}`} />
                   {verifyingDeals ? 'Verifying...' : 'Verify Deals Now'}
                 </button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-navy-950/50 border border-green-500/20 rounded-xl p-4">
+                <div className="bg-slate-50/50 border border-green-500/20 rounded-xl p-4">
                   <p className="text-2xl font-bold text-green-400">{dealHealth.active}</p>
                   <p className="text-slate-500 text-xs">Active Deals</p>
                 </div>
-                <div className="bg-navy-950/50 border border-red-500/20 rounded-xl p-4">
+                <div className="bg-slate-50/50 border border-red-500/20 rounded-xl p-4">
                   <p className="text-2xl font-bold text-red-400">{dealHealth.inactive}</p>
                   <p className="text-slate-500 text-xs">Broken / Inactive</p>
                 </div>
-                <div className="bg-navy-950/50 border border-amber-500/20 rounded-xl p-4">
+                <div className="bg-slate-50/50 border border-amber-500/20 rounded-xl p-4">
                   <p className="text-2xl font-bold text-amber-400">{dealHealth.stale}</p>
                   <p className="text-slate-500 text-xs">Stale (30+ days)</p>
                 </div>
-                <div className="bg-navy-950/50 border border-navy-700/50 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-white">
+                <div className="bg-slate-50/50 border border-slate-200/50 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-slate-900">
                     {dealHealth.lastVerified
                       ? new Date(dealHealth.lastVerified).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
                       : 'Never'}
@@ -382,14 +382,14 @@ export default function AdminPage() {
           )}
 
           {/* Recent Signups */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-4">Recent Signups</h3>
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+            <h3 className="text-slate-900 font-semibold mb-4">Recent Signups</h3>
             <div className="space-y-2">
               {metrics.recent_signups.map((u) => (
-                <div key={u.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50">
+                <div key={u.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-2 border border-slate-200/50">
                   <div className="flex items-center gap-3">
                     <div>
-                      <p className="text-white text-sm font-medium">{u.name || u.email}</p>
+                      <p className="text-slate-900 text-sm font-medium">{u.name || u.email}</p>
                       <p className="text-slate-500 text-xs">{u.email}</p>
                     </div>
                   </div>
@@ -406,24 +406,24 @@ export default function AdminPage() {
 
       {/* MEMBERS TAB */}
       {tab === 'members' && !selectedMember && (
-        <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-          <h3 className="text-white font-semibold mb-4">All Members ({members.length})</h3>
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+          <h3 className="text-slate-900 font-semibold mb-4">All Members ({members.length})</h3>
           <div className="space-y-2">
             {members.map((m) => (
               <button
                 key={m.id}
                 onClick={() => loadMemberDetail(m.id)}
-                className="w-full flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-3 border border-navy-700/50 hover:border-mint-400/50 transition-all text-left"
+                className="w-full flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-3 border border-slate-200/50 hover:border-mint-400/50 transition-all text-left"
               >
                 <div>
-                  <p className="text-white text-sm font-medium">{m.full_name || m.email}</p>
+                  <p className="text-slate-900 text-sm font-medium">{m.full_name || m.email}</p>
                   <p className="text-slate-500 text-xs">{m.email}</p>
                 </div>
                 <div className="flex items-center gap-4">
                   {m.opportunity_score > 0 && (
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                       m.opportunity_score >= 100 ? 'bg-red-500/20 text-red-400' :
-                      m.opportunity_score >= 50 ? 'bg-mint-400/20 text-mint-400' :
+                      m.opportunity_score >= 50 ? 'bg-emerald-500/20 text-emerald-600' :
                       'bg-blue-500/20 text-blue-400'
                     }`}>
                       Score: {m.opportunity_score}
@@ -442,16 +442,16 @@ export default function AdminPage() {
       {/* MEMBER DETAIL */}
       {tab === 'members' && selectedMember && (
         <div>
-          <button onClick={() => setSelectedMember(null)} className="flex items-center gap-2 text-slate-400 hover:text-white mb-4 text-sm">
+          <button onClick={() => setSelectedMember(null)} className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-4 text-sm">
             <ArrowLeft className="h-4 w-4" /> Back to members
           </button>
 
           {/* Profile Header */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 mb-6">
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-white">{selectedMember.profile?.full_name || selectedMember.profile?.email}</h2>
-                <p className="text-slate-400">{selectedMember.profile?.email}</p>
+                <h2 className="text-2xl font-bold text-slate-900">{selectedMember.profile?.full_name || selectedMember.profile?.email}</h2>
+                <p className="text-slate-600">{selectedMember.profile?.email}</p>
                 <p className="text-slate-500 text-xs mt-1">
                   Joined {new Date(selectedMember.profile?.created_at).toLocaleDateString('en-GB')} ·
                   Stripe: {selectedMember.profile?.stripe_customer_id || 'none'}
@@ -465,31 +465,31 @@ export default function AdminPage() {
 
           {/* Member Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
-              <p className="text-2xl font-bold text-white">£{selectedMember.stats.monthly_spend}</p>
+            <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+              <p className="text-2xl font-bold text-slate-900">£{selectedMember.stats.monthly_spend}</p>
               <p className="text-slate-500 text-xs">Monthly spend tracked</p>
             </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
-              <p className="text-2xl font-bold text-white">{selectedMember.stats.total_subscriptions}</p>
+            <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+              <p className="text-2xl font-bold text-slate-900">{selectedMember.stats.total_subscriptions}</p>
               <p className="text-slate-500 text-xs">Subscriptions</p>
             </div>
-            <div className="bg-navy-900 border border-navy-700/50 rounded-xl p-4">
-              <p className="text-2xl font-bold text-white">{selectedMember.stats.total_agent_runs}</p>
+            <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+              <p className="text-2xl font-bold text-slate-900">{selectedMember.stats.total_agent_runs}</p>
               <p className="text-slate-500 text-xs">AI agent runs</p>
             </div>
-            <div className="bg-navy-900 border border-red-500/30 rounded-xl p-4">
-              <p className="text-2xl font-bold text-white">£{selectedMember.stats.estimated_api_cost}</p>
+            <div className="bg-white border border-red-500/30 rounded-xl p-4">
+              <p className="text-2xl font-bold text-slate-900">£{selectedMember.stats.estimated_api_cost}</p>
               <p className="text-slate-500 text-xs">Estimated API cost</p>
             </div>
           </div>
 
           {/* Bank Connections */}
           {selectedMember.bank_connections.length > 0 && (
-            <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
-              <h3 className="text-white font-semibold mb-3">Bank Connections</h3>
+            <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+              <h3 className="text-slate-900 font-semibold mb-3">Bank Connections</h3>
               {selectedMember.bank_connections.map((b: any) => (
-                <div key={b.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50">
-                  <span className="text-white text-sm">{b.bank_name || 'Unknown Bank'}</span>
+                <div key={b.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-2 border border-slate-200/50">
+                  <span className="text-slate-900 text-sm">{b.bank_name || 'Unknown Bank'}</span>
                   <div className="flex items-center gap-3">
                     <span className={`text-xs ${b.status === 'active' ? 'text-green-400' : 'text-slate-500'}`}>{b.status}</span>
                     <span className="text-slate-500 text-xs">{selectedMember.stats.bank_transactions.toLocaleString()} transactions</span>
@@ -500,17 +500,17 @@ export default function AdminPage() {
           )}
 
           {/* Subscriptions */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
-            <h3 className="text-white font-semibold mb-3">Subscriptions ({selectedMember.subscriptions.length})</h3>
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+            <h3 className="text-slate-900 font-semibold mb-3">Subscriptions ({selectedMember.subscriptions.length})</h3>
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {selectedMember.subscriptions.map((s, i) => (
-                <div key={i} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50 text-sm">
+                <div key={i} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-2 border border-slate-200/50 text-sm">
                   <div className="flex items-center gap-3">
-                    <span className="text-white">{s.provider}</span>
-                    {s.category && <span className="text-xs text-slate-500 bg-navy-800 px-2 py-0.5 rounded">{s.category}</span>}
+                    <span className="text-slate-900">{s.provider}</span>
+                    {s.category && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{s.category}</span>}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-white font-medium">£{parseFloat(String(s.amount)).toFixed(2)}</span>
+                    <span className="text-slate-900 font-medium">£{parseFloat(String(s.amount)).toFixed(2)}</span>
                     <span className="text-slate-500 text-xs">{s.cycle}</span>
                     {s.source && <span className="text-xs text-slate-500">{s.source}</span>}
                   </div>
@@ -520,17 +520,17 @@ export default function AdminPage() {
           </div>
 
           {/* Task History */}
-          <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5">
-            <h3 className="text-white font-semibold mb-3">Task History ({selectedMember.tasks.length})</h3>
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+            <h3 className="text-slate-900 font-semibold mb-3">Task History ({selectedMember.tasks.length})</h3>
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {selectedMember.tasks.map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between bg-navy-950/50 rounded-lg px-4 py-2 border border-navy-700/50 text-sm">
+                <div key={t.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-2 border border-slate-200/50 text-sm">
                   <div>
-                    <span className="text-white">{t.title}</span>
+                    <span className="text-slate-900">{t.title}</span>
                     <span className="text-slate-500 text-xs ml-2">{t.type}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs ${t.status === 'completed' ? 'text-green-400' : 'text-mint-400'}`}>{t.status}</span>
+                    <span className={`text-xs ${t.status === 'completed' ? 'text-green-400' : 'text-emerald-600'}`}>{t.status}</span>
                     <span className="text-slate-500 text-xs">{new Date(t.created_at).toLocaleDateString('en-GB')}</span>
                   </div>
                 </div>
