@@ -31,7 +31,7 @@ export async function GET() {
     const seen = new Map<string, boolean>();
     const deduped = (data || []).filter((sub: any) => {
       const band = amountBand(Math.abs(parseFloat(String(sub.amount)) || 0));
-      const key = `${(sub.provider_name || '').toLowerCase().trim()}|${sub.billing_cycle}|${sub.status}|${band}`;
+      const key = `${(sub.provider_name || '').toLowerCase().trim()}|${sub.billing_cycle}|${band}`;
       if (seen.has(key)) return false;
       seen.set(key, true);
       return true;

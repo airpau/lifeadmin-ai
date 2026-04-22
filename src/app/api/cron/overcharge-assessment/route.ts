@@ -101,7 +101,16 @@ export async function GET(request: NextRequest) {
             profile.name || 'there',
             assessments.filter(a => a.overchargeScore >= 40) // Include medium+ in email
           );
-          if (sent) totalEmails++;
+          if (sent) {
+            // Record in tasks so global rate limiter counts this send
+            await supabase.from('tasks').insert({
+              user_id: userId,
+              type: 'overcharge_alert',
+              title: `Overcharge alert: ${highScore.length} item${highScore.length !== 1 ? 's' : ''}`,
+              status: 'completed',
+            });
+            totalEmails++;
+          }
         }
       }
     } catch (err) {

@@ -34,7 +34,7 @@ export async function sendWaitlistConfirmation(name: string, email: string) {
           <p style="color: #34d399; font-weight: bold; margin: 0 0 8px;">What happens next?</p>
           <ul style="color: #94a3b8; padding-left: 20px; line-height: 2;">
             <li>We'll email you when we launch (coming soon)</li>
-            <li>Early access members get 3 months free</li>
+            <li>Early access members get a 14-day free trial of Paybacker Pro</li>
             <li>First look at every new feature we ship</li>
           </ul>
         </div>

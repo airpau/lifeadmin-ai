@@ -212,6 +212,13 @@ export async function GET(request: NextRequest) {
           await updateFilter.eq('subscription_id', contract.subscriptionId);
         }
 
+        // Record in tasks so global rate limiter counts this send
+        await supabase.from('tasks').insert({
+          user_id: userId,
+          type: 'contract_expiry_alert',
+          title: `Contract expiry alert: ${contract.providerName} (${daysLeft}d)`,
+          status: 'completed',
+        });
         emailsSent++;
       }
     }

@@ -680,7 +680,7 @@ export default function HomepageV2Preview() {
       </section>
 
       {/* Pillars --------------------------------------------------- */}
-      <section className="pillars-section section-light">
+      <section id="pillars" className="pillars-section section-light">
         <div className="wrap">
           <div className="section-head reveal">
             <span className="eyebrow">What&rsquo;s in the box</span>
@@ -988,7 +988,7 @@ export default function HomepageV2Preview() {
                   <p>
                     Ask a question, forward a bill, paste a PDF. The agent reads it, checks it
                     against UK law and your connected accounts, and replies in seconds. Nothing
-                    is sent on your behalf without a &ldquo;Confirm&rdquo; tap.
+                    is drafted for you to review — nothing leaves your device until you tap send.
                   </p>
                 </div>
               </li>

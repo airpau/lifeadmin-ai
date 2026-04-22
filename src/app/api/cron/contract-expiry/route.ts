@@ -211,6 +211,13 @@ export async function GET(request: NextRequest) {
             .eq('user_id', userId)
             .eq('alert_type', alertType)
             .eq('alert_channel', 'email');
+          // Record in tasks so global rate limiter counts this send
+          await supabase.from('tasks').insert({
+            user_id: userId,
+            type: 'contract_end_alert',
+            title: `Contract end alert: ${sub.provider_name} (${daysLeft}d)`,
+            status: 'completed',
+          });
           emailsSent++;
         }
       }
