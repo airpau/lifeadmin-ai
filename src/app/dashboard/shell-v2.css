@@ -277,3 +277,42 @@
 @media (max-width: 1100px) {
   .shell-v2 .overview-grid { grid-template-columns: 1fr; }
 }
+
+/* ─── KPI row responsive: c4 collapses 4→2→1 on narrower viewports ─── */
+@media (max-width: 1100px) {
+  .shell-v2 .kpi-row.c4 { grid-template-columns: repeat(2, 1fr); }
+  .shell-v2 .kpi-row.c3 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .shell-v2 .kpi-row.c4,
+  .shell-v2 .kpi-row.c3 {
+    grid-template-columns: 1fr;
+  }
+  /* Page-title row stacks the CTA cluster below the heading on phones */
+  .shell-v2 .page-title-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .shell-v2 .page-title { font-size: 22px; }
+  .shell-v2 .page-sub { font-size: 13px; }
+  /* Hero Action Centre + embedded cards breathe on narrow screens */
+  .shell-v2 .main-inner { padding: 18px 14px 32px; }
+  .shell-v2 .card { padding: 14px; }
+}
+
+/* Danger variant of .cta used by PriceIncreaseCard */
+.shell-v2 .cta-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--rose-wash);
+  color: var(--rose-deep);
+  border: 1px solid #FCA5A5;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 9px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.shell-v2 .cta-danger:hover { background: #FEE2E2; }
