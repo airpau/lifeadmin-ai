@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     .is('trial_converted_at', null)
     .is('trial_expired_at', null)
     .is('stripe_subscription_id', null)
+    .neq('founding_member', true)
     .not('trial_ends_at', 'is', null);
 
   if (error) {

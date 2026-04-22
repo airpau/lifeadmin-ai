@@ -239,7 +239,8 @@ export async function POST(request: NextRequest) {
             subscription_status: status,
             updated_at: new Date().toISOString(),
           })
-          .eq('stripe_customer_id', customerId);
+          .eq('stripe_customer_id', customerId)
+          .neq('founding_member', true);
 
         if (error) console.error('Webhook: subscription.updated FAILED:', error.message);
         else console.log('Webhook: subscription.updated OK');
@@ -259,7 +260,8 @@ export async function POST(request: NextRequest) {
             stripe_subscription_id: null,
             updated_at: new Date().toISOString(),
           })
-          .eq('stripe_customer_id', customerId);
+          .eq('stripe_customer_id', customerId)
+          .neq('founding_member', true);
 
         if (error) console.error('Webhook: subscription.deleted FAILED:', error.message);
         else console.log('Webhook: subscription.deleted — downgraded to free');
