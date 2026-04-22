@@ -453,6 +453,8 @@ export default function ProfilePage() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
+  const [section, setSection] = useState<'profile' | 'accounts' | 'subscription' | 'notifications' | 'privacy' | 'danger'>('profile');
+
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -755,8 +757,17 @@ export default function ProfilePage() {
     return <span className="text-slate-900 font-semibold capitalize">{status || 'Free'}</span>;
   };
 
+  const SECTIONS: { k: 'profile' | 'accounts' | 'subscription' | 'notifications' | 'privacy' | 'danger'; t: string }[] = [
+    { k: 'profile', t: 'Profile' },
+    { k: 'accounts', t: 'Connected accounts' },
+    { k: 'subscription', t: 'Subscription' },
+    { k: 'notifications', t: 'Notifications' },
+    { k: 'privacy', t: 'Privacy & data' },
+    { k: 'danger', t: 'Delete account' },
+  ];
+
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       {/* Billing update message */}
       {billingMessage && (
         <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-green-400 text-sm font-medium flex items-center gap-2">
@@ -765,12 +776,41 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
-        <p className="text-slate-600">Manage your account and view your stats</p>
+      {/* Header (batch5 ProfileSettings) */}
+      <div className="page-title-row" style={{marginBottom:12}}>
+        <div>
+          <h1 className="page-title">{profile?.full_name || 'Your profile'}</h1>
+          <p className="page-sub">{profile?.email}{profile?.subscription_tier && profile.subscription_tier !== 'free' ? ` · Paybacker ${profile.subscription_tier.charAt(0).toUpperCase()}${profile.subscription_tier.slice(1)}` : ' · Paybacker Free'} · Member since {memberSince}</p>
+        </div>
       </div>
 
+      {/* Section tabs */}
+      <div style={{borderBottom:'1px solid #E5E7EB',marginBottom:16}}>
+        <div style={{display:'flex',gap:4,overflowX:'auto'}}>
+          {SECTIONS.map(s => (
+            <button
+              key={s.k}
+              onClick={() => setSection(s.k)}
+              style={{
+                padding:'10px 14px',
+                fontSize:12.5,
+                fontWeight:600,
+                background:'transparent',
+                border:'none',
+                borderBottom: section === s.k ? '2px solid #0B1220' : '2px solid transparent',
+                color: section === s.k ? '#0B1220' : '#6B7280',
+                cursor:'pointer',
+                whiteSpace:'nowrap',
+                fontFamily:'inherit',
+              }}
+            >
+              {s.t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {section === 'profile' && (<>
       {/* Account Info */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-start justify-between mb-6">
@@ -997,7 +1037,9 @@ export default function ProfilePage() {
 
       {/* Stats */}
       <ProfileStatsSection supabase={supabase} fallbackRecovered={profile?.total_money_recovered || 0} />
+      </>)}
 
+      {section === 'subscription' && (<>
       {/* Your Plan */}
       {(() => {
         const isTrialUser = profile?.subscription_status === 'trialing' && !profile?.stripe_subscription_id && effectiveTier !== 'free';
@@ -1048,9 +1090,14 @@ export default function ProfilePage() {
         );
       })()}
 
+      </>)}
+
+      {section === 'accounts' && (<>
       {/* Connected Accounts */}
       <ConnectedAccountsSection supabase={supabase} searchParams={searchParams} />
+      </>)}
 
+      {section === 'subscription' && (<>
       {/* Financial Reports */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
@@ -1142,13 +1189,15 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+      </>)}
 
-      {/* Legal links */}
+      {/* Legal links — always visible */}
       <div className="flex gap-4 text-xs text-slate-500 mb-6">
         <a href="/privacy-policy" className="hover:text-slate-900 transition-all">Privacy Policy</a>
         <a href="/terms-of-service" className="hover:text-slate-900 transition-all">Terms of Service</a>
       </div>
 
+      {section === 'subscription' && (<>
       {/* Subscription Management */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8">
         <h2 className="text-xl font-bold text-slate-900 mb-4">Subscription</h2>
@@ -1224,6 +1273,9 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+      </>)}
+
+      {section === 'notifications' && (<>
       {/* Pocket Agent */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
@@ -1253,6 +1305,9 @@ export default function ProfilePage() {
           </Link>
         )}
       </div>
+      </>)}
+
+      {section === 'privacy' && (<>
       {/* Data Export — GDPR Right to Portability */}
       <div className="bg-white backdrop-blur-sm border border-slate-200 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
@@ -1272,6 +1327,9 @@ export default function ProfilePage() {
         </button>
       </div>
 
+      </>)}
+
+      {section === 'danger' && (<>
       {/* Danger Zone — Delete Account */}
       <div className="bg-white backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
         <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
@@ -1313,6 +1371,7 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }
