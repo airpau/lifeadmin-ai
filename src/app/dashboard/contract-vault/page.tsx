@@ -228,7 +228,7 @@ export default function ContractVaultPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)] flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
             <FolderLock className="h-6 w-6 text-orange-600" /> Contract Vault
           </h1>
           <p className="text-slate-600 text-sm mt-1">Upload contracts and track key terms. Get alerts before contracts auto-renew.</p>

@@ -256,7 +256,7 @@ function ContractDetail({ contract, onBack, onDelete }: {
       <div className="card mb-6">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
+            <h1 className="page-title ">
               {contract.provider_name ? `Your ${contract.provider_name} contract` : 'Contract details'}
             </h1>
             <div className="flex items-center gap-3 mt-2">
