@@ -18,6 +18,7 @@ import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
 import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
 import { cleanMerchantName } from '@/lib/merchant-utils';
+import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { calculateTotalSavings, parseComparisonDeals, isPriceAlertValid, priceAlertAnnualImpact } from '@/lib/savings-utils';
 
@@ -376,26 +377,9 @@ export default function DashboardPage() {
         // potentialSavings will be calculated after all data loads (see below)
 
         const subsList = subs.data || [];
-        // Filter out finance payments and deduplicate — match subscriptions page logic
-        const DEBT_KW = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
-        const CREDIT_KW = ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
-        const isFinance = (name: string) => {
-          const l = name.toLowerCase();
-          return DEBT_KW.some(kw => l.includes(kw)) || CREDIT_KW.some(kw => l.includes(kw));
-        };
-        const filteredSubs = subsList.filter(s => !isFinance(s.provider_name));
-        const seenNames = new Map<string, boolean>();
-        const dedupedSubs = filteredSubs.filter(s => {
-          const normName = cleanMerchantName(s.provider_name).toLowerCase();
-          // Include amount band so two separate bills at the same provider but
-          // different amounts (e.g. two council-tax DDs) count as distinct.
-          const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
-          const key = `${normName}|${band}`;
-          if (seenNames.has(key)) return false;
-          seenNames.set(key, true);
-          return true;
-        });
-        setSubscriptionCount(dedupedSubs.length);
+        // Single source of truth for "active subscriptions" — dedupe +
+        // finance-strip handled by shared helper so every page agrees.
+        setSubscriptionCount(countActiveSubscriptions(subsList));
         setActiveSubscriptions(subsList);
 
         // Calculate monthly spend via RPC for consistency with subscriptions page
@@ -898,7 +882,7 @@ export default function DashboardPage() {
       <div className="kpi-row c4" style={{ marginBottom: 16 }}>
         <Link href="/dashboard/subscriptions" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
           <div className="k-label"><CreditCard className="h-3.5 w-3.5" /> Subscriptions & bills</div>
-          <div className="k-val">{spendBreakdown?.subscriptions_count || subscriptionCount}</div>
+          <div className="k-val">{subscriptionCount}</div>
           <div className="k-delta">{formatGBP(monthlySpend)}/mo</div>
         </Link>
         <Link href="/dashboard/complaints" className="kpi-card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>

@@ -20,6 +20,7 @@ import SpendingPanel from './SpendingPanel';
 import GoalsAndBudgetsPanel from './GoalsAndBudgetsPanel';
 import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
+import { filterActiveSubscriptions } from '@/lib/subscriptions/active-count';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
 
@@ -191,7 +192,12 @@ export default function MoneyHubPage() {
  const res = await fetch('/api/money-hub/fac');
  const d = await res.json();
  if (!d.error) {
- setFacItems(d.items || []);
+ // Align Money Hub's "active subscriptions" list with Dashboard Overview
+ // and the Subscriptions page. filterActiveSubscriptions strips finance
+ // rows (mortgage/loan/credit card — those belong in the Liabilities
+ // section) and dedupes by provider + amount band.
+ const filtered = filterActiveSubscriptions((d.items || []) as FacItem[]);
+ setFacItems(filtered);
  setFacCounts(d.counts || {});
  }
  } catch { /* silent */ }
