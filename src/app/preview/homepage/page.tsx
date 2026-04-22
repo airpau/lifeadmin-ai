@@ -660,8 +660,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <span className="eyebrow">01 · AI Disputes Centre</span>
-              <h3>Draft a UK-law-cited complaint in 30 seconds.</h3>
+              <h2 className="feature-title">AI Disputes Centre</h2>
+              <p className="feature-tagline">
+                Draft a UK-law-cited complaint in 30 seconds.
+              </p>
               <p>
                 Type one sentence — Paybacker writes the formal letter, cites
                 the exact regulation, and sends it on your behalf.
@@ -692,8 +694,10 @@ export default function HomepageV3PreviewPage() {
               <PocketAgentDemo />
             </Reveal>
             <Reveal className="feature-copy">
-              <span className="eyebrow on-ink">02 · Pocket Agent</span>
-              <h3>Your AI money agent, in Telegram.</h3>
+              <h2 className="feature-title">Pocket Agent</h2>
+              <p className="feature-tagline">
+                Your AI money agent, in Telegram.
+              </p>
               <p>
                 Ask anything. Fix anything. &ldquo;Is my energy bill fair?&rdquo;
                 &ldquo;Cancel my gym.&rdquo; &ldquo;Dispute my parking ticket.&rdquo;
@@ -719,8 +723,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <span className="eyebrow">03 · Money Hub</span>
-              <h3>Every account, every bill, every trend — in one view.</h3>
+              <h2 className="feature-title">Money Hub</h2>
+              <p className="feature-tagline">
+                Every account, every bill, every trend — in one view.
+              </p>
               <p>
                 Connect your bank via Open Banking (Yapily, FCA-authorised).
                 Read-only, bank-grade, never stored longer than needed.
@@ -754,10 +760,10 @@ export default function HomepageV3PreviewPage() {
               <SubscriptionsDemo />
             </Reveal>
             <Reveal className="feature-copy">
-              <span className="eyebrow">04 · Subscriptions tracker</span>
-              <h3>
+              <h2 className="feature-title">Subscriptions Tracker</h2>
+              <p className="feature-tagline">
                 Every fixed outgoing — surfaced, sorted, savings-flagged.
-              </h3>
+              </p>
               <p>
                 Auto-detects every subscription, direct debit and recurring
                 charge. Flags price rises, duplicates, and forgotten trials.
@@ -782,8 +788,10 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="feature-grid">
             <Reveal className="feature-copy">
-              <span className="eyebrow">05 · Export hub</span>
-              <h3>Live-sync to Google Sheets. Or one-shot CSV, Excel, PDF.</h3>
+              <h2 className="feature-title">Export Hub</h2>
+              <p className="feature-tagline">
+                Live-sync to Google Sheets. Or one-shot CSV, Excel, PDF.
+              </p>
               <p>
                 Your money is your data. Export it anywhere — including live
                 spreadsheets that update as your bank moves.
@@ -806,133 +814,165 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
-      {/* ========== Comparison matrix ========== */}
-      <section className="compare-section section-light" id="compare">
+      {/* ========== Architecture + Competitor comparison (dark) ========== */}
+      <section className="compare-section section-ink" id="compare">
         <div className="wrap">
           <Reveal className="section-head section-head--center">
-            <span className="eyebrow">How we stack up</span>
-            <h2>
-              Everything the others do —
-              <br />
-              plus the parts that actually save you money.
-            </h2>
-            <p>
-              Paybacker combines bank sync, subscription tracking, AI disputes
-              and a deals marketplace in one subscription. No one else does all
-              five.
-            </p>
+            <span className="eyebrow on-ink">Stacked</span>
+            <h2>Architecture + competitor comparison</h2>
+            <p>How Paybacker beats every single incumbent.</p>
           </Reveal>
 
-          <Reveal className="compare-table-wrap">
-            <table className="compare-table">
+          {/* 3-panel architecture diagram */}
+          <Reveal className="arch-grid">
+            <div className="arch-col arch-col--inputs">
+              <div className="arch-label arch-label--orange">Inputs</div>
+              <ul className="arch-list">
+                <li>UK banks via Yapily</li>
+                <li>Gmail / Outlook inbox scan</li>
+                <li>Manual subscription add</li>
+                <li>Telegram commands</li>
+                <li>Dispute form (web or chat)</li>
+              </ul>
+            </div>
+
+            <div className="arch-col arch-col--core">
+              <div className="arch-core-card">
+                <div className="arch-label arch-label--mint arch-label--center">
+                  Paybacker Core
+                </div>
+                <ul className="arch-list arch-list--bold">
+                  <li>
+                    <strong>Unified ledger</strong>
+                    <span>every txn, contract, hike</span>
+                  </li>
+                  <li>
+                    <strong>Classifier</strong>
+                    <span>Money Hub categorisation</span>
+                  </li>
+                  <li>
+                    <strong>Flag engine</strong>
+                    <span>hikes, duplicates, trials</span>
+                  </li>
+                  <li>
+                    <strong>Law library</strong>
+                    <span>CRA, Ofcom, Ofgem, UK261, FCA</span>
+                  </li>
+                  <li>
+                    <strong>Deals graph</strong>
+                    <span>53+ UK partners</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="arch-col arch-col--outputs">
+              <div className="arch-label arch-label--mint">Outputs</div>
+              <ul className="arch-list">
+                <li>Web app — Money Hub + Disputes</li>
+                <li>Telegram Pocket Agent</li>
+                <li>Complaint letters (copy/email/PDF)</li>
+                <li>Google Sheets live sync</li>
+                <li>Deep-links to cancel / switch</li>
+              </ul>
+            </div>
+          </Reveal>
+
+          {/* Competitor matrix — dark theme, PAYBACKER last */}
+          <Reveal className="compare-table-wrap compare-table-wrap--dark">
+            <table className="compare-table compare-table--dark">
               <thead>
                 <tr>
                   <th className="feature">Feature</th>
-                  <th className="us">Paybacker</th>
                   <th>Emma</th>
                   <th>Snoop</th>
+                  <th>Lunchflow</th>
                   <th>Resolver</th>
-                  <th>DoNotPay</th>
+                  <th>Which?</th>
+                  <th className="us">Paybacker</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>AI letters citing UK consumer law</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">US only</span></td>
-                </tr>
-                <tr>
-                  <td>Open Banking bank sync</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="chk">✓</span></td>
-                  <td><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>Subscription tracking</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="chk">✓</span></td>
-                  <td><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>Email inbox scan for hidden costs</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>AI cancellation emails</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>Pocket Agent (Telegram AI)</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>Deals marketplace (switch partners)</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>Google Sheets + CSV/Excel export</td>
-                  <td className="us"><span className="chk">✓</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>Developer MCP (Claude integration)</td>
-                  <td className="us"><span className="chk">✓ Pro</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                  <td><span className="x">—</span></td>
-                </tr>
-                <tr>
-                  <td>UK-first consumer-law focus</td>
-                  <td className="us"><span className="chk">✓</span></td>
+                  <td>Bank sync (Open Banking)</td>
                   <td><span className="chk">✓</span></td>
                   <td><span className="chk">✓</span></td>
                   <td><span className="chk">✓</span></td>
                   <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td className="us"><span className="chk">✓</span></td>
                 </tr>
-                <tr className="price-row">
-                  <td>Monthly price (starter)</td>
-                  <td className="us">£4.99</td>
-                  <td>£4.49</td>
-                  <td>£4.99</td>
-                  <td>Free (manual)</td>
-                  <td>£36/yr</td>
+                <tr>
+                  <td>Subscription flagging (hike/dup/unused)</td>
+                  <td>Basic</td>
+                  <td>Basic</td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td className="us">Full</td>
+                </tr>
+                <tr>
+                  <td>Legal-grade dispute letters</td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td>Templates</td>
+                  <td>Guide</td>
+                  <td className="us">AI + law</td>
+                </tr>
+                <tr>
+                  <td>UK consumer law library cited</td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td>Partial</td>
+                  <td>Partial</td>
+                  <td className="us">5+ statutes</td>
+                </tr>
+                <tr>
+                  <td>Telegram / chat agent</td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td className="us"><span className="chk">✓</span></td>
+                </tr>
+                <tr>
+                  <td>Live Google Sheets export</td>
+                  <td>CSV only</td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="chk">✓</span></td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td className="us">✓ two-way</td>
+                </tr>
+                <tr>
+                  <td>Switch-deals that beat your bill</td>
+                  <td>Generic ads</td>
+                  <td>Generic</td>
+                  <td><span className="x">—</span></td>
+                  <td><span className="x">—</span></td>
+                  <td>Guide only</td>
+                  <td className="us">Personalised</td>
+                </tr>
+                <tr>
+                  <td>User in control (no auto-sent emails)</td>
+                  <td><span className="chk">✓</span></td>
+                  <td><span className="chk">✓</span></td>
+                  <td><span className="chk">✓</span></td>
+                  <td>Semi</td>
+                  <td><span className="chk">✓</span></td>
+                  <td className="us"><span className="chk">✓</span></td>
                 </tr>
               </tbody>
             </table>
           </Reveal>
 
-          <p className="compare-footnote">
+          <p className="compare-footnote compare-footnote--ink">
             Based on publicly listed features as of April 2026. Spot something
             we&rsquo;ve missed? Email{' '}
-            <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a> and
-            we&rsquo;ll update it.
+            <a href="mailto:hello@paybacker.co.uk">hello@paybacker.co.uk</a>.
           </p>
         </div>
       </section>
