@@ -159,7 +159,7 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const admin = getAdmin();
   const { data: profile } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at, founding_member')
     .eq('id', userId)
     .single();
 
@@ -179,6 +179,14 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
     profile?.subscription_status === 'trialing' &&
     profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+
+  // Founding members were granted Essential/Pro manually and by design have
+  // no Stripe subscription. The profile tier is authoritative for them.
+  // Mirrors the guard PR #151 added to /api/stripe/sync — without this, the
+  // Watchdog cron (and every other caller of getEffectiveTier) degrades
+  // founders to 'free' and skips their linked threads entirely, which is
+  // exactly what was hiding Paul's OneStream reply for 18h.
+  if (profile?.founding_member === true && isPaid) return tier;
 
   return (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
 }
