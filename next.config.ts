@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
         destination: 'https://paybacker.co.uk/:path*',
         permanent: true,
       },
+      // Legacy /login path — route to the real auth page
+      {
+        source: '/login',
+        destination: '/auth/login',
+        permanent: true,
+      },
     ];
   },
   async rewrites() {
