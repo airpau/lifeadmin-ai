@@ -279,7 +279,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
       {/* Connect Email Modal */}
       {showConnectModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="card shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
               className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
@@ -887,14 +887,14 @@ export default function ProfilePage() {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setEditing(false)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm"
+                className="px-5 py-2.5 cta-ghost rounded-xl transition-all text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveProfile}
                 disabled={saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2.5 cta font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 {saving ? 'Saving...' : 'Save Changes'}
@@ -949,7 +949,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={passwordLoading || newPassword.length < 8}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
+            className="px-5 py-2.5 cta-ghost rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
           >
             {passwordLoading ? 'Updating...' : 'Update Password'}
           </button>
@@ -1031,15 +1031,15 @@ export default function ProfilePage() {
                 </p>
               </div>
               {isTrialUser ? (
-                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Subscribe to keep Pro
                 </Link>
               ) : effectiveTier === 'free' ? (
-                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Upgrade Plan
                 </Link>
               ) : (
-                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900 px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
+                <button onClick={handleManageBilling} disabled={portalLoading} className="cta-ghost px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   {portalLoading ? 'Loading...' : 'Manage Billing'}
                 </button>
               )}
@@ -1072,7 +1072,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => handleGenerateReport('on_demand')}
                 disabled={reportLoading}
-                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
+                className="flex items-center gap-2 cta-ghost font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
               >
                 Quick Summary
               </button>
@@ -1182,7 +1182,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleManageBilling}
                 disabled={portalLoading}
-                className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
+                className="inline-flex items-center gap-2 cta-ghost font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
               >
                 <CreditCard className="h-4 w-4" />
                 {portalLoading ? 'Loading...' : 'Manage Billing'}
@@ -1305,7 +1305,7 @@ export default function ProfilePage() {
               </button>
               <button
                 onClick={() => setDeleteConfirm(false)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-900 px-5 py-2.5 rounded-lg transition-all text-sm"
+                className="cta-ghost px-5 py-2.5 rounded-lg transition-all text-sm"
               >
                 Cancel
               </button>

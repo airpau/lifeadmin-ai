@@ -151,7 +151,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
   };
 
   return (
-    <div className="bg-white border border-slate-200/50 rounded-xl p-4 hover:border-emerald-200 transition-all relative group/card">
+    <div className="card hover:border-emerald-200 transition-all relative group/card">
       {/* Delete (X) button */}
       <button
         onClick={() => setConfirmDelete(true)}
@@ -391,7 +391,7 @@ export default function PaymentsPage() {
       </div>
 
       {/* Overview with Pie Chart */}
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+      <div className="card mb-6">
         <div className="flex flex-col sm:flex-row items-center gap-6">
           {pieData.length > 0 && (
             <div className="w-40 h-40 flex-shrink-0">
@@ -470,7 +470,7 @@ export default function PaymentsPage() {
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : tabPayments.length === 0 ? (
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+        <div className="card p-12 text-center">
           <CreditCard className="h-12 w-12 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-600">No {tab.replace('_', ' ')} found</p>
           <p className="text-slate-500 text-sm mt-1">Connect your bank account to auto-detect payments</p>

@@ -242,7 +242,7 @@ export default function TelegramSettingsPage() {
         </div>
       ) : (
         /* Not connected state */
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
+        <div className="card p-6 space-y-6">
           <div>
             <h3 className="text-slate-900 font-semibold mb-1">Connect your account</h3>
             <p className="text-slate-600 text-sm">

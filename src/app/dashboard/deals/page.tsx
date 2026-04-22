@@ -281,7 +281,7 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleClick}
-            className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
+            className="flex items-center gap-1 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
           >
             View Deal →
           </a>
@@ -445,7 +445,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleClick}
-          className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
+          className="flex items-center gap-1 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
         >
           View Deal →
         </a>
@@ -858,7 +858,7 @@ export default function DealsPage() {
                           }).catch(() => {});
                           capture('best_deal_clicked', { provider: bestDeal.deal.provider, plan: bestDeal.deal.plan_name, savings: bestDeal.savingsYearly });
                         }}
-                        className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-xl transition-all text-sm"
+                        className="inline-flex items-center gap-1.5 cta transition-all text-sm"
                       >
                         Switch Now →
                       </a>
