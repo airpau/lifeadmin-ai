@@ -75,7 +75,7 @@ function namesMatch(a: string, b: string): boolean {
 
 // Rule 4: only these subscription categories are eligible for price-increase detection
 const ELIGIBLE_CATEGORIES = new Set([
-  'broadband', 'mobile', 'streaming', 'energy', 'water',
+  'broadband', 'mobile', 'streaming', 'energy', 'utility', 'water',
   'insurance', 'fitness', 'software', 'bills', 'council_tax',
 ]);
 
@@ -105,6 +105,15 @@ const CATEGORY_MAX_AMOUNT: Record<string, number> = {
   mortgage:   5000,
 };
 const DEFAULT_MAX_AMOUNT = 300;
+
+// Annual multiplier per billing cycle — quarterly subs have 4 payments/year, not 12
+const ANNUAL_MULTIPLIER: Record<string, number> = {
+  monthly:   12,
+  quarterly:  4,
+  annual:     1,
+  yearly:     1,
+};
+
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get('authorization')?.replace('Bearer ', '');
@@ -185,15 +194,19 @@ export async function GET(request: NextRequest) {
 
       if (!subscriptions || subscriptions.length === 0) continue;
 
-      // Rule 2: fetch only DIRECT_DEBIT and STANDING_ORDER transactions.
-      // Filtering at DB level avoids pulling in card payments that are never
-      // eligible for price-increase detection.
+      // Rule 2: fetch only Direct Debit / Standing Order transactions.
+      // Most transactions arrive with category = null (the sync writer does not
+      // populate it). The recurring-detection pipeline sets is_recurring = true
+      // when it identifies a payment as recurring — this is the practical signal
+      // for DD/SO for most users. The .or() filter captures both cases:
+      //   • explicit DIRECT_DEBIT / STANDING_ORDER category (if ever set), OR
+      //   • is_recurring = true (set by detect-recurring pipeline)
       const { data: allTxns } = await supabase
         .from('bank_transactions')
-        .select('merchant_name, description, amount, category, timestamp')
+        .select('merchant_name, description, amount, category, timestamp, is_recurring')
         .eq('user_id', userId)
         .lt('amount', 0)
-        .in('category', ['DIRECT_DEBIT', 'STANDING_ORDER'])
+        .or('category.eq.DIRECT_DEBIT,category.eq.STANDING_ORDER,is_recurring.eq.true')
         .gte('timestamp', sixMonthsAgo)
         .order('timestamp', { ascending: true });
 
@@ -208,8 +221,10 @@ export async function GET(request: NextRequest) {
       }> = [];
 
       for (const sub of subscriptions) {
-        // Rule 4: category allowlist — skip categories that are not fixed-price services
-        if (sub.category && !ELIGIBLE_CATEGORIES.has(sub.category)) continue;
+        // Rule 4: category allowlist — subscriptions with no category or a category
+        // outside the eligible set are not fixed-price services and must be skipped.
+        // Null is NOT a pass-through: an uncategorised subscription could be anything.
+        if (!sub.category || !ELIGIBLE_CATEGORIES.has(sub.category)) continue;
 
         // Rule 6: bank blocklist — loan/mortgage DDs must never be flagged
         const subNameNorm = normaliseName(sub.provider_name);
@@ -242,7 +257,7 @@ export async function GET(request: NextRequest) {
         const byMonth = new Map<string, { amount: number; dayDiff: number }>();
         for (const tx of matchingTxns) {
           const txDay = new Date(tx.timestamp).getDate();
-          const month = (tx.timestamp as string).slice(0, 7);
+          const month = new Date(tx.timestamp as string).toISOString().slice(0, 7);
           const amt = Math.abs(Number(tx.amount));
 
           // Wrap-around diff handles billing days near month boundaries
@@ -314,7 +329,8 @@ export async function GET(request: NextRequest) {
 
         if (existingLog) continue;
 
-        const annualIncrease = Math.round(increase * 12 * 100) / 100;
+        const annualMultiplier = ANNUAL_MULTIPLIER[sub.billing_cycle] ?? 12;
+        const annualIncrease = Math.round(increase * annualMultiplier * 100) / 100;
         increases.push({ name: normName, prevAmount: oldPrice, newAmount: latestAmt, increase, annualIncrease });
       }
 
