@@ -2200,66 +2200,55 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
   };
 
   return (
-    <div className="max-w-5xl">
+    <div>
       {showTour && <GuidedTour onComplete={completeTour} />}
 
-      <div className="flex items-center justify-between mb-6">
+      {/* Variant A header + KPI strip — maps Disputes Centre design to real summary data. */}
+      <div className="page-title-row">
         <div>
-          <h1 className="page-title">Disputes</h1>
-          <p className="text-slate-600 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
+          <h1 className="page-title">Disputes Centre</h1>
+          <p className="page-sub">
+            {summary && (summary.total_open > 0 || summary.total_resolved > 0)
+              ? <>
+                  {summary.total_open} open · {summary.total_resolved} resolved ·{' '}
+                  <strong style={{color:'var(--mint-deep)'}}>£{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} recovered</strong> so far.
+                </>
+              : <>Manage complaints, generate legal letters, and track your cases.</>}
+          </p>
         </div>
-        <button
-          id="tour-new-btn"
-          onClick={onNew}
-          className="flex items-center gap-2 px-4 py-2.5 cta font-semibold rounded-lg transition-all"
-        >
-          <Plus className="h-4 w-4" />
-          New dispute
-        </button>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button
+            id="tour-new-btn"
+            onClick={onNew}
+            className="cta"
+            style={{fontSize:12.5}}
+          >
+            <Plus className="h-3.5 w-3.5" /> New dispute
+          </button>
+        </div>
       </div>
 
-      {/* Dispute Summary Stats */}
       {summary && (summary.total_open > 0 || summary.total_resolved > 0) && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="card">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <Scale className="h-4 w-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{summary.total_open}</p>
-            <p className="text-slate-500 text-xs mt-0.5">Active Disputes</p>
+        <div className="kpi-row c4" style={{marginBottom:16}}>
+          <div className="kpi-card">
+            <div className="k-label"><Scale className="h-3.5 w-3.5" /> Active disputes</div>
+            <div className="k-val">{summary.total_open}</div>
+            <div className="k-delta">Open cases · awaiting action or reply</div>
           </div>
-          <div className="card">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <CheckCircle className="h-4 w-4 text-green-400" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{summary.total_resolved}</p>
-            <p className="text-slate-500 text-xs mt-0.5">Resolved</p>
+          <div className="kpi-card">
+            <div className="k-label"><CheckCircle className="h-3.5 w-3.5" /> Resolved</div>
+            <div className="k-val">{summary.total_resolved}</div>
+            <div className="k-delta">Closed · won or settled</div>
           </div>
-          <div className="card">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <PoundSterling className="h-4 w-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              £{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">Being Disputed</p>
+          <div className="kpi-card">
+            <div className="k-label"><PoundSterling className="h-3.5 w-3.5" /> Being disputed</div>
+            <div className="k-val amber">£{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+            <div className="k-delta">In-flight · sum across open cases</div>
           </div>
-          <div className="card">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4 text-green-400" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-green-400">
-              £{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">Total Recovered</p>
+          <div className="kpi-card">
+            <div className="k-label"><TrendingUp className="h-3.5 w-3.5" /> Total recovered</div>
+            <div className="k-val green">£{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="k-delta">Lifetime · from resolved disputes</div>
           </div>
         </div>
       )}
