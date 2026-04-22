@@ -3,31 +3,31 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
 // Gold/Navy design system styles (shared from onboarding)
-const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;border-radius:16px;overflow:hidden;`;
-const header = `background:#162544;padding:24px 32px;border-bottom:1px solid #1e3a5f;text-align:center;`;
+const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;`;
+const header = `background:#F9FAFB;padding:24px 32px;border-bottom:1px solid #F9FAFB;text-align:center;`;
 const body = `padding:32px;`;
-const h1 = `color:#ffffff;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
-const h2 = `color:#ffffff;font-size:18px;font-weight:600;margin:0 0 12px;`;
-const p = `color:#94a3b8;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const pWhite = `color:#e2e8f0;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#162544;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #34d399;`;
-const tipBox = `background:#162544;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #10b981;`;
-const cta = `display:inline-block;background:#34d399;color:#0f172a;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
-const footer = `padding:20px 32px 28px;border-top:1px solid #1e3a5f;`;
-const footerText = `color:#475569;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
+const h1 = `color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
+const h2 = `color:#0B1220;font-size:18px;font-weight:600;margin:0 0 12px;`;
+const p = `color:#6B7280;font-size:15px;line-height:1.75;margin:0 0 16px;`;
+const pWhite = `color:#E5E7EB;font-size:15px;line-height:1.75;margin:0 0 16px;`;
+const box = `background:#F9FAFB;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #059669;`;
+const tipBox = `background:#F9FAFB;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #059669;`;
+const cta = `display:inline-block;background:#059669;color:#0B1220;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
+const footer = `padding:20px 32px 28px;border-top:1px solid #F9FAFB;`;
+const footerText = `color:#4B5563;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
 
 const Logo = () => `
   <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:22px;font-weight:800;color:#ffffff;">Pay<span style="background:linear-gradient(135deg,#34d399,#10b981);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">backer</span></span>
+    <span style="font-size:22px;font-weight:800;color:#0B1220;">Pay<span style="background:linear-gradient(135deg,#059669,#059669);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">backer</span></span>
   </a>
 `;
 
 const Footer = () => `
   <div style="${footer}">
     <p style="${footerText}">
-      <a href="https://paybacker.co.uk" style="color:#34d399;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/><br/>
-      <a href="https://paybacker.co.uk/privacy-policy" style="color:#475569;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
-      <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#475569;text-decoration:none;">Unsubscribe</a>
+      <a href="https://paybacker.co.uk" style="color:#059669;text-decoration:none;font-weight:600;">Paybacker LTD</a> · AI-powered money recovery for UK consumers<br/><br/>
+      <a href="https://paybacker.co.uk/privacy-policy" style="color:#4B5563;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#4B5563;text-decoration:none;">Unsubscribe</a>
     </p>
   </div>
 `;
@@ -44,10 +44,10 @@ export const templates = {
     
     <div style="${box}">
       <h2 style="${h2}">Complete your setup in 60 seconds:</h2>
-      <ul style="color:#94a3b8;font-size:14px;line-height:1.7;">
-        <li style="margin-bottom:8px;"><strong style="color:#e2e8f0;">Connect your bank:</strong> We'll automatically identify all your subscriptions.</li>
-        <li style="margin-bottom:8px;"><strong style="color:#e2e8f0;">Run a scan:</strong> Find exactly where you can cut costs immediately.</li>
-        <li><strong style="color:#e2e8f0;">Upgrade to Essential:</strong> Unlock unlimited AI complaint letters to get your money back from unfair charges.</li>
+      <ul style="color:#6B7280;font-size:14px;line-height:1.7;">
+        <li style="margin-bottom:8px;"><strong style="color:#E5E7EB;">Connect your bank:</strong> We'll automatically identify all your subscriptions.</li>
+        <li style="margin-bottom:8px;"><strong style="color:#E5E7EB;">Run a scan:</strong> Find exactly where you can cut costs immediately.</li>
+        <li><strong style="color:#E5E7EB;">Upgrade to Essential:</strong> Unlock unlimited AI complaint letters to get your money back from unfair charges.</li>
       </ul>
     </div>
     
@@ -67,12 +67,12 @@ export const templates = {
     <p style="${pWhite}">Welcome to Paybacker! We noticed you haven't started using the system yet. Let's change that.</p>
     
     <div style="${tipBox}">
-      <p style="color:#10b981;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Did you know?</p>
-      <p style="color:#94a3b8;margin:0;font-size:14px;line-height:1.6;">You can automatically generate legal complaint letters for delayed flights, unfair parking tickets, and unexpected bills using our AI dispute generator.</p>
+      <p style="color:#059669;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Did you know?</p>
+      <p style="color:#6B7280;margin:0;font-size:14px;line-height:1.6;">You can automatically generate legal complaint letters for delayed flights, unfair parking tickets, and unexpected bills using our AI dispute generator.</p>
     </div>
     
     <p style="${p}">Here are three things you can do right now:</p>
-    <ul style="color:#94a3b8;font-size:14px;line-height:1.7;">
+    <ul style="color:#6B7280;font-size:14px;line-height:1.7;">
       <li>Write a dispute letter to your energy provider</li>
       <li>Cancel a subscription you no longer use</li>
       <li>Claim compensation for a delayed flight</li>
@@ -94,10 +94,10 @@ export const templates = {
     
     <div style="${box}">
       <h2 style="${h2}">What's New in Paybacker:</h2>
-      <ul style="color:#94a3b8;font-size:14px;line-height:1.7;">
-        <li><strong style="color:#e2e8f0;">Enhanced Inbox Scanner:</strong> Automatically detects receipts and finds flight delay compensation opportunities.</li>
-        <li><strong style="color:#e2e8f0;">Stronger Legal AI:</strong> Our new models cite even more specific UK consumer law to ensure high success rates.</li>
-        <li><strong style="color:#e2e8f0;">Duplicate Subs Detection:</strong> We now automatically warn you if you're paying for the same service twice.</li>
+      <ul style="color:#6B7280;font-size:14px;line-height:1.7;">
+        <li><strong style="color:#E5E7EB;">Enhanced Inbox Scanner:</strong> Automatically detects receipts and finds flight delay compensation opportunities.</li>
+        <li><strong style="color:#E5E7EB;">Stronger Legal AI:</strong> Our new models cite even more specific UK consumer law to ensure high success rates.</li>
+        <li><strong style="color:#E5E7EB;">Duplicate Subs Detection:</strong> We now automatically warn you if you're paying for the same service twice.</li>
       </ul>
     </div>
 
