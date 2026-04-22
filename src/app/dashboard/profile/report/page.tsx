@@ -142,7 +142,7 @@ export default function AnnualReportPage() {
             </div>
           </div>
           <div className="flex-1 w-full">
-            <p className={`text-xl font-bold ${data.financialHealth.tier === 'healthy' ? 'text-green-400' : data.financialHealth.tier === 'coping' ? 'text-amber-400' : 'text-red-400'} mb-1`}>
+            <p className={`text-xl font-bold ${data.financialHealth.tier === 'healthy' ? 'text-green-400' : data.financialHealth.tier === 'coping' ? 'text-amber-600' : 'text-red-400'} mb-1`}>
               {data.financialHealth.tier.charAt(0).toUpperCase() + data.financialHealth.tier.slice(1)}
             </p>
             <div className="space-y-2 mt-3">
@@ -313,7 +313,7 @@ export default function AnnualReportPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     d.status === 'resolved' || d.status === 'resolved_success' ? 'bg-green-500/10 text-green-400' :
                     d.status === 'open' || d.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400' :
-                    'bg-slate-500/10 text-slate-600'
+                    'bg-slate-100 text-slate-600'
                   }`}>{d.status.replace(/_/g, ' ')}</span>
                   <p className="text-[10px] text-slate-500 mt-0.5">{d.dateFiled}</p>
                 </div>
@@ -394,7 +394,7 @@ export default function AnnualReportPage() {
       {/* Footer actions */}
       <div className="flex flex-wrap gap-3 justify-center">
         <button onClick={handleDownloadPDF} disabled={pdfLoading}
-          className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-mint-500 hover:to-mint-600 text-navy-950 font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50">
+          className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-500 hover:to-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50">
           {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Download PDF
         </button>

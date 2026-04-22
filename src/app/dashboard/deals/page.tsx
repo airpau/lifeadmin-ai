@@ -216,9 +216,9 @@ function urgencyLabel(days: number): { text: string; color: string; bg: string }
   if (days <= 0) return { text: 'Contract ended', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' };
   if (days <= 7) return { text: `Ends in ${days} days`, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' };
   if (days <= 14) return { text: `Ends in ${days} days`, color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30' };
-  if (days <= 30) return { text: `Ends in ${days} days`, color: 'text-emerald-600', bg: 'bg-emerald-500/10 border-mint-400/30' };
+  if (days <= 30) return { text: `Ends in ${days} days`, color: 'text-emerald-600', bg: 'bg-emerald-500/10 border-emerald-500/30' };
   if (days <= 90) return { text: `Ends in ${Math.ceil(days / 7)} weeks`, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' };
-  return { text: `Ends in ${Math.ceil(days / 30)} months`, color: 'text-slate-600', bg: 'bg-slate-500/10 border-slate-500/30' };
+  return { text: `Ends in ${Math.ceil(days / 30)} months`, color: 'text-slate-600', bg: 'bg-slate-100 border-slate-500/30' };
 }
 
 // Deals are coming soon. Check if Awin publisher ID is configured.
@@ -246,17 +246,17 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
 
   return (
     <div className={`group relative bg-white backdrop-blur-sm border rounded-2xl p-5 transition-all flex flex-col overflow-hidden ${
-      highlight || deal.featured ? 'border-amber-400/40 ring-1 ring-amber-400/20' : 'border-slate-200/50'
-    } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-navy-600'}`}>
+      highlight || deal.featured ? 'border-amber-300/40 ring-1 ring-amber-400/20' : 'border-slate-200/50'
+    } ${!DEALS_LIVE ? 'opacity-60' : 'hover:border-slate-200'}`}>
       {deal.featured && (
-        <span className="absolute top-3 left-3 text-[10px] font-bold text-navy-950 bg-amber-400 px-2 py-0.5 rounded-full uppercase tracking-wide">
+        <span className="absolute top-3 left-3 text-[10px] font-bold text-slate-900 bg-amber-500 px-2 py-0.5 rounded-full uppercase tracking-wide">
           New Deal
         </span>
       )}
       {onDismiss && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
-          className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-navy-700 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
           title="Not interested"
         >
           <X className="h-3.5 w-3.5" />
@@ -281,12 +281,12 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleClick}
-            className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
+            className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
           >
             View Deal →
           </a>
         ) : (
-          <span className="bg-navy-700 text-slate-600 font-medium px-3 py-1.5 rounded-lg text-xs cursor-not-allowed flex-shrink-0 ml-auto">
+          <span className="bg-slate-50 text-slate-600 font-medium px-3 py-1.5 rounded-lg text-xs cursor-not-allowed flex-shrink-0 ml-auto">
             Coming Soon
           </span>
         )}
@@ -389,11 +389,11 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   const isSaving = hasSavingsData && savingsMonthly! > 0;
 
   return (
-    <div className="group relative bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-navy-600">
+    <div className="group relative bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-slate-200">
       {onDismiss && (
         <button 
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
-          className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-navy-700 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
           title="Not interested"
         >
           <X className="h-3.5 w-3.5" />
@@ -425,7 +425,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
           <div className={`mt-2 text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1 ${
             isSaving
               ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-              : 'bg-slate-500/10 text-slate-600 border border-slate-500/20'
+              : 'bg-slate-100 text-slate-600 border border-slate-200'
           }`}>
             {isSaving ? (
               <>Save £{savingsMonthly!.toFixed(2)}/mo <span className="text-[10px] text-green-400/70">(£{savingsYearly!.toFixed(0)}/yr vs your {userProvider} plan)</span></>
@@ -445,7 +445,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleClick}
-          className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-navy-950 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
+          className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
         >
           View Deal →
         </a>
@@ -645,8 +645,8 @@ export default function DealsPage() {
           onClick={() => setActiveCategory(null)}
           className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
             activeCategory === null
-              ? 'bg-emerald-500 text-white'
-              : 'bg-slate-100 text-slate-700 hover:bg-navy-700'
+              ? 'bg-emerald-500 text-slate-900'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-50'
           }`}
         >
           All
@@ -657,8 +657,8 @@ export default function DealsPage() {
             onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
               activeCategory === cat
-                ? 'bg-emerald-500 text-white'
-                : 'bg-slate-100 text-slate-700 hover:bg-navy-700'
+                ? 'bg-emerald-500 text-slate-900'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-50'
             }`}
           >
             {cat}
@@ -831,7 +831,7 @@ export default function DealsPage() {
 
               {/* Best Deal For You recommendation */}
               {bestDeal && userSpend && (
-                <div className="bg-gradient-to-r from-emerald-500/10 to-mint-400/5 border border-emerald-500/20 rounded-2xl p-5 mb-4">
+                <div className="bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 mb-4">
                   <div className="flex items-start gap-3">
                     <Trophy className="h-6 w-6 text-emerald-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
@@ -913,7 +913,7 @@ export default function DealsPage() {
                         <button
                           key={`expand-${provider}`}
                           onClick={() => setExpandedProviders(prev => { const n = new Set(prev); n.add(`${catLower}-${provider}`); return n; })}
-                          className="bg-white border border-dashed border-slate-200/50 rounded-2xl p-5 flex items-center justify-center text-sm text-emerald-600 hover:border-mint-400/30 transition-all"
+                          className="bg-white border border-dashed border-slate-200/50 rounded-2xl p-5 flex items-center justify-center text-sm text-emerald-600 hover:border-emerald-500/30 transition-all"
                         >
                           See all {plans.length} {provider} plans →
                         </button>

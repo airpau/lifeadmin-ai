@@ -203,7 +203,7 @@ export default function RewardsPage() {
         <Gift className="h-16 w-16 text-red-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-slate-900 mb-2">Something went wrong</h2>
         <p className="text-slate-600 mb-4">{error}</p>
-        <button onClick={() => { setError(null); setLoading(true); loadData(); }} className="px-4 py-2 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 transition-colors">
+        <button onClick={() => { setError(null); setLoading(true); loadData(); }} className="px-4 py-2 bg-emerald-500 text-slate-900 rounded-lg font-medium hover:bg-emerald-600 transition-colors">
           Retry
         </button>
       </div>
@@ -334,7 +334,7 @@ export default function RewardsPage() {
             const isRedeeming = redeemingId === opt.id;
             const pointsNeeded = Math.max(0, opt.points - data.balance);
             return (
-              <div key={opt.id} className={`bg-white border rounded-2xl p-4 text-center transition-all ${isLocked ? 'border-slate-200/50 opacity-60' : 'border-mint-400/30 hover:border-mint-400/60'}`}>
+              <div key={opt.id} className={`bg-white border rounded-2xl p-4 text-center transition-all ${isLocked ? 'border-slate-200/50 opacity-60' : 'border-emerald-500/30 hover:border-emerald-500/60'}`}>
                 <span className="text-3xl block mb-2">{redemptionEmojis[opt.id] || '🎁'}</span>
                 <p className="text-slate-900 font-semibold text-sm mb-1">{opt.label}</p>
                 <p className="text-emerald-600 font-bold text-sm mb-2">{opt.points.toLocaleString()} pts</p>
@@ -351,7 +351,7 @@ export default function RewardsPage() {
                       }
                     }}
                     disabled={isRedeeming}
-                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-navy-950 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
+                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
                   >
                     {isRedeeming ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : 'Redeem'}
                   </button>
@@ -377,7 +377,7 @@ export default function RewardsPage() {
                 key={badge.id}
                 href={earned ? '#' : badge.action}
                 className={`rounded-xl p-3 text-center transition-all border ${earned
-                  ? 'bg-emerald-50 border-emerald-200 hover:border-mint-400/40'
+                  ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-500/40'
                   : 'bg-slate-50/50 border-slate-200/50 hover:border-slate-200/50 opacity-40'
                 }`}
                 title={earned ? `${badge.name} - earned ${earnedData ? new Date(earnedData.earned_at).toLocaleDateString('en-GB') : ''}` : badge.description}
@@ -528,7 +528,7 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 6: Referrals ═══ */}
       {referrals && (
-        <div id="referrals" className="bg-gradient-to-r from-mint-400/10 to-mint-500/5 border border-emerald-200 rounded-2xl p-6 mb-8">
+        <div id="referrals" className="bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 border border-emerald-200 rounded-2xl p-6 mb-8">
           <h2 className="text-lg font-bold text-slate-900 mb-2 flex items-center gap-2">
             <Share2 className="h-5 w-5 text-emerald-600" /> Invite friends, both get 1 free month
           </h2>
@@ -537,8 +537,8 @@ export default function RewardsPage() {
           <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-200/50 mb-4">
             <p className="text-slate-500 text-xs mb-2">Your referral link</p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-emerald-600 text-sm bg-slate-900 rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
-              <button onClick={handleCopyCode} className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-navy-950 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
+              <code className="flex-1 text-emerald-600 text-sm bg-white rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
+              <button onClick={handleCopyCode} className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
                 {codeCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
               <button onClick={handleWhatsAppShare} className="shrink-0 bg-green-600 hover:bg-green-700 text-slate-900 px-3 py-2 rounded-lg text-sm transition-all">
@@ -643,7 +643,7 @@ export default function RewardsPage() {
               <p className="text-slate-600 text-sm mb-3">Tiers are based on both your membership duration and lifetime points earned. Higher tiers unlock better perks and a points multiplier.</p>
               <div className="space-y-2">
                 {data.allTiers.map((t) => (
-                  <div key={t.key} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${t.isCurrent ? 'border-mint-400/50 bg-emerald-50' : 'border-slate-200/50 bg-slate-50/50'}`}>
+                  <div key={t.key} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${t.isCurrent ? 'border-emerald-500/50 bg-emerald-50' : 'border-slate-200/50 bg-slate-50/50'}`}>
                     <span>{tierEmojis[t.key]}</span>
                     <div className="flex-1">
                       <span className="text-slate-900 font-semibold text-sm">{t.label}</span>

@@ -217,7 +217,7 @@ export default function AdminPage() {
   const tierColor = (tier: string) => {
     if (tier === 'pro') return 'text-purple-400 bg-purple-500/10';
     if (tier === 'essential') return 'text-emerald-600 bg-emerald-500/10';
-    return 'text-slate-600 bg-navy-500/10';
+    return 'text-slate-600 bg-slate-100';
   };
 
   return (
@@ -232,7 +232,7 @@ export default function AdminPage() {
         </div>
         <button
           onClick={() => setMeetingOpen(true)}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
+          className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
         >
           <Users className="h-4 w-4" />
           Call a Meeting
@@ -244,23 +244,23 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex gap-2 mb-6">
         <button onClick={() => { setTab('overview'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'overview' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           Overview
         </button>
         <button onClick={() => { setTab('members'); loadMembers(); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'members' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           Members
         </button>
         <button onClick={() => { setTab('tickets'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'tickets' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           <Ticket className="h-4 w-4" /> Tickets
         </button>
         <button onClick={() => { setTab('leads'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'leads' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           <Users className="h-4 w-4" /> Leads
         </button>
         <button onClick={() => { setTab('ai_team'); setSelectedMember(null); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${tab === 'ai_team' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}>
           <Brain className="h-4 w-4" /> AI Team
         </button>
         <Link
@@ -350,7 +350,7 @@ export default function AdminPage() {
                     setVerifyingDeals(false);
                   }}
                   disabled={verifyingDeals}
-                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
+                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${verifyingDeals ? 'animate-spin' : ''}`} />
                   {verifyingDeals ? 'Verifying...' : 'Verify Deals Now'}
@@ -365,8 +365,8 @@ export default function AdminPage() {
                   <p className="text-2xl font-bold text-red-400">{dealHealth.inactive}</p>
                   <p className="text-slate-500 text-xs">Broken / Inactive</p>
                 </div>
-                <div className="bg-slate-50/50 border border-amber-500/20 rounded-xl p-4">
-                  <p className="text-2xl font-bold text-amber-400">{dealHealth.stale}</p>
+                <div className="bg-slate-50/50 border border-amber-200 rounded-xl p-4">
+                  <p className="text-2xl font-bold text-amber-600">{dealHealth.stale}</p>
                   <p className="text-slate-500 text-xs">Stale (30+ days)</p>
                 </div>
                 <div className="bg-slate-50/50 border border-slate-200/50 rounded-xl p-4">
@@ -413,7 +413,7 @@ export default function AdminPage() {
               <button
                 key={m.id}
                 onClick={() => loadMemberDetail(m.id)}
-                className="w-full flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-3 border border-slate-200/50 hover:border-mint-400/50 transition-all text-left"
+                className="w-full flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-3 border border-slate-200/50 hover:border-emerald-500/50 transition-all text-left"
               >
                 <div>
                   <p className="text-slate-900 text-sm font-medium">{m.full_name || m.email}</p>
