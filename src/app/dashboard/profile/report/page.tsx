@@ -114,7 +114,11 @@ export default function AnnualReportPage() {
       {/* Report Header Card */}
       <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl p-8 mb-6">
         <p className="text-emerald-600 text-xs font-semibold uppercase tracking-widest mb-2">Paybacker Financial Report</p>
-        <h1 className="page-title">Your {data.year} Annual Report</h1>
+        <div className="page-title-row">
+        <div>
+          <h1 className="page-title">Your {data.year} Annual Report</h1>
+        </div>
+      </div>
         <p className="text-slate-600 text-sm">
           {data.userName} &middot; {data.userPlan} &middot; Member for {data.daysAsMember} days &middot; Generated {new Date(data.generatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
         </p>

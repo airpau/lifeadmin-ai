@@ -386,7 +386,11 @@ export default function PaymentsPage() {
       </Link>
 
       <div className="mb-6">
-        <h1 className="page-title">Regular Payments</h1>
+        <div className="page-title-row">
+        <div>
+          <h1 className="page-title">Regular Payments</h1>
+        </div>
+      </div>
         <p className="text-slate-600 mt-1">Click a category to recategorise, click an amount to edit, or hover and press ✕ to remove.</p>
       </div>
 
