@@ -1,8 +1,12 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { CheckCircle, ArrowRight, Clock, Shield, Zap, FileText, ScanSearch, CreditCard, TrendingDown, Plane, BarChart3, Mail, Bell } from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
+import { ArrowRight, Shield, Zap, ScanSearch, CreditCard, Plane, BarChart3, Mail, Bell } from 'lucide-react';
+import { MarkNav, MarkFoot } from '@/app/blog/_shared';
+import '../../(marketing)/styles.css';
+
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
 interface SolutionPage {
   slug: string;
@@ -11,8 +15,7 @@ interface SolutionPage {
   h1: string;
   subtitle: string;
   keywords: string[];
-  icon: any;
-  iconColor: string;
+  icon: LucideIcon;
   heroStat: string;
   heroStatLabel: string;
   ctaText: string;
@@ -28,25 +31,26 @@ const PAGES: Record<string, SolutionPage> = {
   'energy-refunds': {
     slug: 'energy-refunds',
     title: 'Dispute Your Energy Bill UK - AI Complaint Letter Generator',
-    description: 'Generate a formal energy bill complaint letter citing Ofgem rules and UK consumer law in 30 seconds. Free to use. Get refunds from British Gas, EDF, E.ON, Octopus and more.',
+    description:
+      'Generate a formal energy bill complaint letter citing Ofgem rules and UK consumer law in 30 seconds. Free to use. Get refunds from British Gas, EDF, E.ON, Octopus and more.',
     h1: 'Dispute your energy bill and get your money back',
-    subtitle: 'Paybacker generates a formal complaint letter citing exact UK energy regulations in 30 seconds. No legal knowledge needed. Works with every UK energy supplier.',
+    subtitle:
+      'Paybacker generates a formal complaint letter citing exact UK energy regulations in 30 seconds. No legal knowledge needed. Works with every UK energy supplier.',
     keywords: ['dispute energy bill UK', 'energy bill complaint letter', 'Ofgem complaint', 'energy refund claim', 'overcharged energy bill'],
     icon: Zap,
-    iconColor: 'text-amber-400',
     heroStat: '30 sec',
     heroStatLabel: 'to generate your complaint',
-    ctaText: 'Generate Your Complaint Letter Free',
+    ctaText: 'Generate your complaint letter free',
     ctaLink: '/auth/signup',
     benefits: [
       'Cites Ofgem regulations and Consumer Rights Act 2015',
       'Works with British Gas, EDF, E.ON, Octopus, OVO and all UK suppliers',
       'Formal tone that gets taken seriously by complaints departments',
       'Includes specific regulatory references for your situation',
-      'Free - 3 letters per month on the free plan',
+      'Free — 3 letters per month on the free plan',
     ],
     howItWorks: [
-      { step: '1', title: 'Describe your issue', description: 'Tell us what happened - overcharged, estimated bills, price increase, poor service. Plain English is fine.' },
+      { step: '1', title: 'Describe your issue', description: 'Tell us what happened — overcharged, estimated bills, price increase, poor service. Plain English is fine.' },
       { step: '2', title: 'AI generates your letter', description: 'Our AI writes a formal complaint citing the exact UK laws and Ofgem rules that apply to your situation.' },
       { step: '3', title: 'Send and get your money back', description: 'Copy the letter and send it to your supplier. Most complaints are resolved within 8 weeks.' },
     ],
@@ -62,22 +66,23 @@ const PAGES: Record<string, SolutionPage> = {
   'broadband-compensation': {
     slug: 'broadband-compensation',
     title: 'Broadband Complaint Letter UK - Challenge Price Rises and Poor Service',
-    description: 'Generate a formal broadband complaint letter citing Ofcom rules in 30 seconds. Challenge mid-contract price rises, slow speeds, or poor service from any UK provider.',
+    description:
+      'Generate a formal broadband complaint letter citing Ofcom rules in 30 seconds. Challenge mid-contract price rises, slow speeds, or poor service from any UK provider.',
     h1: 'Challenge your broadband provider and claim compensation',
-    subtitle: 'Mid-contract price rise? Slow speeds? Service outages? Paybacker generates a formal complaint citing Ofcom rules and the Consumer Rights Act that gets results.',
+    subtitle:
+      'Mid-contract price rise? Slow speeds? Service outages? Paybacker generates a formal complaint citing Ofcom rules and the Consumer Rights Act that gets results.',
     keywords: ['broadband complaint letter UK', 'Ofcom broadband complaint', 'broadband price rise compensation', 'challenge broadband provider', 'slow broadband complaint'],
     icon: Shield,
-    iconColor: 'text-blue-400',
     heroStat: '£180/yr',
     heroStatLabel: 'average saving by switching broadband',
-    ctaText: 'Generate Your Broadband Complaint Free',
+    ctaText: 'Generate your broadband complaint free',
     ctaLink: '/auth/signup',
     benefits: [
       'Cites Ofcom automatic compensation scheme rules',
       'Challenge mid-contract price rises legally',
       'Works with BT, Sky, Virgin Media, TalkTalk, EE and all UK providers',
       'Includes speed guarantee complaint templates',
-      'Free to start - 3 letters per month',
+      'Free to start — 3 letters per month',
     ],
     howItWorks: [
       { step: '1', title: 'Tell us your problem', description: 'Price increase, slow speeds, service outage, billing error, or cancellation dispute.' },
@@ -92,25 +97,26 @@ const PAGES: Record<string, SolutionPage> = {
     socialProof: 'UK broadband customers are entitled to automatic compensation under Ofcom rules',
     featureHighlight: 'We also compare 10 broadband providers so you can switch to a cheaper deal after your complaint',
   },
-  'subscriptions': {
+  subscriptions: {
     slug: 'subscriptions',
     title: 'Find Hidden Subscriptions UK - Bank Account Subscription Finder',
-    description: 'Connect your bank account and find every subscription, direct debit, and recurring payment you are being charged for. Cancel what you do not need and save hundreds per year.',
+    description:
+      'Connect your bank account and find every subscription, direct debit, and recurring payment you are being charged for. Cancel what you do not need and save hundreds per year.',
     h1: 'Find and cancel subscriptions you forgot about',
-    subtitle: 'The average UK adult wastes £312/year on forgotten subscriptions. Connect your bank account and Paybacker finds every recurring payment in seconds. Cancel what you do not need.',
+    subtitle:
+      'The average UK adult wastes £312/year on forgotten subscriptions. Connect your bank account and Paybacker finds every recurring payment in seconds. Cancel what you do not need.',
     keywords: ['find hidden subscriptions', 'cancel unwanted subscriptions UK', 'subscription finder', 'check all my subscriptions', 'stop unwanted direct debits'],
     icon: ScanSearch,
-    iconColor: 'text-purple-400',
     heroStat: '£312/yr',
     heroStatLabel: 'wasted on forgotten subscriptions',
-    ctaText: 'Scan Your Subscriptions Free',
+    ctaText: 'Scan your subscriptions free',
     ctaLink: '/auth/signup',
     benefits: [
       'Connects to your bank via Open Banking (read-only, bank-level security)',
       'Detects every subscription, direct debit, and recurring payment',
       'Shows monthly and annual cost for each subscription',
       'AI cancellation emails with legal context for anything you want to cancel',
-      'One-time scan is free - no credit card needed',
+      'One-time scan is free — no credit card needed',
     ],
     howItWorks: [
       { step: '1', title: 'Connect your bank', description: 'Secure Open Banking connection. Read-only access. We never see your login details.' },
@@ -128,15 +134,16 @@ const PAGES: Record<string, SolutionPage> = {
   'cancel-services': {
     slug: 'cancel-services',
     title: 'Cancel Any Subscription UK - AI Cancellation Letter Generator',
-    description: 'Generate a formal cancellation email citing UK Consumer Contracts Regulations in seconds. Cancel gym memberships, mobile contracts, broadband, insurance, and more.',
+    description:
+      'Generate a formal cancellation email citing UK Consumer Contracts Regulations in seconds. Cancel gym memberships, mobile contracts, broadband, insurance, and more.',
     h1: 'Cancel any subscription or contract without the hassle',
-    subtitle: 'Providers make cancellation deliberately difficult. Paybacker generates a formal cancellation email citing the exact UK law that applies, so they cannot ignore you.',
+    subtitle:
+      'Providers make cancellation deliberately difficult. Paybacker generates a formal cancellation email citing the exact UK law that applies, so they cannot ignore you.',
     keywords: ['cancel subscription UK', 'cancel gym membership', 'cancellation letter template', 'how to cancel contract', 'cancel direct debit'],
     icon: CreditCard,
-    iconColor: 'text-green-400',
     heroStat: '90 sec',
     heroStatLabel: 'to generate your cancellation email',
-    ctaText: 'Generate Your Cancellation Email Free',
+    ctaText: 'Generate your cancellation email free',
     ctaLink: '/auth/signup',
     benefits: [
       'Cites Consumer Contracts Regulations 2013 and Consumer Rights Act 2015',
@@ -161,15 +168,16 @@ const PAGES: Record<string, SolutionPage> = {
   'flight-delay-compensation': {
     slug: 'flight-delay-compensation',
     title: 'Flight Delay Compensation UK - Claim Up to £520',
-    description: 'Claim up to £520 compensation for delayed or cancelled flights under UK261 and EU261 regulations. Free AI-generated claim letter. Works for flights in the last 6 years.',
+    description:
+      'Claim up to £520 compensation for delayed or cancelled flights under UK261 and EU261 regulations. Free AI-generated claim letter. Works for flights in the last 6 years.',
     h1: 'Claim up to £520 for your delayed or cancelled flight',
-    subtitle: 'Under UK261 regulations, you are entitled to compensation of £220-£520 for flights delayed over 3 hours, cancelled, or overbooked. Most claims are never made. Ours take 30 seconds.',
+    subtitle:
+      'Under UK261 regulations, you are entitled to compensation of £220-£520 for flights delayed over 3 hours, cancelled, or overbooked. Most claims are never made. Ours take 30 seconds.',
     keywords: ['flight delay compensation UK', 'claim flight delay', 'UK261 compensation', 'flight cancelled compensation', 'delayed flight refund'],
     icon: Plane,
-    iconColor: 'text-sky-400',
     heroStat: '£520',
     heroStatLabel: 'maximum compensation per passenger',
-    ctaText: 'Start Your Flight Claim Free',
+    ctaText: 'Start your flight claim free',
     ctaLink: '/auth/signup',
     benefits: [
       'Covers delays over 3 hours, cancellations, and denied boarding',
@@ -195,15 +203,16 @@ const PAGES: Record<string, SolutionPage> = {
   'money-hub': {
     slug: 'money-hub',
     title: 'Money Hub - See Where Every Penny Goes | Paybacker',
-    description: 'Connect your bank account and see your complete financial picture. Income, spending by category, budget tracking, net worth, and AI-powered insights. Your personal finance dashboard.',
+    description:
+      'Connect your bank account and see your complete financial picture. Income, spending by category, budget tracking, net worth, and AI-powered insights. Your personal finance dashboard.',
     h1: 'See exactly where your money goes every month',
-    subtitle: 'Connect your bank account and Paybacker categorises every transaction, tracks your income vs spending, sets budgets, and gives you a financial health score. All automated, all in one dashboard.',
+    subtitle:
+      'Connect your bank account and Paybacker categorises every transaction, tracks your income vs spending, sets budgets, and gives you a financial health score. All automated, all in one dashboard.',
     keywords: ['money management app UK', 'spending tracker', 'budget planner app', 'personal finance dashboard', 'track spending categories'],
     icon: BarChart3,
-    iconColor: 'text-emerald-400',
     heroStat: '20+',
     heroStatLabel: 'spending categories, auto-categorised',
-    ctaText: 'Connect Your Bank Free',
+    ctaText: 'Connect your bank free',
     ctaLink: '/auth/signup',
     benefits: [
       'Income vs outgoings with monthly trends',
@@ -228,18 +237,19 @@ const PAGES: Record<string, SolutionPage> = {
   'email-scanner': {
     slug: 'email-scanner',
     title: 'Email Inbox Scanner - Find Money You Are Owed | Paybacker',
-    description: 'Connect Gmail or Outlook and scan 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications.',
+    description:
+      'Connect Gmail or Outlook and scan 2 years of emails for overcharges, forgotten subscriptions, flight delay compensation, debt disputes, and price increase notifications.',
     h1: 'Scan your email inbox and find money you are owed',
-    subtitle: 'Your email inbox contains proof of overcharges, price increase notifications, flight booking confirmations, and subscription receipts. Paybacker scans 2 years of emails and shows you exactly what you can claim.',
+    subtitle:
+      'Your email inbox contains proof of overcharges, price increase notifications, flight booking confirmations, and subscription receipts. Paybacker scans 2 years of emails and shows you exactly what you can claim.',
     keywords: ['email scanner money', 'find overcharges email', 'scan inbox subscriptions', 'email receipt scanner', 'find money owed UK'],
     icon: Mail,
-    iconColor: 'text-rose-400',
     heroStat: '2 years',
     heroStatLabel: 'of email history scanned',
-    ctaText: 'Join the Waitlist - Coming Soon',
+    ctaText: 'Join the waitlist — coming soon',
     ctaLink: '/auth/signup',
     benefits: [
-      'Coming soon - currently being verified by Google for highest security standards',
+      'Coming soon — currently being verified by Google for highest security standards',
       'Detects price increase notifications you may have missed',
       'Finds flight booking confirmations for delay compensation claims',
       'Identifies subscription receipts and renewal notices',
@@ -261,15 +271,16 @@ const PAGES: Record<string, SolutionPage> = {
   'contract-alerts': {
     slug: 'contract-alerts',
     title: 'Contract Renewal Alerts UK - Never Overpay on Auto-Renewal',
-    description: 'Get email alerts at 30, 14, and 7 days before your contracts renew. Energy, broadband, mobile, insurance, mortgages, and more. Stop overpaying on auto-renewals.',
+    description:
+      'Get email alerts at 30, 14, and 7 days before your contracts renew. Energy, broadband, mobile, insurance, mortgages, and more. Stop overpaying on auto-renewals.',
     h1: 'Stop overpaying when your contracts auto-renew',
-    subtitle: 'Every year, UK consumers lose billions to auto-renewal price hikes. Paybacker tracks your contract end dates and alerts you at 30, 14, and 7 days before renewal - so you can switch to a better deal.',
+    subtitle:
+      'Every year, UK consumers lose billions to auto-renewal price hikes. Paybacker tracks your contract end dates and alerts you at 30, 14, and 7 days before renewal — so you can switch to a better deal.',
     keywords: ['contract renewal alerts', 'stop auto renewal', 'contract end date tracker', 'renewal reminder app', 'avoid price hikes UK'],
     icon: Bell,
-    iconColor: 'text-orange-400',
     heroStat: '30/14/7',
     heroStatLabel: 'day alerts before every renewal',
-    ctaText: 'Track Your Contracts Free',
+    ctaText: 'Track your contracts free',
     ctaLink: '/auth/signup',
     benefits: [
       'Email alerts at 30, 14, and 7 days before contract end dates',
@@ -334,143 +345,104 @@ export default async function SolutionPage({ params }: { params: Promise<{ slug:
   const Icon = page.icon;
 
   return (
-    <div className="min-h-screen bg-navy-950">
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-mint-900/20 via-transparent to-transparent" />
-
-      <div className="relative">
-        {/* Header */}
-        <header className="container mx-auto px-4 md:px-6 py-4 md:py-6">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="Paybacker" width={32} height={32} className="rounded-lg" />
-              <span className="text-xl font-bold text-white">Pay<span className="bg-gradient-to-r from-mint-400 to-brand-400 bg-clip-text text-transparent">backer</span></span>
-            </Link>
-            <div className="flex items-center gap-3">
-              <Link href="/pricing" className="hidden md:block text-slate-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-navy-900 transition-all">Pricing</Link>
-              <Link href="/auth/login" className="text-slate-300 hover:text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-navy-900 transition-all">Sign In</Link>
-              <Link href="/auth/signup" className="bg-mint-400 hover:bg-mint-500 text-navy-950 text-sm font-semibold px-4 py-2 rounded-xl transition-all">Get Started Free</Link>
+    <div className="m-land-root">
+      <MarkNav />
+      <main>
+        <div className="wrap">
+          <section className="land-hero">
+            <span className="badge">
+              <Icon width={14} height={14} aria-hidden="true" />
+              Free to use — no credit card required
+            </span>
+            <h1>{page.h1}</h1>
+            <p className="subtitle">{page.subtitle}</p>
+            <div className="hero-stat">
+              <span className="stat-value">{page.heroStat}</span>
+              <span className="stat-label">{page.heroStatLabel}</span>
             </div>
-          </div>
-        </header>
-
-        <main className="container mx-auto px-6 py-12">
-          {/* Hero */}
-          <div className="max-w-4xl mx-auto mb-16 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full bg-mint-400/10 px-4 py-2 text-sm text-mint-400 border border-mint-400/20 mb-8">
-              <Icon className={`h-4 w-4 ${page.iconColor}`} />
-              <span>Free to use - no credit card required</span>
-            </div>
-
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight font-[family-name:var(--font-heading)]">{page.h1}</h1>
-            <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto leading-relaxed">{page.subtitle}</p>
-
-            <div className="flex justify-center mb-8">
-              <div className="bg-navy-900 border border-mint-400/20 rounded-2xl px-8 py-4 text-center">
-                <p className={`text-4xl font-bold ${page.iconColor}`}>{page.heroStat}</p>
-                <p className="text-slate-500 text-sm">{page.heroStatLabel}</p>
-              </div>
-            </div>
-
-            <Link href={page.ctaLink} className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all text-lg">
-              {page.ctaText}
-            </Link>
-
-            <p className="text-slate-500 text-sm mt-4">{page.socialProof}</p>
-          </div>
-
-          {/* Benefits */}
-          <div className="max-w-3xl mx-auto mb-16">
-            <h2 className="text-2xl font-bold text-white mb-6 text-center font-[family-name:var(--font-heading)]">What you get</h2>
-            <div className="space-y-3">
-              {page.benefits.map((b, i) => (
-                <div key={i} className="flex items-start gap-3 bg-navy-900 border border-navy-700/50 rounded-2xl p-4">
-                  <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-slate-300">{b}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* How It Works */}
-          <div className="max-w-4xl mx-auto mb-16">
-            <h2 className="text-2xl font-bold text-white mb-8 text-center font-[family-name:var(--font-heading)]">How it works</h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              {page.howItWorks.map((step) => (
-                <div key={step.step} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6 text-center">
-                  <div className="bg-mint-400 text-navy-950 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-4 font-bold text-lg">{step.step}</div>
-                  <h3 className="text-white font-semibold mb-2">{step.title}</h3>
-                  <p className="text-slate-400 text-sm">{step.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Feature Highlight */}
-          <div className="max-w-3xl mx-auto mb-16">
-            <div className="bg-mint-400/10 border border-mint-400/20 rounded-2xl p-8 text-center">
-              <Icon className={`h-8 w-8 ${page.iconColor} mx-auto mb-4`} />
-              <p className="text-slate-300 text-lg">{page.featureHighlight}</p>
-              <Link href={page.ctaLink} className="inline-flex items-center gap-2 text-mint-400 font-semibold mt-4 hover:text-mint-300 transition-all">
-                Get started free <ArrowRight className="h-4 w-4" />
+            <div>
+              <Link href={page.ctaLink} className="btn btn-mint btn-lg">
+                {page.ctaText} <ArrowRight width={16} height={16} aria-hidden="true" />
               </Link>
             </div>
-          </div>
+            <p className="social-proof">{page.socialProof}</p>
+          </section>
 
-          {/* FAQs */}
-          <div className="max-w-3xl mx-auto mb-16">
-            <h2 className="text-2xl font-bold text-white mb-6 text-center font-[family-name:var(--font-heading)]">Frequently asked questions</h2>
-            <div className="space-y-4">
-              {page.faqs.map((faq, i) => (
-                <div key={i} className="bg-navy-900 border border-navy-700/50 rounded-2xl p-6">
-                  <h3 className="text-white font-semibold mb-2">{faq.q}</h3>
-                  <p className="text-slate-400 text-sm">{faq.a}</p>
+          <section className="prose-section">
+            <div className="rights-card">
+              <h2>What you get</h2>
+              <ul className="rights-list">
+                {page.benefits.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          </section>
+
+          <section className="prose-section">
+            <h2 style={{ textAlign: 'center' }}>How it works</h2>
+            <div className="step-grid">
+              {page.howItWorks.map((step) => (
+                <div key={step.step} className="step">
+                  <div className="step-badge">{step.step}</div>
+                  <h3>{step.title}</h3>
+                  <p>{step.description}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Final CTA */}
-          <div className="max-w-3xl mx-auto mb-16 text-center">
-            <h2 className="text-3xl font-bold text-white mb-4 font-[family-name:var(--font-heading)]">Ready to take control?</h2>
-            <p className="text-slate-400 mb-8">Join thousands of UK consumers who are using Paybacker to save money and fight unfair charges.</p>
-            <Link href={page.ctaLink} className="inline-block bg-mint-400 hover:bg-mint-500 text-navy-950 font-semibold px-8 py-4 rounded-xl transition-all text-lg">
-              {page.ctaText}
-            </Link>
-          </div>
-        </main>
-
-        {/* Footer */}
-        <footer className="border-t border-navy-700/50 py-8">
-          <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="text-slate-500 text-sm">Paybacker LTD - paybacker.co.uk</div>
-            <div className="flex gap-4 text-slate-500 text-sm">
-              <Link href="/pricing" className="hover:text-white transition-all">Pricing</Link>
-              <Link href="/about" className="hover:text-white transition-all">About</Link>
-              <Link href="/privacy-policy" className="hover:text-white transition-all">Privacy</Link>
-              <Link href="/terms-of-service" className="hover:text-white transition-all">Terms</Link>
+          <section className="prose-section">
+            <div className="soft-cta">
+              <p>{page.featureHighlight}</p>
+              <Link href={page.ctaLink}>
+                Get started free <ArrowRight width={14} height={14} aria-hidden="true" />
+              </Link>
             </div>
-          </div>
-        </footer>
+          </section>
 
-        {/* FAQ JSON-LD */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'FAQPage',
-              mainEntity: page.faqs.map((faq) => ({
-                '@type': 'Question',
-                name: faq.q,
-                acceptedAnswer: {
-                  '@type': 'Answer',
-                  text: faq.a,
-                },
-              })),
-            }),
-          }}
-        />
-      </div>
+          <section className="prose-section">
+            <h2 style={{ textAlign: 'center' }}>Frequently asked questions</h2>
+            <div className="faq-grid">
+              {page.faqs.map((faq) => (
+                <article key={faq.q} className="faq-card">
+                  <h3>{faq.q}</h3>
+                  <p>{faq.a}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="prose-section">
+            <div className="final-cta">
+              <h2>Ready to take control?</h2>
+              <p>Join thousands of UK consumers who are using Paybacker to save money and fight unfair charges.</p>
+              <Link href={page.ctaLink} className="btn btn-mint btn-lg">
+                {page.ctaText} <ArrowRight width={16} height={16} aria-hidden="true" />
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+      <MarkFoot />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: page.faqs.map((faq) => ({
+              '@type': 'Question',
+              name: faq.q,
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: faq.a,
+              },
+            })),
+          }),
+        }}
+      />
     </div>
   );
 }
