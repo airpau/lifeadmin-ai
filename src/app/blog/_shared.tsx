@@ -56,7 +56,6 @@ export function MarkFoot() {
             <Link href="/how-it-works">How it works</Link>
             <Link href="/pricing">Pricing</Link>
             <Link href="/deals">Deals</Link>
-            <Link href="/templates">Letter templates</Link>
           </div>
           <div className="footer-col">
             <h5>Company</h5>
@@ -67,10 +66,9 @@ export function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Legal</h5>
-            <Link href="/privacy">Privacy</Link>
-            <Link href="/terms">Terms</Link>
-            <Link href="/cookies">Cookies</Link>
-            <Link href="/ico-notice">ICO notice</Link>
+            <Link href="/legal/privacy">Privacy</Link>
+            <Link href="/legal/terms">Terms</Link>
+            <Link href="/cookie-policy">Cookies</Link>
           </div>
           <div className="footer-col">
             <h5>Connect</h5>
