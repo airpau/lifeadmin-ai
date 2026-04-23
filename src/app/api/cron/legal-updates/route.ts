@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const maxDuration = 300;
 
@@ -90,9 +91,9 @@ interface Change {
  * 6. Sends Telegram summary to founder
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
   }
 
   const supabase = getAdmin();

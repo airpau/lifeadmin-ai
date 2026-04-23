@@ -70,12 +70,10 @@ export default function AdminPage() {
       }
       setAuthorized(true);
 
-      // Fetch via admin API (uses service role, bypasses RLS)
-      const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
+      // Session-auth handles admin gating server-side (see authorizeAdminOrCron).
+      // No bearer secret needed — the cookie travels with same-origin fetch.
       const [metricsRes, dealsRes] = await Promise.all([
-        fetch('/api/admin/metrics', {
-          headers: { Authorization: `Bearer ${cronSecret}` },
-        }).then(r => r.json()),
+        fetch('/api/admin/metrics', { credentials: 'include' }).then(r => r.json()),
         // Fetch all deals (active + inactive) for health stats
         supabase.from('affiliate_deals').select('is_active, last_verified_at'),
       ]);
@@ -111,10 +109,7 @@ export default function AdminPage() {
   }, [supabase]);
 
   const loadMembers = async () => {
-    const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-    const res = await fetch('/api/admin/members', {
-      headers: { Authorization: `Bearer ${cronSecret}` },
-    }).then(r => r.json());
+    const res = await fetch('/api/admin/members', { credentials: 'include' }).then(r => r.json());
 
     if (res.members) {
       setMembers(res.members.map((m: any) => ({
@@ -135,10 +130,7 @@ export default function AdminPage() {
   const loadMemberDetail = async (memberId: string) => {
     setSelectedMemberId(memberId);
 
-    const cronSecret = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-    const res = await fetch(`/api/admin/members?id=${memberId}`, {
-      headers: { Authorization: `Bearer ${cronSecret}` },
-    }).then(r => r.json());
+    const res = await fetch(`/api/admin/members?id=${memberId}`, { credentials: 'include' }).then(r => r.json());
 
     if (res.profile) {
       setSelectedMember(res);

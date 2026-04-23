@@ -103,10 +103,7 @@ export default function LegalRefsAdminPage() {
     setVerifying(true);
     setVerifyResult(null);
     try {
-      const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-      const res = await fetch('/api/cron/verify-legal-refs', {
-        headers: { Authorization: `Bearer ${cronSecret}` },
-      });
+      const res = await fetch('/api/cron/verify-legal-refs', { credentials: 'include' });
       const data = await res.json();
       if (data.ok) {
         setVerifyResult(
