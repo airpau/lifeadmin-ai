@@ -66,28 +66,36 @@ async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider):
 async function findGmailCandidates(
   conn: EmailConnection,
   dispute: DisputeForMatching,
+  searchQuery?: string,
 ): Promise<ThreadCandidate[]> {
   const token = await ensureFreshToken(conn, 'gmail');
   const domains = domainsForProvider(dispute.provider_name);
   const explicit = hasExplicitDomains(dispute.provider_name);
 
-  // Cascading query strategy — start narrow, broaden if nothing found.
-  // This fixes the case where a supplier sends from an unexpected subdomain
-  // (e.g. noreply@billing.onestream-telecom.co.uk) or uses subjects without
-  // the brand name (e.g. "Your January invoice").
   const providerPhrase = dispute.provider_name.trim();
   const subjectTerm = providerPhrase.split(/\s+/)[0].toLowerCase();
   const fromClauses = domains.map((d) => `from:${d}`).join(' OR ');
 
   const queries: string[] = [];
-  if (fromClauses) {
-    queries.push(`(${fromClauses}) newer_than:365d`);
-  }
-  // Broad full-text: catches emails that mention the provider anywhere in
-  // headers/body, even if the from-domain isn't in our allowlist.
-  queries.push(`"${providerPhrase}" newer_than:365d`);
-  if (providerPhrase.toLowerCase() !== subjectTerm) {
-    queries.push(`"${subjectTerm}" newer_than:365d`);
+  if (searchQuery && searchQuery.trim()) {
+    // User-typed search: pass straight through to Gmail. Gmail's q= understands
+    // free text plus operators (from:, subject:, etc.) so the user can type
+    // whatever they like ("directhirebilling", "from:ebay.co.uk", "9M2KMS").
+    queries.push(`${searchQuery.trim()} newer_than:365d`);
+  } else {
+    // Cascading query strategy — start narrow, broaden if nothing found.
+    // This fixes the case where a supplier sends from an unexpected subdomain
+    // (e.g. noreply@billing.onestream-telecom.co.uk) or uses subjects without
+    // the brand name (e.g. "Your January invoice").
+    if (fromClauses) {
+      queries.push(`(${fromClauses}) newer_than:365d`);
+    }
+    // Broad full-text: catches emails that mention the provider anywhere in
+    // headers/body, even if the from-domain isn't in our allowlist.
+    queries.push(`"${providerPhrase}" newer_than:365d`);
+    if (providerPhrase.toLowerCase() !== subjectTerm) {
+      queries.push(`"${subjectTerm}" newer_than:365d`);
+    }
   }
 
   let threads: Array<{ id: string }> = [];
@@ -131,21 +139,28 @@ async function findGmailCandidates(
 
     let confidence = 0.3;
     const reasons: string[] = [];
-    if (explicit && addressMatchesProvider(fromAddr, dispute.provider_name)) {
-      confidence += 0.5;
-      reasons.push(`sender domain matches ${dispute.provider_name}`);
-    } else if (fromDomain.includes(subjectTerm)) {
-      confidence += 0.25;
-      reasons.push(`sender domain contains '${subjectTerm}'`);
-    }
-    const subj = h('Subject').toLowerCase();
-    if (subj.includes(subjectTerm)) {
-      confidence += 0.1;
-      reasons.push('subject mentions provider');
-    }
-    if (msgs.length >= 2) {
-      confidence += 0.1;
-      reasons.push(`${msgs.length} messages in thread`);
+    if (searchQuery && searchQuery.trim()) {
+      // User-driven search — we trust the query and don't score against the
+      // provider. Flat confidence so results sort by latestDate instead.
+      confidence = 0.5;
+      reasons.push('matched your search');
+    } else {
+      if (explicit && addressMatchesProvider(fromAddr, dispute.provider_name)) {
+        confidence += 0.5;
+        reasons.push(`sender domain matches ${dispute.provider_name}`);
+      } else if (fromDomain.includes(subjectTerm)) {
+        confidence += 0.25;
+        reasons.push(`sender domain contains '${subjectTerm}'`);
+      }
+      const subj = h('Subject').toLowerCase();
+      if (subj.includes(subjectTerm)) {
+        confidence += 0.1;
+        reasons.push('subject mentions provider');
+      }
+      if (msgs.length >= 2) {
+        confidence += 0.1;
+        reasons.push(`${msgs.length} messages in thread`);
+      }
     }
 
     candidates.push({
@@ -171,6 +186,7 @@ async function findGmailCandidates(
 async function findOutlookCandidates(
   conn: EmailConnection,
   dispute: DisputeForMatching,
+  searchQuery?: string,
 ): Promise<ThreadCandidate[]> {
   const token = await ensureFreshToken(conn, 'outlook');
   const domains = domainsForProvider(dispute.provider_name);
@@ -178,13 +194,20 @@ async function findOutlookCandidates(
   const providerPhrase = dispute.provider_name.trim();
   const subjectTerm = providerPhrase.split(/\s+/)[0];
 
-  // Cascading Outlook search: full-text on provider phrase first, then domain
-  // fallback. Graph's $search does body+headers so it's more forgiving than
-  // Gmail's default which is why we lead with it here.
-  const searches: string[] = [`"${providerPhrase}"`];
-  if (domains.length) searches.push(`"${domains[0]}"`);
-  if (providerPhrase.toLowerCase() !== subjectTerm.toLowerCase()) {
-    searches.push(`"${subjectTerm}"`);
+  const searches: string[] = [];
+  if (searchQuery && searchQuery.trim()) {
+    // User-typed search: pass through. Graph $search accepts KQL (from:, subject:)
+    // as well as free text so the user can type what they like.
+    searches.push(searchQuery.trim());
+  } else {
+    // Cascading Outlook search: full-text on provider phrase first, then domain
+    // fallback. Graph's $search does body+headers so it's more forgiving than
+    // Gmail's default which is why we lead with it here.
+    searches.push(`"${providerPhrase}"`);
+    if (domains.length) searches.push(`"${domains[0]}"`);
+    if (providerPhrase.toLowerCase() !== subjectTerm.toLowerCase()) {
+      searches.push(`"${subjectTerm}"`);
+    }
   }
 
   let data: { value?: Array<{
@@ -251,20 +274,25 @@ async function findOutlookCandidates(
 
     let confidence = 0.3;
     const reasons: string[] = [];
-    if (explicit && addressMatchesProvider(fromAddr, dispute.provider_name)) {
-      confidence += 0.5;
-      reasons.push(`sender domain matches ${dispute.provider_name}`);
-    } else if (fromDomain.includes(subjectTerm.toLowerCase())) {
-      confidence += 0.25;
-      reasons.push(`sender domain contains '${subjectTerm.toLowerCase()}'`);
-    }
-    if (entry.subject.toLowerCase().includes(subjectTerm.toLowerCase())) {
-      confidence += 0.1;
-      reasons.push('subject mentions provider');
-    }
-    if (entry.messages.length >= 2) {
-      confidence += 0.1;
-      reasons.push(`${entry.messages.length} messages in thread`);
+    if (searchQuery && searchQuery.trim()) {
+      confidence = 0.5;
+      reasons.push('matched your search');
+    } else {
+      if (explicit && addressMatchesProvider(fromAddr, dispute.provider_name)) {
+        confidence += 0.5;
+        reasons.push(`sender domain matches ${dispute.provider_name}`);
+      } else if (fromDomain.includes(subjectTerm.toLowerCase())) {
+        confidence += 0.25;
+        reasons.push(`sender domain contains '${subjectTerm.toLowerCase()}'`);
+      }
+      if (entry.subject.toLowerCase().includes(subjectTerm.toLowerCase())) {
+        confidence += 0.1;
+        reasons.push('subject mentions provider');
+      }
+      if (entry.messages.length >= 2) {
+        confidence += 0.1;
+        reasons.push(`${entry.messages.length} messages in thread`);
+      }
     }
 
     candidates.push({
@@ -308,24 +336,30 @@ export async function findThreadCandidates(
   conn: EmailConnection,
   dispute: DisputeForMatching,
   limit = 3,
+  searchQuery?: string,
 ): Promise<ThreadCandidate[]> {
   const provider = providerFromConnection(conn);
   let candidates: ThreadCandidate[];
 
   switch (provider) {
     case 'gmail':
-      candidates = await findGmailCandidates(conn, dispute);
+      candidates = await findGmailCandidates(conn, dispute, searchQuery);
       break;
     case 'outlook':
-      candidates = await findOutlookCandidates(conn, dispute);
+      candidates = await findOutlookCandidates(conn, dispute, searchQuery);
       break;
     case 'imap':
+      // IMAP search passthrough not wired yet — fall back to provider-name match.
       candidates = await findImapCandidates(conn, dispute);
       break;
   }
 
   return candidates
-    .sort((a, b) => b.confidence - a.confidence || b.latestDate.getTime() - a.latestDate.getTime())
+    .sort((a, b) =>
+      searchQuery
+        ? b.latestDate.getTime() - a.latestDate.getTime()
+        : b.confidence - a.confidence || b.latestDate.getTime() - a.latestDate.getTime(),
+    )
     .slice(0, limit);
 }
 

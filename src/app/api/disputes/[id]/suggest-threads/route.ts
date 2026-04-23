@@ -20,6 +20,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: disputeId } = await params;
+  const searchQueryRaw = request.nextUrl.searchParams.get('q');
+  const searchQuery = searchQueryRaw?.trim() || undefined;
   const supabase = await createClient();
   const {
     data: { user },
@@ -63,9 +65,14 @@ export async function GET(
   const allCandidates: Array<{ candidate: Awaited<ReturnType<typeof findThreadCandidates>>[number]; connectionId: string }> = [];
   const errors: Array<{ connectionId: string; message: string }> = [];
 
+  // Search mode returns more results so the user has room to scroll; auto-
+  // match mode stays at 5 per connection / 3 total to keep the picker tight.
+  const perConnectionLimit = searchQuery ? 20 : 5;
+  const totalLimit = searchQuery ? 25 : 3;
+
   for (const conn of connections as EmailConnection[]) {
     try {
-      const cands = await findThreadCandidates(conn, dispute, 5);
+      const cands = await findThreadCandidates(conn, dispute, perConnectionLimit, searchQuery);
       for (const c of cands) {
         allCandidates.push({ candidate: c, connectionId: conn.id });
       }
@@ -77,15 +84,17 @@ export async function GET(
     }
   }
 
-  // Sort across connections and take top 3
-  allCandidates.sort(
-    (a, b) =>
-      b.candidate.confidence - a.candidate.confidence ||
-      b.candidate.latestDate.getTime() - a.candidate.latestDate.getTime(),
+  // In search mode, sort newest-first (confidence is flat for all search hits).
+  // In auto-match mode, sort by confidence then recency.
+  allCandidates.sort((a, b) =>
+    searchQuery
+      ? b.candidate.latestDate.getTime() - a.candidate.latestDate.getTime()
+      : b.candidate.confidence - a.candidate.confidence ||
+        b.candidate.latestDate.getTime() - a.candidate.latestDate.getTime(),
   );
 
   return NextResponse.json({
-    candidates: allCandidates.slice(0, 3).map((a) => ({
+    candidates: allCandidates.slice(0, totalLimit).map((a) => ({
       connectionId: a.connectionId,
       provider: a.candidate.provider,
       threadId: a.candidate.threadId,

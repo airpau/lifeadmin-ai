@@ -16,7 +16,7 @@
  *   - DELETE link-email-thread   -> soft-unlink (sync_enabled=false)
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Mail, Link2, RefreshCw, CheckCircle2, AlertCircle, X, Search, Sparkles } from 'lucide-react';
 
 interface LinkedThread {
@@ -82,6 +82,8 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
   const [needsEmailConnection, setNeedsEmailConnection] = useState(false);
   const [searchErrors, setSearchErrors] = useState<Array<{ connectionId: string; message: string }>>([]);
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
 
   const [linking, setLinking] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -143,16 +145,29 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   const linkedConnectionStale =
     !!linkedConnection && linkedConnection.status !== 'active';
 
-  const openPicker = async () => {
-    setPickerOpen(true);
+  // Cancel any in-flight candidate fetch when a newer one fires, so a
+  // slow request for an older query can't resolve after a newer one and
+  // overwrite state with stale results.
+  const inflightController = useRef<AbortController | null>(null);
+
+  const fetchCandidates = useCallback(async (query: string) => {
+    inflightController.current?.abort();
+    const controller = new AbortController();
+    inflightController.current = controller;
+
     setCandidates(null);
     setCandidatesError(null);
     setNeedsEmailConnection(false);
     setSearchErrors([]);
     setLoadingCandidates(true);
     try {
-      const res = await fetch(`/api/disputes/${disputeId}/suggest-threads`, { cache: 'no-store' });
+      const url = query
+        ? `/api/disputes/${disputeId}/suggest-threads?q=${encodeURIComponent(query)}`
+        : `/api/disputes/${disputeId}/suggest-threads`;
+      const res = await fetch(url, { cache: 'no-store', signal: controller.signal });
       const data = await res.json();
+      // Bail if a newer request has fired since — only the latest wins.
+      if (inflightController.current !== controller) return;
       if (!res.ok) {
         if (data.error === 'no_email_connection') {
           setNeedsEmailConnection(true);
@@ -174,12 +189,38 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
         setSearchErrors(data.errors);
       }
     } catch (e) {
+      // Aborted fetches throw AbortError — silently ignore since a newer
+      // query will have already updated state.
+      if (e instanceof Error && e.name === 'AbortError') return;
+      if (inflightController.current !== controller) return;
       setCandidatesError(e instanceof Error ? e.message : 'Something went wrong');
       setCandidates([]);
     } finally {
-      setLoadingCandidates(false);
+      if (inflightController.current === controller) {
+        setLoadingCandidates(false);
+        inflightController.current = null;
+      }
     }
+  }, [disputeId]);
+
+  const openPicker = async () => {
+    setPickerOpen(true);
+    setSearchInput('');
+    setActiveSearch('');
+    await fetchCandidates('');
   };
+
+  // Debounce the search input — wait 400ms after last keystroke before firing.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handle = setTimeout(() => {
+      if (searchInput.trim() !== activeSearch) {
+        setActiveSearch(searchInput.trim());
+        fetchCandidates(searchInput.trim());
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [searchInput, pickerOpen, activeSearch, fetchCandidates]);
 
   const pickCandidate = async (c: Candidate) => {
     setLinking(true);
@@ -437,6 +478,21 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                 <X className="h-5 w-5" />
               </button>
             </div>
+            <div className="px-5 pt-4 pb-3 border-b border-navy-700/40">
+              <label className="relative block">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+                <input
+                  type="search"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Can't find it? Search by sender or subject…"
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-navy-950 border border-navy-700/60 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-mint-400/40 focus:border-mint-400"
+                />
+              </label>
+              <p className="text-[11px] text-slate-500 mt-1.5 px-1">
+                Tip: try <code className="bg-navy-950 text-slate-300 px-1 rounded">from:directhirebilling</code> or part of the subject line.
+              </p>
+            </div>
             <div className="p-5 overflow-y-auto flex-1">
               {loadingCandidates ? (
                 <div className="flex items-center gap-2 text-slate-500 py-10 justify-center">
@@ -472,8 +528,9 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                   <Mail className="h-10 w-10 text-slate-700 mx-auto mb-3" />
                   <p className="text-slate-700 font-semibold mb-1">No matching threads found</p>
                   <p className="text-slate-500 text-sm">
-                    We searched the last 365 days for mail mentioning {providerName}. If the thread
-                    is older, forward the most recent message to yourself first, then try again.
+                    {activeSearch
+                      ? `No threads matched "${activeSearch}" in the last 365 days. Try a different sender domain or keyword.`
+                      : `We searched the last 365 days for mail mentioning ${providerName}. If the sender doesn't include "${providerName}" in its address, use the search above.`}
                   </p>
                   {searchErrors.length > 0 && (
                     <div className="mt-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-lg p-3 text-left text-xs">
@@ -511,9 +568,11 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                           <p className="text-sm font-semibold text-slate-900 truncate" title={c.subject}>
                             {c.subject || '(no subject)'}
                           </p>
-                          <span className="text-[10px] uppercase tracking-wide text-mint-400 font-semibold flex-shrink-0">
-                            {Math.round(c.confidence * 100)}%
-                          </span>
+                          {!activeSearch && (
+                            <span className="text-[10px] uppercase tracking-wide text-mint-400 font-semibold flex-shrink-0">
+                              {Math.round(c.confidence * 100)}%
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-500 truncate">from {c.senderAddress}</p>
                         <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.snippet}</p>
