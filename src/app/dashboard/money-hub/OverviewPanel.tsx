@@ -29,6 +29,7 @@ const SPEND_LABELS: Record<string, { label: string; icon: string; color: string 
   loan: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   loans: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   council_tax: { label: 'Council Tax', icon: '🏛️', color: '#6366f1' },
+  business_rates: { label: 'Business Rates', icon: '🏢', color: '#6366f1' },
   energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
   water: { label: 'Water', icon: '💧', color: '#06b6d4' },
   broadband: { label: 'Broadband', icon: '📡', color: '#3b82f6' },

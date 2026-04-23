@@ -61,6 +61,7 @@ const CATEGORY_MAX_AMOUNT: Record<string, number> = {
   energy:     500,
   insurance:  400,
   council_tax:400,
+  business_rates:3000,
   credit:    1000,
   loans:     2000,
   mortgage:  5000,

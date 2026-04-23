@@ -298,7 +298,10 @@ export const DESCRIPTION_CATEGORIES: Array<{ keywords: string[]; category: strin
   { keywords: ['mortgage', 'mtg', 'lendinvest', 'skipton', 'nationwide', 'halifax', 'santander mtg', 'barclays mtg', 'natwest mtg', 'hsbc mtg', 'virgin mtg', 'coventry b.s', 'yorkshire b.s', 'kensington', 'bm solutions', 'accord mort', 'leeds b.s', 'leeds bs', 'principality b.s', 'west brom b.s', 'fleet mort', 'paragon mort', 'keystone mort', 'paratus', 'pepper money', 'together money', 'shawbrook', 'precise mort', 'the mortgage lender', 'foundation home', 'molo', 'landbay', 'atom bank mort'], category: 'mortgage' },
   { keywords: ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'capital one', 'santander credit', 'santander card', 'vanquis', 'aqua card', 'marbles', 'fluid card', 'thinkmoney'], category: 'credit' },
   { keywords: ['natwest loan', 'santander loan', 'santander', 'novuna', 'ca auto finance', 'tesco bank', 'zopa', 'funding circle', 'bbls', 'bounce back', 'cbils', 'recovery loan', 'iwoca', 'esme loans', 'fleximize', 'capital on tap', 'tide capital', 'starling loan', 'creation.co', 'creation ', 'klarna', 'clearpay', 'laybuy'], category: 'loans' },
-  { keywords: ['council', 'winchester city', 'southampton city', 'l.b.', 'hounslow'], category: 'council_tax' },
+  // Business rates MUST come before 'council' — a business-rates bill from a
+  // borough council would otherwise be miscategorised as council_tax.
+  { keywords: ['business rates', 'nndr', 'non-domestic rates', 'non domestic rates', 'ndr '], category: 'business_rates' },
+  { keywords: ['council', 'winchester city', 'southampton city', 'l.b.', 'hounslow', 'broxbourne bc', 'borough bc'], category: 'council_tax' },
   { keywords: ['british gas', 'eon next', 'e.on', 'eon energy', 'octopus', 'ovo', 'edf', 'scottish power', 'bulb', 'shell energy', 'utilita'], category: 'energy' },
   { keywords: ['thames water', 'severn trent', 'united utilities', 'anglian water', 'southern water'], category: 'water' },
   { keywords: ['sky broadband', 'virgin media', 'bt broadband', 'communityfibre', 'community fibre', 'vodafone broad', 'talktalk', 'plusnet', 'hyperoptic', 'ee broadband'], category: 'broadband' },
