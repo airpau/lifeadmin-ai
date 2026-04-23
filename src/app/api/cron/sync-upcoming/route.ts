@@ -72,7 +72,8 @@ export async function GET(request: NextRequest) {
     .from('bank_connections')
     .select('id, user_id, provider, provider_id, consent_token, consent_expires_at, account_ids, status')
     .eq('provider', 'yapily')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('archived_at', null);
 
   if (connErr) {
     console.error('[sync-upcoming] connection fetch failed:', connErr.message);

@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
   const { data: connections, error: connError } = await supabase
     .from('bank_connections')
     .select('user_id')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('archived_at', null);
 
   if (connError || !connections || connections.length === 0) {
     return NextResponse.json({ message: 'No active bank connections', alerts_created: 0 });

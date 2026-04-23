@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
   const { data: bankUsers } = await admin
     .from('bank_connections')
     .select('user_id')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('archived_at', null);
 
   if (!bankUsers || bankUsers.length === 0) {
     return NextResponse.json({ success: true, sent: 0, reason: 'No users with bank connections' });
