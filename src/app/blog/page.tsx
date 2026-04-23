@@ -48,13 +48,39 @@ type Post = {
   emoji: string;
 };
 
-const GRADIENTS = [
-  { bg: 'linear-gradient(135deg, #34D399, #059669)', emoji: '✉' },
-  { bg: 'linear-gradient(135deg, #F59E0B, #D97706)', emoji: '📡' },
-  { bg: 'linear-gradient(135deg, #3B82F6, #2563EB)', emoji: '✈' },
-  { bg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)', emoji: '⚖' },
-  { bg: 'linear-gradient(135deg, #F43F5E, #DC2626)', emoji: '💷' },
+// Topic-keyed art. Each entry has a keyword list and the gradient+emoji to use
+// when the post title / category / slug mentions that topic. Order matters —
+// the first match wins, so more specific topics go first.
+const TOPIC_ART: ReadonlyArray<{
+  keywords: readonly string[];
+  bg: string;
+  emoji: string;
+}> = [
+  { keywords: ['flight', 'airline', 'eu261', 'uk261', 'delay', 'cancell'], bg: 'linear-gradient(135deg, #3B82F6, #2563EB)', emoji: '✈' },
+  { keywords: ['parking', 'pcn', 'dvla', 'driving', 'car park'], bg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)', emoji: '🅿' },
+  { keywords: ['broadband', 'internet', 'wifi', 'router', 'fibre'], bg: 'linear-gradient(135deg, #F59E0B, #D97706)', emoji: '📡' },
+  { keywords: ['energy', 'gas', 'electric', 'tariff', 'ofgem', 'bill cap'], bg: 'linear-gradient(135deg, #FACC15, #CA8A04)', emoji: '⚡' },
+  { keywords: ['mobile', 'phone contract', 'sim', 'roaming'], bg: 'linear-gradient(135deg, #0EA5E9, #0369A1)', emoji: '📱' },
+  { keywords: ['insurance', 'claim', 'policy', 'ombudsman'], bg: 'linear-gradient(135deg, #06B6D4, #0E7490)', emoji: '🛡' },
+  { keywords: ['council tax', 'council-tax'], bg: 'linear-gradient(135deg, #64748B, #334155)', emoji: '🏛' },
+  { keywords: ['hmrc', 'tax rebate', 'tax-rebate'], bg: 'linear-gradient(135deg, #14B8A6, #0F766E)', emoji: '📄' },
+  { keywords: ['debt', 'collection', 'bailiff', 'ccj'], bg: 'linear-gradient(135deg, #EF4444, #B91C1C)', emoji: '⛔' },
+  { keywords: ['bank', 'overdraft', 'refund', 'chargeback'], bg: 'linear-gradient(135deg, #F43F5E, #DC2626)', emoji: '💷' },
+  { keywords: ['subscription', 'netflix', 'streaming', 'gym'], bg: 'linear-gradient(135deg, #14B8A6, #0D9488)', emoji: '🎬' },
+  { keywords: ['consumer rights', 'cra 2015', 'statute', 'law', 'legislation'], bg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)', emoji: '⚖' },
+  { keywords: ['complaint', 'dispute', 'letter', 'template'], bg: 'linear-gradient(135deg, #34D399, #059669)', emoji: '✉' },
 ];
+
+// Default art for posts that don't match any keyword.
+const DEFAULT_ART = { bg: 'linear-gradient(135deg, #34D399, #059669)', emoji: '✉' };
+
+function artFor(post: { title: string; cat?: string | null; href: string }): { bg: string; emoji: string } {
+  const haystack = `${post.title} ${post.cat ?? ''} ${post.href}`.toLowerCase();
+  for (const t of TOPIC_ART) {
+    if (t.keywords.some((k) => haystack.includes(k))) return { bg: t.bg, emoji: t.emoji };
+  }
+  return DEFAULT_ART;
+}
 
 // Hand-coded SEO posts that already exist as live pages under /blog/*.
 const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
@@ -100,20 +126,22 @@ async function fetchDynamicPosts(): Promise<Post[]> {
       .order('published_at', { ascending: false })
       .limit(20);
     if (!data) return [];
-    return data.map((p, i): Post => {
-      const g = GRADIENTS[i % GRADIENTS.length];
+    return data.map((p): Post => {
+      const cat = (p.category as string | null) ?? 'Essay';
+      const href = `/blog/${p.slug}`;
+      const art = artFor({ title: p.title, cat, href });
       return {
         title: p.title,
         excerpt: p.excerpt ?? '',
-        href: `/blog/${p.slug}`,
+        href,
         date: new Date(p.published_at).toLocaleDateString('en-GB', {
           day: 'numeric',
           month: 'long',
           year: 'numeric',
         }),
-        cat: (p.category as string | null) ?? 'Essay',
-        gradient: g.bg,
-        emoji: g.emoji,
+        cat,
+        gradient: art.bg,
+        emoji: art.emoji,
       };
     });
   } catch {
@@ -123,9 +151,9 @@ async function fetchDynamicPosts(): Promise<Post[]> {
 
 export default async function BlogIndexPage() {
   const dynamicPosts = await fetchDynamicPosts();
-  const staticWithArt: Post[] = STATIC_POSTS.map((p, i) => {
-    const g = GRADIENTS[(dynamicPosts.length + i) % GRADIENTS.length];
-    return { ...p, gradient: g.bg, emoji: g.emoji };
+  const staticWithArt: Post[] = STATIC_POSTS.map((p) => {
+    const art = artFor(p);
+    return { ...p, gradient: art.bg, emoji: art.emoji };
   });
   const allPosts: Post[] = [...dynamicPosts, ...staticWithArt];
   const [featured, ...rest] = allPosts;

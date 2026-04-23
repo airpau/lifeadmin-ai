@@ -143,13 +143,24 @@ const MATH_ROWS: ReadonlyArray<{
 
 const COMPARE_ROWS: ReadonlyArray<readonly [string, string, string, string]> = [
   ['AI dispute letters', '3 / month', 'Unlimited', 'Unlimited'],
-  ['Bank sync (read-only, FCA via Yapily)', '—', '2 accounts', 'Unlimited'],
-  ['Email inbox scan', '—', '•', '•'],
-  ['Subscription tracker', 'Manual only', '•', '•'],
-  ['Public deals marketplace', '•', '•', '•'],
-  ['Pocket Agent in Telegram', '—', '•', '•'],
-  ['Deal alerts on bill changes', '—', '—', '•'],
-  ['Priority human review', '—', '—', '•'],
+  ['Bank accounts (read-only, FCA via Yapily)', '2', '3', 'Unlimited'],
+  ['Email inboxes (Watchdog reply monitoring)', '1', '3', 'Unlimited'],
+  ['Subscription tracker', 'Unlimited', 'Unlimited', 'Unlimited'],
+  ['Pocket Agent in Telegram', '•', '•', '•'],
+  ['AI chatbot', '•', '•', '•'],
+  ['Spending intelligence', 'Top 5 categories', 'All 20+ categories', 'All 20+ categories'],
+  ['AI cancellation emails with legal context', '—', '•', '•'],
+  ['Renewal reminders (30/14/7 days)', '—', '•', '•'],
+  ['Money Hub budgets + savings goals', '—', '•', '•'],
+  ['Price-increase alerts by email', '—', '•', '•'],
+  ['Contract end-date tracking', '—', '•', '•'],
+  ['Money Hub top merchants', '—', '—', '•'],
+  ['Full transaction-level analysis', '—', '—', '•'],
+  ['Price-increase alerts via Telegram (instant)', '—', '—', '•'],
+  ['Export (CSV / PDF)', '—', '—', '•'],
+  ['Paybacker MCP (Claude Desktop)', '—', '—', '•'],
+  ['On-demand bank sync', '—', '—', '•'],
+  ['Priority support', '—', '—', '•'],
   ['Success fee on refunds', '0%', '0%', '0%'],
 ];
 
@@ -230,8 +241,11 @@ export default function PricingPage() {
               <div className="founding" style={{ visibility: 'hidden' }}>—</div>
               <ul>
                 <li>3 AI dispute letters / month</li>
-                <li>Manual subscription tracker</li>
-                <li>Public deals marketplace</li>
+                <li>2 bank accounts · daily auto-sync</li>
+                <li>1 email inbox · Watchdog reply monitoring</li>
+                <li>Unlimited subscription tracker</li>
+                <li>Basic spending overview (top 5 categories)</li>
+                <li>Pocket Agent in Telegram + AI chatbot</li>
               </ul>
               <Link className="btn btn-ghost cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
                 Start free →
@@ -244,15 +258,19 @@ export default function PricingPage() {
               <div className="price">
                 £4.99<span className="per">/month</span>
               </div>
-              <div className="founding">Founding member · locked-in forever</div>
+              <div className="founding">or £44.99/yr · Founding rate locked-in forever</div>
               <ul>
                 <li>Unlimited AI dispute letters</li>
-                <li>Bank sync — 2 accounts</li>
-                <li>Email inbox scan</li>
-                <li>Pocket Agent in Telegram</li>
+                <li>3 bank accounts · daily auto-sync</li>
+                <li>3 email inboxes · Watchdog reply monitoring</li>
+                <li>AI cancellation emails with legal context</li>
+                <li>Full spending intelligence (20+ categories)</li>
+                <li>Budgets + savings goals</li>
+                <li>Renewal reminders (30/14/7 days)</li>
+                <li>Price-increase alerts by email</li>
               </ul>
               <Link className="btn btn-mint cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
-                Start 14-day trial →
+                Get Essential →
               </Link>
             </div>
 
@@ -261,12 +279,16 @@ export default function PricingPage() {
               <div className="price">
                 £9.99<span className="per">/month</span>
               </div>
-              <div className="founding">Founding member · locked-in forever</div>
+              <div className="founding">or £94.99/yr · Founding rate locked-in forever</div>
               <ul>
                 <li>Everything in Essential</li>
                 <li>Unlimited bank &amp; email connections</li>
-                <li>Deal alerts on bill changes</li>
-                <li>Priority human review on complex disputes</li>
+                <li>Money Hub top merchants + transaction analysis</li>
+                <li>Price-increase alerts via Telegram (instant)</li>
+                <li>Export to CSV &amp; PDF</li>
+                <li>Paybacker MCP (Claude Desktop integration)</li>
+                <li>On-demand bank sync</li>
+                <li>Priority support</li>
               </ul>
               <Link className="btn btn-ghost cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
                 Go Pro →
