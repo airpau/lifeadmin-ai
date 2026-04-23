@@ -2027,32 +2027,50 @@
    Demo stage responsive scaling — the product demos are built at
    a fixed virtual 980×612 layout (absolutely-positioned panels,
    flex:0 0 340px left columns etc) and break on narrow viewports.
-   Treat the demo-stage as a container and scale its inner content
-   to match the available width. Everything inside the stage stays
-   on its original virtual canvas so animations don't reflow.
-   ============================================================ */
-.m-v2-root .demo-stage { container-type: inline-size; }
+   Scale the inner frame to fit. Uses plain viewport units so it
+   works without container-query support.
 
-@container (max-width: 820px) {
+   Previous attempt relied on `[style*="position: absolute"]` which
+   React serialises WITHOUT the space after the colon in production
+   (`position:absolute`), so the selector never matched and the
+   demos continued to clip on iPhone. Now we match by direct-child
+   div, which unambiguously hits the inset-positioned wrapper since
+   the only other child of `.demo-stage` is `<span class="demo-label">`.
+   ============================================================ */
+@media (max-width: 820px) {
   .m-v2-root .demo-stage {
+    /* Break out of the 16:10 intrinsic ratio so our calc height wins */
     aspect-ratio: auto;
-    /* Height = top label (56px) + the inset-bottom gap (40px) +
-       the content frame scaled by (100cqw - inset-x) / 892.
-       892 = 980 content width - 88 inset-x (44 left + 44 right). */
-    height: calc(56px + 40px + 516px * ((100cqw - 88px) / 892));
+    /* Scaled height = 56px label band + scaled content frame.
+       Content frame is the desktop 892×516 inner box; the scale
+       factor is the viewport-minus-wrap-padding divided by 892. */
+    height: calc(56px + 516px * ((100vw - 32px) / 892));
     overflow: hidden;
+    position: relative;
   }
-  /* The inline-styled inset wrapper becomes the scaled frame. The
-     style attr on the element sets `position: absolute; inset:
-     56px 44px 40px 44px; display: flex; gap: 16px;` — we lock its
-     intrinsic size to the desktop 892x516 content area so children
-     render as designed, then transform-scale it down to the
-     container width. */
-  .m-v2-root .demo-stage > div[style*="position: absolute"] {
+  /* Scale the only non-label child — the inline-styled inset
+     wrapper that holds the demo panels. */
+  .m-v2-root .demo-stage > div {
+    /* Pin to the canonical desktop inner-box coordinates so the
+       absolute inset + flex:0 0 340px children render as designed. */
+    position: absolute !important;
     inset: 56px auto auto 44px !important;
     width: 892px !important;
     height: 516px !important;
-    transform: scale(calc((100cqw - 88px) / 892));
+    /* Shrink to the container width. Using viewport units keeps
+       this correct across every demo instance on the page. */
+    transform: scale(calc((100vw - 32px) / 892));
     transform-origin: top left;
+  }
+}
+@media (max-width: 560px) {
+  /* At the narrowest breakpoint the wrap padding drops to 16px/side
+     (see rules above), so recompute the scale factor against the
+     new available width. */
+  .m-v2-root .demo-stage {
+    height: calc(56px + 516px * ((100vw - 32px) / 892));
+  }
+  .m-v2-root .demo-stage > div {
+    transform: scale(calc((100vw - 32px) / 892));
   }
 }
