@@ -23,6 +23,7 @@ interface Connection {
   bank_name: string | null;
   provider: string | null;
   status: string;
+  account_ids: string[] | null;
   account_display_names: string[] | null;
 }
 
@@ -33,6 +34,7 @@ interface Space {
   color: string | null;
   is_default: boolean;
   connection_ids: string[];
+  account_refs: string[];
   sort_order: number;
 }
 
@@ -49,6 +51,7 @@ export default function SpacesSettingsPage() {
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState<string>('💼');
   const [newConnectionIds, setNewConnectionIds] = useState<Set<string>>(new Set());
+  const [newAccountRefs, setNewAccountRefs] = useState<Set<string>>(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -73,6 +76,7 @@ export default function SpacesSettingsPage() {
     setNewName('');
     setNewEmoji('💼');
     setNewConnectionIds(new Set());
+    setNewAccountRefs(new Set());
   };
 
   const beginEdit = (space: Space) => {
@@ -81,6 +85,7 @@ export default function SpacesSettingsPage() {
     setNewName(space.name);
     setNewEmoji(space.emoji ?? '🌍');
     setNewConnectionIds(new Set(space.connection_ids));
+    setNewAccountRefs(new Set(space.account_refs ?? []));
   };
 
   const cancel = () => {
@@ -90,10 +95,35 @@ export default function SpacesSettingsPage() {
   };
 
   const toggleConn = (id: string) => {
+    // When toggling the whole-connection checkbox, also strip any
+    // per-account refs for that connection so we don't store both.
     setNewConnectionIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+    setNewAccountRefs((prev) => {
+      const next = new Set(prev);
+      for (const ref of prev) if (ref.startsWith(`${id}:`)) next.delete(ref);
+      return next;
+    });
+  };
+
+  const toggleAccount = (connId: string, providerAccountId: string) => {
+    const ref = `${connId}:${providerAccountId}`;
+    // Clicking an individual sub-account should clear the
+    // whole-connection toggle (otherwise checking/unchecking
+    // individual accounts silently does nothing).
+    setNewConnectionIds((prev) => {
+      const next = new Set(prev);
+      next.delete(connId);
+      return next;
+    });
+    setNewAccountRefs((prev) => {
+      const next = new Set(prev);
+      if (next.has(ref)) next.delete(ref);
+      else next.add(ref);
       return next;
     });
   };
@@ -104,6 +134,7 @@ export default function SpacesSettingsPage() {
       name: newName.trim(),
       emoji: newEmoji,
       connection_ids: Array.from(newConnectionIds),
+      account_refs: Array.from(newAccountRefs),
     };
     const res = editingId
       ? await fetch(`/api/spaces/${editingId}`, {
@@ -172,8 +203,10 @@ export default function SpacesSettingsPage() {
                 name={newName} setName={setNewName}
                 emoji={newEmoji} setEmoji={setNewEmoji}
                 connections={connections}
-                selected={newConnectionIds}
+                selectedConns={newConnectionIds}
+                selectedRefs={newAccountRefs}
                 toggleConn={toggleConn}
+                toggleAccount={toggleAccount}
                 onSave={save}
                 onCancel={cancel}
                 isDefault={s.is_default}
@@ -187,9 +220,9 @@ export default function SpacesSettingsPage() {
                     {s.is_default && <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Default</span>}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    {s.connection_ids.length === 0
+                    {s.connection_ids.length === 0 && (s.account_refs?.length ?? 0) === 0
                       ? 'All connected banks'
-                      : `${s.connection_ids.length} bank${s.connection_ids.length === 1 ? '' : 's'} included`}
+                      : `${s.connection_ids.length + (s.account_refs?.length ?? 0)} account${s.connection_ids.length + (s.account_refs?.length ?? 0) === 1 ? '' : 's'} included`}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
@@ -212,8 +245,10 @@ export default function SpacesSettingsPage() {
             name={newName} setName={setNewName}
             emoji={newEmoji} setEmoji={setNewEmoji}
             connections={connections}
-            selected={newConnectionIds}
+            selectedConns={newConnectionIds}
+            selectedRefs={newAccountRefs}
             toggleConn={toggleConn}
+            toggleAccount={toggleAccount}
             onSave={save}
             onCancel={cancel}
             isDefault={false}
@@ -243,12 +278,16 @@ export default function SpacesSettingsPage() {
 }
 
 function SpaceEditor({
-  name, setName, emoji, setEmoji, connections, selected, toggleConn, onSave, onCancel, isDefault,
+  name, setName, emoji, setEmoji, connections, selectedConns, selectedRefs,
+  toggleConn, toggleAccount, onSave, onCancel, isDefault,
 }: {
   name: string; setName: (s: string) => void;
   emoji: string; setEmoji: (s: string) => void;
-  connections: Connection[]; selected: Set<string>;
+  connections: Connection[];
+  selectedConns: Set<string>;
+  selectedRefs: Set<string>;
   toggleConn: (id: string) => void;
+  toggleAccount: (connId: string, accountId: string) => void;
   onSave: () => void; onCancel: () => void;
   isDefault: boolean;
 }) {
@@ -275,27 +314,53 @@ function SpaceEditor({
         <p className="text-xs font-medium text-slate-500 mb-2">
           {isDefault
             ? 'The default Space always includes every bank. You can rename and re-emoji it, but membership is fixed.'
-            : 'Which bank connections should this Space include? Leave everything unchecked to include all banks.'}
+            : 'Pick which banks — or specific accounts within a bank — belong in this Space. Leave everything unchecked to include all banks.'}
         </p>
         {!isDefault && (
-          <div className="space-y-1 max-h-64 overflow-y-auto border border-slate-200 rounded-lg p-2">
+          <div className="space-y-1 max-h-80 overflow-y-auto border border-slate-200 rounded-lg p-2">
             {connections.length === 0 ? (
               <p className="text-xs text-slate-500 italic p-2">No bank connections yet.</p>
-            ) : connections.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 text-sm text-slate-800 p-2 hover:bg-slate-50 rounded cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selected.has(c.id)}
-                  onChange={() => toggleConn(c.id)}
-                  className="h-4 w-4 accent-emerald-500"
-                />
-                <span>{c.bank_name || c.provider || 'Bank'}</span>
-                <span className="text-xs text-slate-500">
-                  {c.account_display_names?.length ? `· ${c.account_display_names.length} accounts` : ''}
-                </span>
-                {c.status !== 'active' && <span className="text-xs text-amber-700">· {c.status}</span>}
-              </label>
-            ))}
+            ) : connections.map((c) => {
+              const accountIds = c.account_ids ?? [];
+              const displayNames = c.account_display_names ?? [];
+              const hasMultiple = accountIds.length > 1;
+              const wholeSelected = selectedConns.has(c.id);
+              const refsForThisConn = accountIds.filter((accId) => selectedRefs.has(`${c.id}:${accId}`));
+              const partiallySelected = !wholeSelected && refsForThisConn.length > 0;
+              return (
+                <div key={c.id} className="border-b border-slate-100 last:border-0 pb-1 mb-1 last:mb-0">
+                  <label className="flex items-center gap-2 text-sm text-slate-800 p-2 hover:bg-slate-50 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={wholeSelected}
+                      ref={(el) => { if (el) el.indeterminate = partiallySelected; }}
+                      onChange={() => toggleConn(c.id)}
+                      className="h-4 w-4 accent-emerald-500"
+                    />
+                    <span className="font-medium">{c.bank_name || c.provider || 'Bank'}</span>
+                    <span className="text-xs text-slate-500">
+                      {hasMultiple ? `· ${accountIds.length} accounts` : ''}
+                    </span>
+                    {c.status !== 'active' && <span className="text-xs text-amber-700">· {c.status}</span>}
+                  </label>
+                  {hasMultiple && !wholeSelected && (
+                    <div className="ml-6 pl-2 border-l border-slate-200 space-y-0.5">
+                      {accountIds.map((accId, i) => (
+                        <label key={accId} className="flex items-center gap-2 text-xs text-slate-700 p-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedRefs.has(`${c.id}:${accId}`)}
+                            onChange={() => toggleAccount(c.id, accId)}
+                            className="h-3.5 w-3.5 accent-emerald-500"
+                          />
+                          <span>{displayNames[i] || `Account ${i + 1}`}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

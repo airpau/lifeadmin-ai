@@ -6,7 +6,7 @@ import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMone
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
-import { ensureDefaultSpace, getSpace, spaceConnectionFilter } from '@/lib/spaces';
+import { ensureDefaultSpace, getSpace, spaceConnectionFilter, spaceTransactionFilter } from '@/lib/spaces';
 
 export const runtime = 'nodejs';
 
@@ -133,6 +133,7 @@ export async function GET(request: Request) {
     await ensureDefaultSpace(supabase, user.id);
     const activeSpace = await getSpace(supabase, user.id, requestedSpaceId);
     const connectionFilter = spaceConnectionFilter(activeSpace);
+    const txFilter = spaceTransactionFilter(activeSpace);
 
     let txnQuery = admin
       .from('bank_transactions')
@@ -147,8 +148,22 @@ export async function GET(request: Request) {
       .eq('user_id', user.id)
       .neq('status', 'revoked');
     if (connectionFilter) {
-      txnQuery = txnQuery.in('connection_id', connectionFilter);
       connQuery = connQuery.in('id', connectionFilter);
+    }
+    if (txFilter) {
+      if (txFilter.accountPairs.length === 0) {
+        txnQuery = txnQuery.in('connection_id', txFilter.connectionIds);
+      } else {
+        // OR-combine connection-wide filter with specific account pairs
+        const parts: string[] = [];
+        if (txFilter.connectionIds.length > 0) {
+          parts.push(`connection_id.in.(${txFilter.connectionIds.join(',')})`);
+        }
+        for (const { connectionId, accountId } of txFilter.accountPairs) {
+          parts.push(`and(connection_id.eq.${connectionId},account_id.eq.${accountId})`);
+        }
+        txnQuery = txnQuery.or(parts.join(','));
+      }
     }
 
     const [

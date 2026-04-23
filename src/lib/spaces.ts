@@ -22,6 +22,11 @@ export interface AccountSpace {
   color: string | null;
   is_default: boolean;
   connection_ids: string[];
+  /** Per-account refs in `"connectionId:providerAccountId"` format.
+   *  Use these when a single connection contains both personal
+   *  and business accounts and the user wants them in separate
+   *  Spaces. Matches are OR-combined with `connection_ids`. */
+  account_refs: string[];
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -70,14 +75,51 @@ export async function listSpaces(
 
 /**
  * Given a Space, return the list of connection IDs its filter applies
- * to — or `null` meaning "no filter, match everything". Callers can
- * gate their queries with `if (filter === null) { query = query; }
- * else { query = query.in('connection_id', filter); }`.
+ * to — or `null` meaning "no filter, match everything". When a Space
+ * has account_refs but no connection_ids, returns the distinct
+ * connection IDs implied by those refs so the bank_connections query
+ * can be narrowed too.
  */
 export function spaceConnectionFilter(space: AccountSpace | null): string[] | null {
   if (!space) return null;
-  if (space.connection_ids.length === 0) return null;
-  return space.connection_ids;
+  const refs = space.account_refs ?? [];
+  const conns = space.connection_ids ?? [];
+  if (conns.length === 0 && refs.length === 0) return null;
+  const set = new Set<string>(conns);
+  for (const ref of refs) {
+    const connId = ref.split(':')[0];
+    if (connId) set.add(connId);
+  }
+  return Array.from(set);
+}
+
+/**
+ * Richer filter for bank_transactions. Returns either null (match all)
+ * or a structured filter that callers can translate into a query:
+ *
+ *   - `connectionIds` = "all accounts in these connections"
+ *   - `accountPairs`  = "only this specific account on this connection"
+ *
+ * At query time, the two are OR-combined. Using this over the simpler
+ * spaceConnectionFilter ensures that a ref like "connA:acc1" doesn't
+ * accidentally pull in acc2 from connA.
+ */
+export function spaceTransactionFilter(space: AccountSpace | null):
+  | null
+  | { connectionIds: string[]; accountPairs: Array<{ connectionId: string; accountId: string }> } {
+  if (!space) return null;
+  const refs = space.account_refs ?? [];
+  const conns = new Set<string>(space.connection_ids ?? []);
+  if (conns.size === 0 && refs.length === 0) return null;
+  const accountPairs: Array<{ connectionId: string; accountId: string }> = [];
+  for (const ref of refs) {
+    const [connId, accountId] = ref.split(':');
+    if (!connId || !accountId) continue;
+    // If the whole connection is already included, skip the narrower ref.
+    if (conns.has(connId)) continue;
+    accountPairs.push({ connectionId: connId, accountId });
+  }
+  return { connectionIds: Array.from(conns), accountPairs };
 }
 
 /**
