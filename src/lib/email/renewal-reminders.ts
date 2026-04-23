@@ -1,4 +1,5 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { renderEmail, emailStyles as s, emailTokens as t } from './layout';
 
 interface RenewalSubscription {
   provider_name: string;
@@ -32,17 +33,16 @@ function isScheduledPayment(sub: RenewalSubscription): boolean {
 export function buildRenewalEmail(
   userName: string,
   renewals: RenewalSubscription[],
-  daysUntilRenewal: number
+  daysUntilRenewal: number,
 ): { subject: string; html: string } {
   const totalRenewing = renewals.reduce((sum, r) => sum + r.amount, 0);
 
-  const subscriptions = renewals.filter(r => !isScheduledPayment(r));
-  const payments = renewals.filter(r => isScheduledPayment(r));
+  const subscriptions = renewals.filter((r) => !isScheduledPayment(r));
+  const payments = renewals.filter((r) => isScheduledPayment(r));
   const hasSubscriptions = subscriptions.length > 0;
   const hasPayments = payments.length > 0;
   const onlyPayments = hasPayments && !hasSubscriptions;
 
-  // Subject line
   let subject: string;
   if (onlyPayments) {
     subject = daysUntilRenewal <= 7
@@ -58,8 +58,10 @@ export function buildRenewalEmail(
       : `Heads up: renewals and payments coming up`;
   }
 
-  // Urgency banner
-  const urgencyColor = daysUntilRenewal <= 7 ? '#ef4444' : daysUntilRenewal <= 14 ? '#059669' : '#3b82f6';
+  // Urgency banner palette — red for imminent, mint for 2-week, blue for further out.
+  const urgencyColor = daysUntilRenewal <= 7 ? t.red : daysUntilRenewal <= 14 ? t.mintDeep : t.blue;
+  const urgencyBg = daysUntilRenewal <= 7 ? '#FEE2E2' : daysUntilRenewal <= 14 ? t.mintWash : '#DBEAFE';
+  const urgencyBorder = daysUntilRenewal <= 7 ? '#FECACA' : daysUntilRenewal <= 14 ? '#BBF7D0' : '#BFDBFE';
   const urgencyText = onlyPayments
     ? (daysUntilRenewal <= 7 ? 'Payments due soon' : daysUntilRenewal <= 14 ? 'Payments due in 2 weeks' : 'Upcoming payments')
     : (daysUntilRenewal <= 7 ? 'Renewing soon — act now' : daysUntilRenewal <= 14 ? 'Renewing in 2 weeks' : 'Upcoming renewal');
@@ -68,7 +70,6 @@ export function buildRenewalEmail(
     ? `£${totalRenewing.toFixed(2)} due in the next ${daysUntilRenewal} days`
     : `£${totalRenewing.toFixed(2)} renewing in the next ${daysUntilRenewal} days`;
 
-  // Body text
   let bodyText: string;
   if (onlyPayments) {
     bodyText = daysUntilRenewal <= 7
@@ -76,7 +77,7 @@ export function buildRenewalEmail(
       : 'These payments are coming up. Here is what is due.';
   } else if (!hasPayments) {
     bodyText = daysUntilRenewal <= 7
-      ? 'These subscriptions are renewing very soon. Now is the time to check if you still need them or if there is a better deal available.'
+      ? 'These subscriptions are renewing very soon. Now is the time to check if you still need them, or if there is a better deal available.'
       : 'These subscriptions are coming up for renewal. It is worth checking if you are still getting the best deal.';
   } else {
     bodyText = daysUntilRenewal <= 7
@@ -87,101 +88,81 @@ export function buildRenewalEmail(
   const buildRows = (items: RenewalSubscription[], labelType: 'renews' | 'due') =>
     items.map((r) => `
       <tr>
-        <td style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB;">
-          <div style="font-weight: 600; color: #0B1220; font-size: 14px;">${r.provider_name}</div>
-          <div style="color: #6B7280; font-size: 12px; margin-top: 2px;">${r.category || (labelType === 'renews' ? 'subscription' : 'payment')} · ${labelType} ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}</div>
+        <td style="padding:14px 16px;border-bottom:1px solid ${t.cardBorder};">
+          <div style="font-weight:600;color:${t.textStrong};font-size:14px;">${r.provider_name}</div>
+          <div style="color:${t.textMuted};font-size:12px;margin-top:2px;">${r.category || (labelType === 'renews' ? 'subscription' : 'payment')} · ${labelType} ${new Date(r.next_billing_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}</div>
         </td>
-        <td style="padding: 14px 16px; border-bottom: 1px solid #E5E7EB; text-align: right;">
-          <div style="font-weight: 700; color: #0B1220; font-size: 16px;">£${r.amount.toFixed(2)}</div>
-          <div style="color: #6B7280; font-size: 11px;">/${r.billing_cycle}</div>
+        <td style="padding:14px 16px;border-bottom:1px solid ${t.cardBorder};text-align:right;">
+          <div style="font-weight:700;color:${t.textStrong};font-size:16px;">£${r.amount.toFixed(2)}</div>
+          <div style="color:${t.textMuted};font-size:11px;">/${r.billing_cycle}</div>
         </td>
       </tr>
     `).join('');
 
-  // Table section(s)
   let tableContent: string;
   if (!hasPayments) {
     tableContent = `
-    <table style="width: 100%; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <table role="presentation" style="width:100%;background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:12px;border-collapse:separate;border-spacing:0;margin:0 0 24px;">
       ${buildRows(subscriptions, 'renews')}
     </table>`;
   } else if (onlyPayments) {
     tableContent = `
-    <table style="width: 100%; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <table role="presentation" style="width:100%;background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:12px;border-collapse:separate;border-spacing:0;margin:0 0 24px;">
       ${buildRows(payments, 'due')}
     </table>`;
   } else {
-    // Mixed — two labelled sections
     tableContent = `
-    <div style="color: #6B7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Subscriptions renewing</div>
-    <table style="width: 100%; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; border-collapse: collapse; margin-bottom: 20px;">
+    <div style="color:${t.textMuted};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">Subscriptions renewing</div>
+    <table role="presentation" style="width:100%;background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:12px;border-collapse:separate;border-spacing:0;margin:0 0 20px;">
       ${buildRows(subscriptions, 'renews')}
     </table>
-    <div style="color: #6B7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Upcoming payments</div>
-    <table style="width: 100%; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 16px; border-collapse: collapse; margin-bottom: 24px;">
+    <div style="color:${t.textMuted};font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">Upcoming payments</div>
+    <table role="presentation" style="width:100%;background:${t.cardBg};border:1px solid ${t.cardBorder};border-radius:12px;border-collapse:separate;border-spacing:0;margin:0 0 24px;">
       ${buildRows(payments, 'due')}
     </table>`;
   }
 
-  // Deals section — only shown when there are cancellable subscriptions
   const dealsSection = hasSubscriptions ? `
-    <div style="background: #FFFFFF; border: 1px solid #05966944; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
-      <div style="color: #059669; font-weight: 700; font-size: 14px; margin-bottom: 12px;">Better deals available</div>
-      <div style="color: #6B7280; font-size: 13px; line-height: 1.6; margin-bottom: 16px;">
+    <div style="${s.tipBox}">
+      <div style="color:${t.mintDeep};font-weight:700;font-size:14px;margin:0 0 8px;">Better deals available</div>
+      <p style="color:${t.text};font-size:13px;line-height:1.6;margin:0 0 14px;">
         Before these renew, check if you can save by switching. Your personalised deals page shows alternatives based on your current providers.
-      </div>
-      <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: linear-gradient(135deg, #059669, #d97706); color: #FFFFFF; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;">See Your Personalised Deals &rarr;</a>
+      </p>
+      <a href="https://paybacker.co.uk/dashboard/deals" style="${s.cta}">See your personalised deals &rarr;</a>
     </div>` : '';
 
-  // "Did you know" tip — only relevant for subscriptions
   const didYouKnow = hasSubscriptions ? `
-    <div style="background: #FFFFFF; border: 1px solid #E5E7EB44; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
-      <div style="color: #059669; font-weight: 600; font-size: 13px; margin-bottom: 4px;">Did you know?</div>
-      <div style="color: #6B7280; font-size: 12px; line-height: 1.5;">
-        Paybacker can generate a cancellation email for any subscription in seconds, citing the correct UK consumer law. Just click on any subscription in your dashboard.
-      </div>
+    <div style="${s.box}">
+      <div style="color:${t.mintDeep};font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Did you know?</div>
+      <p style="color:${t.text};font-size:13px;line-height:1.55;margin:0;">
+        Paybacker can generate a cancellation email for any subscription in seconds, citing the correct UK consumer law. Just click any subscription in your dashboard.
+      </p>
     </div>` : '';
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #F9FAFB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
-    <div style="text-align: center; padding: 24px 0;">
-      <div style="font-size: 24px; font-weight: 700; color: #0B1220;">Pay<span style="color: #059669;">backer</span></div>
+  const body = `
+    <div style="background:${urgencyBg};border:1px solid ${urgencyBorder};border-radius:12px;padding:16px;text-align:center;margin:0 0 24px;">
+      <div style="color:${urgencyColor};font-weight:700;font-size:14px;">${urgencyText}</div>
+      <div style="color:${t.textStrong};font-size:13px;margin-top:4px;">${bannerSubtext}</div>
     </div>
 
-    <!-- Urgency Banner -->
-    <div style="background: ${urgencyColor}22; border: 1px solid ${urgencyColor}44; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
-      <div style="color: ${urgencyColor}; font-weight: 700; font-size: 14px;">${urgencyText}</div>
-      <div style="color: #6B7280; font-size: 13px; margin-top: 4px;">${bannerSubtext}</div>
-    </div>
-
-    <div style="color: #E5E7EB; font-size: 15px; margin-bottom: 20px; line-height: 1.6;">
-      Hi ${userName},<br><br>
-      ${bodyText}
-    </div>
+    <p style="${s.p}">Hi ${userName},</p>
+    <p style="${s.p}">${bodyText}</p>
 
     ${tableContent}
 
     ${dealsSection}
 
-    <div style="text-align: center; margin: 24px 0;">
-      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="display: inline-block; background: #E5E7EB; color: #0B1220; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px;">${onlyPayments ? 'Review Payments' : 'Review Subscriptions'}</a>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="https://paybacker.co.uk/dashboard/subscriptions" style="${s.ctaSecondary}">${onlyPayments ? 'Review payments' : 'Review subscriptions'}</a>
     </div>
 
     ${didYouKnow}
+  `;
 
-    <div style="text-align: center; padding: 24px 0; border-top: 1px solid #E5E7EB;">
-      <div style="color: #6B7280; font-size: 12px; line-height: 1.6;">
-        Paybacker LTD &middot; paybacker.co.uk<br>
-        <a href="https://paybacker.co.uk/dashboard/profile" style="color: #059669; text-decoration: none;">Manage preferences</a>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
+  const html = renderEmail({
+    preheader: bannerSubtext,
+    body,
+  });
 
   return { subject, html };
 }
@@ -193,7 +174,7 @@ export async function sendRenewalReminder(
   email: string,
   userName: string,
   renewals: RenewalSubscription[],
-  daysUntilRenewal: number
+  daysUntilRenewal: number,
 ): Promise<boolean> {
   if (renewals.length === 0) return false;
 
