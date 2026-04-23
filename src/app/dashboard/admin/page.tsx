@@ -275,6 +275,12 @@ export default function AdminPage() {
         >
           <Clock className="h-4 w-4" /> Crons
         </Link>
+        <Link
+          href="/dashboard/admin/analytics"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+        >
+          <BarChart3 className="h-4 w-4" /> Analytics
+        </Link>
       </div>
 
       {/* OVERVIEW TAB */}
