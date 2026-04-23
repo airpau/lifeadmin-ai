@@ -13,6 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -67,13 +68,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'provider is required' }, { status: 400 });
   }
 
-  const key = normalise(provider);
+  // Cache key must include a hash of the description, not just the provider.
+  // The prompt incorporates the user's email body, so two users asking about
+  // the same provider with different email contexts must get different
+  // responses — otherwise the first caller's email leaks into every later
+  // caller's reply. Empty description → constant suffix so it still caches.
+  const descSnippet = body.description ? body.description.slice(0, 500) : '';
+  const descHash = descSnippet
+    ? createHash('sha256').update(descSnippet).digest('hex').slice(0, 12)
+    : 'nocontext';
+  const key = `${normalise(provider)}:${descHash}`;
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) {
     return NextResponse.json({ advice: hit.advice, cached: true });
   }
 
-  const context = body.description ? `\nContext from user's email: ${body.description.slice(0, 500)}` : '';
+  const context = descSnippet ? `\nContext from user's email: ${descSnippet}` : '';
   const prompt = `You are advising a UK consumer on how to cancel or dispute a service with "${provider}".${context}
 
 Produce 4–6 numbered bullet points giving the clearest, fastest route to cancel. Each bullet should be one sentence, max ~25 words. Cite the specific UK consumer right that applies where relevant (e.g. Consumer Rights Act 2015, Consumer Contracts Regulations 2013 — 14-day cooling-off, Ofcom switching code, Ofgem cooling-off). Prefer concrete instructions: a URL to use, a phone number type to dial, a specific form to send.

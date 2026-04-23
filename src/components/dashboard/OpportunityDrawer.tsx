@@ -47,16 +47,26 @@ function billingCycleFromFrequency(freq: string | null): 'monthly' | 'quarterly'
   return 'monthly';
 }
 
+// Maps an opportunity to one of the values allowed by the disputes.issue_type
+// CHECK constraint (see 20260327000000_disputes_and_correspondence.sql):
+//   complaint, energy_dispute, broadband_complaint, flight_compensation,
+//   parking_appeal, debt_dispute, refund_request, hmrc_tax_rebate,
+//   council_tax_band, dvla_vehicle, nhs_complaint.
+// Price-increase / overcharge opportunities fold into 'refund_request' since
+// that's the closest allowed category (the user wants money back).
 function inferIssueType(item: Opportunity): string {
   const t = (item.type || '').toLowerCase();
   const d = `${item.description || ''} ${item.title || ''}`.toLowerCase();
-  if (t.includes('price') || d.includes('price increase') || d.includes('hike')) return 'price_increase';
-  if (t.includes('overcharge') || d.includes('overcharg')) return 'overcharge';
-  if (t.includes('flight') || d.includes('flight') || d.includes('eu261')) return 'flight_compensation';
-  if (t.includes('energy') || t.includes('utility') || d.includes('energy bill') || d.includes('gas') || d.includes('electric')) return 'energy_dispute';
-  if (t.includes('broadband') || d.includes('broadband') || d.includes('internet')) return 'broadband_dispute';
-  if (t.includes('debt') || d.includes('debt')) return 'debt_dispute';
-  if (t.includes('refund') || d.includes('refund')) return 'refund_request';
+  if (t.includes('flight') || d.includes('flight') || d.includes('eu261') || d.includes('uk261')) return 'flight_compensation';
+  if (t.includes('parking') || d.includes('parking') || d.includes('pcn')) return 'parking_appeal';
+  if (t.includes('energy') || t.includes('utility') || d.includes('energy bill') || d.includes('gas bill') || d.includes('electricity')) return 'energy_dispute';
+  if (t.includes('broadband') || d.includes('broadband') || d.includes('internet service')) return 'broadband_complaint';
+  if (t.includes('debt') || d.includes('debt collection') || d.includes('bailiff')) return 'debt_dispute';
+  if (t.includes('hmrc') || d.includes('hmrc') || d.includes('tax rebate')) return 'hmrc_tax_rebate';
+  if (t.includes('council_tax') || d.includes('council tax')) return 'council_tax_band';
+  if (t.includes('dvla') || d.includes('dvla')) return 'dvla_vehicle';
+  if (t.includes('nhs') || d.includes('nhs')) return 'nhs_complaint';
+  if (t.includes('price') || t.includes('overcharge') || d.includes('overcharg') || d.includes('price increase') || d.includes('hike') || t.includes('refund') || d.includes('refund')) return 'refund_request';
   return 'complaint';
 }
 
