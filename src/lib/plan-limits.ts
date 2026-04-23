@@ -23,6 +23,11 @@ export interface PlanLimits {
    * count, unlocked features), not polling frequency.
    */
   watchdogSyncIntervalMinutes: number | null;
+  /**
+   * Max Account Spaces (Emma-style groupings). Everyone gets 1 default
+   * "Everything" Space; Pro can create more to split personal/business/joint.
+   */
+  maxSpaces: number | null;
   features: string[];
 }
 
@@ -63,6 +68,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxEmails: 1,
     disputeThreadLinks: null, // unlimited email-thread monitoring for disputes
     watchdogSyncIntervalMinutes: 30,
+    maxSpaces: 1,
     features: [
       'complaints',
       'scanner',
@@ -80,6 +86,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxEmails: 3,
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,
+    maxSpaces: 1,
     features: [
       'complaints',
       'scanner',
@@ -102,6 +109,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     maxEmails: null,
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,
+    maxSpaces: null,
     features: [
       'complaints',
       'scanner',

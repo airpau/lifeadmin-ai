@@ -95,6 +95,8 @@ export default function MoneyHubPage() {
  const [error, setError] = useState<string | null>(null);
  const [syncing, setSyncing] = useState(false);
  const [selectedMonth, setSelectedMonth] = useState('');
+ const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean }>>([]);
+ const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
  const [showBankPicker, setShowBankPicker] = useState(false);
  const [showFcaBanner, setShowFcaBanner] = useState(false);
  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -147,20 +149,39 @@ export default function MoneyHubPage() {
 
  // ─── Data fetching ──────────────────────────────────────────────────────
 
- const refreshData = useCallback(async (month?: string) => {
+ const refreshData = useCallback(async (month?: string, spaceId?: string | null) => {
  try {
  const targetMonth = month ?? selectedMonth;
- const url = targetMonth ? `/api/money-hub?month=${targetMonth}` : '/api/money-hub';
+ const targetSpace = spaceId !== undefined ? spaceId : activeSpaceId;
+ const params = new URLSearchParams();
+ if (targetMonth) params.set('month', targetMonth);
+ if (targetSpace) params.set('space_id', targetSpace);
+ const query = params.toString();
+ const url = query ? `/api/money-hub?${query}` : '/api/money-hub';
  const res = await fetch(url);
  const d = await res.json();
- if (!d.error) { setData(d); setError(null); }
+ if (!d.error) {
+ setData(d);
+ setError(null);
+ if (d.activeSpace?.id && !activeSpaceId) setActiveSpaceId(d.activeSpace.id);
+ }
  else setError(d.error);
  } catch (e: any) {
  setError(e.message || 'Failed to load Money Hub data');
  } finally {
  setLoading(false);
  }
- }, [selectedMonth]);
+ }, [selectedMonth, activeSpaceId]);
+
+ // Load the user's Spaces once on mount so the switcher is populated.
+ useEffect(() => {
+ let alive = true;
+ fetch('/api/spaces')
+ .then((r) => r.json())
+ .then((d) => { if (alive && d.spaces) setSpaces(d.spaces); })
+ .catch(() => { /* silent */ });
+ return () => { alive = false; };
+ }, []);
 
  const fetchExpectedBills = async (month?: string) => {
  try {
@@ -656,6 +677,32 @@ export default function MoneyHubPage() {
  </div>
 
  <div className="flex items-center gap-2 flex-wrap">
+ {/* Space switcher — only renders if the user has more than the default */}
+ {spaces.length > 1 && (
+ <select
+ value={activeSpaceId ?? data.activeSpace?.id ?? ''}
+ onChange={(e) => {
+ const next = e.target.value || null;
+ setActiveSpaceId(next);
+ refreshData(undefined, next);
+ }}
+ className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm text-emerald-800 font-medium focus:outline-none focus:border-emerald-500"
+ title="Filter by Space"
+ >
+ {spaces.map((s) => (
+ <option key={s.id} value={s.id}>
+ {s.emoji ? `${s.emoji} ` : ''}{s.name}
+ </option>
+ ))}
+ </select>
+ )}
+ <Link
+ href="/dashboard/settings/spaces"
+ className="text-slate-500 hover:text-slate-900 p-1.5 rounded transition-colors"
+ title="Manage Spaces"
+ >
+ <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+ </Link>
  {/* Month nav */}
  <button
  onClick={() => {
