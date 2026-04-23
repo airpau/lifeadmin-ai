@@ -1276,6 +1276,23 @@ export default function ProfilePage() {
       </>)}
 
       {section === 'notifications' && (<>
+      {/* Notification preferences */}
+      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
+        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
+          <Mail className="h-5 w-5 text-emerald-600" />
+          Where should alerts land?
+        </h2>
+        <p className="text-slate-600 text-sm mb-4">
+          Choose email, Telegram or push per event type — and set quiet hours if you\'d like the buzzes paused at night.
+        </p>
+        <Link
+          href="/dashboard/settings/notifications"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 rounded-xl text-sm font-medium transition-colors"
+        >
+          Manage notification preferences
+        </Link>
+      </div>
+
       {/* Pocket Agent */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
