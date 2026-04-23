@@ -103,6 +103,11 @@ export default function MoneyHubPage() {
  // This drives the inline "Switching…" pill so the user gets visible
  // feedback on the (currently slow) /api/money-hub refetch.
  const [switching, setSwitching] = useState(false);
+
+ // Client-side stale-while-revalidate cache, keyed by `${month}:${spaceId}`.
+ // Lets Space / month switches render instantly after the first view, with
+ // a background refetch keeping the data fresh. Cleared on manual Sync.
+ const cacheRef = useRef<Map<string, any>>(new Map());
  const [showBankPicker, setShowBankPicker] = useState(false);
  const [showFcaBanner, setShowFcaBanner] = useState(false);
  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -156,12 +161,24 @@ export default function MoneyHubPage() {
  // ─── Data fetching ──────────────────────────────────────────────────────
 
  const refreshData = useCallback(async (month?: string, spaceId?: string | null) => {
- // Treat subsequent calls as a "switch" rather than an initial load
- // so the full-page skeleton doesn't flash — we just show a pill.
- if (data) setSwitching(true);
- try {
  const targetMonth = month ?? selectedMonth;
  const targetSpace = spaceId !== undefined ? spaceId : activeSpaceId;
+ const cacheKey = `${targetMonth || 'current'}:${targetSpace || 'default'}`;
+
+ // Cache hit: show instantly, kick off background refetch without
+ // the switching spinner so the UI feels snappy. If the refetch
+ // returns the same shape, the user never notices the update.
+ const cached = cacheRef.current.get(cacheKey);
+ if (cached && data) {
+ setData(cached);
+ setError(null);
+ if (cached.activeSpace?.id && !activeSpaceId) setActiveSpaceId(cached.activeSpace.id);
+ } else if (data) {
+ // Cache miss but data exists → show the switcher spinner.
+ setSwitching(true);
+ }
+
+ try {
  const params = new URLSearchParams();
  if (targetMonth) params.set('month', targetMonth);
  if (targetSpace) params.set('space_id', targetSpace);
@@ -172,6 +189,7 @@ export default function MoneyHubPage() {
  if (!d.error) {
  setData(d);
  setError(null);
+ cacheRef.current.set(cacheKey, d);
  if (d.activeSpace?.id && !activeSpaceId) setActiveSpaceId(d.activeSpace.id);
  }
  else setError(d.error);
@@ -457,6 +475,10 @@ export default function MoneyHubPage() {
  await fetch('/api/money-hub/sync', { method: 'POST' }).catch(() => {});
  await fetch('/api/gmail/scan', { method: 'POST' }).catch(() => {});
  localStorage.setItem('pb_last_gmail_scan', Date.now().toString());
+ // Wipe the Money Hub cache — data has just changed on the server
+ // and stale-while-revalidate would otherwise show the pre-sync
+ // numbers for a beat before the refetch lands.
+ cacheRef.current.clear();
  await refreshData();
  await fetchExpectedBills();
  const synced = d.synced || 0;
