@@ -52,6 +52,17 @@ export async function GET() {
   const emails = emailsRes.count ?? 0;
   const spaces = spacesRes.count ?? 0;
 
+  // Surface any active grace-period event so the banner can show a
+  // countdown instead of just "you're over".
+  const { data: grace } = await supabase
+    .from('plan_downgrade_events')
+    .select('id, from_tier, to_tier, grace_ends_at, downgraded_at')
+    .eq('user_id', user.id)
+    .is('resolved_at', null)
+    .order('downgraded_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const status = {
     tier,
     limits: {
@@ -77,6 +88,15 @@ export async function GET() {
       fullSpending: limits.features.includes('full_spending'),
       budgetsGoals: limits.features.includes('budgets_goals'),
     },
+    gracePeriod: grace
+      ? {
+          fromTier: grace.from_tier,
+          toTier: grace.to_tier,
+          downgradedAt: grace.downgraded_at,
+          graceEndsAt: grace.grace_ends_at,
+          daysRemaining: Math.max(0, Math.ceil((new Date(grace.grace_ends_at).getTime() - Date.now()) / 86400_000)),
+        }
+      : null,
   };
 
   return NextResponse.json(status);

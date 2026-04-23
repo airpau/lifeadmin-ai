@@ -229,13 +229,22 @@ export async function POST(request: NextRequest) {
         const priceId = subscription.items.data[0]?.price.id || '';
         const tier = getPlanTier(priceId);
         const status = subscription.status;
+        const newTier = status === 'canceled' ? 'free' : tier;
 
         console.log(`Webhook subscription.updated: status=${status} customer=${customerId} tier=${tier}`);
+
+        // Read the old tier so we can decide whether this is a downgrade.
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id, subscription_tier')
+          .eq('stripe_customer_id', customerId)
+          .neq('founding_member', true)
+          .maybeSingle();
 
         const { error } = await supabase
           .from('profiles')
           .update({
-            subscription_tier: status === 'canceled' ? 'free' : tier,
+            subscription_tier: newTier,
             subscription_status: status,
             updated_at: new Date().toISOString(),
           })
@@ -244,6 +253,16 @@ export async function POST(request: NextRequest) {
 
         if (error) console.error('Webhook: subscription.updated FAILED:', error.message);
         else console.log('Webhook: subscription.updated OK');
+
+        // Grace-period hook — fires when tier drops to a lower one.
+        if (!error && existing?.id && existing.subscription_tier) {
+          try {
+            const { openDowngradeEvent } = await import('@/lib/plan-downgrade');
+            await openDowngradeEvent(supabase as any, existing.id, existing.subscription_tier as any, newTier as any);
+          } catch (e) {
+            console.error('Webhook: openDowngradeEvent failed:', e);
+          }
+        }
         break;
       }
 
@@ -251,6 +270,13 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
         console.log(`Webhook subscription.deleted: customer=${customerId}`);
+
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id, subscription_tier')
+          .eq('stripe_customer_id', customerId)
+          .neq('founding_member', true)
+          .maybeSingle();
 
         const { error } = await supabase
           .from('profiles')
@@ -265,6 +291,15 @@ export async function POST(request: NextRequest) {
 
         if (error) console.error('Webhook: subscription.deleted FAILED:', error.message);
         else console.log('Webhook: subscription.deleted — downgraded to free');
+
+        if (!error && existing?.id && existing.subscription_tier) {
+          try {
+            const { openDowngradeEvent } = await import('@/lib/plan-downgrade');
+            await openDowngradeEvent(supabase as any, existing.id, existing.subscription_tier as any, 'free' as any);
+          } catch (e) {
+            console.error('Webhook: openDowngradeEvent failed:', e);
+          }
+        }
         break;
       }
 

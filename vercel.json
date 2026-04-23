@@ -81,6 +81,10 @@
       "schedule": "0 8 * * *"
     },
     {
+      "path": "/api/cron/process-downgrades",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/cron/compare-subscriptions",
       "schedule": "0 7 * * *"
     },

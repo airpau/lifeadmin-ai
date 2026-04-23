@@ -23,6 +23,12 @@ interface PlanStatus {
   limits: { maxBanks: number | null; maxEmails: number | null; maxSpaces: number | null };
   usage: { banks: number; emails: number; spaces: number };
   overLimit: { banks: boolean; emails: boolean; spaces: boolean };
+  gracePeriod: {
+    fromTier: string;
+    toTier: string;
+    graceEndsAt: string;
+    daysRemaining: number;
+  } | null;
 }
 
 export default function PlanLimitsBanner() {
@@ -47,27 +53,47 @@ export default function PlanLimitsBanner() {
   if (emails) reasons.push(`${status.usage.emails} email connections (${status.tier} tier allows ${status.limits.maxEmails})`);
   if (spaces) reasons.push(`${status.usage.spaces} Spaces (${status.tier} tier allows ${status.limits.maxSpaces})`);
 
+  const grace = status.gracePeriod;
+  const urgent = grace !== null && grace.daysRemaining <= 3;
+  const toneCls = urgent
+    ? 'bg-red-50 border-red-300'
+    : 'bg-amber-50 border-amber-300';
+  const iconCls = urgent ? 'text-red-600' : 'text-amber-600';
+  const headerCls = urgent ? 'text-red-900' : 'text-amber-900';
+  const bodyCls = urgent ? 'text-red-800' : 'text-amber-800';
+  const buttonCls = urgent ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700';
+
+  const headline = grace
+    ? (grace.daysRemaining > 0
+        ? `${grace.daysRemaining} day${grace.daysRemaining === 1 ? '' : 's'} until extras auto-archive`
+        : `Your grace period ended — extras will be archived on the next daily pass`)
+    : 'You\'re over your plan limits';
+
+  const deadlineLine = grace
+    ? `After ${new Date(grace.graceEndsAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}, the oldest accounts stay active and the rest are archived (transactions preserved — sync paused). Upgrade to keep them all, or pick which to keep yourself.`
+    : 'Everything still works — nothing has been removed. Upgrade to keep it all, or disconnect the ones you no longer need.';
+
   return (
-    <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 mb-6 flex items-start gap-3">
-      <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+    <div className={`${toneCls} border rounded-xl p-4 mb-6 flex items-start gap-3`}>
+      <AlertTriangle className={`h-5 w-5 ${iconCls} flex-shrink-0 mt-0.5`} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-amber-900 mb-1">You\'re over your plan limits</p>
-        <p className="text-sm text-amber-800">
-          {reasons.join(' · ')}. Everything still works — nothing has been removed. Upgrade to keep it all, or disconnect the ones you no longer need.
+        <p className={`text-sm font-semibold ${headerCls} mb-1`}>{headline}</p>
+        <p className={`text-sm ${bodyCls}`}>
+          {reasons.join(' · ')}. {deadlineLine}
         </p>
         <div className="flex items-center gap-3 mt-3">
           <Link
             href="/pricing"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${buttonCls} text-white text-xs font-semibold`}
           >
             <Sparkles className="h-3.5 w-3.5" /> View plans
           </Link>
-          <Link href="/dashboard/profile" className="text-xs font-medium text-amber-800 hover:text-amber-900 underline">
+          <Link href="/dashboard/profile" className={`text-xs font-medium ${bodyCls} hover:opacity-80 underline`}>
             Manage connections
           </Link>
         </div>
       </div>
-      <button onClick={() => setDismissed(true)} className="text-amber-600 hover:text-amber-900" title="Dismiss">
+      <button onClick={() => setDismissed(true)} className={iconCls} title="Dismiss">
         <X className="h-4 w-4" />
       </button>
     </div>
