@@ -50,16 +50,19 @@ export default function UpgradePrompt({ variant, onClose }: UpgradePromptProps) 
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-mint-400/10 border border-mint-400/30 mb-4">
               <Sparkles className="h-8 w-8 text-mint-400" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Upgrade to Keep Scanning</h2>
-            <p className="text-slate-500">Free users get one email scan. Upgrade to Essential for unlimited scans, daily bank sync, and full spending intelligence.</p>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Upgrade to unlock more</h2>
+            <p className="text-slate-500">You&apos;re on the Free plan. Upgrade to Essential to unlock unlimited letters, 3 bank accounts, 3 email inboxes, and the full Money Hub.</p>
           </div>
           <div className="bg-white rounded-xl p-4 mb-6 border border-slate-200">
             <ul className="space-y-2 text-sm text-slate-700">
-              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Unlimited email scans</li>
-              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Unlimited complaint letters</li>
-              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Daily bank sync</li>
-              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Full spending intelligence</li>
-              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Renewal reminders &amp; cancellation emails</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Unlimited AI dispute letters</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> 3 bank accounts &middot; daily auto-sync</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> 3 email inboxes &middot; Watchdog reply monitoring</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> AI cancellation emails with legal context</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Full spending intelligence (20+ categories)</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Budgets + savings goals</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Renewal reminders (30/14/7 days)</li>
+              <li className="flex items-center gap-2"><span className="text-mint-400">✓</span> Price-increase alerts by email</li>
             </ul>
           </div>
           <div className="flex flex-col gap-3">

@@ -1375,8 +1375,10 @@ export default function HomepageV3PreviewPage() {
               <div className="founding" style={{ visibility: 'hidden' }}>—</div>
               <ul>
                 <li>3 AI dispute letters / month</li>
-                <li>Manual subscription tracker</li>
-                <li>Public deals marketplace</li>
+                <li>2 bank accounts · daily auto-sync</li>
+                <li>1 email inbox · Watchdog reply monitoring</li>
+                <li>Unlimited subscription tracker</li>
+                <li>Pocket Agent + AI chatbot</li>
               </ul>
               <Link className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Start free →
@@ -1387,27 +1389,31 @@ export default function HomepageV3PreviewPage() {
               <span className="ribbon">Most popular</span>
               <div className="tier">Essential</div>
               <div className="price">£4.99<span className="per">/month</span></div>
-              <div className="founding">Founding member · locked-in forever</div>
+              <div className="founding">or £44.99/yr · Founding rate locked-in</div>
               <ul>
                 <li>Unlimited AI dispute letters</li>
-                <li>Bank sync — 2 accounts</li>
-                <li>Email inbox scan</li>
-                <li>Pocket Agent in Telegram</li>
+                <li>3 bank accounts · daily auto-sync</li>
+                <li>3 email inboxes · Watchdog reply monitoring</li>
+                <li>AI cancellation emails + renewal reminders</li>
+                <li>Full spending intelligence + budgets</li>
+                <li>Price-increase alerts by email</li>
               </ul>
               <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
-                Start free →
+                Get Essential →
               </Link>
             </Reveal>
 
             <Reveal className="price-card" delay={160}>
               <div className="tier">Pro</div>
               <div className="price">£9.99<span className="per">/month</span></div>
-              <div className="founding">Founding member · locked-in forever</div>
+              <div className="founding">or £94.99/yr · Founding rate locked-in</div>
               <ul>
                 <li>Everything in Essential</li>
                 <li>Unlimited bank &amp; email connections</li>
-                <li>Deal alerts on bill changes</li>
-                <li>Priority human review on complex disputes</li>
+                <li>Price-increase alerts via Telegram (instant)</li>
+                <li>Money Hub top merchants + transaction analysis</li>
+                <li>Paybacker MCP (Claude Desktop)</li>
+                <li>CSV / PDF export · priority support</li>
               </ul>
               <Link className="btn btn-ghost cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
                 Go Pro →
