@@ -97,10 +97,20 @@ export async function POST(request: NextRequest) {
     console.error('detectRecurring failed:', err);
   }
 
-  // Run post-sync functions
-  try {
-    await supabase.rpc('auto_categorise_transactions', { p_user_id: userId });
-  } catch { /* non-fatal */ }
+  // Run post-sync enrichment (idempotent — must run for every user on every sync)
+  const postSyncFunctions = [
+    'fix_ee_card_merchant_names',
+    'auto_categorise_transactions',
+    'detect_and_sync_recurring_transactions',
+  ] as const;
+  for (const fn of postSyncFunctions) {
+    try {
+      const { error } = await supabase.rpc(fn, { p_user_id: userId });
+      if (error) console.error(`initial-sync: ${fn} error:`, error.message);
+    } catch (err: any) {
+      console.error(`initial-sync: ${fn} threw:`, err.message);
+    }
+  }
 
   // Update connection sync timestamp
   const now = new Date().toISOString();
