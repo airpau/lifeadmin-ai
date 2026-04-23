@@ -92,32 +92,33 @@ export async function POST(request: NextRequest) {
       await incrementUsage(user.id, 'scan_run');
     }
 
+    // Clear the previous active queue so re-scans reflect what's actually in
+    // the inbox right now — without this, 'new'/'pending_review' rows from
+    // prior scans pile up and the dashboard never changes. Runs on every
+    // successful scan (including zero-opportunity scans) so that an inbox
+    // cleaned up in real life reflects on the dashboard. Dismissed/actioned
+    // history is left alone so the isNew check below can still block
+    // re-insertion of anything the user explicitly dismissed.
+    const clearResults = await Promise.all([
+      admin
+        .from('email_scan_findings')
+        .delete()
+        .eq('user_id', user.id)
+        .in('status', ['new', 'reviewing']),
+      admin
+        .from('tasks')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('source', 'gmail_scan')
+        .eq('status', 'pending_review'),
+    ]);
+    for (const r of clearResults) {
+      if (r.error) console.error('[gmail-scan] active-queue clear failed:', r.error.message);
+    }
+
     // Save opportunities to database for persistence
     if (opportunities.length > 0) {
       const sessionId = `scan_${Date.now()}`;
-
-      // Clear the previous active queue so re-scans reflect what's actually in
-      // the inbox right now — without this, 'new'/'pending_review' rows from
-      // prior scans pile up and the dashboard never changes. We only touch
-      // rows still sitting in the queue; dismissed/actioned history is left
-      // alone so the isNew check below can still block re-insertion of
-      // anything the user explicitly dismissed.
-      const clearResults = await Promise.all([
-        admin
-          .from('email_scan_findings')
-          .delete()
-          .eq('user_id', user.id)
-          .in('status', ['new', 'reviewing']),
-        admin
-          .from('tasks')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('source', 'gmail_scan')
-          .eq('status', 'pending_review'),
-      ]);
-      for (const r of clearResults) {
-        if (r.error) console.error('[gmail-scan] active-queue clear failed:', r.error.message);
-      }
 
       // Get existing titles to avoid duplicates. After the clear above this
       // only contains dismissed/actioned history, which is what we want isNew
