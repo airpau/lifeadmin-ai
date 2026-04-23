@@ -170,6 +170,7 @@ interface DisputeSummary {
 
 const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: typeof FileText; className: string }> = {
   ai_letter: { label: 'Your letter', icon: FileText, className: 'border-emerald-500/30 bg-emerald-500/5' },
+  user_reply: { label: 'Your reply', icon: FileText, className: 'border-emerald-500/30 bg-emerald-500/5' },
   company_email: { label: 'Their email', icon: Mail, className: 'border-orange-400/30 bg-orange-400/5' },
   company_letter: { label: 'Their letter', icon: FileText, className: 'border-orange-400/30 bg-orange-400/5' },
   phone_call: { label: 'Phone call', icon: Phone, className: 'border-blue-400/30 bg-blue-400/5' },
@@ -906,6 +907,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [loadingCaption, setLoadingCaption] = useState(0);
   const latestLetterRef = useRef<HTMLDivElement>(null);
   const [previousLength, setPreviousLength] = useState(0);
+  // Older entries are collapsed by default on disputes with many replies so
+  // the latest correspondence is always visible without scrolling.
+  const [showAllEntries, setShowAllEntries] = useState(false);
 
   useEffect(() => {
     if (generating) {
@@ -927,6 +931,24 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       setPreviousLength(dispute.correspondence.length);
     }
   }, [dispute?.correspondence?.length]);
+
+  // Deep-link from in-app notifications — when the URL has #entry-<id>, scroll
+  // the specific correspondence entry into view and auto-expand older entries
+  // if the target was hidden.
+  useEffect(() => {
+    if (!dispute?.correspondence || typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (!hash.startsWith('#entry-')) return;
+    const targetId = hash.slice('#entry-'.length);
+    const idx = dispute.correspondence.findIndex((e) => e.id === targetId);
+    if (idx < 0) return;
+    // If the target is beyond the collapsed visible window, expand.
+    if (idx >= 2) setShowAllEntries(true);
+    // Wait a tick so the DOM is up-to-date after (potential) re-render, then scroll.
+    setTimeout(() => {
+      document.getElementById(`entry-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 250);
+  }, [dispute?.correspondence]);
 
   useEffect(() => { fetchDispute(); }, [disputeId]);
 
@@ -1298,15 +1320,28 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         ) : (
           <>
           <div className="space-y-4">
-            {dispute.correspondence?.map((entry, index) => {
-              const config = ENTRY_TYPE_CONFIG[entry.entry_type] || ENTRY_TYPE_CONFIG.user_note;
-              const Icon = config.icon;
-              const isAiLetter = entry.entry_type === 'ai_letter';
-              const isFromCompany = ['company_email', 'company_letter', 'company_response'].includes(entry.entry_type);
-
+            {(() => {
+              const entries = dispute.correspondence ?? [];
+              // Newest-first (API already sorts desc). Show the top 2 expanded
+              // and hide the rest behind a toggle unless showAllEntries is on.
+              const COLLAPSE_AFTER = 2;
+              const visible = showAllEntries || entries.length <= COLLAPSE_AFTER
+                ? entries
+                : entries.slice(0, COLLAPSE_AFTER);
+              const hiddenCount = entries.length - visible.length;
               return (
+                <>
+                  {visible.map((entry, index) => {
+                    const config = ENTRY_TYPE_CONFIG[entry.entry_type] || ENTRY_TYPE_CONFIG.user_note;
+                    const Icon = config.icon;
+                    const isAiLetter = entry.entry_type === 'ai_letter';
+                    const isUserReply = entry.entry_type === 'user_reply';
+                    const isFromCompany = ['company_email', 'company_letter', 'company_response'].includes(entry.entry_type);
+
+                    return (
                 <div
-                  ref={index === (dispute.correspondence?.length || 0) - 1 ? latestLetterRef : null}
+                  id={`entry-${entry.id}`}
+                  ref={index === 0 ? latestLetterRef : null}
                   key={entry.id}
                   className={`border rounded-2xl p-5 transition-all ${config.className} ${
                     isAiLetter ? 'cursor-pointer hover:border-emerald-500/50' : ''
@@ -1475,8 +1510,27 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     </div>
                   )}
                 </div>
+                    );
+                  })}
+                  {hiddenCount > 0 && !showAllEntries && (
+                    <button
+                      onClick={() => setShowAllEntries(true)}
+                      className="w-full text-center py-3 text-sm font-semibold text-emerald-600 hover:text-emerald-700 border border-dashed border-slate-300 rounded-xl transition-colors"
+                    >
+                      Show {hiddenCount} older {hiddenCount === 1 ? 'entry' : 'entries'} ↓
+                    </button>
+                  )}
+                  {showAllEntries && entries.length > COLLAPSE_AFTER && (
+                    <button
+                      onClick={() => setShowAllEntries(false)}
+                      className="w-full text-center py-2 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+                    >
+                      Collapse older entries ↑
+                    </button>
+                  )}
+                </>
               );
-            })}
+            })()}
           </div>
 
           {/* Action buttons at bottom of thread */}
@@ -2486,11 +2540,26 @@ function ComplaintsPageInner() {
   const [view, setView] = useState<'list' | 'new' | 'detail'>('list');
   const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
 
-  // If URL has ?new=1 or sessionStorage has pb_preview_letter, open new dispute form
+  // URL routing:
+  //   ?new=1                → open new-dispute form
+  //   ?dispute=UUID         → open that dispute's detail view (used by the
+  //                           in-app notification deep link so clicking a
+  //                           dispute-reply alert lands on the specific
+  //                           dispute, not the list). If the URL also has a
+  //                           #entry-<id> hash the detail view scrolls to
+  //                           that correspondence entry.
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setView('new');
-    } else if (typeof window !== 'undefined' && sessionStorage.getItem('pb_preview_letter')) {
+      return;
+    }
+    const disputeParam = searchParams.get('dispute');
+    if (disputeParam) {
+      setSelectedDisputeId(disputeParam);
+      setView('detail');
+      return;
+    }
+    if (typeof window !== 'undefined' && sessionStorage.getItem('pb_preview_letter')) {
       setView('new');
     }
   }, [searchParams]);

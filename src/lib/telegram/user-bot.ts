@@ -1260,13 +1260,29 @@ Return JSON: { "subject": "...", "body": "..." }`;
           .select('full_name, first_name, last_name, address, postcode')
           .eq('id', supplierMsg.user_id)
           .maybeSingle(),
+        // Pull the last 6 correspondence entries so the draft reflects the
+        // full back-and-forth, not just the most recent outbound letter. We
+        // include supplier messages (company_email / company_response /
+        // company_letter) as well as the user's own letters / replies /
+        // notes so the model can track whether a question has already been
+        // answered, whether prior offers were rejected, etc. 6 entries is
+        // enough to cover a typical "letter → reply → letter → reply"
+        // exchange with a couple of notes in between without blowing the
+        // prompt budget.
         supabase
           .from('correspondence')
-          .select('content, entry_date, entry_type')
+          .select('content, entry_date, entry_type, summary')
           .eq('dispute_id', supplierMsg.dispute_id)
-          .in('entry_type', ['ai_letter', 'user_note'])
+          .in('entry_type', [
+            'ai_letter',
+            'user_reply',
+            'user_note',
+            'company_email',
+            'company_letter',
+            'company_response',
+          ])
           .order('entry_date', { ascending: false })
-          .limit(1),
+          .limit(6),
       ]);
 
       const fullName =
@@ -1276,9 +1292,24 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const providerName = dispute?.provider_name ?? supplierMsg.sender_name ?? 'Provider';
       const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
       const addrLine = [profile?.address, profile?.postcode].filter(Boolean).join(', ') || '[Your address]';
-      const lastOutboundBody = recentOutbound?.[0]?.content
-        ? String(recentOutbound[0].content).slice(0, 1500)
-        : '(no earlier letter on record)';
+      // Thread history — newest-first on query, but render oldest-first in the
+      // prompt so the model reads it chronologically. Trim each entry to keep
+      // the prompt under budget; supplier replies get a bit more room since
+      // they set the context the draft has to answer.
+      const threadLines: string[] = [];
+      for (const c of [...(recentOutbound || [])].reverse()) {
+        const role = c.entry_type === 'ai_letter' ? 'USER_LETTER'
+          : c.entry_type === 'user_reply' ? 'USER_REPLY'
+          : c.entry_type === 'user_note' ? 'USER_NOTE'
+          : 'SUPPLIER';
+        const maxLen = role === 'SUPPLIER' ? 1500 : 1000;
+        const body = String(c.content || '').slice(0, maxLen);
+        const when = c.entry_date ? new Date(c.entry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+        threadLines.push(`[${role} — ${when}]\n${body}`);
+      }
+      const lastOutboundBody = threadLines.length
+        ? threadLines.join('\n\n---\n\n')
+        : '(no earlier correspondence on record)';
 
       const supplierExcerpt = String(supplierMsg.content || '').slice(0, 4000);
       const category = (supplierMsg.ai_category as string | null) || 'unknown';
@@ -1350,7 +1381,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
         `Short hint on what the reply should cover: ${supplierMsg.ai_suggested_reply_context || 'n/a'}`,
         `Supplier message category (from our classifier): ${category}`,
         '',
-        'What the user previously wrote to this supplier (background context only — do NOT quote or paraphrase):',
+        'Full dispute thread so far (chronological, oldest first — read to avoid repeating points, acknowledging things already settled, or re-asking answered questions). Do NOT quote or paraphrase verbatim:',
         '"""',
         lastOutboundBody,
         '"""',
@@ -1554,14 +1585,17 @@ Return JSON: { "subject": "...", "body": "..." }`;
         return;
       }
 
-      // Write a user_note confirming the draft was sent. Keep the full text
-      // for the audit trail so the dispute history tells the full story.
+      // Record the actual reply the user sent as a 'user_reply' correspondence
+      // entry. This shows up in the dispute timeline as "Your reply" alongside
+      // AI letters and company responses, so the thread tells the full story
+      // without the reader having to read between the lines of a note.
       await supabase.from('correspondence').insert({
         dispute_id: draft.dispute_id,
         user_id: draft.user_id,
-        entry_type: 'user_note',
-        title: 'User confirmed reply was sent',
-        content: `User confirmed they sent the following reply to the supplier via their own email. Logged from Telegram on ${new Date().toISOString()}.\n\n---\n\n${draft.content}`,
+        entry_type: 'user_reply',
+        title: 'Your reply (sent via Telegram draft)',
+        content: draft.content,
+        summary: 'Reply drafted in Telegram and confirmed sent to the supplier.',
         source: 'telegram_watchdog',
         telegram_chat_id: chatId,
         entry_date: new Date().toISOString(),
