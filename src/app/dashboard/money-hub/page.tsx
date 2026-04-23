@@ -14,6 +14,7 @@ import { fmtNum } from '@/lib/format';
 import { createClient } from '@/lib/supabase/client';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
 import { isDealValid } from '@/lib/savings-utils';
+import PlanLimitsBanner from '@/components/PlanLimitsBanner';
 
 import OverviewPanel from './OverviewPanel';
 import SpendingPanel from './SpendingPanel';
@@ -666,6 +667,8 @@ export default function MoneyHubPage() {
  <button onClick={() => setToast(null)} className="hover:opacity-70"><X className="h-4 w-4" /></button>
  </div>
  )}
+
+ <PlanLimitsBanner />
 
  {/* HEADER */}
  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

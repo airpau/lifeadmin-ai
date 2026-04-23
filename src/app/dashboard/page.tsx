@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import UpgradeTrigger from '@/components/UpgradeTrigger';
+import PlanLimitsBanner from '@/components/PlanLimitsBanner';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -629,6 +630,7 @@ export default function DashboardPage() {
 
   return (
     <div>
+      <PlanLimitsBanner />
       {userTier === 'free' && <UpgradePrompt variant="banner" />}
 
       {syncMessage && (
