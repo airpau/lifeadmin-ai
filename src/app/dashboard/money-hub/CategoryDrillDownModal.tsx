@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Search, ChevronDown, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
 import { fmtNum } from '@/lib/format';
-import { cleanMerchantName } from '@/lib/merchant-utils';
+import { cleanMerchantName, isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 
 interface CategoryDrillDownModalProps {
   isOpen: boolean;
@@ -245,7 +245,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                     return (
                       <div key={txn.id || idx} className="p-4 flex items-center justify-between group relative">
                         <div>
-                          <p className="text-slate-900 text-sm font-medium">{txn.merchant_name || txn.description}</p>
+                          <p className="text-slate-900 text-sm font-medium">{isGarbageMerchantName(txn.merchant_name) ? (txn.description || txn.merchant_name) : txn.merchant_name}</p>
                           <p className="text-slate-500 text-xs mt-0.5">{dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
                         </div>
                         <div className="text-right">

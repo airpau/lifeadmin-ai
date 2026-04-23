@@ -27,6 +27,47 @@ const HARDCODED_MERCHANT_RULES: Record<string, string> = {
 };
 
 /**
+ * TrueLayer (and occasionally Yapily) sometimes return junk in the
+ * `merchant_name` field — 2-letter fragments like "ad", "tr", "d" that look
+ * like first-few-chars of the raw description. These produce nonsense
+ * "Ad", "Tr" rows in the top-merchants list. This helper detects those
+ * garbage values and falls through to the description so we can derive a
+ * sane name via normaliseMerchantName().
+ *
+ * A short-known-brand whitelist (BT, EE, O2, AXA, TfL, M&S) keeps legitimate
+ * short merchant names working.
+ */
+const VALID_SHORT_MERCHANTS = new Set([
+  'bt', 'ee', 'o2', 'axa', 'tfl', 'lbh', 'hmv', 'dhl', 'ups', 'ikea', 'asda',
+  'aldi', 'lidl', 'b&q', 'bp', 'esso', 'bmw', 'aa', 'rac', 'nhs', 'hmrc',
+  'dvla', 'bbc', 'itv', 'odeon', 'vue', 'cex', 'm&s', 'h&m', 'ba', 'npd',
+]);
+
+export function isGarbageMerchantName(name: string | null | undefined): boolean {
+  if (!name) return true;
+  const trimmed = name.trim();
+  if (!trimmed) return true;
+  if (VALID_SHORT_MERCHANTS.has(trimmed.toLowerCase())) return false;
+  // Short + all-lowercase + no spaces = very likely a prefix fragment
+  if (trimmed.length <= 3 && trimmed === trimmed.toLowerCase() && !/\s/.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Pick the best raw name to feed to cleanMerchantName / normaliseMerchantName.
+ * Returns the description when the merchant_name field is clearly garbage.
+ */
+export function pickRawMerchantSource(
+  merchantName: string | null | undefined,
+  description: string | null | undefined,
+): string {
+  if (isGarbageMerchantName(merchantName)) return description || merchantName || '';
+  return merchantName || description || '';
+}
+
+/**
  * Resolve a clean display name for a raw bank transaction description.
  *
  * Rules:

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { isGarbageMerchantName, pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
 import { matchesIncomeTypeFilter, normalizeIncomeTypeKey } from '@/lib/income-normalise';
 import {
@@ -102,7 +103,11 @@ export async function GET(request: NextRequest) {
 
     const sourceTotals: Record<string, { total: number; count: number }> = {};
     for (const t of filtered) {
-      const source = t.merchant_name || (t.description || '').replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 40) || 'Unknown';
+      // Skip junk merchant_name values ("ad", "tr", etc. — TrueLayer fragments)
+      // and fall back to a cleaned description so aggregations don't collapse
+      // unrelated payments under a 2-letter heading.
+      const rawMerchant = isGarbageMerchantName(t.merchant_name) ? null : t.merchant_name;
+      const source = rawMerchant || (t.description || '').replace(/FP \d.*/, '').replace(/\d{6,}.*/, '').trim().substring(0, 40) || 'Unknown';
       if (!sourceTotals[source]) sourceTotals[source] = { total: 0, count: 0 };
       sourceTotals[source].total += t.amount;
       sourceTotals[source].count++;
@@ -132,7 +137,7 @@ export async function GET(request: NextRequest) {
     const merchantTotals: Record<string, { total: number; count: number }> = {};
     for (const t of resolvedTransactions) {
       if (t.amount >= 0) continue;
-      const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
+      const merchant = normaliseMerchantName(pickRawMerchantSource(t.merchant_name, t.description));
       if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
       merchantTotals[merchant].total += Math.abs(t.amount);
       merchantTotals[merchant].count++;
@@ -169,7 +174,7 @@ export async function GET(request: NextRequest) {
   const merchantTotals: Record<string, { total: number; count: number }> = {};
   for (const t of filtered) {
     if (t.amount >= 0) continue;
-    const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
+    const merchant = normaliseMerchantName(pickRawMerchantSource(t.merchant_name, t.description));
     if (!merchantTotals[merchant]) merchantTotals[merchant] = { total: 0, count: 0 };
     merchantTotals[merchant].total += Math.abs(t.amount);
     merchantTotals[merchant].count++;
