@@ -14,6 +14,7 @@ interface PatchBody {
   emoji?: string | null;
   color?: string | null;
   connection_ids?: string[];
+  account_refs?: string[];
   sort_order?: number;
 }
 
@@ -39,22 +40,26 @@ export async function PATCH(
   if (body.color !== undefined) update.color = body.color;
   if (body.sort_order !== undefined) update.sort_order = body.sort_order;
 
-  if (body.connection_ids !== undefined) {
-    const connectionIds = Array.from(new Set(body.connection_ids));
-    if (connectionIds.length > 0) {
+  if (body.connection_ids !== undefined || body.account_refs !== undefined) {
+    const connectionIds = Array.from(new Set(body.connection_ids ?? []));
+    const accountRefs = Array.from(new Set(body.account_refs ?? []));
+    const refConnIds = accountRefs.map((r) => r.split(':')[0]).filter(Boolean);
+    const allConnIds = Array.from(new Set([...connectionIds, ...refConnIds]));
+    if (allConnIds.length > 0) {
       const { data: ownedConns } = await supabase
         .from('bank_connections')
         .select('id')
-        .in('id', connectionIds)
+        .in('id', allConnIds)
         .eq('user_id', user.id);
       const ownedSet = new Set((ownedConns ?? []).map((c) => c.id));
-      for (const cid of connectionIds) {
+      for (const cid of allConnIds) {
         if (!ownedSet.has(cid)) {
           return NextResponse.json({ error: 'Invalid connection_id' }, { status: 400 });
         }
       }
     }
-    update.connection_ids = connectionIds;
+    if (body.connection_ids !== undefined) update.connection_ids = connectionIds;
+    if (body.account_refs !== undefined) update.account_refs = accountRefs;
   }
 
   if (Object.keys(update).length === 0) {

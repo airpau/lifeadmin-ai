@@ -23,10 +23,12 @@ export async function GET() {
   const spaces = await listSpaces(supabase, user.id);
 
   // Report the connections the user actually has so the settings UI
-  // can render a checkbox per connection when editing a Space.
+  // can render a checkbox per connection. Also include provider
+  // account_ids + display names so multi-account banks can be split
+  // into sub-checkboxes (e.g. NatWest personal + NatWest business).
   const { data: connections } = await supabase
     .from('bank_connections')
-    .select('id, bank_name, provider, status, account_display_names')
+    .select('id, bank_name, provider, status, account_ids, account_display_names')
     .eq('user_id', user.id)
     .order('connected_at', { ascending: true });
 
@@ -41,6 +43,7 @@ interface CreateBody {
   emoji?: string | null;
   color?: string | null;
   connection_ids?: string[];
+  account_refs?: string[];
 }
 
 export async function POST(request: Request) {
@@ -73,18 +76,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'name must be 40 characters or fewer' }, { status: 400 });
   }
 
-  // Validate connection_ids belong to this user so a malicious caller
-  // can't reference another user's connection IDs (which would show
-  // nothing anyway thanks to RLS, but it's a clean guard).
+  // Validate connection_ids + account_refs belong to this user.
   const connectionIds = Array.from(new Set(body.connection_ids ?? []));
-  if (connectionIds.length > 0) {
+  const accountRefs = Array.from(new Set(body.account_refs ?? []));
+  const refConnIds = accountRefs.map((r) => r.split(':')[0]).filter(Boolean);
+  const allConnIds = Array.from(new Set([...connectionIds, ...refConnIds]));
+  if (allConnIds.length > 0) {
     const { data: ownedConns } = await supabase
       .from('bank_connections')
       .select('id')
-      .in('id', connectionIds)
+      .in('id', allConnIds)
       .eq('user_id', user.id);
     const ownedSet = new Set((ownedConns ?? []).map((c) => c.id));
-    for (const id of connectionIds) {
+    for (const id of allConnIds) {
       if (!ownedSet.has(id)) {
         return NextResponse.json({ error: 'Invalid connection_id' }, { status: 400 });
       }
@@ -100,6 +104,7 @@ export async function POST(request: Request) {
       color: body.color ?? null,
       is_default: false,
       connection_ids: connectionIds,
+      account_refs: accountRefs,
     })
     .select('*')
     .single();
