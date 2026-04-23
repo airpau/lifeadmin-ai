@@ -32,6 +32,36 @@ interface RawAmount {
 }
 
 /**
+ * Work out whether a scheduled / periodic / direct-debit row represents
+ * money going OUT (outgoing) or money coming IN (incoming).
+ *
+ * Historically we hard-coded "outgoing" because UK retail current accounts
+ * only expose outbound scheduled transfers through these endpoints. But
+ * business accounts (confirmed for HSBC Business) surface incoming
+ * scheduled transfers here too — those come back with either a negative
+ * amount string or a `creditDebitIndicator: 'CREDIT'` field. Both happen
+ * in the wild depending on the bank, so we check both.
+ *
+ * Defaults to 'outgoing' when we can't tell, matching the historical
+ * behaviour for retail accounts that don't include either signal.
+ */
+function detectDirection(row: {
+  amount?: RawAmount | null;
+  creditDebitIndicator?: string | null;
+}): 'incoming' | 'outgoing' {
+  const indicator = String(row.creditDebitIndicator || '').toUpperCase();
+  if (indicator === 'CREDIT') return 'incoming';
+  if (indicator === 'DEBIT') return 'outgoing';
+  const amountRaw = row.amount?.amount;
+  if (amountRaw !== undefined && amountRaw !== null) {
+    const n = parseFloat(String(amountRaw));
+    if (!Number.isNaN(n) && n > 0) return 'incoming';
+    if (!Number.isNaN(n) && n < 0) return 'outgoing';
+  }
+  return 'outgoing';
+}
+
+/**
  * Small helper so each endpoint wrapper is ~3 lines. Throws on
  * non-2xx. Callers wrap in try/catch to implement graceful
  * degradation when a bank doesn't expose a particular endpoint.
@@ -88,7 +118,9 @@ interface YapilyScheduledPayment {
   id?: string;
   scheduledPaymentDateTime?: string;
   amount?: RawAmount;
+  creditDebitIndicator?: string | null;
   payee?: { name?: string | null } | null;
+  payer?: { name?: string | null } | null;
   reference?: string | null;
 }
 
@@ -102,10 +134,16 @@ export async function getScheduledPayments(
   );
   return (data || []).map((p) => {
     const amount = Math.abs(parseFloat(String(p.amount?.amount ?? 0)) || 0);
+    const direction = detectDirection(p);
+    // For incoming rows the human-readable counterparty is the payer, not the payee.
+    const counterparty =
+      direction === 'incoming'
+        ? p.payer?.name || p.reference || p.payee?.name || null
+        : p.payee?.name || p.reference || null;
     return {
       source: 'scheduled_payment' as const,
-      direction: 'outgoing' as const, // scheduled payments are outgoing by definition
-      counterparty: p.payee?.name || p.reference || null,
+      direction,
+      counterparty,
       amount,
       currency: p.amount?.currency || 'GBP',
       expectedDate: toDateOnly(p.scheduledPaymentDateTime),
@@ -123,7 +161,9 @@ interface YapilyPeriodicPayment {
   firstPaymentDateTime?: string;
   nextPaymentAmount?: RawAmount;
   amount?: RawAmount;
+  creditDebitIndicator?: string | null;
   payee?: { name?: string | null } | null;
+  payer?: { name?: string | null } | null;
   reference?: string | null;
   frequency?: string;
 }
@@ -139,10 +179,15 @@ export async function getPeriodicPayments(
   return (data || []).map((p) => {
     const amountSrc = p.nextPaymentAmount ?? p.amount;
     const amount = Math.abs(parseFloat(String(amountSrc?.amount ?? 0)) || 0);
+    const direction = detectDirection({ amount: amountSrc, creditDebitIndicator: p.creditDebitIndicator });
+    const counterparty =
+      direction === 'incoming'
+        ? p.payer?.name || p.reference || p.payee?.name || null
+        : p.payee?.name || p.reference || null;
     return {
       source: 'standing_order' as const,
-      direction: 'outgoing' as const,
-      counterparty: p.payee?.name || p.reference || null,
+      direction,
+      counterparty,
       amount,
       currency: amountSrc?.currency || 'GBP',
       expectedDate: toDateOnly(p.nextPaymentDateTime || p.firstPaymentDateTime),
@@ -160,6 +205,7 @@ interface YapilyDirectDebit {
   previousPaymentDateTime?: string;
   nextPaymentAmount?: RawAmount;
   previousPaymentAmount?: RawAmount;
+  creditDebitIndicator?: string | null;
   name?: string | null;
   reference?: string | null;
   status?: string;
@@ -177,9 +223,14 @@ export async function getDirectDebits(
   return (data || []).map((d) => {
     const amountSrc = d.nextPaymentAmount ?? d.previousPaymentAmount;
     const amount = Math.abs(parseFloat(String(amountSrc?.amount ?? 0)) || 0);
+    // Direct debits are virtually always outgoing in UK retail, but business
+    // accounts occasionally surface incoming collection mandates via the same
+    // endpoint — fall through to detectDirection() which defaults to
+    // 'outgoing' when neither signal is present.
+    const direction = detectDirection({ amount: amountSrc, creditDebitIndicator: d.creditDebitIndicator });
     return {
       source: 'direct_debit' as const,
-      direction: 'outgoing' as const,
+      direction,
       counterparty: d.name || d.reference || null,
       amount,
       currency: amountSrc?.currency || 'GBP',
