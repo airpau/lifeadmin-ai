@@ -16,16 +16,29 @@ const REAL_INCOME_TYPES = new Set([
   'other',
 ]);
 
+// Aliases normalise synonyms to the canonical keys defined in
+// src/lib/category-config.ts. Every VALUE in this map MUST be a key
+// in CATEGORY_CONFIG — otherwise we alias one drift bug into another
+// (e.g. pre-2026-04-23 `utility -> energy` pointed at a key that
+// didn't yet exist in the config, producing "Energy" labels that
+// rendered via the generic title-case fallback).
 const SPENDING_CATEGORY_ALIASES: Record<string, string> = {
-  fee: 'fees',
-  loan: 'loans',
-  utility: 'energy',
-  transport: 'travel',
-  // Bank-provided "BILL_PAYMENT" raw category should collapse into 'bills'
-  // so the spending breakdown doesn't show two separate rows.
+  // Plural → singular for keys that exist as both forms in upstream
+  // data. CATEGORY_CONFIG now carries both `loan` and `loans` so
+  // either renders; the alias keeps the internal key space tidy.
+  fees: 'fee',
+  loans: 'loan',
+  utilities: 'utility',
+  // Bank-provided "BILL_PAYMENT" raw category should collapse into 'bills'.
   bill_payment: 'bills',
   billpayment: 'bills',
   'bill-payment': 'bills',
+  // Narrower food split — honour the canonical values the detector
+  // returns rather than collapsing to "food".
+  dining: 'eating_out',
+  restaurants: 'eating_out',
+  supermarkets: 'groceries',
+  supermarket: 'groceries',
 };
 
 type OverrideMap = Map<string, string>;
