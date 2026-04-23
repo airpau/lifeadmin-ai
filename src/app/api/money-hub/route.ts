@@ -6,6 +6,7 @@ import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMone
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
+import { ensureDefaultSpace, getSpace, spaceConnectionFilter } from '@/lib/spaces';
 
 export const runtime = 'nodejs';
 
@@ -124,6 +125,32 @@ export async function GET(request: Request) {
     // Parse selected month for RPC calls
     const [selYear, selMonth] = selectedMonth.split('-').map(Number);
 
+    // Resolve the active Space — either the one requested via ?space_id
+    // or the user's default. Non-default Spaces filter bank_connections
+    // + bank_transactions to the chosen subset so Money Hub shows only
+    // that Space's activity.
+    const requestedSpaceId = url.searchParams.get('space_id');
+    await ensureDefaultSpace(supabase, user.id);
+    const activeSpace = await getSpace(supabase, user.id, requestedSpaceId);
+    const connectionFilter = spaceConnectionFilter(activeSpace);
+
+    let txnQuery = admin
+      .from('bank_transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .gte('timestamp', sixMonthsAgo)
+      .order('timestamp', { ascending: false })
+      .limit(20000);
+    let connQuery = admin
+      .from('bank_connections')
+      .select('id, bank_name, status, last_synced_at, account_ids, account_display_names')
+      .eq('user_id', user.id)
+      .neq('status', 'revoked');
+    if (connectionFilter) {
+      txnQuery = txnQuery.in('connection_id', connectionFilter);
+      connQuery = connQuery.in('id', connectionFilter);
+    }
+
     const [
       { data: txns },
       { data: bankConns },
@@ -134,14 +161,18 @@ export async function GET(request: Request) {
       { data: categoryOverrides },
       { data: subscriptions },
       { data: alerts },
-      // RPC calls for authoritative income/spending totals (excludes transfers correctly)
+      // RPC calls for authoritative income/spending totals (excludes transfers correctly).
+      // Note: RPCs aggregate at user level — when a non-default Space is
+      // active the JS summariser below recomputes the actual totals
+      // from the filtered transaction set, so these RPC values are only
+      // used for the default "Everything" Space.
       { data: rpcSpendingTotal },
       { data: rpcIncomeTotal },
       { data: rpcSpendingCategories },
       { data: rpcIncomeCategories },
     ] = await Promise.all([
-      admin.from('bank_transactions').select('*').eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(20000),
-      admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id).neq('status', 'revoked'),
+      txnQuery,
+      connQuery,
       admin.from('money_hub_budgets').select('*').eq('user_id', user.id),
       admin.from('money_hub_assets').select('*').eq('user_id', user.id),
       admin.from('money_hub_liabilities').select('*').eq('user_id', user.id),
@@ -257,6 +288,9 @@ export async function GET(request: Request) {
       score: healthScore.overall,
       healthScore,
       selectedMonth,
+      activeSpace: activeSpace
+        ? { id: activeSpace.id, name: activeSpace.name, emoji: activeSpace.emoji, is_default: activeSpace.is_default }
+        : null,
       overview: {
         monthlyIncome: parseFloat(authIncome.toFixed(2)),
         monthlyOutgoings: parseFloat(authSpending.toFixed(2)),
