@@ -27,9 +27,22 @@ export default function SignupPage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const rawRedirect = searchParams.get('redirect');
-  const redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
+  let redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
     ? rawRedirect
     : null;
+
+  // Homepage "Sign up free to open the full draft" flow — carry the
+  // demo form intent straight into the dispute composer so the user
+  // doesn't re-type what they just described. See HeroDemo in
+  // src/app/preview/homepage/page.tsx for the source of these params.
+  if (!redirectTo && searchParams.get('from') === 'homepage_demo') {
+    const t = searchParams.get('type');
+    const iss = searchParams.get('issue');
+    const params = new URLSearchParams({ new: '1' });
+    if (t) params.set('type', t);
+    if (iss) params.set('issue', iss);
+    redirectTo = `/dashboard/complaints?${params.toString()}`;
+  }
 
   useEffect(() => {
     if (WAITLIST_MODE) {

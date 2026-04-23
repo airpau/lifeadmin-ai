@@ -295,7 +295,7 @@ function Nav() {
                 Sign in
               </Link>
               <Link className="btn btn-mint" href="/auth/signup" onClick={() => setMenuOpen(false)}>
-                Start free 14-day trial
+                Sign up free
               </Link>
             </div>
           </div>
@@ -464,9 +464,38 @@ function HeroDemo() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (status === 'drafting') return;
+    if (status !== 'idle') return;
     setStatus('drafting');
     window.setTimeout(() => setStatus('ready'), 900);
+  };
+
+  // When the demo has a drafted letter, we stash the intent in
+  // sessionStorage + pass it via query param so the signup flow
+  // can carry it into /dashboard/complaints?new=1 with the form
+  // already pre-filled. User signs up → lands inside the dispute
+  // composer → their free-tier 3-letters-a-month allowance now
+  // funds this letter for real. No quota is decremented at the
+  // preview stage because nothing was generated server-side.
+  const signupHref = useMemo(() => {
+    const params = new URLSearchParams({
+      from: 'homepage_demo',
+      type: issueId,
+      issue: desc || issue.placeholder,
+    });
+    return `/auth/signup?${params.toString()}`;
+  }, [issueId, desc, issue.placeholder]);
+
+  const handleOpenFullDraft = () => {
+    // Persist across the signup round-trip so the composer can
+    // pre-fill even if the user lands back via email confirmation.
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(
+          'pb_homepage_letter_intent',
+          JSON.stringify({ type: issueId, issue: desc || issue.placeholder, cite: issue.cite }),
+        );
+      } catch {}
+    }
   };
 
   return (
@@ -509,31 +538,109 @@ function HeroDemo() {
         We&rsquo;ll cite: <span style={{ color: 'var(--accent-mint)' }}>{issue.cite}</span>
       </div>
 
-      <button type="submit" disabled={status === 'drafting'}>
-        {status === 'idle' && 'Generate letter →'}
-        {status === 'drafting' && 'Drafting…'}
-        {status === 'ready' && '✓ Letter ready — open the full draft'}
-      </button>
+      {status !== 'ready' && (
+        <button type="submit" disabled={status === 'drafting'}>
+          {status === 'idle' && 'Generate letter →'}
+          {status === 'drafting' && 'Drafting…'}
+        </button>
+      )}
 
       {status === 'ready' && (
-        <div
-          style={{
-            marginTop: '14px',
-            padding: '14px',
-            borderRadius: '12px',
-            background: 'rgba(52, 211, 153, 0.08)',
-            border: '1px dashed var(--divider-ink)',
-            fontSize: '12px',
-            lineHeight: 1.55,
-            color: 'var(--text-on-ink-dim)',
-          }}
-        >
-          <strong style={{ color: 'var(--accent-mint)' }}>Preview:</strong> &ldquo;Under
-          {' '}
-          <span style={{ color: 'var(--accent-mint)' }}>{issue.cite}</span>, you are
-          required to&hellip;&rdquo; — the full letter takes 30 seconds inside the
-          Disputes Centre.
-        </div>
+        <>
+          <div
+            style={{
+              marginTop: '14px',
+              padding: '16px 18px',
+              borderRadius: '12px',
+              background: 'rgba(52, 211, 153, 0.08)',
+              border: '1px solid rgba(52, 211, 153, 0.3)',
+              fontSize: '12.5px',
+              lineHeight: 1.6,
+              color: 'var(--text-on-ink-dim)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--accent-mint)',
+                marginBottom: 8,
+              }}
+            >
+              ✓ Letter ready · preview
+            </div>
+            <p style={{ margin: 0, color: 'var(--text-on-ink)' }}>
+              <strong>Dear Sir/Madam,</strong>
+            </p>
+            <p style={{ margin: '8px 0 0' }}>
+              I am writing to formally dispute{' '}
+              {desc
+                ? `the following issue: "${desc}"`
+                : 'the matter described below'}
+              . Under{' '}
+              <span style={{ color: 'var(--accent-mint)', fontWeight: 600 }}>{issue.cite}</span>,
+              you are required to…
+            </p>
+            <p style={{ margin: '8px 0 0', fontStyle: 'italic', opacity: 0.7 }}>
+              [… the rest of the letter, including the specific remedy we&rsquo;re
+              asking for and the statutory deadline for their response, is only
+              shown once you sign up for a free account.]
+            </p>
+          </div>
+
+          <Link
+            href={signupHref}
+            onClick={handleOpenFullDraft}
+            style={{ display: 'block', marginTop: 10, textDecoration: 'none' }}
+          >
+            <span
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: 12,
+                background: 'var(--accent-mint)',
+                color: '#052E1C',
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: 14,
+                textAlign: 'center',
+              }}
+            >
+              Sign up free to open the full draft →
+            </span>
+          </Link>
+
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 11,
+              textAlign: 'center',
+              color: 'var(--text-on-ink-dim)',
+            }}
+          >
+            No card. Free tier gets 3 letters / month — this one is on us.
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setStatus('idle')}
+            style={{
+              marginTop: 4,
+              background: 'transparent',
+              border: 0,
+              color: 'var(--text-on-ink-dim)',
+              fontSize: 11.5,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              width: '100%',
+              padding: 6,
+            }}
+          >
+            Try another issue
+          </button>
+        </>
       )}
     </form>
   );
@@ -702,7 +809,7 @@ export default function HomepageV3PreviewPage() {
         <div className="wrap">
           <div className="hero-grid">
             <Reveal className="hero-copy">
-              <span className="eyebrow">Free 14-day Pro trial · No card required</span>
+              <span className="eyebrow">Free forever tier · No card required</span>
               <h1>
                 <span className="l1">Find Hidden Overcharges.</span>
                 <span className="l2">Fight Unfair Bills.</span>
@@ -715,7 +822,7 @@ export default function HomepageV3PreviewPage() {
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Start free 14-day Pro trial →
+                  Sign up for free →
                 </Link>
                 <a className="btn btn-ghost" href="#how">
                   See how it works
@@ -1288,7 +1395,7 @@ export default function HomepageV3PreviewPage() {
                 <li>Pocket Agent in Telegram</li>
               </ul>
               <Link className="btn btn-mint cta" href="/auth/signup" style={{ justifyContent: 'center' }}>
-                Start 14-day trial →
+                Start free →
               </Link>
             </Reveal>
 
@@ -1371,7 +1478,7 @@ export default function HomepageV3PreviewPage() {
           </Reveal>
           <Reveal className="fc-btn-row">
             <Link className="btn btn-mint" href="/auth/signup">
-              Start your free 14-day Pro trial →
+              Sign up for free →
             </Link>
           </Reveal>
           <p className="fine">No card. Cancel anytime. Your data stays in the UK.</p>
