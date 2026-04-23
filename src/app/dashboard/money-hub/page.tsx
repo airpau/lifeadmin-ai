@@ -99,6 +99,10 @@ export default function MoneyHubPage() {
  const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean }>>([]);
  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
  const [preferredSpaceId, setPreferredSpaceId] = useState<string | null>(null);
+ // Separate flag for Space / month switches — initial load uses `loading`.
+ // This drives the inline "Switching…" pill so the user gets visible
+ // feedback on the (currently slow) /api/money-hub refetch.
+ const [switching, setSwitching] = useState(false);
  const [showBankPicker, setShowBankPicker] = useState(false);
  const [showFcaBanner, setShowFcaBanner] = useState(false);
  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -152,6 +156,9 @@ export default function MoneyHubPage() {
  // ─── Data fetching ──────────────────────────────────────────────────────
 
  const refreshData = useCallback(async (month?: string, spaceId?: string | null) => {
+ // Treat subsequent calls as a "switch" rather than an initial load
+ // so the full-page skeleton doesn't flash — we just show a pill.
+ if (data) setSwitching(true);
  try {
  const targetMonth = month ?? selectedMonth;
  const targetSpace = spaceId !== undefined ? spaceId : activeSpaceId;
@@ -172,8 +179,10 @@ export default function MoneyHubPage() {
  setError(e.message || 'Failed to load Money Hub data');
  } finally {
  setLoading(false);
+ setSwitching(false);
  }
- }, [selectedMonth, activeSpaceId]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [selectedMonth, activeSpaceId, data]);
 
  // Load the user's Spaces once on mount. Also pick the initial
  // active Space using priority order:
@@ -714,14 +723,16 @@ export default function MoneyHubPage() {
  {/* Space switcher + manage button. Always visible so users can
   discover Spaces even before they\'ve created their first one. */}
  {spaces.length > 1 ? (
+ <div className="relative">
  <select
  value={activeSpaceId ?? data.activeSpace?.id ?? ''}
+ disabled={switching}
  onChange={(e) => {
  const next = e.target.value || null;
  setActiveSpaceId(next);
  refreshData(undefined, next);
  }}
- className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm text-emerald-800 font-medium focus:outline-none focus:border-emerald-500"
+ className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm text-emerald-800 font-medium focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-wait"
  title="Filter by Space"
  >
  {spaces.map((s) => (
@@ -730,6 +741,10 @@ export default function MoneyHubPage() {
  </option>
  ))}
  </select>
+ {switching && (
+ <Loader2 className="absolute right-8 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-600 animate-spin pointer-events-none" />
+ )}
+ </div>
  ) : null}
  <Link
  href="/dashboard/settings/spaces"
