@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAccountAuthorisation } from '@/lib/yapily';
+import { UPCOMING_FEATURE_SCOPES } from '@/lib/yapily/upcoming';
 import { TIER_CONFIG, type BankTier } from '@/lib/bank-tier-config';
 
 /**
@@ -94,10 +95,16 @@ export async function GET(request: NextRequest) {
       JSON.stringify({ userId: user.id, institutionId, returnTo })
     ).toString('base64');
 
+    // Include the upcoming-payments feature scopes so new consents
+    // are granted enough access to read scheduled + periodic
+    // payments + direct debits + pending transactions. Existing
+    // bank_connections continue to work on their original consent;
+    // the expanded scope applies from the next renewal onward.
     const authData = await createAccountAuthorisation(
       institutionId,
       `${callbackUrl}?state=${encodeURIComponent(state)}`,
-      user.id
+      user.id,
+      UPCOMING_FEATURE_SCOPES,
     );
 
     console.log(
