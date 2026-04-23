@@ -1,4 +1,16 @@
-# Active Sessions — Last Updated 22 Apr 2026 18:00 UTC
+# Active Sessions — Last Updated 23 Apr 2026 18:00 UTC
+
+## Latest: Business Monitor — 23 Apr 2026 (evening)
+- 5 PRs merged to production today:
+  - #202: fix(upcoming-payments): detect incoming scheduled/periodic/direct-debit from Yapily
+  - #203: fix(money-hub): show loan receipts in income breakdown + total
+  - #204: fix(money-hub): rename loan income label to 'Loan Credit' + collapse types
+  - #205: fix(money-hub): capitalise every spending-category label
+  - #194: fix(homepage): demo double-scaling, remove 14-day trial copy, make 'open full draft' work
+- 7 new PRs opened today: #195–#201 (disputes UX, email layout, marketing copy, iPhone video fix, opportunity drawer, dashboard dedup, thread search)
+- 30 open PRs in queue — review backlog building
+- No urgent flags; Riley active
+- Evening Telegram check-in sent to Paul
 
 ## Latest: Business Monitor — 22 Apr 2026 (evening)
 - 5 PRs merged to production today:
