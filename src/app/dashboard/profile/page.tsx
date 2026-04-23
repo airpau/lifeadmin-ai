@@ -1293,35 +1293,26 @@ export default function ProfilePage() {
         </Link>
       </div>
 
-      {/* Pocket Agent */}
-      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
-        <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-          <Mail className="h-5 w-5 text-amber-500" />
-          Pocket Agent
-        </h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
-        </p>
-        {telegramLinked === true ? (
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-            <span className="text-green-400 text-sm font-medium">Pocket Agent Connected</span>
-            <Link
-              href="/dashboard/pocket-agent"
-              className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors border border-slate-200/50"
-            >
-              Manage
-            </Link>
-          </div>
-        ) : (
+      {/* Pocket Agent — only surfaced while unlinked. Once the user
+          has linked Telegram the manage flow lives at /dashboard/pocket-agent
+          and this pitch just wastes vertical space. */}
+      {telegramLinked === false && (
+        <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
+            <Mail className="h-5 w-5 text-amber-500" />
+            Pocket Agent
+          </h2>
+          <p className="text-slate-600 text-sm mb-4">
+            Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
+          </p>
           <Link
             href="/dashboard/pocket-agent"
             className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-amber-600 rounded-xl text-sm font-medium transition-colors"
           >
             Set Up Pocket Agent
           </Link>
-        )}
-      </div>
+        </div>
+      )}
       </>)}
 
       {section === 'privacy' && (<>

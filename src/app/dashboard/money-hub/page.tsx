@@ -677,8 +677,9 @@ export default function MoneyHubPage() {
  </div>
 
  <div className="flex items-center gap-2 flex-wrap">
- {/* Space switcher — only renders if the user has more than the default */}
- {spaces.length > 1 && (
+ {/* Space switcher + manage button. Always visible so users can
+  discover Spaces even before they\'ve created their first one. */}
+ {spaces.length > 1 ? (
  <select
  value={activeSpaceId ?? data.activeSpace?.id ?? ''}
  onChange={(e) => {
@@ -695,13 +696,14 @@ export default function MoneyHubPage() {
  </option>
  ))}
  </select>
- )}
+ ) : null}
  <Link
  href="/dashboard/settings/spaces"
- className="text-slate-500 hover:text-slate-900 p-1.5 rounded transition-colors"
- title="Manage Spaces"
+ className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200/50 rounded-lg px-3 py-2 text-sm text-slate-700 font-medium transition-colors"
+ title="Group personal + business accounts into Spaces"
  >
  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+ <span>{spaces.length > 1 ? 'Manage' : 'Spaces'}</span>
  </Link>
  {/* Month nav */}
  <button
