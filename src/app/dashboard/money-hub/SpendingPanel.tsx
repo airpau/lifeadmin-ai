@@ -9,6 +9,7 @@ import CategoryDrillDownModal from './CategoryDrillDownModal';
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   mortgage: { label: 'Mortgage', icon: '🏠', color: '#8b5cf6' },
+  loan: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   loans: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   council_tax: { label: 'Council Tax', icon: '🏛️', color: '#6366f1' },
   energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
@@ -19,6 +20,7 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: stri
   fitness: { label: 'Fitness', icon: '💪', color: '#10b981' },
   groceries: { label: 'Groceries', icon: '🛒', color: '#22c55e' },
   eating_out: { label: 'Eating Out', icon: '🍽️', color: '#f97316' },
+  food: { label: 'Food & Drink', icon: '🍽️', color: '#f97316' },
   fuel: { label: 'Fuel', icon: '⛽', color: '#64748b' },
   shopping: { label: 'Shopping', icon: '🛍️', color: '#a855f7' },
   insurance: { label: 'Insurance', icon: '🛡️', color: '#14b8a6' },
@@ -26,23 +28,47 @@ const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: stri
   tax: { label: 'Tax', icon: '🏛️', color: '#dc2626' },
   bills: { label: 'Bills', icon: '📄', color: '#64748b' },
   software: { label: 'Software', icon: '💻', color: '#818cf8' },
+  professional: { label: 'Professional', icon: '💼', color: '#8b5cf6' },
+  professional_services: { label: 'Professional', icon: '💼', color: '#8b5cf6' },
+  property_management: { label: 'Property Management', icon: '🏢', color: '#8b5cf6' },
   healthcare: { label: 'Healthcare', icon: '❤️', color: '#fca5a5' },
   charity: { label: 'Charity', icon: '🤝', color: '#2dd4bf' },
   education: { label: 'Education', icon: '🎓', color: '#93c5fd' },
   pets: { label: 'Pets', icon: '🐾', color: '#fcd34d' },
+  parking: { label: 'Parking', icon: '🅿️', color: '#6366f1' },
   travel: { label: 'Travel', icon: '✈️', color: '#7dd3fc' },
   gambling: { label: 'Gambling', icon: '🎲', color: '#fde047' },
   fees: { label: 'Fees', icon: '💳', color: '#a3a3a3' },
   fee: { label: 'Fees', icon: '💳', color: '#a3a3a3' },
-  credit: { label: 'Credit Cards', icon: '💳', color: '#f43f5e' },
+  credit: { label: 'Credit', icon: '💳', color: '#f43f5e' },
+  credit_card: { label: 'Credit Card', icon: '💳', color: '#f43f5e' },
+  credit_monitoring: { label: 'Credit Monitoring', icon: '📊', color: '#64748b' },
   cash: { label: 'Cash', icon: '🏧', color: '#78716c' },
   childcare: { label: 'Childcare', icon: '👶', color: '#f472b6' },
   motoring: { label: 'Motoring', icon: '🚗', color: '#94a3b8' },
+  music: { label: 'Music', icon: '🎵', color: '#ec4899' },
+  gaming: { label: 'Gaming', icon: '🎮', color: '#8b5cf6' },
+  storage: { label: 'Cloud Storage', icon: '☁️', color: '#3b82f6' },
+  security: { label: 'Security', icon: '🔒', color: '#64748b' },
+  utility: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
+  utilities: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
+  rent: { label: 'Rent', icon: '🏠', color: '#8b5cf6' },
+  transfers: { label: 'Transfers', icon: '🔄', color: '#64748b' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
+/** Title-case a raw category key so the fallback never shows lowercase labels. */
+function titleCaseCategory(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function getCatMeta(key: string) {
-  return CATEGORY_LABELS[key] || { label: key.replace(/_/g, ' '), icon: '📋', color: '#475569' };
+  return CATEGORY_LABELS[key] || { label: titleCaseCategory(key), icon: '📋', color: '#475569' };
 }
 
 export default function SpendingPanel({ data, isPro, refreshData, selectedMonth }: { data: any, isPro: boolean, refreshData: () => void, selectedMonth: string }) {

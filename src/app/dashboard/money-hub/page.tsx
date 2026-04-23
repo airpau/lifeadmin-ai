@@ -72,6 +72,21 @@ const SCAN_CAPTIONS: { icon: string; text: string }[] = [
  { icon: '🎯', text: 'Almost done — packaging everything we found...' },
 ];
 
+// English ordinal suffix — "1st, 2nd, 3rd, 4th..., 21st, 22nd, 23rd, 24th...".
+// Previous code hard-coded "th" which produced "2th", "3th", "21th".
+function ordinal(n: number): string {
+  if (n <= 0 || !Number.isFinite(n)) return String(n);
+  const lastTwo = n % 100;
+  const last = n % 10;
+  const suffix =
+    lastTwo >= 11 && lastTwo <= 13 ? 'th'
+    : last === 1 ? 'st'
+    : last === 2 ? 'nd'
+    : last === 3 ? 'rd'
+    : 'th';
+  return `${n}${suffix}`;
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function MoneyHubPage() {
@@ -823,7 +838,7 @@ export default function MoneyHubPage() {
  <div className="min-w-0 flex-1">
  <p className={`text-sm font-medium truncate ${bill.paid ? 'text-slate-600 line-through' : 'text-slate-900'}`}>{bill.name}</p>
  <div className="flex items-center gap-2 mt-0.5">
- {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{bill.billing_day}th</span>}
+ {bill.billing_day > 0 && <span className="text-[10px] text-slate-500">Due ~{ordinal(bill.billing_day)}</span>}
  {catLabel && <span className="text-[10px] text-slate-500 capitalize">{catLabel}</span>}
  {bill.paid && <span className="text-[10px] text-green-400 font-medium">✓ Paid</span>}
  {bill.past_due && !bill.paid && <span className="text-[10px] text-red-400 font-medium">⚠ Not seen</span>}

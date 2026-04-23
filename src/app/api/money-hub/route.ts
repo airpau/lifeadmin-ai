@@ -4,6 +4,7 @@ import { createClient as createAdmin } from '@supabase/supabase-js';
 import { calculateHealthScore } from '@/lib/financial-health-score';
 import { normalizeSpendingCategoryKey, findMatchingCategoryOverride, resolveMoneyHubTransaction, buildMoneyHubOverrideMaps, applyInternalTransferHeuristic } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
+import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
 
 export const runtime = 'nodejs';
@@ -183,7 +184,12 @@ export async function GET(request: Request) {
     // Compute top merchants from JS-based current summary (RPCs don't provide per-merchant data)
     const merchantTotals: Record<string, number> = {};
     for (const t of currentSummary.spendingTransactions) {
-      const merchant = normaliseMerchantName(t.merchant_name || t.description || '');
+      // TrueLayer sometimes returns junk (e.g. merchant_name='ad') from an
+      // upstream field extraction — pickRawMerchantSource falls back to the
+      // description when the merchant_name field is clearly garbage so the
+      // "Top merchants" list doesn't collapse unrelated payments under a 2-
+      // letter heading.
+      const merchant = normaliseMerchantName(pickRawMerchantSource(t.merchant_name, t.description));
       merchantTotals[merchant] = (merchantTotals[merchant] || 0) + Math.abs(parseFloat(String(t.amount)));
     }
     const topMerchants = Object.entries(merchantTotals)
