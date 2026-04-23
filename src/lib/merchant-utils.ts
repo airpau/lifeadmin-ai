@@ -178,6 +178,7 @@ const REPORT_CATEGORY_LABELS: Record<string, string> = {
   loans: 'Loans & Finance',
   credit: 'Credit Cards',
   council_tax: 'Council Tax',
+  business_rates: 'Business Rates',
   energy: 'Utilities (Energy)',
   water: 'Utilities (Water)',
   broadband: 'Broadband & TV',

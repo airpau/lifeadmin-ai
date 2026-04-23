@@ -1,6 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
-import { EXCLUDED_SAVINGS_CATEGORIES } from '@/lib/savings-utils';
+
+// Categories where amounts follow an amortisation schedule (loan balance
+// shrinks, interest changes, credit-card balances vary) so a "price
+// increase" is meaningless. These are a narrower set than the
+// EXCLUDED_SAVINGS_CATEGORIES used by the deals widget — council_tax
+// and business_rates are specifically NOT here, because annual hikes on
+// those bills are exactly what we want to flag.
+const EXCLUDED_FROM_PRICE_DETECTION = new Set([
+  'mortgage', 'mortgages',
+  'loan', 'loans',
+  'credit_card', 'credit cards', 'credit-cards', 'credit',
+  'car_finance', 'car finance', 'car-finance',
+  'fee', 'fees',
+  'parking',
+]);
 
 function getAdmin() {
   return createClient(
@@ -20,9 +34,7 @@ export interface PriceIncrease {
   newDate: string;
 }
 
-// Categories where amounts vary naturally — skip outright. Loans/mortgage/
-// council_tax/credit etc. are handled via EXCLUDED_SAVINGS_CATEGORIES (shared
-// with the Money Hub deals detector) so the two stay in lockstep.
+// Categories where amounts vary naturally — skip outright.
 const VARIABLE_CATEGORIES = new Set([
   'groceries', 'fuel', 'eating_out', 'shopping', 'cash', 'transfers',
   'income', 'other', 'transport', 'gambling',
@@ -31,15 +43,15 @@ const VARIABLE_CATEGORIES = new Set([
   'CREDIT', 'INTEREST', 'OTHER',
 ]);
 
-// Only these transaction categories can be recurring bills. Loans / mortgages
-// / council tax / credit were removed Apr 2026 — their amounts fluctuate with
-// repayment schedules or billing cycles, which the std-dev filter wasn't
-// catching (see Funding Circle + Winchester Council in real user data).
+// Categories that can legitimately be recurring bills where a hike is
+// surface-worthy. council_tax and business_rates typically step up once
+// a year (April) — the std-dev filter below still works because the
+// previous N monthly payments are flat, and the April jump is flagged.
 const RECURRING_CATEGORIES = new Set([
   'DIRECT_DEBIT', 'STANDING_ORDER',
-  // Mapped internal categories
   'energy', 'broadband', 'mobile', 'streaming', 'insurance',
   'water', 'fitness', 'software', 'bills',
+  'council_tax', 'business_rates', 'tax',
 ]);
 
 function looksLikeTransferToSelf(
@@ -118,7 +130,7 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     // Use user_category if set, otherwise category
     const cat = tx.user_category || tx.category || '';
     const catLower = cat.toLowerCase();
-    if (VARIABLE_CATEGORIES.has(cat) || EXCLUDED_SAVINGS_CATEGORIES.has(catLower)) continue;
+    if (VARIABLE_CATEGORIES.has(cat) || EXCLUDED_FROM_PRICE_DETECTION.has(catLower)) continue;
     // Only track categories that represent recurring bills
     if (!RECURRING_CATEGORIES.has(cat)) continue;
 
