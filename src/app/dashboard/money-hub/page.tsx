@@ -98,6 +98,7 @@ export default function MoneyHubPage() {
  const [selectedMonth, setSelectedMonth] = useState('');
  const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean }>>([]);
  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
+ const [preferredSpaceId, setPreferredSpaceId] = useState<string | null>(null);
  const [showBankPicker, setShowBankPicker] = useState(false);
  const [showFcaBanner, setShowFcaBanner] = useState(false);
  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -174,15 +175,45 @@ export default function MoneyHubPage() {
  }
  }, [selectedMonth, activeSpaceId]);
 
- // Load the user's Spaces once on mount so the switcher is populated.
+ // Load the user's Spaces once on mount. Also pick the initial
+ // active Space using priority order:
+ //   1. ?space_id=X URL param (already handled by Money Hub API)
+ //   2. localStorage 'lastSpaceId' (per-device memory)
+ //   3. profile.preferred_space_id (cross-device preference)
+ //   4. Fallback: whichever Space the API returned as active (default)
  useEffect(() => {
  let alive = true;
  fetch('/api/spaces')
  .then((r) => r.json())
- .then((d) => { if (alive && d.spaces) setSpaces(d.spaces); })
+ .then((d) => {
+ if (!alive) return;
+ if (d.spaces) setSpaces(d.spaces);
+ if (d.preferred_space_id) setPreferredSpaceId(d.preferred_space_id);
+ const urlParams = new URLSearchParams(window.location.search);
+ const urlSpace = urlParams.get('space_id');
+ let candidate: string | null = null;
+ if (urlSpace) candidate = urlSpace;
+ else if (typeof window !== 'undefined') {
+ const stored = localStorage.getItem('lastSpaceId');
+ if (stored && (d.spaces ?? []).some((s: any) => s.id === stored)) candidate = stored;
+ }
+ if (!candidate && d.preferred_space_id) candidate = d.preferred_space_id;
+ if (candidate && candidate !== activeSpaceId) {
+ setActiveSpaceId(candidate);
+ void refreshData(undefined, candidate);
+ }
+ })
  .catch(() => { /* silent */ });
  return () => { alive = false; };
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, []);
+
+ // Persist the current Space to localStorage whenever the user switches.
+ useEffect(() => {
+ if (typeof window !== 'undefined' && activeSpaceId) {
+ localStorage.setItem('lastSpaceId', activeSpaceId);
+ }
+ }, [activeSpaceId]);
 
  const fetchExpectedBills = async (month?: string) => {
  try {
