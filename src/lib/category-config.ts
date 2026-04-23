@@ -3,6 +3,7 @@ import {
   Tv, Monitor, Car, Zap, MoreHorizontal, Dumbbell, Music, Gamepad2,
   Cloud, Heart, Lock, HandHeart, GraduationCap, PawPrint, ParkingCircle,
   Plane, Dice5, Receipt, CircleDollarSign, type LucideIcon, Droplets,
+  ShoppingCart, Coffee, ShoppingBag,
 } from 'lucide-react';
 
 interface CategoryConfig {
@@ -12,18 +13,37 @@ interface CategoryConfig {
   bgColor: string;
 }
 
+// Every category returned anywhere in the backend (detectors, classifier
+// fallbacks, user overrides, API routes) MUST have a key in this map —
+// otherwise the UI falls through to the generic title-case fallback and
+// the user sees inconsistent labels ("Groceries" from one source,
+// "groceries" from another). Aliases live in money-hub-classification.ts
+// `SPENDING_CATEGORY_ALIASES` and always resolve to a key defined here.
 export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   broadband: { label: 'Broadband', icon: Wifi, color: 'text-blue-400', bgColor: 'bg-blue-400/10' },
   council_tax: { label: 'Council Tax', icon: Landmark, color: 'text-amber-400', bgColor: 'bg-amber-400/10' },
   food: { label: 'Food & Drink', icon: UtensilsCrossed, color: 'text-orange-400', bgColor: 'bg-orange-400/10' },
+  // Narrower Emma-style food splits — keep `food` too for legacy data.
+  groceries: { label: 'Groceries', icon: ShoppingCart, color: 'text-orange-400', bgColor: 'bg-orange-400/10' },
+  eating_out: { label: 'Eating Out', icon: Coffee, color: 'text-orange-400', bgColor: 'bg-orange-400/10' },
   insurance: { label: 'Insurance', icon: Shield, color: 'text-cyan-400', bgColor: 'bg-cyan-400/10' },
+  // Both `loan` and `loans` land here — the detector emits plural, the
+  // chatbot emits plural, config keys previously had singular only,
+  // which fell through to the generic fallback on every UI surface.
   loan: { label: 'Loans', icon: Banknote, color: 'text-red-400', bgColor: 'bg-red-400/10' },
+  loans: { label: 'Loans', icon: Banknote, color: 'text-red-400', bgColor: 'bg-red-400/10' },
   mobile: { label: 'Mobile', icon: Smartphone, color: 'text-violet-400', bgColor: 'bg-violet-400/10' },
   mortgage: { label: 'Mortgage', icon: Home, color: 'text-emerald-400', bgColor: 'bg-emerald-400/10' },
   streaming: { label: 'Streaming', icon: Tv, color: 'text-purple-400', bgColor: 'bg-purple-400/10' },
   software: { label: 'Software', icon: Monitor, color: 'text-indigo-400', bgColor: 'bg-indigo-400/10' },
   transport: { label: 'Transport', icon: Car, color: 'text-yellow-400', bgColor: 'bg-yellow-400/10' },
   utility: { label: 'Utilities', icon: Zap, color: 'text-green-400', bgColor: 'bg-green-400/10' },
+  // Energy is the detector's canonical output for gas/electricity
+  // providers — historically it was aliased to "utility" but the alias
+  // only normalised at write time, leaving bare `energy` strings in
+  // some DB rows that then hit the generic fallback. Give it its own
+  // entry so it always renders as "Energy" with the lightning icon.
+  energy: { label: 'Energy', icon: Zap, color: 'text-green-400', bgColor: 'bg-green-400/10' },
   other: { label: 'Other', icon: MoreHorizontal, color: 'text-slate-400', bgColor: 'bg-slate-400/10' },
   fitness: { label: 'Fitness & Gym', icon: Dumbbell, color: 'text-rose-400', bgColor: 'bg-rose-400/10' },
   music: { label: 'Music', icon: Music, color: 'text-pink-400', bgColor: 'bg-pink-400/10' },
@@ -45,6 +65,10 @@ export const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   credit_monitoring: { label: 'Credit Monitoring', icon: Shield, color: 'text-emerald-300', bgColor: 'bg-emerald-300/10' },
   tax: { label: 'Tax', icon: Landmark, color: 'text-red-300', bgColor: 'bg-red-300/10' },
   rent: { label: 'Rent', icon: Home, color: 'text-lime-400', bgColor: 'bg-lime-400/10' },
+  // Generic shopping bucket emitted by the fallback detector for Amazon,
+  // eBay, Argos etc. Config previously lacked it, so those transactions
+  // all rendered with a greyed-out "Shopping" from the generic fallback.
+  shopping: { label: 'Shopping', icon: ShoppingBag, color: 'text-pink-400', bgColor: 'bg-pink-400/10' },
 };
 
 export function getCategoryLabel(category: string): string {
