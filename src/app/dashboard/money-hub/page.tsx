@@ -20,6 +20,7 @@ import SpendingPanel from './SpendingPanel';
 import GoalsAndBudgetsPanel from './GoalsAndBudgetsPanel';
 import NetWorthPanel from './NetWorthPanel';
 import ContractsPanel from './ContractsPanel';
+import UpcomingWidget from './UpcomingWidget';
 import { filterActiveSubscriptions } from '@/lib/subscriptions/active-count';
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -766,6 +767,13 @@ export default function MoneyHubPage() {
  <p className="text-slate-500 text-xs mt-2">Click the trash icon to disconnect a bank account</p>
  </div>
  )}
+
+ {/* Next 7 days widget — shows confirmed + scheduled + predicted
+      money moving in and out of connected accounts. Mirrors the
+      Emma / HSBC "incoming payment tomorrow" affordance. */}
+ <div style={{ marginBottom: 14 }}>
+   <UpcomingWidget />
+ </div>
 
  {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
  <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />

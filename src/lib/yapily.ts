@@ -82,21 +82,33 @@ export async function getInstitutions(): Promise<YapilyInstitution[]> {
 /**
  * Creates an account authorisation request.
  * Returns the authorisation URL the user must be redirected to.
+ *
+ * Optional `featureScope` lists the Yapily feature scopes we want
+ * included in the consent — used by the Upcoming Payments feature
+ * to request ACCOUNT_SCHEDULED_PAYMENTS / ACCOUNT_PERIODIC_PAYMENTS /
+ * ACCOUNT_DIRECT_DEBITS alongside the default account + transactions.
+ * Omitted for existing bank links so their consent shape doesn't
+ * change on rerun.
  */
 export async function createAccountAuthorisation(
   institutionId: string,
   callbackUrl: string,
-  userUuid: string
+  userUuid: string,
+  featureScope?: readonly string[]
 ): Promise<YapilyAuthResponse['data']> {
+  const body: Record<string, unknown> = {
+    applicationUserId: userUuid,
+    institutionId,
+    callback: callbackUrl,
+  };
+  if (featureScope && featureScope.length) {
+    body.featureScope = Array.from(featureScope);
+  }
   const response = await yapilyRequest<YapilyAuthResponse>(
     '/account-auth-requests',
     {
       method: 'POST',
-      body: JSON.stringify({
-        applicationUserId: userUuid,
-        institutionId,
-        callback: callbackUrl,
-      }),
+      body: JSON.stringify(body),
     }
   );
 
