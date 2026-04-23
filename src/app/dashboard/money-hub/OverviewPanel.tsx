@@ -26,6 +26,7 @@ const INCOME_LABELS: Record<string, { label: string; icon: string; color: string
 
 const SPEND_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   mortgage: { label: 'Mortgage', icon: '🏠', color: '#8b5cf6' },
+  loan: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   loans: { label: 'Loans', icon: '🏦', color: '#ef4444' },
   council_tax: { label: 'Council Tax', icon: '🏛️', color: '#6366f1' },
   energy: { label: 'Energy', icon: '⚡', color: '#f59e0b' },
@@ -38,11 +39,53 @@ const SPEND_LABELS: Record<string, { label: string; icon: string; color: string 
   shopping: { label: 'Shopping', icon: '🛍️', color: '#a855f7' },
   eating_out: { label: 'Eating Out', icon: '🍽️', color: '#f97316' },
   transport: { label: 'Transport', icon: '🚗', color: '#0ea5e9' },
+  bills: { label: 'Bills', icon: '📄', color: '#64748b' },
+  tax: { label: 'Tax', icon: '🏛️', color: '#6366f1' },
+  insurance: { label: 'Insurance', icon: '🛡️', color: '#06b6d4' },
+  software: { label: 'Software', icon: '💻', color: '#3b82f6' },
+  professional: { label: 'Professional', icon: '💼', color: '#8b5cf6' },
+  professional_services: { label: 'Professional', icon: '💼', color: '#8b5cf6' },
+  fee: { label: 'Fees', icon: '💳', color: '#64748b' },
+  fees: { label: 'Fees', icon: '💳', color: '#64748b' },
+  credit: { label: 'Credit', icon: '💳', color: '#ef4444' },
+  credit_card: { label: 'Credit Card', icon: '💳', color: '#ef4444' },
+  credit_monitoring: { label: 'Credit Monitoring', icon: '📊', color: '#64748b' },
+  healthcare: { label: 'Healthcare', icon: '⚕️', color: '#10b981' },
+  education: { label: 'Education', icon: '🎓', color: '#8b5cf6' },
+  charity: { label: 'Charity', icon: '❤️', color: '#ec4899' },
+  pets: { label: 'Pets', icon: '🐾', color: '#f59e0b' },
+  parking: { label: 'Parking', icon: '🅿️', color: '#6366f1' },
+  travel: { label: 'Travel', icon: '✈️', color: '#0ea5e9' },
+  gambling: { label: 'Gambling', icon: '🎰', color: '#ef4444' },
+  rent: { label: 'Rent', icon: '🏠', color: '#8b5cf6' },
+  food: { label: 'Food & Drink', icon: '🍽️', color: '#f97316' },
+  fuel: { label: 'Fuel', icon: '⛽', color: '#0ea5e9' },
+  motoring: { label: 'Motoring', icon: '🚗', color: '#0ea5e9' },
+  property_management: { label: 'Property Management', icon: '🏢', color: '#8b5cf6' },
+  storage: { label: 'Cloud Storage', icon: '☁️', color: '#3b82f6' },
+  music: { label: 'Music', icon: '🎵', color: '#ec4899' },
+  gaming: { label: 'Gaming', icon: '🎮', color: '#8b5cf6' },
+  security: { label: 'Security', icon: '🔒', color: '#64748b' },
+  utility: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
+  utilities: { label: 'Utilities', icon: '💡', color: '#f59e0b' },
+  childcare: { label: 'Childcare', icon: '👶', color: '#ec4899' },
+  transfers: { label: 'Transfers', icon: '🔄', color: '#64748b' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
+/** Title-case a raw category key (e.g. "council_tax" -> "Council Tax") so the
+ *  fallback never shows lowercase, ugly labels when the map misses. */
+function titleCaseLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function getSpendMeta(key: string) {
-  return SPEND_LABELS[key] || { label: key.replace(/_/g, ' '), icon: '📋', color: '#475569' };
+  return SPEND_LABELS[key] || { label: titleCaseLabel(key), icon: '📋', color: '#475569' };
 }
 
 export default function OverviewPanel({ data, refreshData, selectedMonth }: { data: any, refreshData?: () => void, selectedMonth?: string }) {
