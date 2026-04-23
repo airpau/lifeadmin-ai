@@ -22,19 +22,23 @@ export async function GET() {
   await ensureDefaultSpace(supabase, user.id);
   const spaces = await listSpaces(supabase, user.id);
 
-  // Report the connections the user actually has so the settings UI
-  // can render a checkbox per connection. Also include provider
-  // account_ids + display names so multi-account banks can be split
-  // into sub-checkboxes (e.g. NatWest personal + NatWest business).
-  const { data: connections } = await supabase
-    .from('bank_connections')
-    .select('id, bank_name, provider, status, account_ids, account_display_names')
-    .eq('user_id', user.id)
-    .order('connected_at', { ascending: true });
+  const [connectionsRes, profileRes] = await Promise.all([
+    supabase
+      .from('bank_connections')
+      .select('id, bank_name, provider, status, account_ids, account_display_names')
+      .eq('user_id', user.id)
+      .order('connected_at', { ascending: true }),
+    supabase
+      .from('profiles')
+      .select('preferred_space_id')
+      .eq('id', user.id)
+      .maybeSingle(),
+  ]);
 
   return NextResponse.json({
     spaces,
-    connections: connections ?? [],
+    connections: connectionsRes.data ?? [],
+    preferred_space_id: profileRes.data?.preferred_space_id ?? null,
   });
 }
 

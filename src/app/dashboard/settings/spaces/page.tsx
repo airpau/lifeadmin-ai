@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft, Loader2, Plus, Trash2, Check, Sparkles, Briefcase,
-  Users as UsersIcon, PiggyBank, Home, Globe, CircleDot, X,
+  Users as UsersIcon, PiggyBank, Home, Globe, CircleDot, X, Star,
 } from 'lucide-react';
 
 interface Connection {
@@ -43,6 +43,7 @@ const EMOJI_CHOICES = ['🌍', '🏠', '💼', '💰', '🎯', '👨‍👩‍�
 export default function SpacesSettingsPage() {
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [preferredSpaceId, setPreferredSpaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -61,6 +62,7 @@ export default function SpacesSettingsPage() {
       if (!res.ok) throw new Error(d.error || 'Failed to load');
       setSpaces(d.spaces ?? []);
       setConnections(d.connections ?? []);
+      setPreferredSpaceId(d.preferred_space_id ?? null);
     } catch (e: any) {
       setError(e.message || 'Failed to load');
     } finally {
@@ -161,6 +163,17 @@ export default function SpacesSettingsPage() {
     await load();
   };
 
+  const setPreferred = async (id: string | null) => {
+    const res = await fetch('/api/spaces/preferred', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ space_id: id }),
+    });
+    if (!res.ok) return;
+    setPreferredSpaceId(id);
+  };
+
   const remove = async (id: string) => {
     if (!confirm('Delete this Space? Your accounts and transactions are not affected.')) return;
     const res = await fetch(`/api/spaces/${id}`, { method: 'DELETE', credentials: 'include' });
@@ -214,10 +227,15 @@ export default function SpacesSettingsPage() {
             ) : (
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xl">{s.emoji ?? '🌍'}</span>
                     <span className="font-semibold text-slate-900 truncate">{s.name}</span>
-                    {s.is_default && <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Default</span>}
+                    {s.is_default && <span className="text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">Built-in</span>}
+                    {preferredSpaceId === s.id && (
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                        <Star className="h-3 w-3 fill-amber-500 text-amber-500" /> My default view
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
                     {s.connection_ids.length === 0 && (s.account_refs?.length ?? 0) === 0
@@ -226,6 +244,23 @@ export default function SpacesSettingsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
+                  {preferredSpaceId === s.id ? (
+                    <button
+                      onClick={() => setPreferred(null)}
+                      className="text-xs text-amber-700 hover:text-amber-900 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 inline-flex items-center gap-1"
+                      title="Unpin default view"
+                    >
+                      <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" /> Default view
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setPreferred(s.id)}
+                      className="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 inline-flex items-center gap-1"
+                      title="Use this Space as my default view"
+                    >
+                      <Star className="h-3.5 w-3.5" /> Set default
+                    </button>
+                  )}
                   <button onClick={() => beginEdit(s)} className="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">Edit</button>
                   {!s.is_default && (
                     <button onClick={() => remove(s.id)} className="p-1.5 text-slate-500 hover:text-red-600 rounded-lg" title="Delete Space">
