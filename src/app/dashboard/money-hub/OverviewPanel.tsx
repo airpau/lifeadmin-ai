@@ -14,9 +14,13 @@ const INCOME_LABELS: Record<string, { label: string; icon: string; color: string
   rental_direct: { label: 'Rental Income', icon: '🏠', color: '#f59e0b' },
   investment: { label: 'Investments', icon: '📈', color: '#06b6d4' },
   refund: { label: 'Refunds', icon: '💸', color: '#10b981' },
-  loan_repayment: { label: 'Loan Repayment', icon: '🏦', color: '#ef4444' },
+  // Both loan-shaped income types render with the clearer "Loan Credit" label
+  // — the underlying types stay distinct in the database so we can analyse
+  // drawdowns vs third-party repayments later, but the user-facing copy is
+  // unambiguous that this is money coming INTO the account from a loan.
+  loan_repayment: { label: 'Loan Credit', icon: '🏦', color: '#ef4444' },
   gift: { label: 'Gifts', icon: '🎁', color: '#ec4899' },
-  credit_loan: { label: 'Credit / Loan', icon: '🏦', color: '#ef4444' },
+  credit_loan: { label: 'Loan Credit', icon: '🏦', color: '#ef4444' },
   other: { label: 'Other', icon: '📋', color: '#475569' },
 };
 
