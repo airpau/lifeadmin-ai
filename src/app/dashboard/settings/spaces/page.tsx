@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft, Loader2, Plus, Trash2, Check, Sparkles, Briefcase,
-  Users as UsersIcon, PiggyBank, Home, Globe, CircleDot, X, Star,
+  Users as UsersIcon, PiggyBank, Home, Globe, CircleDot, X, Star, Info,
 } from 'lucide-react';
 
 interface Connection {
@@ -297,6 +297,64 @@ export default function SpacesSettingsPage() {
           <Plus className="h-4 w-4" /> New Space
         </button>
       )}
+
+      {/* Orphan-accounts hint — accounts that don't appear in any
+          non-default Space. Explains why Personal + Business totals
+          might not equal Everything's total. */}
+      {(() => {
+        // Build the set of connection/account refs covered by non-
+        // default Spaces. Everything's empty arrays mean "all", so
+        // we only look at the user-created (non-default) Spaces.
+        const coveredConns = new Set<string>();
+        const coveredRefs = new Set<string>();
+        for (const s of spaces) {
+          if (s.is_default) continue;
+          for (const id of s.connection_ids) coveredConns.add(id);
+          for (const r of (s.account_refs ?? [])) coveredRefs.add(r);
+        }
+        const orphans: Array<{ connId: string; bankName: string; accountLabel: string; accountId: string | null }> = [];
+        for (const c of connections) {
+          const accIds = c.account_ids ?? [];
+          const accNames = c.account_display_names ?? [];
+          if (accIds.length === 0) {
+            if (!coveredConns.has(c.id)) {
+              orphans.push({ connId: c.id, bankName: c.bank_name || 'Bank', accountLabel: '', accountId: null });
+            }
+            continue;
+          }
+          for (let i = 0; i < accIds.length; i++) {
+            const accId = accIds[i];
+            const ref = `${c.id}:${accId}`;
+            // Covered if the whole connection is in a Space or the specific account is.
+            if (coveredConns.has(c.id) || coveredRefs.has(ref)) continue;
+            orphans.push({
+              connId: c.id,
+              bankName: c.bank_name || 'Bank',
+              accountLabel: accNames[i] || `Account ${i + 1}`,
+              accountId: accId,
+            });
+          }
+        }
+        if (orphans.length === 0 || spaces.length <= 1) return null;
+        return (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+            <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-blue-900 mb-1">
+                {orphans.length} account{orphans.length === 1 ? '' : 's'} not in any custom Space
+              </p>
+              <p className="text-sm text-blue-800 mb-2">
+                These accounts show up in <strong>Everything</strong> but not in Personal, Business or any Space you\'ve created. Their transactions won\'t match if you add the Space totals yourself.
+              </p>
+              <ul className="text-xs text-blue-800 space-y-0.5">
+                {orphans.map((o, i) => (
+                  <li key={i}>· {o.bankName}{o.accountLabel ? ` — ${o.accountLabel}` : ''}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        );
+      })()}
 
       {tierMessage && (
         <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
