@@ -99,7 +99,10 @@ export async function syncLinkedThread(
   const providerName = disputeRow?.provider_name ?? 'supplier';
   const disputeTitle = disputeRow?.issue_summary ?? null;
   const disputeCategory = disputeRow?.issue_type ?? disputeRow?.provider_type ?? null;
-  const linkUrl = `/dashboard/complaints?dispute=${link.dispute_id}`;
+  // Deep-link base: specific correspondence entry hash is appended inside the
+  // loop below, so clicking the notification scrolls straight to the reply
+  // the user is being pinged about rather than dumping them at the index.
+  const baseLinkUrl = `/dashboard/complaints?dispute=${link.dispute_id}`;
 
   // Pull the user's most recent letter to this supplier (if any) so the
   // classifier can reason about whether the reply answers what the user asked.
@@ -202,18 +205,21 @@ export async function syncLinkedThread(
         classification,
       });
 
-      // In-app notification
+      // In-app notification — link directly to the correspondence entry so
+      // tapping the notification scrolls that reply into view instead of
+      // dropping the user at the top of the disputes index.
       await db.from('user_notifications').insert({
         user_id: link.user_id,
         type: classification?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
         title: notifCopy.title,
         body: notifCopy.body,
-        link_url: linkUrl,
+        link_url: `${baseLinkUrl}#entry-${inserted.id}`,
         dispute_id: link.dispute_id,
         metadata: {
           subject: m.subject,
           from: m.fromAddress,
           messageId: m.messageId,
+          correspondenceId: inserted.id,
           ai_category: classification?.category ?? null,
           ai_urgency: classification?.urgency ?? null,
           ai_respond_needed: classification?.respondNeeded ?? null,
@@ -234,7 +240,7 @@ export async function syncLinkedThread(
           providerName,
           subject: m.subject,
           snippet: m.snippet,
-          linkUrl,
+          linkUrl: `${baseLinkUrl}#entry-${inserted.id}`,
           classification,
         });
       } catch (err) {

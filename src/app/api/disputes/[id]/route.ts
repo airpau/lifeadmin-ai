@@ -33,10 +33,12 @@ export async function GET(
     return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });
   }
 
-  // Sort correspondence by date ascending (oldest first = thread order)
+  // Sort correspondence newest-first so the user sees the latest reply at the
+  // top of the thread without scrolling. The dashboard UI collapses older
+  // entries under a "Show older" toggle.
   if (dispute.correspondence) {
     dispute.correspondence.sort(
-      (a: any, b: any) => new Date(a.entry_date).getTime() - new Date(b.entry_date).getTime()
+      (a: any, b: any) => new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime(),
     );
   }
 

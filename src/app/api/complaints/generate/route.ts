@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
           const date = new Date(c.entry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
           const typeLabel: Record<string, string> = {
             ai_letter: 'Our letter sent',
+            user_reply: 'User reply sent (drafted via Telegram)',
             company_email: 'Email from company',
             company_letter: 'Letter from company',
             phone_call: 'Phone call summary',
