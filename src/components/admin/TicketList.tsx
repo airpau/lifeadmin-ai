@@ -47,8 +47,6 @@ const priorityColors: Record<string, string> = {
   low: 'bg-slate-500/20 text-slate-500',
 };
 
-const CRON_SECRET = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-
 export default function TicketList() {
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<TicketData | null>(null);
@@ -65,9 +63,7 @@ export default function TicketList() {
     if (filterStatus) params.set('status', filterStatus);
     if (filterPriority) params.set('priority', filterPriority);
 
-    const res = await fetch(`/api/support/tickets?${params}`, {
-      headers: { Authorization: `Bearer ${CRON_SECRET}` },
-    }).then(r => r.json());
+    const res = await fetch(`/api/support/tickets?${params}`, { credentials: 'include' }).then(r => r.json());
 
     if (res.tickets) setTickets(res.tickets);
     setLoading(false);
@@ -75,9 +71,7 @@ export default function TicketList() {
 
   const loadTicketDetail = async (ticket: TicketData) => {
     setSelectedTicket(ticket);
-    const res = await fetch(`/api/support/tickets/${ticket.id}`, {
-      headers: { Authorization: `Bearer ${CRON_SECRET}` },
-    }).then(r => r.json());
+    const res = await fetch(`/api/support/tickets/${ticket.id}`, { credentials: 'include' }).then(r => r.json());
 
     if (res.messages) setMessages(res.messages);
   };
@@ -88,10 +82,8 @@ export default function TicketList() {
 
     await fetch(`/api/support/tickets/${selectedTicket.id}/messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${CRON_SECRET}`,
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sender_type: 'agent',
         sender_name: 'Admin',
@@ -109,16 +101,12 @@ export default function TicketList() {
     if (!selectedTicket) return;
     await fetch(`/api/support/tickets/${selectedTicket.id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${CRON_SECRET}`,
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ [field]: value }),
     });
     // Refresh
-    const res = await fetch(`/api/support/tickets/${selectedTicket.id}`, {
-      headers: { Authorization: `Bearer ${CRON_SECRET}` },
-    }).then(r => r.json());
+    const res = await fetch(`/api/support/tickets/${selectedTicket.id}`, { credentials: 'include' }).then(r => r.json());
     if (res.ticket) setSelectedTicket(res.ticket);
   };
 

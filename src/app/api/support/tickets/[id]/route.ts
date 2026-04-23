@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
@@ -14,9 +15,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const secret = request.headers.get('authorization');
-  if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
   }
 
   const { id } = await params;
@@ -56,9 +57,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const secret = request.headers.get('authorization');
-  if (secret !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
   }
 
   const { id } = await params;

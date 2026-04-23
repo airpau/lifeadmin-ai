@@ -49,8 +49,6 @@ const agentIcons: Record<string, React.ElementType> = {
   'upwork-scout': Search,
 };
 
-const CRON_SECRET = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return 'Never';
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -107,9 +105,7 @@ export default function AITeamPanel() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/team-status', {
-        headers: { Authorization: `Bearer ${CRON_SECRET}` },
-      });
+      const res = await fetch('/api/admin/team-status', { credentials: 'include' });
       const data = await res.json();
       if (data.agents) setAgents(data.agents);
       if (data.summary) setSummary(data.summary);

@@ -139,10 +139,7 @@ export default function LegalUpdatesAdminPage() {
     setScanning(true);
     setScanResult(null);
     try {
-      const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET || '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-      const res = await fetch('/api/cron/legal-updates', {
-        headers: { Authorization: `Bearer ${cronSecret}` },
-      });
+      const res = await fetch('/api/cron/legal-updates', { credentials: 'include' });
       const data = await res.json();
       if (data.ok) {
         setScanResult(

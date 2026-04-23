@@ -68,8 +68,6 @@ const roleBgColors: Record<string, string> = {
   support_agent: 'bg-slate-500/10 border-slate-500/30',
 };
 
-const CRON_SECRET = '894f466aff1425f8b4416762e709fab2df7d24b06ba9711aeaacadda2757024f';
-
 interface MeetingRoomProps {
   onClose: () => void;
 }
@@ -87,10 +85,8 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
     try {
       await fetch('/api/admin/proposals', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${CRON_SECRET}`,
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: `${msg.agent}: ${msg.content.slice(0, 80)}...`,
           description: msg.content,
@@ -124,10 +120,8 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
     try {
       const res = await fetch('/api/admin/meeting', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${CRON_SECRET}`,
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
           history: updatedMessages,
@@ -201,7 +195,8 @@ export default function MeetingRoom({ onClose }: MeetingRoomProps) {
                   try {
                     await fetch('/api/admin/meeting', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${CRON_SECRET}` },
+                      credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'end_meeting', meetingId }),
                     });
                   } catch {}

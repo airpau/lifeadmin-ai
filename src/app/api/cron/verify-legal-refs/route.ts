@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'crypto';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const maxDuration = 300; // 5 minutes — checking many sources
 
@@ -30,9 +31,9 @@ function hashContent(text: string): string {
  * When content changes, creates a legal_update_queue entry instead of directly overwriting.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
   }
 
   const supabase = getAdmin();
