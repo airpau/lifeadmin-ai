@@ -768,12 +768,21 @@ export default function MoneyHubPage() {
  </div>
  )}
 
- {/* Next 7 days widget — shows confirmed + scheduled + predicted
-      money moving in and out of connected accounts. Mirrors the
-      Emma / HSBC "incoming payment tomorrow" affordance. */}
- <div style={{ marginBottom: 14 }}>
-   <UpcomingWidget />
- </div>
+ {/* Next 7 days widget — only relevant when viewing the current
+      month. Past months (e.g. "March 2026" when today is April)
+      have nothing upcoming by definition, so showing the card
+      just adds noise. */}
+ {(() => {
+   const now = new Date();
+   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+   const viewingMonth = selectedMonth || data.selectedMonth || currentMonth;
+   if (viewingMonth !== currentMonth) return null;
+   return (
+     <div style={{ marginBottom: 14 }}>
+       <UpcomingWidget />
+     </div>
+   );
+ })()}
 
  {/* OVERVIEW (Summary cards + Income breakdown + Monthly trends) */}
  <OverviewPanel data={data} refreshData={refreshData} selectedMonth={selectedMonth || data.selectedMonth} />
