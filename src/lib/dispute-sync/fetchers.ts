@@ -382,7 +382,11 @@ export async function fetchDomainMessages(
   if (provider === 'gmail') {
     const token = await ensureFreshToken(conn, 'gmail');
     const afterTs = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'newer_than:90d';
-    const q = `from:@${senderDomain} ${afterTs}`;
+    // Use the documented `from:domain` form (no leading @) — `from:@domain`
+    // works by fluke on some Gmail deployments but silently returns nothing
+    // on others, which was hiding the 3:23am ACI autoresponse even though
+    // it was in the inbox.
+    const q = `from:${senderDomain} ${afterTs}`;
     const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
     listUrl.searchParams.set('q', q);
     listUrl.searchParams.set('maxResults', '20');
