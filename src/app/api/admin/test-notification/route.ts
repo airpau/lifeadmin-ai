@@ -43,9 +43,13 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: `User ${targetEmail} not found` }, { status: 404 });
 
   const stamp = new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London' });
+  // Use `price_increase` — defaults email + telegram + push all on,
+  // and allowed channels include telegram (unlike support_reply which
+  // only permits email + push, leaving this endpoint silently
+  // no-opping on the telegram channel).
   const result = await sendNotification(admin as any, {
     userId: user.id,
-    event: 'support_reply',
+    event: 'price_increase',
     telegram: {
       text: `🧪 *Paybacker test alert*\n\nIf you\'re reading this in the *Paybacker* bot (not Paybacker Assistant), the dispatcher routing fix is live.\n\nSent at ${stamp} BST.`,
     },
