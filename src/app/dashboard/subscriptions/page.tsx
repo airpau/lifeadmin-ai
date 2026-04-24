@@ -1534,8 +1534,8 @@ export default function SubscriptionsPage() {
       {tierLoaded && userTier === 'free' && bankConnections.length > 0 && baseSubscriptions.filter(s => s.status === 'active').length > 0 && (
         <UpgradeTrigger
           type="bank_scan"
-          subscriptionCount={baseSubscriptions.filter(s => s.status === 'active').length}
-          monthlyCost={flexibleTotalMonthly + statutoryTotalMonthly}
+          subscriptionCount={rpcTotals?.subscriptions_count ?? baseSubscriptions.filter(s => s.status === 'active').length}
+          monthlyCost={rpcTotals?.subscriptions_monthly ?? (flexibleTotalMonthly + statutoryTotalMonthly)}
           userTier={userTier ?? undefined}
           className="mb-6"
         />
@@ -1672,10 +1672,15 @@ export default function SubscriptionsPage() {
           Flagged = count of detected + review-needed subs;
           Potential savings reads from the inline comparison CTA state below. */}
       {(() => {
+        // Single source of truth: get_subscription_total RPC. Using the
+        // RPC's count + monthly on both the KPI header and the
+        // UpgradeTrigger banner below means users no longer see two
+        // different numbers for the same thing ("we found 34 @ £3,431"
+        // vs "43 active · £1,208" — same user, same page).
         const monthly = rpcTotals?.subscriptions_monthly ?? 0;
         const yearly = monthly * 12;
         const flaggedCount = (detectedSubs?.length || 0) + subscriptions.filter(s => (s as any).needs_review).length;
-        const activeCount = subscriptions.filter(s => s.status === 'active').length;
+        const activeCount = rpcTotals?.subscriptions_count ?? baseSubscriptions.filter(s => s.status === 'active').length;
         return (
           <>
             <div className="page-title-row">
