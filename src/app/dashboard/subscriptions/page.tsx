@@ -1590,7 +1590,7 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => handleDismissAlert(alert.id)} className="text-slate-500 hover:text-slate-700 p-1 shrink-0">
+                <button onClick={() => handleDismissAlert(alert.id)} aria-label="Dismiss alert" className="text-slate-500 hover:text-slate-700 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -1624,7 +1624,7 @@ export default function SubscriptionsPage() {
                 <Upload className="h-5 w-5 text-emerald-600" />
                 Upload Bill / Contract
               </h2>
-              <button onClick={() => { setBillUploadSubId(null); setBillFile(null); }} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
+              <button onClick={() => { setBillUploadSubId(null); setBillFile(null); }} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
             </div>
             <div className="p-6 space-y-4">
               <p className="text-slate-600 text-sm">
@@ -2106,12 +2106,12 @@ export default function SubscriptionsPage() {
               <div
                 key={sub.id}
                 data-needs-review={sub.needs_review ? 'true' : undefined}
-                className={`bg-white backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer ${
+                className={`bg-white backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer active:bg-slate-50 ${
                   selectedSub?.id === sub.id
                     ? 'border-emerald-500/50'
                     : sub.needs_review
-                    ? 'border-amber-500/40 hover:border-amber-500/60'
-                    : 'border-slate-200/50 hover:border-slate-200/50'
+                    ? 'border-amber-500/40 hover:border-amber-500/60 active:border-amber-500/70'
+                    : 'border-slate-200/50 hover:border-slate-200/50 active:border-emerald-500/40'
                 }`}
                 onClick={() => {
                   setSelectedSub(sub);
@@ -2174,7 +2174,7 @@ export default function SubscriptionsPage() {
                             <span>{sub.category ? getCategoryLabel(sub.category) : 'Uncategorised'}</span>
                           </button>
                           {inlineRecatSub === sub.id && (
-                            <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-64 overflow-y-auto">
+                            <div className="absolute top-full left-0 mt-1 w-48 max-w-[calc(100vw-2.5rem)] bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-64 overflow-y-auto">
                               {SORTED_CATEGORIES.map(cat => (
                                 <button
                                   key={cat.value}
@@ -2238,8 +2238,9 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           setBillUploadSubId(sub.id);
                         }}
-                        className="text-slate-600 hover:text-purple-400 transition-all p-1"
+                        className="text-slate-600 hover:text-purple-400 inline-flex items-center justify-center h-10 w-10 rounded-lg active:bg-slate-100 transition-all"
                         title="Upload bill to extract contract dates"
+                        aria-label="Upload bill"
                       >
                         <Upload className="h-4 w-4" />
                       </button>
@@ -2248,8 +2249,9 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           openEditModal(sub);
                         }}
-                        className="text-slate-600 hover:text-emerald-600 transition-all p-1"
+                        className="text-slate-600 hover:text-emerald-600 inline-flex items-center justify-center h-10 w-10 rounded-lg active:bg-slate-100 transition-all"
                         title="Edit"
+                        aria-label="Edit"
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -2258,8 +2260,9 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           setDeleteConfirm(sub.id);
                         }}
-                        className="text-slate-600 hover:text-red-400 transition-all p-1"
+                        className="text-slate-600 hover:text-red-400 inline-flex items-center justify-center h-10 w-10 rounded-lg active:bg-slate-100 transition-all"
                         title="Delete"
+                        aria-label="Delete"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -2678,7 +2681,7 @@ export default function SubscriptionsPage() {
                       <p className="text-slate-600 text-sm">{normaliseProviderName(unrecognisedSub.provider_name)} &middot; {formatGBP(unrecognisedSub.amount)}/{unrecognisedSub.billing_cycle}</p>
                     </div>
                   </div>
-                  <button onClick={() => setUnrecognisedSub(null)} className="text-slate-600 hover:text-slate-900 transition-colors p-1">
+                  <button onClick={() => setUnrecognisedSub(null)} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
                     <X className="h-5 w-5" />
                   </button>
                 </div>
@@ -2751,7 +2754,7 @@ export default function SubscriptionsPage() {
                       <p className="text-slate-600 text-sm">{formatGBP(unrecognisedSub.amount)} &middot; {unrecognisedSub.bank_description || unrecognisedSub.provider_name}</p>
                     </div>
                   </div>
-                  <button onClick={() => setUnrecognisedSub(null)} className="text-slate-600 hover:text-slate-900 transition-colors p-1">
+                  <button onClick={() => setUnrecognisedSub(null)} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
                     <X className="h-5 w-5" />
                   </button>
                 </div>
@@ -2826,7 +2829,7 @@ export default function SubscriptionsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-2">Amount (£) *</label>
                   <input
@@ -2853,7 +2856,7 @@ export default function SubscriptionsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-2">Category</label>
                   <select
@@ -2909,7 +2912,7 @@ export default function SubscriptionsPage() {
                     <p className="text-xs text-slate-500 mt-1">We&apos;ll alert you before this date so you can switch to a better deal</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-600 mb-2">Contract Start Date</label>
                       <input
@@ -2936,7 +2939,7 @@ export default function SubscriptionsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-600 mb-2">Contract Type</label>
                       <select
@@ -3087,7 +3090,7 @@ export default function SubscriptionsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-2">
                     Amount (£) *
@@ -3121,7 +3124,7 @@ export default function SubscriptionsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-600 mb-2">
                     Category
@@ -3203,7 +3206,7 @@ export default function SubscriptionsPage() {
                     <p className="text-xs text-slate-500 mt-1">We&apos;ll alert you before this date so you can switch to a better deal</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-600 mb-2">Contract Start Date</label>
                       <input
@@ -3230,7 +3233,7 @@ export default function SubscriptionsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-600 mb-2">Contract Type</label>
                       <select
