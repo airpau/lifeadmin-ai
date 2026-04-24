@@ -63,34 +63,14 @@ export default function SignupPage() {
       router.replace('/');
       return;
     }
-    // Redirect to dashboard if already logged in. If they landed back here
-    // via the OAuth callback and had pre-accepted the Terms / opted into
-    // marketing, drain that from localStorage onto the new user before
-    // routing them onwards so the audit trail is consistent with the
-    // email/password path.
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return;
-      try {
-        const raw = localStorage.getItem('pb_pending_consent');
-        if (raw) {
-          const pending = JSON.parse(raw) as {
-            terms_accepted_at?: string;
-            marketing_opt_in?: boolean;
-          };
-          if (pending?.terms_accepted_at && !user.user_metadata?.terms_accepted_at) {
-            await supabase.auth.updateUser({
-              data: {
-                terms_accepted_at: pending.terms_accepted_at,
-                marketing_opt_in: !!pending.marketing_opt_in,
-              },
-            });
-          }
-          localStorage.removeItem('pb_pending_consent');
-        }
-      } catch {
-        localStorage.removeItem('pb_pending_consent');
-      }
-      router.replace(redirectTo || '/dashboard');
+    // Redirect to dashboard if already logged in. Pending OAuth consent
+    // (stashed before the Google redirect) is drained in the dashboard
+    // layout — we deliberately don't drain here because this branch also
+    // fires for users who are just revisiting /auth/signup in a new tab,
+    // and at that point we can't tell whether the pending blob belongs
+    // to them or to an abandoned signup on the same origin.
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) router.replace(redirectTo || '/dashboard');
     });
     if (searchParams.get('verify') === 'true') setVerifyMode(true);
   }, [searchParams, router]);
@@ -104,13 +84,19 @@ export default function SignupPage() {
       return;
     }
     try {
-      // Stash consent choices for /auth/callback → the useEffect above
-      // drains them onto user_metadata once the session is established.
-      localStorage.setItem(
+      // Stash consent choices in sessionStorage so they're tab-scoped
+      // (avoids leaking onto a different user who later signs in on a
+      // shared browser — localStorage would persist across tab lifetimes).
+      // The dashboard layout drains this onto user_metadata once the
+      // OAuth callback establishes a session, but only for users who
+      // themselves were just created (server-side created_at check),
+      // and only deletes the blob after a confirmed successful write.
+      sessionStorage.setItem(
         'pb_pending_consent',
         JSON.stringify({
           terms_accepted_at: new Date().toISOString(),
           marketing_opt_in: marketingOptIn,
+          created_at: Date.now(),
         })
       );
       const { error } = await supabase.auth.signInWithOAuth({
