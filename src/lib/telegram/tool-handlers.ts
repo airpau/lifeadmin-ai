@@ -3,6 +3,15 @@ import Anthropic from '@anthropic-ai/sdk';
 import { normalizeSpendingCategoryKey, buildMoneyHubOverrideMaps, findMatchingCategoryOverride, resolveMoneyHubTransaction } from '@/lib/money-hub-classification';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 import { loadLearnedRules } from '@/lib/learning-engine';
+import { listSpaces } from '@/lib/spaces';
+import {
+  type BotSpaceScope,
+  applyTxSpaceFilter,
+  loadBotSpace,
+  matchesSpace,
+  resolveSpaceByName,
+  setBotActiveSpace,
+} from '@/lib/telegram/spaces';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -19,9 +28,11 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 /** Classify transactions using the same engine as the Money Hub dashboard */
 async function classifyTransactions(supabase: ReturnType<typeof getAdmin>, userId: string, startDate: string, endDate: string) {
+  // connection_id + account_id travel through so callers can space-filter
+  // the classified rows without a second fetch.
   const [{ data: txns }, { data: overrideRows }] = await Promise.all([
     supabase.from('bank_transactions')
-      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type')
+      .select('id, amount, description, category, timestamp, merchant_name, user_category, income_type, connection_id, account_id')
       .eq('user_id', userId)
       .gte('timestamp', startDate)
       .lt('timestamp', endDate)
@@ -130,6 +141,12 @@ export async function executeToolCall(
       return getBankConnections(supabase, userId);
     case 'remove_bank_connection':
       return removeBankConnection(supabase, userId, toolInput.identifier as string);
+    case 'list_spaces':
+      return listSpacesTool(supabase, userId);
+    case 'set_active_space':
+      return setActiveSpaceTool(supabase, userId, toolInput.name as string);
+    case 'get_active_space':
+      return getActiveSpaceTool(supabase, userId);
     case 'get_verified_savings':
       return getVerifiedSavings(supabase, userId);
     case 'get_monthly_trends':
@@ -310,11 +327,19 @@ async function getSpendingSummary(
   const prevDate = new Date(year, mon - 2, 1).toISOString();
 
   // Use classification engine for both months
-  const [classified, prevClassified, connections] = await Promise.all([
+  const [classifiedAll, prevClassifiedAll, connections, scope] = await Promise.all([
     classifyTransactions(supabase, userId, startDate, endDate),
     classifyTransactions(supabase, userId, prevDate, startDate),
     supabase.from('bank_connections').select('bank_name, status, last_synced_at').eq('user_id', userId),
+    loadBotSpace(supabase, userId),
   ]);
+
+  const classified = scope.isDefault
+    ? classifiedAll
+    : classifiedAll.filter((t) => matchesSpace(t, scope));
+  const prevClassified = scope.isDefault
+    ? prevClassifiedAll
+    : prevClassifiedAll.filter((t) => matchesSpace(t, scope));
 
   const connData = connections.data ?? [];
   const EXPIRED_STATUSES = ['expired', 'expired_legacy', 'revoked'];
@@ -358,7 +383,8 @@ async function getSpendingSummary(
 
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  let text = `*Spending Summary — ${monthLabel}*\n`;
+  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
+  let text = `*Spending Summary — ${monthLabel}${scopeHeader}*\n`;
   text += `Total Spending: *${fmt(grandTotal)}*\n`;
   if (totalIncome > 0) text += `Income: *${fmt(totalIncome)}*\n`;
   text += `\n`;
@@ -400,7 +426,11 @@ async function listTransactions(
   const maxResults = params.limit ?? 25;
 
   // Use classification engine to get proper categories
-  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
+  const classifiedAll = await classifyTransactions(supabase, userId, startDate, endDate);
+  const scope = await loadBotSpace(supabase, userId);
+  const classified = scope.isDefault
+    ? classifiedAll
+    : classifiedAll.filter((t) => matchesSpace(t, scope));
 
   const connResult = await supabase.from('bank_connections').select('status, last_synced_at').eq('user_id', userId);
   const connData = connResult.data ?? [];
@@ -445,7 +475,8 @@ async function listTransactions(
 
   const display = filtered.slice(0, maxResults);
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  let text = `*Transactions — ${monthLabel}*`;
+  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
+  let text = `*Transactions — ${monthLabel}${scopeHeader}*`;
   if (targetCategory) text += ` (${CATEGORY_LABELS[targetCategory] || targetCategory})`;
   if (params.merchant) text += ` matching "${params.merchant}"`;
   text += `\n\n`;
@@ -1332,29 +1363,103 @@ async function getFinancialOverview(
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
+  const monthStart = new Date(year, month - 1, 1).toISOString();
+  const monthEnd = new Date(year, month, 1).toISOString();
 
-  // Use the same RPCs Money Hub calls (`get_monthly_spending_total`,
-  // `get_monthly_income_total`, `get_monthly_spending`) instead of a raw
-  // SELECT, so the numbers match. The raw SELECT double-counted transfers
-  // and credit-loan inflows as income / spending, which is why the bot's
-  // totals diverged from Money Hub.
-  const [subs, disputes, banks, incomeRes, spendRes, breakdownRes, budgets, savings] = await Promise.all([
+  const scope = await loadBotSpace(supabase, userId);
+
+  // Two code paths: (1) default scope uses the same RPCs as Money Hub for
+  // authoritative totals. (2) Space-scoped calls fetch the month's raw
+  // transactions, filter to the Space, then apply the same transfer
+  // exclusions the RPC would.
+  let totalIncome = 0;
+  let totalSpending = 0;
+  let topCats: [string, number][] = [];
+
+  const sharedPromises = [
     supabase.from('subscriptions').select('amount, billing_cycle, category', { count: 'exact' })
       .eq('user_id', userId).eq('status', 'active').is('dismissed_at', null),
     supabase.from('disputes').select('id', { count: 'exact', head: true })
       .eq('user_id', userId).not('status', 'in', '("resolved","dismissed")'),
-    supabase.from('bank_connections').select('bank_name, status', { count: 'exact' })
+    supabase.from('bank_connections').select('id, bank_name, status', { count: 'exact' })
       .eq('user_id', userId).is('deleted_at', null),
-    supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: year, p_month: month }),
-    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: year, p_month: month }),
-    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
     supabase.from('money_hub_budgets').select('category, monthly_limit')
       .eq('user_id', userId),
     supabase.from('verified_savings').select('amount_saved, annual_saving')
       .eq('user_id', userId),
+  ] as const;
+
+  if (scope.isDefault) {
+    const [subs, disputes, banks, budgets, savings, incomeRes, spendRes, breakdownRes] = await Promise.all([
+      ...sharedPromises,
+      supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: year, p_month: month }),
+      supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: year, p_month: month }),
+      supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
+    ]);
+    totalIncome = Number(incomeRes.data ?? 0);
+    totalSpending = Number(spendRes.data ?? 0);
+    type BreakdownRow = { category: string; category_total: string };
+    topCats = ((breakdownRes.data as BreakdownRow[]) ?? [])
+      .map((r) => [r.category, Number(r.category_total) || 0] as [string, number])
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5);
+
+    return renderOverview({
+      subs, disputes, banks, budgets, savings,
+      totalIncome, totalSpending, topCats,
+      scope, monthLabel: new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+    });
+  }
+
+  // Space-scoped path.
+  let txQuery = supabase
+    .from('bank_transactions')
+    .select('amount, user_category, income_type, category, connection_id, account_id')
+    .eq('user_id', userId)
+    .gte('timestamp', monthStart)
+    .lt('timestamp', monthEnd);
+  txQuery = applyTxSpaceFilter(txQuery, scope);
+
+  const [subs, disputes, banks, budgets, savings, txRes] = await Promise.all([
+    ...sharedPromises,
+    txQuery,
   ]);
 
-  const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const catTotals: Record<string, number> = {};
+  for (const t of (txRes.data ?? []) as Array<{ amount: number; user_category: string | null; income_type: string | null; category: string | null }>) {
+    if (isTransferLike(t)) continue;
+    const amt = Number(t.amount);
+    if (amt > 0) {
+      totalIncome += amt;
+    } else if (amt < 0) {
+      if (t.user_category === 'income') continue;
+      totalSpending += -amt;
+      const cat = t.user_category || 'other';
+      catTotals[cat] = (catTotals[cat] ?? 0) + -amt;
+    }
+  }
+  topCats = Object.entries(catTotals).sort(([, a], [, b]) => b - a).slice(0, 5);
+
+  return renderOverview({
+    subs, disputes, banks, budgets, savings,
+    totalIncome, totalSpending, topCats,
+    scope, monthLabel: new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+  });
+}
+
+function renderOverview(args: {
+  subs: { data: Array<{ amount: string | number; billing_cycle: string }> | null; count: number | null };
+  disputes: { count: number | null };
+  banks: { data: Array<{ id: string; bank_name: string | null; status: string }> | null };
+  budgets: { data: unknown[] | null };
+  savings: { data: Array<{ amount_saved: string | number | null; annual_saving: string | number | null }> | null };
+  totalIncome: number;
+  totalSpending: number;
+  topCats: [string, number][];
+  scope: BotSpaceScope;
+  monthLabel: string;
+}): ToolResult {
+  const { subs, disputes, banks, budgets, savings, totalIncome, totalSpending, topCats, scope, monthLabel } = args;
 
   const subsList = subs.data ?? [];
   const monthlySubsTotal = subsList.reduce((sum, s) => {
@@ -1365,21 +1470,20 @@ async function getFinancialOverview(
     return sum;
   }, 0);
 
-  const totalIncome = Number(incomeRes.data ?? 0);
-  const totalSpending = Number(spendRes.data ?? 0);
-
   const totalSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.amount_saved ?? 0), 0);
   const annualSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.annual_saving ?? 0), 0);
 
-  type BreakdownRow = { category: string; category_total: string };
-  const topCats = ((breakdownRes.data as BreakdownRow[]) ?? [])
-    .map((r) => [r.category, Number(r.category_total) || 0] as [string, number])
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5);
+  // Banks count respects the active Space — same as the dashboard's
+  // Accounts tile when a Space is active.
+  const banksInScope = scope.connectionIds
+    ? (banks.data ?? []).filter((b) => scope.connectionIds!.includes(b.id))
+    : (banks.data ?? []);
+  const activeBanks = banksInScope.filter((b) => b.status === 'active');
 
-  const activeBanks = (banks.data ?? []).filter(b => b.status === 'active');
-
-  let text = `*Financial Overview — ${monthLabel}*\n\n`;
+  const scopeHeader = scope.space && !scope.isDefault
+    ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}`
+    : '';
+  let text = `*Financial Overview — ${monthLabel}${scopeHeader}*\n\n`;
 
   text += `*This Month:*\n`;
   text += `• Income: *${fmt(totalIncome)}*\n`;
@@ -1491,14 +1595,23 @@ async function getBankConnections(
 ): Promise<ToolResult> {
   // Hide revoked + expired_legacy (terminal states the user can't fix) and
   // anything soft-deleted via /api/bank/remove. Keeps the bot list in sync
-  // with what Money Hub shows.
-  const { data, error } = await supabase
+  // with what Money Hub shows. When the user has scoped to a specific
+  // Space, narrow the list to connections that belong to it.
+  const scope = await loadBotSpace(supabase, userId);
+  let query = supabase
     .from('bank_connections')
     .select('id, bank_name, status, last_synced_at, connected_at, account_display_names, consent_expires_at')
     .eq('user_id', userId)
     .is('deleted_at', null)
     .not('status', 'in', '("revoked","expired_legacy")')
     .order('connected_at', { ascending: false });
+  if (scope.connectionIds) {
+    if (scope.connectionIds.length === 0) {
+      return { text: `No bank connections in *${scope.space?.name ?? 'this Space'}* yet. Connect one or say "switch to everything" to see all accounts.` };
+    }
+    query = query.in('id', scope.connectionIds);
+  }
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
     return { text: 'No bank accounts connected. Connect one at paybacker.co.uk/dashboard/subscriptions' };
@@ -1508,7 +1621,8 @@ async function getBankConnections(
     active: '🟢', expired: '🔴', expiring_soon: '🟡', token_expired: '🔴',
   };
 
-  let text = `*Bank Connections (${data.length})*\n\n`;
+  const scopeTag = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
+  let text = `*Bank Connections (${data.length})${scopeTag}*\n\n`;
   for (const b of data) {
     const emoji = statusEmoji[b.status] ?? '⚪';
     text += `${emoji} *${b.bank_name ?? 'Unknown Bank'}* — ${b.status.replace(/_/g, ' ')}\n`;
@@ -1521,6 +1635,25 @@ async function getBankConnections(
   }
 
   return { text };
+}
+
+/**
+ * In-memory replica of get_monthly_{income,spending}_total's exclusions
+ * so bot paths that can't use the RPCs (because they need a Space
+ * filter) still match what Money Hub reports.
+ */
+export function isTransferLike(t: {
+  user_category?: string | null;
+  income_type?: string | null;
+  category?: string | null;
+}): boolean {
+  const userCat = (t.user_category ?? '').toString();
+  const incomeType = (t.income_type ?? '').toString();
+  const rawCat = (t.category ?? '').toString().toUpperCase();
+  if (rawCat === 'TRANSFER') return true;
+  if (userCat === 'transfers') return true;
+  if (incomeType === 'transfer' || incomeType === 'credit_loan') return true;
+  return false;
 }
 
 /**
@@ -1573,6 +1706,82 @@ async function removeBankConnection(
   return { text: `✅ Removed *${target.bank_name}* from your connections. It won't appear here or in Money Hub again.` };
 }
 
+// ============================================================
+// ACCOUNT SPACES — scope-switch tools for the bot
+// ============================================================
+
+async function listSpacesTool(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const [spaces, activeScope] = await Promise.all([
+    listSpaces(supabase, userId),
+    loadBotSpace(supabase, userId),
+  ]);
+
+  if (spaces.length === 0) {
+    return { text: 'No Spaces set up yet. Create one at paybacker.co.uk/dashboard/settings/spaces.' };
+  }
+
+  const activeId = activeScope.space?.id ?? null;
+  let text = `*Money Hub Spaces (${spaces.length})*\n\n`;
+  for (const s of spaces) {
+    const marker = s.id === activeId ? '→ ' : '  ';
+    const tag = s.is_default ? ' · default' : '';
+    const scope =
+      s.connection_ids.length === 0 && s.account_refs.length === 0
+        ? 'all connections'
+        : `${s.connection_ids.length} connection${s.connection_ids.length === 1 ? '' : 's'}${s.account_refs.length > 0 ? ` + ${s.account_refs.length} account${s.account_refs.length === 1 ? '' : 's'}` : ''}`;
+    text += `${marker}${s.emoji ?? '📁'} *${s.name}*${tag}\n   ${scope}\n`;
+  }
+  text += `\nSay "switch to <name>" to change scope, or "switch to everything" to clear it.`;
+  return { text };
+}
+
+async function setActiveSpaceTool(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  name: string,
+): Promise<ToolResult> {
+  if (!name?.trim()) {
+    return { text: 'Which Space? Try "switch to business" or list_spaces to see what\'s available.' };
+  }
+
+  const match = await resolveSpaceByName(supabase, userId, name);
+  if (match === null) {
+    return { text: `I couldn't find a Space matching "${name}". Try list_spaces to see what's available.` };
+  }
+  if (match === 'AMBIGUOUS') {
+    return { text: `"${name}" matches more than one Space. Be more specific — try list_spaces to see the full names.` };
+  }
+
+  // If the user explicitly asked for "everything" / "all" / etc., clear
+  // the override so future sessions inherit the profile default. For a
+  // specific Space, persist it on the session.
+  const alias = ['everything', 'all', 'default', 'any', 'clear', 'reset'].includes(
+    name.trim().toLowerCase(),
+  );
+  await setBotActiveSpace(supabase, userId, alias ? null : match.id);
+
+  return {
+    text: `✅ Scope set to ${match.emoji ?? '📁'} *${match.name}*${match.is_default ? ' (default)' : ''}. All financial answers will now reflect this Space until you switch again.`,
+  };
+}
+
+async function getActiveSpaceTool(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const scope = await loadBotSpace(supabase, userId);
+  if (!scope.space) {
+    return { text: 'No Spaces set up yet — everything is in scope by default.' };
+  }
+  const tag = scope.isDefault ? ' (covers all connections)' : '';
+  return {
+    text: `Currently scoped to ${scope.space.emoji ?? '📁'} *${scope.space.name}*${tag}. Say "switch to <name>" to change, or list_spaces to see all options.`,
+  };
+}
+
 async function getVerifiedSavings(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
@@ -1614,19 +1823,24 @@ async function getMonthlyTrends(
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1).toISOString();
 
+  const scope = await loadBotSpace(supabase, userId);
+
   // Pull the same columns the get_monthly_*_total RPCs filter on so we
   // can replicate their exclusions client-side (one query is cheaper
   // than N-months × 2 RPC round-trips). Otherwise transfers + credit-loan
   // flows inflate both sides and make trends disagree with Money Hub.
-  const { data, error } = await supabase
+  let query = supabase
     .from('bank_transactions')
-    .select('amount, timestamp, category, user_category, income_type')
+    .select('amount, timestamp, category, user_category, income_type, connection_id, account_id')
     .eq('user_id', userId)
     .gte('timestamp', startDate)
     .order('timestamp', { ascending: true });
+  query = applyTxSpaceFilter(query, scope);
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) {
-    return { text: `No transaction data found for the last ${lookback} months.` };
+    const tag = scope.space && !scope.isDefault ? ` in ${scope.space.name}` : '';
+    return { text: `No transaction data found for the last ${lookback} months${tag}.` };
   }
 
   const monthlyData: Record<string, { income: number; spending: number }> = {};
@@ -1653,7 +1867,8 @@ async function getMonthlyTrends(
 
   const sorted = Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b));
 
-  let text = `*Monthly Trends (last ${lookback} months)*\n\n`;
+  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
+  let text = `*Monthly Trends (last ${lookback} months)${scopeHeader}*\n\n`;
   for (const [month, vals] of sorted) {
     const [y, m] = month.split('-').map(Number);
     const label = new Date(y, m - 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -1686,11 +1901,18 @@ async function getIncomeBreakdown(
   const startDate = new Date(year, mon - 1, 1).toISOString();
   const endDate = new Date(year, mon, 1).toISOString();
 
-  const classified = await classifyTransactions(supabase, userId, startDate, endDate);
+  const [classifiedAll, scope] = await Promise.all([
+    classifyTransactions(supabase, userId, startDate, endDate),
+    loadBotSpace(supabase, userId),
+  ]);
+  const classified = scope.isDefault
+    ? classifiedAll
+    : classifiedAll.filter((t) => matchesSpace(t, scope));
   const incomeTxns = classified.filter(t => t.resolved.kind === 'income');
 
   if (incomeTxns.length === 0) {
-    return { text: `No income found for ${targetMonth}.` };
+    const tag = scope.space && !scope.isDefault ? ` in ${scope.space.name}` : '';
+    return { text: `No income found for ${targetMonth}${tag}.` };
   }
 
   const total = incomeTxns.reduce((sum, t) => sum + Number(t.amount), 0);
@@ -1707,7 +1929,8 @@ async function getIncomeBreakdown(
   const sorted = Object.entries(sources).sort(([, a], [, b]) => b - a);
 
   const monthLabel = new Date(year, mon - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-  let text = `*Income Breakdown — ${monthLabel}*\n`;
+  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
+  let text = `*Income Breakdown — ${monthLabel}${scopeHeader}*\n`;
   text += `Total: *${fmt(total)}*\n\n`;
 
   for (const [source, amount] of sorted) {
@@ -2697,32 +2920,84 @@ async function getMonthlyRecap(
   const targetDate = new Date(targetYear, targetMonth - 1, 1);
   const prevDate = new Date(targetYear, targetMonth - 2, 1);
 
-  const [spendRes, prevSpendRes, incomeRes, breakdownRes] = await Promise.all([
-    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
-    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevDate.getFullYear(), p_month: prevDate.getMonth() + 1 }),
-    supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
-    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
-  ]);
+  const scope = await loadBotSpace(supabase, userId);
 
-  const spending = parseFloat(spendRes.data) || 0;
-  const prevSpending = parseFloat(prevSpendRes.data) || 0;
-  const income = parseFloat(incomeRes.data) || 0;
+  let spending = 0;
+  let prevSpending = 0;
+  let income = 0;
+  let top5: Array<{ category: string; total: number }> = [];
+
+  if (scope.isDefault) {
+    const [spendRes, prevSpendRes, incomeRes, breakdownRes] = await Promise.all([
+      supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+      supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: prevDate.getFullYear(), p_month: prevDate.getMonth() + 1 }),
+      supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+      supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: targetYear, p_month: targetMonth }),
+    ]);
+    spending = parseFloat(spendRes.data) || 0;
+    prevSpending = parseFloat(prevSpendRes.data) || 0;
+    income = parseFloat(incomeRes.data) || 0;
+    type SpendingRow = { category: string; category_total: string };
+    top5 = ((breakdownRes.data as SpendingRow[]) ?? [])
+      .map((r) => ({ category: r.category, total: parseFloat(r.category_total) || 0 }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  } else {
+    // Space-scoped: raw SELECT + in-JS aggregation matching the RPCs.
+    const monthStart = targetDate.toISOString();
+    const monthEnd = new Date(targetYear, targetMonth, 1).toISOString();
+    const prevStart = prevDate.toISOString();
+    const prevEnd = monthStart;
+
+    const [curRes, prevRes] = await Promise.all([
+      applyTxSpaceFilter(
+        supabase.from('bank_transactions')
+          .select('amount, user_category, income_type, category, connection_id, account_id')
+          .eq('user_id', userId).gte('timestamp', monthStart).lt('timestamp', monthEnd),
+        scope,
+      ),
+      applyTxSpaceFilter(
+        supabase.from('bank_transactions')
+          .select('amount, user_category, income_type, category, connection_id, account_id')
+          .eq('user_id', userId).gte('timestamp', prevStart).lt('timestamp', prevEnd),
+        scope,
+      ),
+    ]);
+
+    const cats: Record<string, number> = {};
+    for (const t of (curRes.data ?? []) as Array<{ amount: number; user_category: string | null; income_type: string | null; category: string | null }>) {
+      if (isTransferLike(t)) continue;
+      const amt = Number(t.amount);
+      if (amt > 0) income += amt;
+      else if (amt < 0) {
+        if (t.user_category === 'income') continue;
+        spending += -amt;
+        const cat = t.user_category || 'other';
+        cats[cat] = (cats[cat] ?? 0) + -amt;
+      }
+    }
+    for (const t of (prevRes.data ?? []) as Array<{ amount: number; user_category: string | null; income_type: string | null; category: string | null }>) {
+      if (isTransferLike(t)) continue;
+      const amt = Number(t.amount);
+      if (amt < 0 && t.user_category !== 'income') prevSpending += -amt;
+    }
+    top5 = Object.entries(cats)
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  }
 
   if (spending === 0 && income === 0) {
-    return { text: `No financial data found for ${targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}. Connect a bank account at paybacker.co.uk/dashboard/money-hub.` };
+    const tag = scope.space && !scope.isDefault ? ` in ${scope.space.name}` : '';
+    return { text: `No financial data found for ${targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}${tag}. Connect a bank account at paybacker.co.uk/dashboard/money-hub.` };
   }
 
   const monthLabel = targetDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   const savingsRate = income > 0 ? ((income - spending) / income) * 100 : 0;
   const spendingDiff = spending - prevSpending;
 
-  type SpendingRow = { category: string; category_total: string };
-  const top5 = ((breakdownRes.data as SpendingRow[]) ?? [])
-    .map((r) => ({ category: r.category, total: parseFloat(r.category_total) || 0 }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
-
-  let text = `📊 *${monthLabel} Financial Recap*\n\n`;
+  const scopeHeader = scope.space && !scope.isDefault ? ` — ${scope.space.emoji ?? '📁'} ${scope.space.name}` : '';
+  let text = `📊 *${monthLabel} Financial Recap${scopeHeader}*\n\n`;
   text += `💰 Income: *${fmt(income)}*\n`;
   text += `💸 Spending: *${fmt(spending)}*\n`;
   const net = income - spending;

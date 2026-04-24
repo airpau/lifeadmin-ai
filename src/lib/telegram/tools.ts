@@ -178,6 +178,41 @@ export const telegramTools: Tool[] = [
     },
   },
   {
+    name: 'list_spaces',
+    description:
+      "List the user's Money Hub Spaces — the named groupings of bank connections shown on the dashboard (e.g. Everything, Business, Personal). Returns the currently-active Space so you can tell the user which scope their financial answers are coming from.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'set_active_space',
+    description:
+      "Switch the scope of subsequent financial queries to a particular Space. All transaction, spending, and overview tools will then only report on that Space's connections until the user switches away. Use fuzzy name matching (e.g. 'business' matches 'Business expenses'). Pass 'everything' / 'all' / 'clear' to reset to the user's default scope.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Space name (fuzzy, case-insensitive). Aliases: "everything", "all", "clear", "reset" return to the default scope.',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'get_active_space',
+    description:
+      "Tell the user which Space is currently scoping their financial queries. Use when they ask 'what Space am I in?' / 'what am I looking at?' or before answering an ambiguous figures question, so they can confirm the scope.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: 'remove_bank_connection',
     description:
       "Permanently hide a bank connection the user no longer wants to see — typically a sandbox/test connection they used while exploring. Only call after the user has explicitly confirmed they want to remove it (not just disconnect it). The connection stops appearing in this bot and in Money Hub, but historical transactions are preserved. Matches on bank name or account-name substring (case-insensitive).",
