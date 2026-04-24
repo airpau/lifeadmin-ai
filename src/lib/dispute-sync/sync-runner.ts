@@ -313,6 +313,7 @@ export async function syncLinkedThread(
         sender_address: m.fromAddress,
         sender_name: m.fromName || null,
         supplier_message_id: m.messageId,
+        supplier_web_link: m.webLink ?? null,
         detected_from_email: true,
         email_thread_id: link.id,
         entry_date: m.receivedAt.toISOString(),

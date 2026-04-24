@@ -54,6 +54,8 @@ interface GraphMessage {
   bodyPreview?: string;
   from?: { emailAddress?: { address?: string; name?: string } };
   body?: { contentType?: 'text' | 'html'; content?: string };
+  /** Ready-to-use OWA deep-link Graph issues per-message. */
+  webLink?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -300,7 +302,7 @@ async function fetchOutlookConversation(
   url.searchParams.set('$top', '50');
   url.searchParams.set(
     '$select',
-    'id,conversationId,subject,from,receivedDateTime,bodyPreview,body',
+    'id,conversationId,subject,from,receivedDateTime,bodyPreview,body,webLink',
   );
 
   const res = await fetch(url.toString(), {
@@ -333,6 +335,7 @@ async function fetchOutlookConversation(
       receivedAt: new Date(m.receivedDateTime),
       snippet: makeSnippet(bodyText || m.bodyPreview || ''),
       body: bodyText.slice(0, 8000),
+      webLink: m.webLink,
     });
   }
   return messages;
@@ -465,7 +468,7 @@ export async function fetchDomainMessages(
     url.searchParams.set('$top', '20');
     url.searchParams.set(
       '$select',
-      'id,conversationId,subject,from,receivedDateTime,bodyPreview,body',
+      'id,conversationId,subject,from,receivedDateTime,bodyPreview,body,webLink',
     );
     const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${token}` },
@@ -498,6 +501,7 @@ export async function fetchDomainMessages(
         receivedAt: received,
         snippet: makeSnippet(bodyText || m.bodyPreview || ''),
         body: bodyText.slice(0, 8000),
+        webLink: m.webLink,
       });
     }
     return out.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
