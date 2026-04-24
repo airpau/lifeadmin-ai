@@ -136,8 +136,12 @@ function OnboardingInner() {
         style={{ flex: 1, display: 'grid', gridTemplateColumns: '320px 1fr' }}
         className="onboarding-grid"
       >
-        {/* Left rail */}
+        {/* Left rail — becomes a compact horizontal step strip at
+            ≤480px (see .onboarding-grid media queries in the <style jsx>
+            below) so fresh phone signups don't scroll past 300px of
+            sidebar before they reach the CTA. */}
         <aside
+          className="onboarding-rail"
           style={{
             padding: 32,
             borderRight: '1px solid #E5E7EB',
@@ -145,6 +149,7 @@ function OnboardingInner() {
           }}
         >
           <div
+            className="onboarding-rail__header"
             style={{
               fontSize: 11,
               fontWeight: 700,
@@ -156,53 +161,63 @@ function OnboardingInner() {
           >
             3 minutes to set up
           </div>
-          <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 24px' }}>
-            Let's find your first saving
+          <h2
+            className="onboarding-rail__heading"
+            style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 24px' }}
+          >
+            Let&rsquo;s find your first saving
           </h2>
-          {STEPS.map((s, i) => {
-            const done = i < derivedStep;
-            const active = i === activeStep;
-            return (
-              <div key={s} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0' }}>
+          <div className="onboarding-rail__steps">
+            {STEPS.map((s, i) => {
+              const done = i < derivedStep;
+              const active = i === activeStep;
+              return (
                 <div
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: done ? '#059669' : active ? '#0B1220' : '#fff',
-                    border: done || active ? 'none' : '1px solid #E5E7EB',
-                    color: done || active ? '#fff' : '#9CA3AF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
+                  key={s}
+                  className="onboarding-rail__step"
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0' }}
                 >
-                  {done ? '✓' : i + 1}
-                </div>
-                <div style={{ flex: 1, paddingTop: 4 }}>
                   <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: active ? 700 : 500,
-                      color: active ? '#0B1220' : done ? '#4B5563' : '#9CA3AF',
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      background: done ? '#059669' : active ? '#0B1220' : '#fff',
+                      border: done || active ? 'none' : '1px solid #E5E7EB',
+                      color: done || active ? '#fff' : '#9CA3AF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      flexShrink: 0,
                     }}
                   >
-                    {s}
+                    {done ? '✓' : i + 1}
                   </div>
-                  {active && i === 2 && (
-                    <div style={{ fontSize: 11.5, color: '#9CA3AF', marginTop: 3 }}>
-                      We'll only read payment emails.
+                  <div style={{ flex: 1, paddingTop: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: active ? 700 : 500,
+                        color: active ? '#0B1220' : done ? '#4B5563' : '#9CA3AF',
+                      }}
+                    >
+                      {s}
                     </div>
-                  )}
+                    {active && i === 2 && (
+                      <div style={{ fontSize: 11.5, color: '#9CA3AF', marginTop: 3 }}>
+                        We&rsquo;ll only read payment emails.
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
 
           <div
+            className="onboarding-rail__reassure"
             style={{
               marginTop: 40,
               padding: 14,
@@ -464,6 +479,104 @@ function OnboardingInner() {
                   : 'You skipped the connections — you can still use manual subscription tracking and AI letters. Plug in a bank or inbox later from Profile → Connected accounts to unlock the auto-detect features.'
               }
             >
+              {/* Example-win preview card — labelled "Example" because
+                  per redesign/CONTENT_SOURCES_OF_TRUTH.md we can't
+                  fabricate specific savings claims for this user. It
+                  exists to convert the abstract promise ("your dashboard
+                  will fill in") into a concrete image of what a typical
+                  finding actually looks like, which the onboarding audit
+                  flagged as missing — users complete step 4 hoping for
+                  immediate gratification and bounce when there's just a
+                  button. */}
+              {(state.hasBank || state.hasEmail) && (
+                <div
+                  aria-label="Example saving"
+                  style={{
+                    width: '100%',
+                    maxWidth: 440,
+                    marginBottom: 18,
+                    padding: 18,
+                    background: '#fff',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: 14,
+                    boxShadow: '0 8px 24px -12px rgba(11, 18, 32, 0.12)',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 10,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        letterSpacing: '.08em',
+                        textTransform: 'uppercase',
+                        color: '#059669',
+                        background: '#D1FAE5',
+                        padding: '3px 8px',
+                        borderRadius: 999,
+                      }}
+                    >
+                      Example · what a typical win looks like
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        background: '#1DB954',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 800,
+                        fontSize: 16,
+                        flexShrink: 0,
+                      }}
+                    >
+                      S
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0B1220' }}>
+                        Spotify Premium &mdash; unused 4 months
+                      </div>
+                      <div style={{ fontSize: 12.5, color: '#6B7280', marginTop: 2 }}>
+                        Auto-detected from bank transactions
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0B1220', fontFamily: 'JetBrains Mono, monospace' }}>
+                        £11.99 / mo
+                      </div>
+                      <div style={{ fontSize: 11, color: '#059669', fontWeight: 600, marginTop: 1 }}>
+                        £143.88 / yr
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      padding: 10,
+                      background: '#F0FDF4',
+                      border: '1px solid #BBF7D0',
+                      borderRadius: 8,
+                      fontSize: 12.5,
+                      color: '#065F46',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <strong style={{ fontWeight: 700 }}>Suggested action:</strong> one-tap cancellation email drafted, quoting CRA 2015 s.49 — you approve and we&rsquo;ll send it.
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={finish}
                 className="cta"
@@ -561,6 +674,39 @@ function OnboardingInner() {
           :global(.onboarding-grid) { grid-template-columns: 1fr !important; }
           :global(.onboarding-grid aside) { border-right: none !important; border-bottom: 1px solid #E5E7EB; }
           :global(.onboarding-provider-grid) { grid-template-columns: 1fr !important; }
+        }
+        /* ≤480px: compact rail — hide the marketing headers and the
+           privacy reassurance block (both duplicated elsewhere in the
+           flow), tighten padding, and lay the step list out
+           horizontally so users see the CTA above the fold instead of
+           scrolling past 300px of sidebar. */
+        @media (max-width: 480px) {
+          :global(.onboarding-rail) {
+            padding: 16px !important;
+          }
+          :global(.onboarding-rail__header),
+          :global(.onboarding-rail__heading),
+          :global(.onboarding-rail__reassure) {
+            display: none;
+          }
+          :global(.onboarding-rail__steps) {
+            display: flex;
+            justify-content: space-between;
+            gap: 4px;
+            overflow-x: auto;
+          }
+          :global(.onboarding-rail__step) {
+            flex: 1;
+            flex-direction: column !important;
+            align-items: center !important;
+            padding: 4px 0 !important;
+            gap: 4px !important;
+            min-width: 0;
+          }
+          :global(.onboarding-rail__step > div:last-child) {
+            padding-top: 0 !important;
+            text-align: center;
+          }
         }
       `}</style>
     </div>
