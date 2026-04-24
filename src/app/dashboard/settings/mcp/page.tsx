@@ -44,6 +44,7 @@ interface TokenRow {
 
 export default function McpSettingsPage() {
   const [isPro, setIsPro] = useState<boolean | null>(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tokens, setTokens] = useState<TokenRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -62,12 +63,15 @@ export default function McpSettingsPage() {
     try {
       const res = await fetch('/api/mcp/tokens');
       if (res.status === 401) {
-        setError('Please sign in.');
-        setIsPro(false);
+        // Auth failure ≠ plan failure. Render a sign-in prompt instead of
+        // the Pro upsell, otherwise a real Pro user with an expired session
+        // gets told to upgrade.
+        setNeedsSignIn(true);
         return;
       }
       if (!res.ok) throw new Error('Failed to load tokens');
       const data = await res.json();
+      setNeedsSignIn(false);
       setIsPro(!!data.isPro);
       setTokens((data.tokens ?? []) as TokenRow[]);
     } catch (e) {
@@ -164,6 +168,30 @@ export default function McpSettingsPage() {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (needsSignIn) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-8 text-center">
+          <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <KeyRound className="h-8 w-8 text-emerald-600" />
+          </div>
+          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
+            Please sign in
+          </h2>
+          <p className="text-slate-600 mb-6">
+            Your session has expired. Sign in again to manage your Paybacker Assistant tokens.
+          </p>
+          <Link
+            href="/login?next=/dashboard/settings/mcp"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-colors"
+          >
+            Sign in
+          </Link>
+        </div>
       </div>
     );
   }
