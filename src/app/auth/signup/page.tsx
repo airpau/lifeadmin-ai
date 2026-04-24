@@ -14,15 +14,29 @@ import { MarkNav } from '@/app/blog/_shared';
 import '../../(marketing)/styles.css';
 import '../auth.css';
 
+// Password strength helpers — used to drive the live checklist below the
+// password field. Same rules Supabase will enforce server-side so the
+// user gets immediate feedback instead of a post-submit bounce.
+const PW_RULES = [
+  { id: 'length', label: 'At least 8 characters', test: (v: string) => v.length >= 8 },
+  { id: 'letter', label: 'Contains a letter', test: (v: string) => /[A-Za-z]/.test(v) },
+  { id: 'number', label: 'Contains a number', test: (v: string) => /\d/.test(v) },
+] as const;
+
 export default function SignupPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verifyMode, setVerifyMode] = useState(false);
+
+  const passedRules = PW_RULES.filter((r) => r.test(password));
+  const passwordValid = passedRules.length === PW_RULES.length;
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -49,7 +63,12 @@ export default function SignupPage() {
       router.replace('/');
       return;
     }
-    // Redirect to dashboard if already logged in
+    // Redirect to dashboard if already logged in. Pending OAuth consent
+    // (stashed before the Google redirect) is drained in the dashboard
+    // layout — we deliberately don't drain here because this branch also
+    // fires for users who are just revisiting /auth/signup in a new tab,
+    // and at that point we can't tell whether the pending blob belongs
+    // to them or to an abandoned signup on the same origin.
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) router.replace(redirectTo || '/dashboard');
     });
@@ -57,7 +76,29 @@ export default function SignupPage() {
   }, [searchParams, router]);
 
   const handleGoogleSignup = async () => {
+    // Same consent gate as the email/password path — don't start the
+    // OAuth redirect without explicit T&Cs acceptance, otherwise we'd
+    // end up with Google accounts that skipped the checkbox entirely.
+    if (!termsAccepted) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     try {
+      // Stash consent choices in sessionStorage so they're tab-scoped
+      // (avoids leaking onto a different user who later signs in on a
+      // shared browser — localStorage would persist across tab lifetimes).
+      // The dashboard layout drains this onto user_metadata once the
+      // OAuth callback establishes a session, but only for users who
+      // themselves were just created (server-side created_at check),
+      // and only deletes the blob after a confirmed successful write.
+      sessionStorage.setItem(
+        'pb_pending_consent',
+        JSON.stringify({
+          terms_accepted_at: new Date().toISOString(),
+          marketing_opt_in: marketingOptIn,
+          created_at: Date.now(),
+        })
+      );
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -93,6 +134,18 @@ export default function SignupPage() {
       }
     }
 
+    if (!passwordValid) {
+      setError('Password must be at least 8 characters and include a letter and a number.');
+      setLoading(false);
+      return;
+    }
+
+    if (!termsAccepted) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      setLoading(false);
+      return;
+    }
+
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
     try {
@@ -105,6 +158,8 @@ export default function SignupPage() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             mobile_number: mobile.trim() || null,
+            terms_accepted_at: new Date().toISOString(),
+            marketing_opt_in: marketingOptIn,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -248,10 +303,43 @@ export default function SignupPage() {
               </div>
             ) : (
               <>
+                {/* Consent gate — sits above both signup paths so Google
+                    OAuth and email/password both respect the same T&Cs
+                    checkbox. Without this, Google skipped consent entirely
+                    and `terms_accepted_at` only landed on email users. */}
+                <div className="consent">
+                  <label className="consent__row">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                    />
+                    <span>
+                      I agree to the{' '}
+                      <Link href="/terms-of-service">Terms of Service</Link>
+                      {' '}and{' '}
+                      <Link href="/privacy-policy">Privacy Policy</Link>.
+                    </span>
+                  </label>
+                  <label className="consent__row consent__row--optional">
+                    <input
+                      type="checkbox"
+                      checked={marketingOptIn}
+                      onChange={(e) => setMarketingOptIn(e.target.checked)}
+                    />
+                    <span>
+                      Send me the Paybacker newsletter — savings tips and
+                      product updates (optional, unsubscribe anytime).
+                    </span>
+                  </label>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleGoogleSignup}
                   className="oauth-btn"
+                  disabled={!termsAccepted}
+                  aria-disabled={!termsAccepted}
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -325,6 +413,7 @@ export default function SignupPage() {
                       <input
                         id="signup-mobile"
                         type="tel"
+                        inputMode="tel"
                         value={mobile}
                         onChange={(e) => setMobile(e.target.value)}
                         placeholder="+44 7700 900000"
@@ -346,14 +435,35 @@ export default function SignupPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
                         autoComplete="new-password"
+                        aria-describedby="password-requirements"
                       />
                     </div>
-                    <p className="hint">Minimum 8 characters.</p>
+                    <ul
+                      id="password-requirements"
+                      className={`pw-checklist ${password.length === 0 ? 'is-idle' : ''}`}
+                      aria-live="polite"
+                    >
+                      {PW_RULES.map((rule) => {
+                        const ok = rule.test(password);
+                        return (
+                          <li key={rule.id} className={ok ? 'ok' : 'todo'}>
+                            <span className="pw-checklist__mark" aria-hidden="true">
+                              {ok ? '✓' : '○'}
+                            </span>
+                            {rule.label}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
 
                   {error && <div className="form-error">{error}</div>}
 
-                  <button type="submit" disabled={loading} className="auth-submit">
+                  <button
+                    type="submit"
+                    disabled={loading || !termsAccepted}
+                    className="auth-submit"
+                  >
                     {loading ? 'Creating account…' : 'Create account'}
                   </button>
                 </form>
@@ -365,12 +475,6 @@ export default function SignupPage() {
                   >
                     Sign in
                   </Link>
-                </div>
-
-                <div className="auth-finepr">
-                  By creating an account, you agree to our{' '}
-                  <Link href="/terms-of-service">Terms of Service</Link> and{' '}
-                  <Link href="/privacy-policy">Privacy Policy</Link>.
                 </div>
               </>
             )}

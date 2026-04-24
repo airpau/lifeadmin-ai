@@ -32,6 +32,65 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setUserEmail(user.email || null);
       setAuthChecked(true);
 
+      // OAuth signup path leaves Terms/marketing consent in sessionStorage
+      // (the signup page can't write to user_metadata before the OAuth
+      // redirect). Drain it here for Google-signup users. Guardrails:
+      //   1. sessionStorage is tab-scoped — can't leak to other users
+      //      who later sign in from the same browser profile.
+      //   2. The payload carries `created_at`; we reject > 15 min old
+      //      blobs as stale (e.g. abandoned OAuth flows).
+      //   3. The CURRENT user must themselves be newly created
+      //      (auth.users.created_at within 15 min). This prevents the
+      //      same-tab hand-off a legacy account would need to inherit
+      //      someone else's abandoned consent blob.
+      //   4. The key is only removed AFTER a confirmed write (or when
+      //      it's stale / already applied) — transient network errors
+      //      leave the blob in place so a retry can still recover it.
+      const CONSENT_TTL_MS = 15 * 60 * 1000;
+      try {
+        const raw = sessionStorage.getItem('pb_pending_consent');
+        if (raw && !user.user_metadata?.terms_accepted_at) {
+          const pending = JSON.parse(raw) as {
+            terms_accepted_at?: string;
+            marketing_opt_in?: boolean;
+            created_at?: number;
+          };
+          const now = Date.now();
+          const isFreshPayload =
+            typeof pending?.created_at === 'number' &&
+            now - pending.created_at < CONSENT_TTL_MS;
+          const userCreatedMs = user.created_at ? Date.parse(user.created_at) : NaN;
+          const isFreshUser =
+            Number.isFinite(userCreatedMs) && now - userCreatedMs < CONSENT_TTL_MS;
+
+          if (!isFreshPayload) {
+            sessionStorage.removeItem('pb_pending_consent');
+          } else if (!isFreshUser) {
+            // Don't apply a stashed consent blob to a pre-existing user
+            // — the pending blob belongs to an abandoned OAuth signup.
+            // Leave the blob in place; it'll expire on TTL above.
+          } else if (pending.terms_accepted_at) {
+            const { error: updateError } = await supabase.auth.updateUser({
+              data: {
+                terms_accepted_at: pending.terms_accepted_at,
+                marketing_opt_in: !!pending.marketing_opt_in,
+              },
+            });
+            if (!updateError) {
+              sessionStorage.removeItem('pb_pending_consent');
+            }
+            // If updateError (transient 5xx, network), keep the blob so
+            // the next dashboard hit can retry.
+          }
+        } else if (raw && user.user_metadata?.terms_accepted_at) {
+          // User already has consent recorded — safe to clear.
+          sessionStorage.removeItem('pb_pending_consent');
+        }
+      } catch {
+        // JSON.parse error → payload is corrupt, safe to remove.
+        sessionStorage.removeItem('pb_pending_consent');
+      }
+
       const { data } = await supabase
         .from('profiles')
         .select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')

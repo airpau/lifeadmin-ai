@@ -188,7 +188,11 @@ export default function AboutPage() {
         style={{ '--glow-opacity': 0.18, paddingTop: 140, paddingBottom: 80 } as CSSVarProperties}
       >
         <div className="wrap">
-          <span className="eyebrow">About · Paybacker LTD · Launched March 2026</span>
+          <span className="eyebrow">
+            About · Paybacker LTD · Launched March 2026
+            <span className="eyebrow-dot" aria-hidden="true"> · </span>
+            <span className="eyebrow-trust">ICO registered · FCA-authorised via Yapily</span>
+          </span>
           <h1
             style={{
               fontSize: 'var(--fs-display)',
@@ -216,7 +220,7 @@ export default function AboutPage() {
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Link className="btn btn-mint" href={SIGNUP_HREF}>
-              Start free 14-day trial →
+              Start free — no card needed →
             </Link>
             <Link className="btn btn-ghost" href="/careers">
               We&apos;re hiring — see roles
