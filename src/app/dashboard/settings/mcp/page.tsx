@@ -71,8 +71,11 @@ export default function McpSettingsPage() {
       setIsPro(!!data.isPro);
       setTokens((data.tokens ?? []) as TokenRow[]);
     } catch (e) {
+      // Don't flip isPro on transient fetch/parse errors — that would hide the
+      // token manager from actual Pro users exactly when the API is flaky.
+      // Surface the error banner and leave the Pro state unchanged so the
+      // existing UI (or the loading state, on first load) is preserved.
       setError(e instanceof Error ? e.message : 'Unknown error');
-      setIsPro(false);
     }
   }, []);
 
