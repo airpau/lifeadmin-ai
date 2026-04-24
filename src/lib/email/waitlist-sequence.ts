@@ -1,4 +1,5 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { renderEmail } from './layout';
 
 // ─── Shared styles (matches Paybacker brand: dark navy + mint) ───────────────
 
@@ -157,10 +158,10 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
 
     <div style="${box}">
       <ul style="color:#6B7280;padding-left:18px;line-height:2.4;margin:0;font-size:14px;">
-        <li><strong style="color:#E5E7EB;">Cites the exact legislation</strong> — Consumer Rights Act 2015, Ofcom, FCA rules. Companies respond differently when the law is named correctly.</li>
-        <li><strong style="color:#E5E7EB;">Sets a 14-day response deadline</strong> — legally significant for Ombudsman escalation.</li>
-        <li><strong style="color:#E5E7EB;">Names the escalation path</strong> — Energy Ombudsman, Financial Ombudsman, Ofcom. They know what comes next.</li>
-        <li><strong style="color:#E5E7EB;">States a specific remedy</strong> — refund amount, service credit, or correction. Vague demands get vague responses.</li>
+        <li><strong style="color:#0B1220;">Cites the exact legislation</strong> — Consumer Rights Act 2015, Ofcom, FCA rules. Companies respond differently when the law is named correctly.</li>
+        <li><strong style="color:#0B1220;">Sets a 14-day response deadline</strong> — legally significant for Ombudsman escalation.</li>
+        <li><strong style="color:#0B1220;">Names the escalation path</strong> — Energy Ombudsman, Financial Ombudsman, Ofcom. They know what comes next.</li>
+        <li><strong style="color:#0B1220;">States a specific remedy</strong> — refund amount, service credit, or correction. Vague demands get vague responses.</li>
       </ul>
     </div>
 
@@ -219,9 +220,9 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <div style="${box}">
       <p style="color:#059669;font-weight:700;margin:0 0 12px;font-size:15px;">YOUR EARLY ACCESS BENEFITS</p>
       <ul style="color:#6B7280;padding-left:18px;line-height:2.2;margin:0;font-size:14px;">
-        <li>✅ <strong style="color:#E5E7EB;">3 months free</strong> on any paid plan</li>
-        <li>✅ <strong style="color:#E5E7EB;">Founding member</strong> — locked-in pricing forever</li>
-        <li>✅ <strong style="color:#E5E7EB;">Direct input</strong> on which agents we build next</li>
+        <li>✅ <strong style="color:#0B1220;">3 months free</strong> on any paid plan</li>
+        <li>✅ <strong style="color:#0B1220;">Founding member</strong> — locked-in pricing forever</li>
+        <li>✅ <strong style="color:#0B1220;">Direct input</strong> on which agents we build next</li>
       </ul>
     </div>
 
@@ -248,9 +249,9 @@ export const WAITLIST_SEQUENCE: SequenceEmail[] = [
     <div style="${box}">
       <p style="color:#059669;font-weight:700;margin:0 0 12px;font-size:14px;">WHAT TO DO AT RENEWAL</p>
       <ul style="color:#6B7280;padding-left:18px;margin:0;line-height:2.2;font-size:14px;">
-        <li><strong style="color:#E5E7EB;">30 days before:</strong> Contact them to negotiate — you have the most leverage here.</li>
-        <li><strong style="color:#E5E7EB;">On renewal day:</strong> You can still cancel within 14 days under the Consumer Contracts Regulations 2013.</li>
-        <li><strong style="color:#E5E7EB;">After renewal:</strong> If they raised the price without adequate notice, you have a formal complaint right.</li>
+        <li><strong style="color:#0B1220;">30 days before:</strong> Contact them to negotiate — you have the most leverage here.</li>
+        <li><strong style="color:#0B1220;">On renewal day:</strong> You can still cancel within 14 days under the Consumer Contracts Regulations 2013.</li>
+        <li><strong style="color:#0B1220;">After renewal:</strong> If they raised the price without adequate notice, you have a formal complaint right.</li>
       </ul>
     </div>
 
@@ -314,7 +315,8 @@ export async function sendSequenceEmail(
       replyTo: REPLY_TO,
       to: email,
       subject: template.subject,
-      html: template.html(name || 'there'),
+      // Wrap in the shared layout so Gmail iOS doesn't force-invert the email.
+      html: renderEmail({ body: template.html(name || 'there') }),
     });
     return true;
   } catch (err) {

@@ -1,33 +1,5 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
-
-const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;`;
-const header = `background:#F9FAFB;padding:24px 32px;border-bottom:1px solid #F9FAFB;text-align:center;`;
-const body = `padding:32px;`;
-const h1 = `color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
-const pWhite = `color:#E5E7EB;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const box = `background:#F9FAFB;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #059669;`;
-const tipBox = `background:#F9FAFB;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #ef4444;`;
-const cta = `display:inline-block;background:#059669;color:#0B1220;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
-const footer = `padding:20px 32px 28px;border-top:1px solid #F9FAFB;`;
-const footerText = `color:#4B5563;font-size:12px;line-height:1.6;margin:0;text-align:center;`;
-
-const Logo = () => `
-  <a href="https://paybacker.co.uk" style="text-decoration:none;">
-    <span style="font-size:22px;font-weight:800;color:#0B1220;">Pay<span style="color:#059669;">backer</span></span>
-  </a>
-`;
-
-const Footer = () => `
-  <div style="${footer}">
-    <p style="${footerText}">
-      <a href="https://paybacker.co.uk" style="color:#059669;text-decoration:none;font-weight:600;">Paybacker LTD</a> · ICO Registered · UK Company<br/>
-      AI-powered money recovery for UK consumers<br/><br/>
-      <a href="https://paybacker.co.uk/privacy-policy" style="color:#4B5563;text-decoration:none;">Privacy Policy</a> &nbsp;·&nbsp;
-      <a href="https://paybacker.co.uk/legal/terms" style="color:#4B5563;text-decoration:none;">Terms</a> &nbsp;·&nbsp;
-      <a href="mailto:support@paybacker.co.uk?subject=Unsubscribe" style="color:#4B5563;text-decoration:none;">Unsubscribe</a>
-    </p>
-  </div>
-`;
+import { renderEmail, emailStyles as s, emailTokens as t } from './layout';
 
 export async function sendDisputeReminderEmail(
   email: string,
@@ -38,71 +10,62 @@ export async function sendDisputeReminderEmail(
     daysOld: number;
     amount?: number | null;
   },
-  isEscalation: boolean
+  isEscalation: boolean,
 ): Promise<boolean> {
   const name = firstName || 'there';
-  const amountStr = dispute.amount ? ` (£\${dispute.amount.toFixed(2)})` : '';
+  const amountStr = dispute.amount ? ` (£${dispute.amount.toFixed(2)})` : '';
 
   let subject: string;
-  let htmlContent: string;
+  let body: string;
+  let preheader: string;
 
   if (isEscalation) {
-    subject = `Your \${dispute.providerName} dispute is \${dispute.daysOld} days old — time to escalate`;
-    htmlContent = `
-      <div style="\${wrap}">
-        <div style="\${header}">\${Logo()}</div>
-        <div style="\${body}">
-          <h1 style="\${h1}">It's time to escalate your dispute, \${name}</h1>
-          <p style="\${pWhite}">Your dispute with <strong>\${dispute.providerName}</strong>\${amountStr} has been open for \${dispute.daysOld} days.</p>
-          
-          <div style="\${tipBox}">
-            <p style="color:#ef4444;font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Your Consumer Rights</p>
-            <p style="color:#6B7280;margin:0;font-size:14px;line-height:1.6;">Under UK consumer law, if a company has not resolved your complaint within 8 weeks (56 days), you have the right to escalate your case to the relevant ombudsman or regulator free of charge.</p>
-          </div>
+    subject = `Your ${dispute.providerName} dispute is ${dispute.daysOld} days old — time to escalate`;
+    preheader = `8-week threshold passed — the ombudsman can now step in.`;
+    body = `
+<h1 style="${s.h1}">It's time to escalate your dispute, ${name}</h1>
+<p style="${s.p}">Your dispute with <strong style="${s.strong}">${dispute.providerName}</strong>${amountStr} has been open for ${dispute.daysOld} days.</p>
 
-          <p style="\${pWhite}">The ombudsman has the power to force companies to refund you, pay compensation, and issue official apologies.</p>
+<div style="${s.dangerBox}">
+  <p style="color:${t.red};font-weight:700;margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Your consumer rights</p>
+  <p style="color:${t.textStrong};margin:0;font-size:14px;line-height:1.6;">Under UK consumer law, if a company has not resolved your complaint within 8 weeks (56 days), you have the right to escalate your case to the relevant ombudsman or regulator free of charge.</p>
+</div>
 
-          <div style="text-align:center;margin:28px 0;">
-            <a href="https://paybacker.co.uk/dashboard/complaints/\${dispute.id}" style="\${cta}">Draft Escapation Letter</a>
-          </div>
+<p style="${s.p}">The ombudsman has the power to force companies to refund you, pay compensation, and issue official apologies.</p>
 
-          <div style="\${box}">
-            <p style="color:#E5E7EB;font-weight:600;margin:0 0 6px;font-size:14px;">How to proceed:</p>
-            <ol style="color:#6B7280;margin:0;font-size:14px;line-height:1.6;padding-left:20px;">
-              <li>Go to your dispute in the dashboard</li>
-              <li>Ask our AI: "Help me draft an ombudsman referral"</li>
-              <li>Use the drafted letter to open your case</li>
-            </ol>
-          </div>
-        </div>
-        \${Footer()}
-      </div>
-    `;
+<div style="text-align:center;margin:28px 0;">
+  <a href="https://paybacker.co.uk/dashboard/complaints/${dispute.id}" style="${s.cta}">Draft escalation letter</a>
+</div>
+
+<div style="${s.box}">
+  <p style="${s.h3}">How to proceed</p>
+  <ol style="color:${t.text};margin:0;font-size:14px;line-height:1.7;padding-left:20px;">
+    <li>Go to your dispute in the dashboard</li>
+    <li>Ask our AI: &ldquo;Help me draft an ombudsman referral&rdquo;</li>
+    <li>Use the drafted letter to open your case</li>
+  </ol>
+</div>
+`;
   } else {
-    subject = `Follow up on your \${dispute.providerName} dispute`;
-    htmlContent = `
-      <div style="\${wrap}">
-        <div style="\${header}">\${Logo()}</div>
-        <div style="\${body}">
-          <h1 style="\${h1}">Checking in on your dispute, \${name}</h1>
-          <p style="\${pWhite}">Your dispute with <strong>\${dispute.providerName}</strong>\${amountStr} was filed \${dispute.daysOld} days ago.</p>
-          
-          <div style="\${box}">
-            <p style="color:#E5E7EB;font-weight:600;margin:0 0 6px;font-size:14px;">Have you received a response?</p>
-            <p style="color:#6B7280;margin:0;font-size:14px;line-height:1.6;">Most companies are required by industry guidelines to acknowledge official complaints within 5 working days.</p>
-          </div>
+    subject = `Follow up on your ${dispute.providerName} dispute`;
+    preheader = `Filed ${dispute.daysOld} days ago — a quick follow-up can keep the pressure on.`;
+    body = `
+<h1 style="${s.h1}">Checking in on your dispute, ${name}</h1>
+<p style="${s.p}">Your dispute with <strong style="${s.strong}">${dispute.providerName}</strong>${amountStr} was filed ${dispute.daysOld} days ago.</p>
 
-          <p style="\${pWhite}">If they haven't replied, now is the perfect time to send a quick follow-up to keep the pressure on.</p>
+<div style="${s.box}">
+  <p style="${s.h3}">Have you received a response?</p>
+  <p style="color:${t.text};margin:0;font-size:14px;line-height:1.6;">Most companies are required by industry guidelines to acknowledge official complaints within 5 working days.</p>
+</div>
 
-          <div style="text-align:center;margin:28px 0;">
-            <a href="https://paybacker.co.uk/dashboard/complaints/\${dispute.id}" style="\${cta}">Update Dispute Status</a>
-          </div>
+<p style="${s.p}">If they haven't replied, now is the perfect time to send a quick follow-up to keep the pressure on.</p>
 
-          <p style="color:#6B7280;font-size:14px;line-height:1.6;margin:0;">Tip: You can ask the AI chat on the dispute page to <em>"Help me follow up with \${dispute.providerName}"</em> and it will write the email for you.</p>
-        </div>
-        \${Footer()}
-      </div>
-    `;
+<div style="text-align:center;margin:28px 0;">
+  <a href="https://paybacker.co.uk/dashboard/complaints/${dispute.id}" style="${s.cta}">Update dispute status</a>
+</div>
+
+<p style="${s.pSmall}">Tip: you can ask the AI chat on the dispute page to <em>&ldquo;Help me follow up with ${dispute.providerName}&rdquo;</em> and it will write the email for you.</p>
+`;
   }
 
   try {
@@ -110,16 +73,16 @@ export async function sendDisputeReminderEmail(
       from: FROM_EMAIL,
       replyTo: REPLY_TO,
       to: email,
-      subject: subject,
-      html: htmlContent,
+      subject,
+      html: renderEmail({ preheader, body }),
     });
     if (error) {
-      console.error(`Dispute reminder email failed for \${email}:`, error);
+      console.error(`Dispute reminder email failed for ${email}:`, error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error(`Dispute reminder email error for \${email}:`, err);
+    console.error(`Dispute reminder email error for ${email}:`, err);
     return false;
   }
 }

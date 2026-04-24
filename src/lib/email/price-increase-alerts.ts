@@ -1,4 +1,5 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { renderEmail, emailStyles as s, emailTokens as t } from './layout';
 
 interface PriceAlert {
   merchantNormalized: string;
@@ -9,94 +10,83 @@ interface PriceAlert {
 }
 
 function buildAlertRow(alert: PriceAlert): string {
+  const complaintQuery = encodeURIComponent(`price increase from £${alert.oldAmount.toFixed(2)} to £${alert.newAmount.toFixed(2)}`);
   return `
-    <div style="background: #E5E7EB; border-radius: 12px; padding: 20px; margin-bottom: 12px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="color: #0B1220; font-weight: 700; font-size: 15px;">${alert.merchantNormalized}</span>
-        <span style="color: #ef4444; font-weight: 700; font-size: 13px;">+${alert.increasePct}%</span>
-      </div>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+    <div style="background:${t.cardBgMuted};border:1px solid ${t.cardBorder};border-radius:12px;padding:20px;margin:0 0 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 8px;">
         <tr>
-          <td style="color: #6B7280; font-size: 13px; padding: 4px 0;">Was &pound;${alert.oldAmount.toFixed(2)}</td>
-          <td style="color: #ef4444; font-size: 13px; font-weight: 600; padding: 4px 0; text-align: right;">Now &pound;${alert.newAmount.toFixed(2)}</td>
-        </tr>
-        <tr>
-          <td colspan="2" style="color: #059669; font-size: 12px; padding: 4px 0;">Extra &pound;${alert.annualImpact.toFixed(2)}/year</td>
+          <td style="color:${t.textStrong};font-weight:700;font-size:15px;">${alert.merchantNormalized}</td>
+          <td style="color:${t.red};font-weight:700;font-size:13px;text-align:right;">+${alert.increasePct}%</td>
         </tr>
       </table>
-      <div style="margin-top: 8px;">
-        <a href="https://paybacker.co.uk/dashboard/complaints?company=${encodeURIComponent(alert.merchantNormalized)}&issue=${encodeURIComponent(`price increase from £${alert.oldAmount.toFixed(2)} to £${alert.newAmount.toFixed(2)}`)}" style="color: #059669; font-size: 12px; text-decoration: underline;">Write complaint letter</a>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        <tr>
+          <td style="color:${t.textMuted};font-size:13px;padding:4px 0;">Was &pound;${alert.oldAmount.toFixed(2)}</td>
+          <td style="color:${t.red};font-size:13px;font-weight:600;padding:4px 0;text-align:right;">Now &pound;${alert.newAmount.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="color:${t.mintDeep};font-size:12px;font-weight:600;padding:4px 0;">Extra &pound;${alert.annualImpact.toFixed(2)}/year</td>
+        </tr>
+      </table>
+      <div style="margin-top:10px;">
+        <a href="https://paybacker.co.uk/dashboard/complaints?company=${encodeURIComponent(alert.merchantNormalized)}&issue=${complaintQuery}" style="${s.link};font-size:12px;">Write complaint letter</a>
       </div>
     </div>`;
 }
 
 export function buildPriceIncreaseEmail(
   userName: string,
-  alerts: PriceAlert | PriceAlert[]
+  alerts: PriceAlert | PriceAlert[],
 ): { subject: string; html: string } {
   const alertArray = Array.isArray(alerts) ? alerts : [alerts];
   const totalAnnualImpact = alertArray.reduce((sum, a) => sum + a.annualImpact, 0);
 
   const subject = alertArray.length === 1
     ? `Price increase detected: ${alertArray[0].merchantNormalized} went up by ${alertArray[0].increasePct}%`
-    : `${alertArray.length} price increases detected - costing you £${totalAnnualImpact.toFixed(0)} extra per year`;
+    : `${alertArray.length} price increases detected — costing you £${totalAnnualImpact.toFixed(0)} extra per year`;
 
   const alertRows = alertArray.map(buildAlertRow).join('');
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; background-color: #F9FAFB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 24px;">
-    <div style="text-align: center; padding: 24px 0;">
-      <h1 style="color: #0B1220; font-size: 22px; margin: 0;">Pay<span style="color: #059669;">backer</span></h1>
+  const body = `
+    <div style="text-align:center;margin:0 0 24px;">
+      <span style="display:inline-block;background:#FEE2E2;border:1px solid #FECACA;border-radius:999px;padding:6px 14px;color:${t.red};font-weight:700;font-size:13px;">
+        ${alertArray.length === 1 ? 'Price increase detected' : `${alertArray.length} price increases detected`}
+      </span>
     </div>
 
-    <div style="background: #FFFFFF; border-radius: 16px; padding: 32px; border: 1px solid #E5E7EB;">
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; background: #ef44441a; border: 1px solid #ef444433; border-radius: 12px; padding: 8px 16px;">
-          <span style="color: #ef4444; font-weight: 700; font-size: 14px;">${alertArray.length === 1 ? 'Price Increase Detected' : `${alertArray.length} Price Increases Detected`}</span>
-        </div>
-      </div>
+    <p style="${s.p}">
+      Hi ${userName}, we spotted ${alertArray.length === 1 ? 'a price increase' : `${alertArray.length} price increases`} on your payments${alertArray.length > 1 ? `, costing you an extra <strong style="${s.strong};color:${t.mintDeep};">&pound;${totalAnnualImpact.toFixed(2)}/year</strong>` : ''}.
+    </p>
 
-      <p style="color: #E5E7EB; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
-        Hi ${userName}, we spotted ${alertArray.length === 1 ? 'a price increase' : `${alertArray.length} price increases`} on your payments${alertArray.length > 1 ? `, costing you an extra <strong style="color: #059669;">&pound;${totalAnnualImpact.toFixed(2)}/year</strong>` : ''}.
-      </p>
+    ${alertRows}
 
-      ${alertRows}
+    <p style="${s.pMuted}">
+      You may be able to dispute ${alertArray.length === 1 ? 'this increase' : 'these increases'} or switch to a better deal.
+    </p>
 
-      <p style="color: #6B7280; font-size: 14px; line-height: 1.6; margin: 16px 0 24px;">
-        You may be able to dispute ${alertArray.length === 1 ? 'this increase' : 'these increases'} or switch to a better deal.
-      </p>
-
-      <div style="text-align: center;">
-        <a href="https://paybacker.co.uk/dashboard/deals" style="display: inline-block; background: #059669; color: #0B1220; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-size: 14px;">
-          Find Better Deals
-        </a>
-      </div>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="https://paybacker.co.uk/dashboard/deals" style="${s.cta}">Find better deals</a>
     </div>
+  `;
 
-    <div style="text-align: center; padding: 24px 0;">
-      <p style="color: #4B5563; font-size: 12px; margin: 0;">
-        Paybacker LTD &middot; <a href="https://paybacker.co.uk" style="color: #4B5563;">paybacker.co.uk</a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>`;
+  const html = renderEmail({
+    preheader: alertArray.length === 1
+      ? `${alertArray[0].merchantNormalized} raised its price by ${alertArray[0].increasePct}%.`
+      : `£${totalAnnualImpact.toFixed(2)}/yr of extra charges detected.`,
+    body,
+  });
 
   return { subject, html };
 }
 
 /**
  * Send a consolidated price increase alert email via Resend.
- * Accepts a single alert or array of alerts - all sent in ONE email.
+ * Accepts a single alert or array of alerts — all sent in ONE email.
  */
 export async function sendPriceIncreaseAlert(
   email: string,
   userName: string,
-  alerts: PriceAlert | PriceAlert[]
+  alerts: PriceAlert | PriceAlert[],
 ): Promise<boolean> {
   const { subject, html } = buildPriceIncreaseEmail(userName, alerts);
 

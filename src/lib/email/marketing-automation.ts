@@ -1,6 +1,7 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import { renderEmail } from './layout';
 
 // Gold/Navy design system styles (shared from onboarding)
 const wrap = `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;`;
@@ -9,7 +10,7 @@ const body = `padding:32px;`;
 const h1 = `color:#0B1220;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3;`;
 const h2 = `color:#0B1220;font-size:18px;font-weight:600;margin:0 0 12px;`;
 const p = `color:#6B7280;font-size:15px;line-height:1.75;margin:0 0 16px;`;
-const pWhite = `color:#E5E7EB;font-size:15px;line-height:1.75;margin:0 0 16px;`;
+const pWhite = `color:#0B1220;font-size:15px;line-height:1.75;margin:0 0 16px;`;
 const box = `background:#F9FAFB;border-radius:12px;padding:20px 24px;margin:20px 0;border-left:3px solid #059669;`;
 const tipBox = `background:#F9FAFB;border-radius:12px;padding:16px 20px;margin:20px 0;border-left:3px solid #059669;`;
 const cta = `display:inline-block;background:#059669;color:#0B1220;font-weight:700;font-size:15px;padding:14px 28px;border-radius:12px;text-decoration:none;margin:8px 0;`;
@@ -45,9 +46,9 @@ export const templates = {
     <div style="${box}">
       <h2 style="${h2}">Complete your setup in 60 seconds:</h2>
       <ul style="color:#6B7280;font-size:14px;line-height:1.7;">
-        <li style="margin-bottom:8px;"><strong style="color:#E5E7EB;">Connect your bank:</strong> We'll automatically identify all your subscriptions.</li>
-        <li style="margin-bottom:8px;"><strong style="color:#E5E7EB;">Run a scan:</strong> Find exactly where you can cut costs immediately.</li>
-        <li><strong style="color:#E5E7EB;">Upgrade to Essential:</strong> Unlock unlimited AI complaint letters to get your money back from unfair charges.</li>
+        <li style="margin-bottom:8px;"><strong style="color:#0B1220;">Connect your bank:</strong> We'll automatically identify all your subscriptions.</li>
+        <li style="margin-bottom:8px;"><strong style="color:#0B1220;">Run a scan:</strong> Find exactly where you can cut costs immediately.</li>
+        <li><strong style="color:#0B1220;">Upgrade to Essential:</strong> Unlock unlimited AI complaint letters to get your money back from unfair charges.</li>
       </ul>
     </div>
     
@@ -95,9 +96,9 @@ export const templates = {
     <div style="${box}">
       <h2 style="${h2}">What's New in Paybacker:</h2>
       <ul style="color:#6B7280;font-size:14px;line-height:1.7;">
-        <li><strong style="color:#E5E7EB;">Enhanced Inbox Scanner:</strong> Automatically detects receipts and finds flight delay compensation opportunities.</li>
-        <li><strong style="color:#E5E7EB;">Stronger Legal AI:</strong> Our new models cite even more specific UK consumer law to ensure high success rates.</li>
-        <li><strong style="color:#E5E7EB;">Duplicate Subs Detection:</strong> We now automatically warn you if you're paying for the same service twice.</li>
+        <li><strong style="color:#0B1220;">Enhanced Inbox Scanner:</strong> Automatically detects receipts and finds flight delay compensation opportunities.</li>
+        <li><strong style="color:#0B1220;">Stronger Legal AI:</strong> Our new models cite even more specific UK consumer law to ensure high success rates.</li>
+        <li><strong style="color:#0B1220;">Duplicate Subs Detection:</strong> We now automatically warn you if you're paying for the same service twice.</li>
       </ul>
     </div>
 
@@ -110,13 +111,19 @@ export const templates = {
 };
 
 export async function sendEmail(email: string, subject: string, html: string) {
+  // If the caller passed a full HTML document, send as-is (AI-generated paths
+  // sometimes emit their own chrome). Otherwise wrap in the shared layout so
+  // we get the color-scheme meta tags that stop Gmail iOS force-inversion.
+  const wrappedHtml = html.includes('<!DOCTYPE') || html.includes('<html')
+    ? html
+    : renderEmail({ body: html });
   try {
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       replyTo: REPLY_TO,
       to: email,
       subject,
-      html,
+      html: wrappedHtml,
     });
     
     if (error) {
