@@ -317,6 +317,37 @@
 }
 .shell-v2 .cta-danger:hover { background: #FEE2E2; }
 
+/* ─── iOS Safari input auto-zoom prevention ───────────────────────────────
+   Mobile Safari auto-zooms any text input whose font-size is < 16px on
+   focus, and often doesn't zoom back out when the keyboard closes —
+   leaving the entire dashboard pinched-out until the user manually
+   pinch-zooms. The dashboard has dozens of forms using Tailwind's
+   `text-sm` (14px) and `text-xs` (12px) on inputs, textareas and
+   selects, so rather than hunt each one down we enforce the 16px
+   minimum globally at ≤768px via a high-specificity selector.
+
+   Paul reported this as "first page is zoomed in after login and I
+   have to pinch to zoom out" — same root cause as the auth pages
+   input fix in PR #270. */
+@media (max-width: 768px) {
+  .shell-v2 input[type="text"],
+  .shell-v2 input[type="email"],
+  .shell-v2 input[type="password"],
+  .shell-v2 input[type="number"],
+  .shell-v2 input[type="tel"],
+  .shell-v2 input[type="search"],
+  .shell-v2 input[type="url"],
+  .shell-v2 input[type="date"],
+  .shell-v2 input[type="datetime-local"],
+  .shell-v2 input[type="month"],
+  .shell-v2 input[type="time"],
+  .shell-v2 input:not([type]),
+  .shell-v2 textarea,
+  .shell-v2 select {
+    font-size: 16px;
+  }
+}
+
 /* ─── Mobile overflow safeguards ──────────────────────────────────────────
    Pages were rendering with horizontal scroll on iPhone-class viewports
    because:
