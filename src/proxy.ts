@@ -81,6 +81,26 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Server-side terms-accepted gate. Any authenticated user without a
+  // recorded `terms_accepted_at` in user_metadata gets bounced to
+  // /auth/accept-terms before they can reach /dashboard or /onboarding.
+  // This is the backstop to the /auth/signup client-side consent
+  // checkbox — it catches OAuth signups that bypassed the gate, legacy
+  // accounts that pre-date the feature, and anyone who edited DOM to
+  // re-enable a disabled button. The accept-terms page auto-drains the
+  // sessionStorage consent blob from fresh OAuth signups, so normal
+  // signups pass through invisibly.
+  const needsTermsGate =
+    user &&
+    !user.user_metadata?.terms_accepted_at &&
+    (request.nextUrl.pathname.startsWith('/dashboard') ||
+      request.nextUrl.pathname.startsWith('/onboarding'));
+  if (needsTermsGate) {
+    const url = new URL('/auth/accept-terms', request.url);
+    url.searchParams.set('next', request.nextUrl.pathname + request.nextUrl.search);
+    return NextResponse.redirect(url);
+  }
+
   // Admin-only path protection
   if (request.nextUrl.pathname.startsWith('/dashboard/admin') && user) {
     const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com').split(',');
@@ -89,8 +109,13 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Redirect authenticated users away from auth pages, honouring any ?redirect= deep link
-  if (request.nextUrl.pathname.startsWith('/auth') && user) {
+  // Redirect authenticated users away from auth pages, honouring any ?redirect= deep link.
+  // Exempt /auth/accept-terms (users must stay here to record consent) and
+  // /auth/callback (OAuth code exchange — interrupting it breaks the session),
+  // otherwise the terms gate above would loop.
+  const isAcceptTermsPage = request.nextUrl.pathname.startsWith('/auth/accept-terms');
+  const isAuthCallback = request.nextUrl.pathname.startsWith('/auth/callback');
+  if (request.nextUrl.pathname.startsWith('/auth') && user && !isAcceptTermsPage && !isAuthCallback) {
     const rawRedirect = request.nextUrl.searchParams.get('redirect');
     const destination = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//')
       ? rawRedirect
