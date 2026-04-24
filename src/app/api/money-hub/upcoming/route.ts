@@ -50,6 +50,14 @@ export interface UpcomingApiResponse {
     confirmedCount: number;
     predictedCount: number;
   };
+  // Empty-state context so the widget can distinguish between
+  // "no bank yet" and "bank connected but nothing scheduled".
+  hasBankConnected: boolean;
+  // Whether any of the connected banks are on a provider that
+  // actually feeds upcoming_payments (currently Yapily only).
+  // TrueLayer-only users will see a "nothing scheduled" state
+  // because upcoming-payments data is not available for them.
+  hasUpcomingCapableBank: boolean;
 }
 
 export async function GET(request: NextRequest) {
@@ -86,11 +94,23 @@ export async function GET(request: NextRequest) {
     query = query.neq('source', 'predicted_recurring');
   }
 
-  const { data, error } = await query;
+  const [{ data, error }, { data: connections }] = await Promise.all([
+    query,
+    supabase
+      .from('bank_connections')
+      .select('provider, status')
+      .eq('user_id', user.id)
+      .neq('status', 'revoked'),
+  ]);
   if (error) {
     console.error('[upcoming] list failed:', error.message);
     return NextResponse.json({ error: 'Failed to load upcoming payments' }, { status: 500 });
   }
+
+  const conns = connections || [];
+  const hasBankConnected = conns.length > 0;
+  // Only Yapily connections populate upcoming_payments today.
+  const hasUpcomingCapableBank = conns.some((c) => c.provider === 'yapily' && c.status === 'active');
 
   const rows = (data || []) as UpcomingPaymentRow[];
   const groupsMap = new Map<string, UpcomingDayGroup>();
@@ -139,6 +159,8 @@ export async function GET(request: NextRequest) {
       confirmedCount,
       predictedCount,
     },
+    hasBankConnected,
+    hasUpcomingCapableBank,
   };
 
   return NextResponse.json(body);

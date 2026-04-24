@@ -109,6 +109,13 @@ export default function UpcomingWidget() {
   }
 
   if (!data || flat.length === 0) {
+    const hasBank = data?.hasBankConnected ?? false;
+    const upcomingCapable = data?.hasUpcomingCapableBank ?? false;
+    const subtitle = !hasBank
+      ? 'Connect your bank via Open Banking to track upcoming payments.'
+      : !upcomingCapable
+        ? 'Upcoming payments are detected via Yapily. Your current bank connection only syncs past transactions.'
+        : "We'll show direct debits, standing orders and scheduled payments here as your bank reports them.";
     return (
       <div className="card" style={{ padding: 18 }}>
         <div className="k-label" style={{ marginBottom: 8 }}>
@@ -117,9 +124,7 @@ export default function UpcomingWidget() {
         <div className="k-val" style={{ color: 'var(--text-3)', fontSize: 16 }}>
           Nothing scheduled
         </div>
-        <div className="k-delta">
-          Connect your bank via Open Banking to track upcoming payments.
-        </div>
+        <div className="k-delta">{subtitle}</div>
       </div>
     );
   }
