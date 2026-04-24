@@ -17,6 +17,7 @@ import { AI_LETTER_DISCLAIMER_HTML } from '@/lib/legal-disclaimer';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
+import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
@@ -885,6 +886,10 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   const [contractUploading, setContractUploading] = useState(false);
   const [justExtracted, setJustExtracted] = useState(false);
   const [providerInfo, setProviderInfo] = useState<any>(null);
+  // Collapse all but the most recent timeline entry by default so
+  // long disputes are skimmable. User taps "Show full history" to
+  // unfurl the rest.
+  const [showFullHistory, setShowFullHistory] = useState(false);
 
   const fetchDispute = async () => {
     try {
@@ -1184,6 +1189,11 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
       </div>
 
+      {/* AI overview — summary + latest update + next action.
+          Renders above the progress tracker so the user knows where
+          they stand before touching anything else. */}
+      <DisputeOverviewCard disputeId={dispute.id} />
+
       {/* Progress Tracker */}
       <DisputeProgressTracker dispute={dispute} providerInfo={providerInfo} />
 
@@ -1298,8 +1308,21 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           </div>
         ) : (
           <>
+          {(() => {
+            // Newest at the top — overrides the API\'s ASC sort so the
+            // page reads top-to-bottom from "what happened most recently"
+            // backwards through history. Collapsed by default past the
+            // first entry; "Show full history" expands the rest.
+            const orderedAll = [...(dispute.correspondence ?? [])].sort(
+              (a, b) => new Date((b.entry_date as any) || (b as any).occurred_at || 0).getTime()
+                       - new Date((a.entry_date as any) || (a as any).occurred_at || 0).getTime(),
+            );
+            const HEAD = 1;
+            const visible = (orderedAll.length > HEAD && !showFullHistory) ? orderedAll.slice(0, HEAD) : orderedAll;
+            const hidden = Math.max(0, orderedAll.length - visible.length);
+            return (
           <div className="space-y-4">
-            {dispute.correspondence?.map((entry, index) => {
+            {visible.map((entry, index) => {
               const config = ENTRY_TYPE_CONFIG[entry.entry_type] || ENTRY_TYPE_CONFIG.user_note;
               const Icon = config.icon;
               const isAiLetter = entry.entry_type === 'ai_letter';
@@ -1478,7 +1501,25 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                 </div>
               );
             })}
+            {hidden > 0 && (
+              <button
+                onClick={() => setShowFullHistory(true)}
+                className="w-full text-center py-3 px-4 rounded-xl border border-dashed border-slate-300 hover:border-emerald-400 hover:bg-emerald-50/40 text-sm font-medium text-slate-600 hover:text-emerald-700 transition-all"
+              >
+                Show full history ({hidden} earlier {hidden === 1 ? 'entry' : 'entries'})
+              </button>
+            )}
+            {showFullHistory && orderedAll.length > HEAD && (
+              <button
+                onClick={() => setShowFullHistory(false)}
+                className="w-full text-center py-2 px-4 text-xs font-medium text-slate-500 hover:text-slate-900"
+              >
+                Collapse history
+              </button>
+            )}
           </div>
+            );
+          })()}
 
           {/* Action buttons at bottom of thread */}
           {!isResolved(dispute.status) && (
