@@ -67,6 +67,8 @@ export default function AdminCancelInfoPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Row>>({});
   const [saving, setSaving] = useState(false);
+  const [runningRefresh, setRunningRefresh] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<{ ok: boolean; summary: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -206,7 +208,53 @@ export default function AdminCancelInfoPage() {
         >
           <RefreshCw className="h-4 w-4" /> Reload
         </button>
+        {/* Fire the Perplexity refresh cron on-demand so we can validate
+            it end-to-end without waiting for the Monday 03:00 UTC run.
+            Calls the same endpoint Vercel cron hits; admin-session auth
+            is accepted alongside the bearer path. */}
+        <button
+          onClick={async () => {
+            setRunningRefresh(true);
+            setRefreshResult(null);
+            try {
+              const res = await fetch('/api/cron/refresh-cancellation-info');
+              const data = await res.json();
+              if (!res.ok) {
+                setRefreshResult({ ok: false, summary: data.error || `Failed (${res.status})` });
+              } else {
+                const parts = [
+                  `${data.updated ?? 0} updated`,
+                  `${data.unchanged ?? 0} unchanged`,
+                  `${data.discovered ?? 0} discovered`,
+                  `${(data.failed ?? 0) + (data.discovery_failed ?? 0)} failed`,
+                ];
+                setRefreshResult({ ok: true, summary: parts.join(' · ') });
+                await load();
+              }
+            } catch (e) {
+              setRefreshResult({ ok: false, summary: e instanceof Error ? e.message : 'Request failed' });
+            } finally {
+              setRunningRefresh(false);
+            }
+          }}
+          disabled={runningRefresh}
+          className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-sm text-emerald-700 hover:bg-emerald-500/20 disabled:opacity-60"
+          title="Runs the weekly refresh cron now — up to 10 stale rows refreshed + 5 new providers discovered via Perplexity."
+        >
+          {runningRefresh ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {runningRefresh ? 'Running refresh…' : 'Run refresh now'}
+        </button>
       </div>
+
+      {refreshResult && (
+        <div className={`mb-4 rounded-lg px-4 py-3 text-sm border ${
+          refreshResult.ok
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'
+            : 'bg-red-500/10 border-red-500/30 text-red-700'
+        }`}>
+          {refreshResult.ok ? 'Refresh complete — ' : 'Refresh failed — '}{refreshResult.summary}
+        </div>
+      )}
 
       {err && (
         <div className="card p-4 border-red-500/30 bg-red-500/10 text-red-700 mb-4 flex items-center gap-2">

@@ -25,6 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { authorizeAdminOrCron } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -143,10 +144,11 @@ function scoreConfidence(answer: PerplexityAnswer): 'high' | 'medium' | 'low' {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = request.headers.get('authorization');
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  // Two legitimate callers: Vercel cron (Bearer CRON_SECRET) and the
+  // founder firing an ad-hoc run from /dashboard/admin/cancel-info.
+  // authorizeAdminOrCron handles both paths uniformly.
+  const auth = await authorizeAdminOrCron(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.reason ?? 'Unauthorized' }, { status: auth.status });
 
   const admin = getAdmin();
   const staleCutoff = new Date(Date.now() - STALE_DAYS * 86_400_000).toISOString();
