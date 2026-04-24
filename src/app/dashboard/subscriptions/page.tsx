@@ -2504,10 +2504,10 @@ export default function SubscriptionsPage() {
                         await fetchSubscriptions();
                         setBankToast(
                           data.watchdog_link_created
-                            ? `Tracking replies from ${data.sender_domain} in Disputes`
-                            : `Marked as sent — link a reply thread in Disputes if no confirmation arrives`,
+                            ? "Marked as sent. We'll track the reply in Disputes."
+                            : "Marked as sent. Check Disputes for the reply.",
                         );
-                        setTimeout(() => setBankToast(null), 5500);
+                        setTimeout(() => setBankToast(null), 5000);
                       } else {
                         setBankToast('Failed to update — try again');
                         setTimeout(() => setBankToast(null), 5000);
