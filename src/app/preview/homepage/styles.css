@@ -1636,6 +1636,30 @@
   }
 }
 
+/* Phone fallback (≤560px). iOS Safari has intermittent bugs where
+   `transform: scale(calc(100cqw / ...))` evaluates to scale(1) on
+   mount, leaving the 980×612.5 demo at native size — the wrapper's
+   overflow:hidden then clips it to a top-left corner, which is the
+   "only half the video renders" symptom reported on iPhone.
+   The @container rule above still applies on working browsers; this
+   rule is later in the cascade so it wins there too and produces the
+   same visible result (on iPhone the wrap padding is 0 16px, so the
+   container inline-size equals 100vw − 32px).
+   Both .feature-stage and .demo-slot live inside .wrap on this page,
+   so the 32px subtrahend is valid for every demo.  */
+@media (max-width: 560px) {
+  .m-v2-root .feature-stage > .demo-stage,
+  .m-v2-root .demo-slot > .demo-stage {
+    width: 980px;
+    height: 612.5px;
+    max-width: none;
+    aspect-ratio: auto;
+    margin: 0;
+    transform-origin: top left;
+    transform: scale(calc((100vw - 32px) / 980));
+  }
+}
+
 /* The wrapper itself must reserve the scaled height so the page
    layout doesn't collapse around the now-transformed child. Range
    matches the transform-fallback range (≤1024px) below.
