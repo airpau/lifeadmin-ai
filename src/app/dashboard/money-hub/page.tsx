@@ -684,8 +684,11 @@ export default function MoneyHubPage() {
  // ─── Derived values ──────────────────────────────────────────────────
 
  const isTestUser = process.env.NODE_ENV === 'development' || (data && data.accounts && data.tier === 'free'); // We will just check if we can reliably inject via API
- const isPaid = (data && data.tier === 'essential') || (data && data.tier === 'pro') || data?.isTestUserOverride;
- const isPro = (data && data.tier === 'pro') || data?.isTestUserOverride;
+ // data.tier is the effectiveTier returned by /api/money-hub, so trial users
+ // and the hardcoded test user already come through as 'pro'. No need for
+ // a separate isTestUserOverride branch — the API never populates that flag.
+ const isPaid = (data && data.tier === 'essential') || (data && data.tier === 'pro');
+ const isPro = (data && data.tier === 'pro');
 
  const lastSyncedAt = data.accounts.reduce((latest: string | null, acc: any) => {
  if (!acc.last_synced_at) return latest;
@@ -703,11 +706,21 @@ export default function MoneyHubPage() {
  // Cooldown gate must mirror the server: it is keyed on the last *manual* sync,
  // not the cron-driven last_synced_at — otherwise a recent cron run disables the button.
  const lastManualSyncMins = lastManualSyncAt ? Math.round((Date.now() - new Date(lastManualSyncAt).getTime()) / 60000) : null;
+ const syncCooldownMinsLeft = (() => {
+ if (lastManualSyncMins === null) return 0;
+ return Math.max(0, 360 - lastManualSyncMins);
+ })();
  const canSync = (() => {
  if (syncing) return false;
- if (data.tier !== 'pro' && !data.isTestUserOverride) return false;
- if (!lastManualSyncMins) return true;
- return lastManualSyncMins >= 360;
+ if (data.tier !== 'pro') return false;
+ return syncCooldownMinsLeft === 0;
+ })();
+ const syncButtonTitle = (() => {
+ if (data.tier !== 'pro') return 'Manual sync is a Pro feature';
+ if (syncCooldownMinsLeft === 0) return 'Sync now';
+ const h = Math.floor(syncCooldownMinsLeft / 60);
+ const m = syncCooldownMinsLeft % 60;
+ return `Next manual sync available in ${h > 0 ? `${h}h ` : ''}${m}m`;
  })();
 
  const syncTierText = (() => {
@@ -833,10 +846,13 @@ export default function MoneyHubPage() {
  <button
  onClick={handleSync}
  disabled={syncing || !canSync}
+ title={syncButtonTitle}
  className="flex items-center gap-2 cta-ghost transition-all"
  >
  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
- {syncing ? 'Syncing...' : 'Sync'}
+ {syncing ? 'Syncing...' : !canSync && data.tier === 'pro' && syncCooldownMinsLeft > 0
+ ? `Sync · ${Math.floor(syncCooldownMinsLeft / 60)}h ${syncCooldownMinsLeft % 60}m`
+ : 'Sync'}
  </button>
  </div>
  </div>
