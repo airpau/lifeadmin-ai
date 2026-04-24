@@ -73,9 +73,21 @@ export async function GET(
     return c;
   });
 
+  // Flag whether the user has a Gmail connection so the UI can gate
+  // the "Open in Gmail" deep-link — mail.google.com doesn't resolve
+  // message IDs for Outlook users, so showing the button to them
+  // would just land them on their own inbox.
+  const { data: emailConns } = await supabase
+    .from('email_connections')
+    .select('provider_type')
+    .eq('user_id', user.id)
+    .eq('status', 'active');
+  const userHasGmail = (emailConns ?? []).some((c) => c.provider_type === 'google');
+
   return NextResponse.json({
     ...dispute,
     correspondence: enrichedCorrespondence,
+    user_has_gmail: userHasGmail,
   });
 }
 
