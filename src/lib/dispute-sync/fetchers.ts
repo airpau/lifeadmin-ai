@@ -80,16 +80,40 @@ function parseFrom(raw: string): { address: string; name: string; domain: string
 }
 
 function stripHtml(input: string): string {
+  // HTML emails don\'t put newlines between block elements, so a naive
+  // tag strip (plus collapsing all whitespace) ends up with every
+  // sentence on a single line — unreadable. We convert block-level
+  // tags to newlines BEFORE stripping so paragraphs, lists, rows and
+  // headings keep their separation.
   return input
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    // Explicit line breaks → single newline
+    .replace(/<br\s*\/?>/gi, '\n')
+    // Paragraph / heading / list-item / table-row / div / blockquote /
+    // section boundaries → double newline so the output gets proper
+    // paragraph spacing once blank-line collapsing runs.
+    .replace(/<\/(p|h[1-6]|li|tr|div|blockquote|section|article|header|footer|table|ul|ol)\s*>/gi, '\n\n')
+    // Strip everything else
     .replace(/<[^>]+>/g, ' ')
+    // HTML entities that commonly survive in mail bodies
     .replace(/&nbsp;/g, ' ')
+    .replace(/&#160;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/\s+/g, ' ')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    // Collapse horizontal whitespace (but keep newlines)
+    .replace(/[ \t]+/g, ' ')
+    // Trim whitespace at each line boundary
+    .replace(/ *\n */g, '\n')
+    // Collapse any run of 3+ newlines down to a paragraph gap
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
