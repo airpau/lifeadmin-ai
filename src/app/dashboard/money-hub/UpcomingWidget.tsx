@@ -101,7 +101,7 @@ export default function UpcomingWidget() {
     return (
       <div className="card" style={{ padding: 18 }}>
         <div className="k-label" style={{ marginBottom: 8 }}>
-          <Calendar className="h-3.5 w-3.5" /> Next 7 days
+          <Calendar className="h-3.5 w-3.5" /> Upcoming pending payments
         </div>
         <div className="k-val" style={{ color: 'var(--text-3)' }}>—</div>
       </div>
@@ -110,18 +110,19 @@ export default function UpcomingWidget() {
 
   if (!data || flat.length === 0) {
     const hasBank = data?.hasBankConnected ?? false;
-    const subtitle = !hasBank
-      ? 'Connect your bank via Open Banking to track upcoming payments.'
-      : "We'll show direct debits, standing orders and scheduled payments here as your bank reports them.";
     return (
       <div className="card" style={{ padding: 18 }}>
         <div className="k-label" style={{ marginBottom: 8 }}>
-          <Calendar className="h-3.5 w-3.5" /> Next 7 days
+          <Calendar className="h-3.5 w-3.5" /> Upcoming pending payments
         </div>
         <div className="k-val" style={{ color: 'var(--text-3)', fontSize: 16 }}>
-          Nothing scheduled
+          None right now
         </div>
-        <div className="k-delta">{subtitle}</div>
+        {!hasBank && (
+          <div className="k-delta">
+            Connect your bank via Open Banking to track upcoming payments.
+          </div>
+        )}
       </div>
     );
   }
@@ -133,7 +134,7 @@ export default function UpcomingWidget() {
       {/* Header: eyebrow + headline + full-timeline link */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div className="k-label">
-          <Calendar className="h-3.5 w-3.5" /> Next 7 days
+          <Calendar className="h-3.5 w-3.5" /> Upcoming pending payments
         </div>
         <Link
           href="/dashboard/money-hub/upcoming"
