@@ -189,6 +189,25 @@ export async function POST(request: NextRequest) {
         userId: user.id,
       }).catch((e) => console.error('Learn error (non-fatal):', e.message));
 
+      // 4. Reverse-sync to subscriptions: if the user recategorised a
+      // merchant in Money Hub, the matching subscription row was
+      // stuck on its old category — the subscriptions PATCH path
+      // goes subs→Money Hub, but this endpoint was one-way. That
+      // meant "Test Valley" could be council_tax in bank_transactions
+      // but still 'other' on the Subscriptions page. Keeps the two
+      // stores aligned regardless of which screen the user corrects
+      // from.
+      try {
+        const { error: subSyncErr } = await admin.from('subscriptions')
+          .update({ category: newCategory })
+          .eq('user_id', user.id)
+          .is('dismissed_at', null)
+          .or(`provider_name.ilike.%${overridePattern}%,bank_description.ilike.%${overridePattern}%`);
+        if (subSyncErr) console.error('Sub reverse-sync failed (non-fatal):', subSyncErr.message);
+      } catch (e) {
+        console.error('Sub reverse-sync threw:', e);
+      }
+
       return NextResponse.json({
         success: true,
         updated,
