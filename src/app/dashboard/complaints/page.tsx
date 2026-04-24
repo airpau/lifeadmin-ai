@@ -19,6 +19,7 @@ import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers
 import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
 import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
+import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
@@ -92,7 +93,12 @@ interface Correspondence {
   escalation_path?: string;
   detected_from_email?: boolean;
   sender_address?: string | null;
+  sender_name?: string | null;
   email_thread_id?: string | null;
+  ai_category?: string | null;
+  ai_respond_needed?: boolean | null;
+  ai_urgency?: string | null;
+  ai_rationale?: string | null;
 }
 
 // ============================================================
@@ -1385,6 +1391,20 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Auto-imported
                         </span>
                       )}
+                      {/* Classifier-driven badge so auto-replies and acks
+                          don\'t masquerade as substantive replies that need
+                          action. `ai_respond_needed === false` = holding/ack;
+                          true = real response the user should answer. */}
+                      {isFromCompany && entry.ai_respond_needed === false && (
+                        <span className="text-[10px] bg-slate-100 text-slate-600 border border-slate-300 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide" title={entry.ai_rationale ?? undefined}>
+                          Auto-reply · no action
+                        </span>
+                      )}
+                      {isFromCompany && entry.ai_respond_needed === true && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-300 px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wide" title={entry.ai_rationale ?? undefined}>
+                          Action needed
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-slate-600 text-xs flex items-center gap-1">
@@ -1503,6 +1523,8 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         </div>
                       )}
                     </>
+                  ) : isFromCompany ? (
+                    <EmailCorrespondenceBody content={entry.content} />
                   ) : (
                     <p className="text-sm text-slate-600 whitespace-pre-wrap">{entry.content}</p>
                   )}
