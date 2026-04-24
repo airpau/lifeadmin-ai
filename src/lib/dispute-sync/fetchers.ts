@@ -62,20 +62,25 @@ interface GraphMessage {
 
 function parseFrom(raw: string): { address: string; name: string; domain: string } {
   if (!raw) return { address: '', name: '', domain: '' };
-  const match = raw.match(/^\s*(?:"?([^"<]*?)"?\s*)?<?([^<>\s]+@[^<>\s]+)>?\s*$/);
-  if (!match) {
-    const bare = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? '';
-    return {
-      address: bare,
-      name: '',
-      domain: bare.split('@')[1]?.toLowerCase() ?? '',
-    };
+  // Form 1: `Name <user@domain>` or `"Name" <user@domain>`. We match
+  // this case explicitly so the bare-email path can fall through
+  // cleanly. The previous combined regex was non-greedy on the name
+  // capture but, when given a bare email like `autoresponse@aciuk.uk`
+  // (no name, no angle brackets), backtracked into eating the first
+  // letter as a "name" — leaving the address as `utoresponse@aciuk.uk`.
+  // That broke the dedicated-auto-responder relevance bypass which
+  // requires the local-part to begin with `autoresponse`.
+  const angled = raw.match(/^\s*(?:"?([^"<]*?)"?\s*)<\s*([^<>\s@]+@[^<>\s]+)\s*>\s*$/);
+  if (angled) {
+    const address = angled[2].toLowerCase();
+    return { address, name: (angled[1] ?? '').trim(), domain: address.split('@')[1] ?? '' };
   }
-  const address = match[2].toLowerCase();
+  // Form 2: bare email — extract the first email-shaped token.
+  const bare = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? '';
   return {
-    address,
-    name: (match[1] ?? '').trim(),
-    domain: address.split('@')[1] ?? '',
+    address: bare.toLowerCase(),
+    name: '',
+    domain: bare.split('@')[1]?.toLowerCase() ?? '',
   };
 }
 
