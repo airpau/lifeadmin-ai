@@ -210,6 +210,11 @@ export async function PATCH(
   if (body.money_recovered !== undefined) allowedFields.money_recovered = parseFloat(body.money_recovered);
   if (body.outcome_notes !== undefined) allowedFields.outcome_notes = body.outcome_notes;
   if (body.account_number !== undefined) allowedFields.account_number = body.account_number;
+  if (body.issue_summary !== undefined) allowedFields.issue_summary = body.issue_summary;
+  if (body.issue_type !== undefined) {
+    const allowed = new Set(['complaint','energy_dispute','broadband_complaint','flight_compensation','parking_appeal','debt_dispute','refund_request','hmrc_tax_rebate','council_tax_band','dvla_vehicle','nhs_complaint']);
+    if (allowed.has(body.issue_type)) allowedFields.issue_type = body.issue_type;
+  }
 
   // Auto-set resolved_at when status changes to resolved
   if (body.status?.startsWith('resolved_')) {
