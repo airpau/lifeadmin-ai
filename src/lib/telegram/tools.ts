@@ -170,11 +170,26 @@ export const telegramTools: Tool[] = [
   {
     name: 'get_bank_connections',
     description:
-      "Get the user's connected bank accounts — which banks are linked, their status (active/expired/expiring), last sync time, and account names.",
+      "Get the user's connected bank accounts — which banks are linked, their status (active/expired/expiring), last sync time, and account names. Revoked and soft-deleted connections are hidden.",
     input_schema: {
       type: 'object' as const,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'remove_bank_connection',
+    description:
+      "Permanently hide a bank connection the user no longer wants to see — typically a sandbox/test connection they used while exploring. Only call after the user has explicitly confirmed they want to remove it (not just disconnect it). The connection stops appearing in this bot and in Money Hub, but historical transactions are preserved. Matches on bank name or account-name substring (case-insensitive).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        identifier: {
+          type: 'string',
+          description: 'A bank name or unique substring of a linked account (e.g. "modelo", "sandbox", "mario"). If multiple connections match, the tool will ask you to narrow it down.',
+        },
+      },
+      required: ['identifier'],
     },
   },
   {
