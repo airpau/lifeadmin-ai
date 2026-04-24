@@ -979,10 +979,19 @@ export default function SubscriptionsPage() {
   const [bulkResults, setBulkResults] = useState<{ sub: Subscription; email: any; error?: string }[] | null>(null);
 
   const handleBulkCancel = async () => {
+    // Free tier has a per-month letter quota. Warn when the user is about to
+    // generate more emails than they can reasonably send before the quota 429s
+    // kick in, so they don't end up with half a bulk result set full of errors.
+    if (userTier === 'free' && selectedForBulk.size > 3) {
+      const proceed = confirm(
+        `You're on the Free plan (3 AI letters per month). Generating ${selectedForBulk.size} cancellation emails will hit the rate limit partway through. Continue anyway?`,
+      );
+      if (!proceed) return;
+    }
     setBulkGenerating(true);
     setBulkResults(null);
     const results: { sub: Subscription; email: any; error?: string }[] = [];
-    
+
     for (const id of Array.from(selectedForBulk)) {
       const sub = subscriptions.find(s => s.id === id);
       if (!sub) continue;
@@ -1196,17 +1205,25 @@ export default function SubscriptionsPage() {
     }
   };
 
-  // Dismiss a contract renewal alert
+  // Dismiss a contract renewal alert. Optimistically hide the alert, then
+  // roll back (and toast) if the PATCH fails so the user doesn't lose state.
   const handleDismissAlert = async (alertId: string) => {
+    const snapshot = contractAlerts;
+    setContractAlerts(prev => prev.filter(a => a.id !== alertId));
     try {
-      await fetch('/api/contract-alerts', {
+      const res = await fetch('/api/contract-alerts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: alertId, status: 'dismissed' }),
       });
-      setContractAlerts(prev => prev.filter(a => a.id !== alertId));
+      if (!res.ok) {
+        setContractAlerts(snapshot);
+        showToast('Failed to dismiss alert.', 'error', 4000);
+      }
     } catch (e) {
       console.error('Failed to dismiss alert:', e);
+      setContractAlerts(snapshot);
+      showToast('Failed to dismiss alert.', 'error', 4000);
     }
   };
 
@@ -1419,9 +1436,9 @@ export default function SubscriptionsPage() {
                 return (
                   <div className="bg-amber-100 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-3">
                     <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-amber-300 text-xs">
+                    <p className="text-amber-700 text-xs">
                       Your data was last synced {daysSinceSync} day{daysSinceSync !== 1 ? 's' : ''} ago. Essential members get daily updates.{' '}
-                      <a href="/dashboard/upgrade" className="underline hover:text-amber-200 transition-colors">Upgrade</a>
+                      <a href="/dashboard/upgrade" className="underline hover:text-amber-900 transition-colors">Upgrade</a>
                     </p>
                   </div>
                 );
@@ -1783,7 +1800,7 @@ export default function SubscriptionsPage() {
                 </button>
               </div>
             </div>
-            <div className="kpi-row c4" style={{marginBottom:16}}>
+            <div className="kpi-row c3" style={{marginBottom:16}}>
               <div className="kpi-card">
                 <div className="k-label">Monthly total</div>
                 <div className="k-val">{formatGBP(monthly)}</div>
@@ -1798,11 +1815,6 @@ export default function SubscriptionsPage() {
                 <div className="k-label">Flagged</div>
                 <div className={`k-val ${flaggedCount > 0 ? 'amber' : ''}`}>{flaggedCount}</div>
                 <div className="k-delta">Detected &middot; needs review</div>
-              </div>
-              <div className="kpi-card">
-                <div className="k-label">Review savings</div>
-                <div className="k-val green">Review list</div>
-                <div className="k-delta">Scroll to flagged section</div>
               </div>
             </div>
           </>
@@ -1901,14 +1913,18 @@ export default function SubscriptionsPage() {
                 </button>
                 <button
                   onClick={async () => {
+                    if (!confirm(`Confirm all ${reviewCount} subscription${reviewCount === 1 ? '' : 's'} as yours? This marks them as reviewed and is non-destructive — you can still edit or delete them individually.`)) return;
                     try {
                       const supabase = createClient();
                       const { data: { user } } = await supabase.auth.getUser();
                       if (!user) return;
-                      await supabase.rpc('confirm_all_subscriptions', { p_user_id: user.id });
+                      const { error } = await supabase.rpc('confirm_all_subscriptions', { p_user_id: user.id });
+                      if (error) throw error;
                       await fetchSubscriptions();
+                      showToast(`Confirmed ${reviewCount} subscription${reviewCount === 1 ? '' : 's'}.`, 'success', 4000);
                     } catch (err) {
                       console.error('Failed to confirm all:', err);
+                      showToast('Failed to confirm subscriptions. Please try again.', 'error', 5000);
                     }
                   }}
                   className="bg-green-500/20 hover:bg-green-500/30 text-green-400 font-medium px-4 py-2 rounded-lg text-sm transition-all whitespace-nowrap border border-green-500/30"
@@ -1947,7 +1963,11 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Total All Commitments</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
+            {/* Use the server-side subscriptions_count (already excludes mortgages,
+                loans, and council tax). countActiveSubscriptions runs over the
+                client state and INCLUDES council tax rows, which then got added
+                to council_tax_count on top → double-count. */}
+            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {rpcTotals.subscriptions_count + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
           </div>
         </div>
       )}
@@ -2185,7 +2205,21 @@ export default function SubscriptionsPage() {
                 }}
               >
                 <div className="flex items-start">
-                  <div className="pt-1 pr-4" onClick={(e) => { e.stopPropagation(); handleToggleBulk(sub.id); }}>
+                  <div
+                    className="pt-1 pr-4"
+                    role="checkbox"
+                    aria-checked={selectedForBulk.has(sub.id)}
+                    aria-label={`Select ${sub.provider_name} for bulk actions`}
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); handleToggleBulk(sub.id); }}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleToggleBulk(sub.id);
+                      }
+                    }}
+                  >
                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors cursor-pointer ${selectedForBulk.has(sub.id) ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500 hover:border-emerald-500'}`}>
                       {selectedForBulk.has(sub.id) && <svg className="w-3.5 h-3.5 text-slate-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                     </div>
@@ -2301,6 +2335,7 @@ export default function SubscriptionsPage() {
                         }}
                         className="text-slate-600 hover:text-purple-400 transition-all p-1"
                         title="Upload bill to extract contract dates"
+                        aria-label={`Upload bill for ${sub.provider_name}`}
                       >
                         <Upload className="h-4 w-4" />
                       </button>
@@ -2311,6 +2346,7 @@ export default function SubscriptionsPage() {
                         }}
                         className="text-slate-600 hover:text-emerald-600 transition-all p-1"
                         title="Edit"
+                        aria-label={`Edit ${sub.provider_name}`}
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -2321,6 +2357,7 @@ export default function SubscriptionsPage() {
                         }}
                         className="text-slate-600 hover:text-red-400 transition-all p-1"
                         title="Delete"
+                        aria-label={`Delete ${sub.provider_name}`}
                       >
                         <X className="h-4 w-4" />
                       </button>
