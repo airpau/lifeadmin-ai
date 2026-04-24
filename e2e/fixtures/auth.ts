@@ -18,6 +18,24 @@ export const E2E_PASSWORD = process.env.E2E_PASSWORD || '';
 
 export const hasCreds = Boolean(E2E_EMAIL && E2E_PASSWORD);
 
+/**
+ * The cookie consent banner (`CookieConsentBanner.tsx`) is `fixed bottom-0
+ * inset-x-0 z-[9999]` — at typical viewport heights it covers the bottom of
+ * the auth forms, including the submit button. Dismiss it up-front so tests
+ * can interact with the form below. This is also a real UX issue (see
+ * `_handoff/UX_AUDIT.md` § auth banner blocks submit).
+ */
+export const dismissCookieBanner = async (page: Page) => {
+  const banner = page.locator('.fixed.bottom-0.inset-x-0').first();
+  if (await banner.isVisible().catch(() => false)) {
+    const accept = page.getByRole('button', { name: /accept|ok|got it|continue/i }).first();
+    if (await accept.isVisible().catch(() => false)) {
+      await accept.click().catch(() => {});
+      await banner.waitFor({ state: 'hidden', timeout: 2_000 }).catch(() => {});
+    }
+  }
+};
+
 export const loginViaForm = async (page: Page) => {
   if (!hasCreds) {
     throw new Error(
@@ -25,8 +43,9 @@ export const loginViaForm = async (page: Page) => {
     );
   }
   await page.goto('/auth/login');
+  await dismissCookieBanner(page);
   await page.getByLabel(/email/i).first().fill(E2E_EMAIL);
-  await page.getByLabel(/password/i).first().fill(E2E_PASSWORD);
+  await page.locator('input#password').fill(E2E_PASSWORD);
   await page.getByRole('button', { name: /log in|sign in/i }).click();
   // Settle on either dashboard or the terms gate, depending on account state.
   await page.waitForURL(

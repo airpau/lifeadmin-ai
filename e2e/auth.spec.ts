@@ -1,4 +1,4 @@
-import { test, expect, loginViaForm, hasCreds } from './fixtures/auth';
+import { test, expect, loginViaForm, hasCreds, dismissCookieBanner } from './fixtures/auth';
 
 /**
  * Auth UAT — login flow, invalid creds, session persistence.
@@ -10,7 +10,7 @@ test.describe('Auth', () => {
     await page.goto('/auth/login');
     await expect(page.getByRole('heading', { name: /log in|sign in|welcome/i })).toBeVisible();
     await expect(page.getByLabel(/email/i).first()).toBeVisible();
-    await expect(page.getByLabel(/password/i).first()).toBeVisible();
+    await expect(page.locator('input#password')).toBeVisible();
     await expect(page.getByRole('button', { name: /log in|sign in/i })).toBeVisible();
     // "Forgot password" link should exist and be reachable
     await expect(page.getByRole('link', { name: /forgot/i })).toBeVisible();
@@ -31,9 +31,12 @@ test.describe('Auth', () => {
 
   test('invalid credentials show an error', async ({ page }) => {
     await page.goto('/auth/login');
-    await page.getByLabel(/email/i).first().fill('invalid-e2e@example.com');
-    await page.getByLabel(/password/i).first().fill('wrong-password-12345');
-    await page.getByRole('button', { name: /log in|sign in/i }).click();
+    // Wait for form to be fully mounted
+    await page.locator('input#email').waitFor({ state: 'visible' });
+    await page.locator('input#email').fill('invalid-e2e@example.com');
+    await page.locator('input#password').fill('wrong-password-12345');
+    // Submit via Enter on password field (avoids cookie-banner click-intercept at bottom)
+    await page.locator('input#password').press('Enter');
     // Expect an error message; wording is permissive since it might be
     // "Invalid credentials" or "Email or password is incorrect"
     await expect(
@@ -43,8 +46,8 @@ test.describe('Auth', () => {
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 
-  test.skip(!hasCreds, 'E2E creds not set');
   test('valid credentials authenticate and land on dashboard or gate', async ({ page }) => {
+    test.skip(!hasCreds, 'E2E_EMAIL / E2E_PASSWORD not set in .env.e2e');
     await loginViaForm(page);
     const url = new URL(page.url());
     expect(
