@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   const [budgetsRes, txnsRes] = await Promise.all([
     admin()
       .from('money_hub_budgets')
-      .select('id, category, monthly_limit, alerts_enabled, created_at')
+      .select('id, category, monthly_limit, rollover, created_at')
       .eq('user_id', auth.userId),
     admin()
       .from('bank_transactions')
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       remaining_gbp: parseFloat((Number(b.monthly_limit ?? 0) - spent).toFixed(2)),
       percentage_used: parseFloat(pct.toFixed(1)),
       status: pct > 100 ? 'over_budget' : pct > 80 ? 'warning' : 'on_track',
-      alerts_enabled: !!b.alerts_enabled,
+      rollover: !!b.rollover,
     };
   });
 
