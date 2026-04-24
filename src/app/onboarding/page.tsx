@@ -234,6 +234,51 @@ function OnboardingInner() {
             width: '100%',
           }}
         >
+          {/* OAuth error banner — the bank / Gmail / Outlook callbacks
+              route back here with ?error=<code> when they fail. Before
+              this, the user just saw the same step reload with no
+              explanation and quietly bounced off the flow. Now we
+              surface a clear recoverable message with a "try again"
+              affordance (staying on the same step) so they can retry
+              or skip without abandoning onboarding. */}
+          {(() => {
+            const errorCode = searchParams.get('error');
+            if (!errorCode) return null;
+            const errorMessages: Record<string, string> = {
+              bank_auth_failed:
+                'We couldn’t complete the bank connection. No data was shared. You can try again or skip this step.',
+              gmail_auth_failed:
+                'We couldn’t connect your Gmail inbox. No data was shared. You can try again or skip this step.',
+              outlook_auth_failed:
+                'We couldn’t connect your Outlook inbox. No data was shared. You can try again or skip this step.',
+              access_denied:
+                'You cancelled the authorisation. That’s fine — you can try again or skip this step.',
+            };
+            const message =
+              errorMessages[errorCode] ??
+              'Something went wrong with the connection. Your data is safe. Try again or skip this step.';
+            return (
+              <div
+                role="alert"
+                style={{
+                  width: '100%',
+                  maxWidth: 560,
+                  padding: '14px 16px',
+                  marginBottom: 24,
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 10,
+                  color: '#991B1B',
+                  fontSize: 13.5,
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong style={{ display: 'block', marginBottom: 2 }}>Connection didn&rsquo;t complete</strong>
+                {message}
+              </div>
+            );
+          })()}
+
           {activeStep === 0 && (
             <StepWrap
               icon="👋"
@@ -271,12 +316,15 @@ function OnboardingInner() {
               >
                 <CreditCard style={{ width: 16, height: 16 }} /> Connect bank via TrueLayer
               </a>
-              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+              <p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 10, maxWidth: 440, lineHeight: 1.5 }}>
+                You&rsquo;ll be securely redirected to your bank&rsquo;s own login screen via TrueLayer. No password ever touches Paybacker. You&rsquo;ll bounce straight back here when you&rsquo;re done.
+              </p>
+              <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
                 <button
                   onClick={() => gotoStep(2)}
-                  style={{ fontSize: 13, color: '#6B7280', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                  className="onboarding-skip"
                 >
-                  Skip for now — I'll do it later
+                  Skip for now — I&rsquo;ll do it later
                 </button>
               </div>
             </StepWrap>
@@ -361,11 +409,15 @@ function OnboardingInner() {
                 ))}
               </div>
 
+              <p style={{ fontSize: 12.5, color: '#6B7280', marginTop: 4, maxWidth: 440, lineHeight: 1.5, textAlign: 'center' }}>
+                You&rsquo;ll authorise read-only inbox access on your provider&rsquo;s own sign-in page. We never see your password and you can revoke access any time.
+              </p>
+
               <button
                 onClick={() => gotoStep(3)}
-                style={{ fontSize: 13, color: '#9CA3AF', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                className="onboarding-skip"
               >
-                Skip for now — I'll do it later
+                Skip for now — I&rsquo;ll do it later
               </button>
 
               <div
@@ -484,6 +536,26 @@ function OnboardingInner() {
           align-items: center;
           gap: 6px;
           font-family: inherit;
+        }
+        /* Skip button — promoted from a barely-visible grey link to a
+           proper outlined button so users who don't want to grant OAuth
+           scope can see their out without abandoning the whole flow.
+           Same tap-target size as the primary CTA. */
+        :global(.onboarding-skip) {
+          padding: 12px 16px;
+          font-size: 13.5px;
+          font-weight: 600;
+          color: #334155;
+          background: #fff;
+          border: 1px solid #E5E7EB;
+          border-radius: 10px;
+          cursor: pointer;
+          font-family: inherit;
+          transition: background 150ms ease, border-color 150ms ease;
+        }
+        :global(.onboarding-skip:hover) {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
         }
         @media (max-width: 820px) {
           :global(.onboarding-grid) { grid-template-columns: 1fr !important; }
