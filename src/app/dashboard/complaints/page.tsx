@@ -16,6 +16,7 @@ import UpgradeModal from '@/components/UpgradeModal';
 import { AI_LETTER_DISCLAIMER_HTML } from '@/lib/legal-disclaimer';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
+import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
@@ -2485,11 +2486,19 @@ function ComplaintsPageInner() {
   const searchParams = useSearchParams();
   const [view, setView] = useState<'list' | 'new' | 'detail'>('list');
   const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
+  // 'closed' = no chooser, 'open' = "from scratch / from email" picker shown,
+  // 'email' = the EmailDisputeFinder modal active.
+  const [newFlow, setNewFlow] = useState<'closed' | 'open' | 'email'>('closed');
 
-  // If URL has ?new=1 or sessionStorage has pb_preview_letter, open new dispute form
+  // If URL has ?new=1 or sessionStorage has pb_preview_letter, open the
+  // chooser. URL parameters that include a company / type / alertId
+  // (legacy direct entry from price-alert links) skip straight to the
+  // existing scratch form so deep links keep working unchanged.
   useEffect(() => {
+    const hasDirectLink = searchParams.get('company') || searchParams.get('type') || searchParams.get('alertId') || searchParams.get('category');
     if (searchParams.get('new') === '1') {
-      setView('new');
+      if (hasDirectLink) setView('new');
+      else setNewFlow('open');
     } else if (typeof window !== 'undefined' && sessionStorage.getItem('pb_preview_letter')) {
       setView('new');
     }
@@ -2514,10 +2523,68 @@ function ComplaintsPageInner() {
   }
 
   return (
-    <DisputesList
-      onSelect={(id) => { setSelectedDisputeId(id); setView('detail'); }}
-      onNew={() => setView('new')}
-    />
+    <>
+      <DisputesList
+        onSelect={(id) => { setSelectedDisputeId(id); setView('detail'); }}
+        onNew={() => setNewFlow('open')}
+      />
+      {newFlow === 'open' && (
+        <NewDisputeChooser
+          onScratch={() => { setNewFlow('closed'); setView('new'); }}
+          onFromEmail={() => setNewFlow('email')}
+          onClose={() => setNewFlow('closed')}
+        />
+      )}
+      {newFlow === 'email' && (
+        <EmailDisputeFinder
+          onClose={() => setNewFlow('closed')}
+          onCreated={(id) => { setNewFlow('closed'); setSelectedDisputeId(id); setView('detail'); }}
+        />
+      )}
+    </>
+  );
+}
+
+function NewDisputeChooser({
+  onScratch, onFromEmail, onClose,
+}: { onScratch: () => void; onFromEmail: () => void; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">Start a new dispute</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-xl leading-none">×</button>
+        </div>
+        <p className="text-sm text-slate-600 mb-5">How do you want to begin?</p>
+        <div className="grid grid-cols-1 gap-3">
+          <button
+            onClick={onFromEmail}
+            className="text-left p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:border-emerald-400 transition-all"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">📨</span>
+              <span className="font-semibold text-slate-900">From an email in my inbox</span>
+              <span className="ml-auto text-[10px] uppercase tracking-wider text-emerald-700 bg-white px-1.5 py-0.5 rounded">New</span>
+            </div>
+            <p className="text-sm text-slate-700">
+              Pick the email — bill, parking ticket, debt letter, anything — and we\'ll read it, ask what you want, and write a legally-grounded reply. We\'ll also watch the thread for the company\'s response.
+            </p>
+          </button>
+          <button
+            onClick={onScratch}
+            className="text-left p-4 rounded-xl border-2 border-slate-200 hover:border-slate-400 transition-all"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">✍️</span>
+              <span className="font-semibold text-slate-900">From scratch</span>
+            </div>
+            <p className="text-sm text-slate-600">
+              Start with a blank form — type the company name, what happened, and what outcome you want.
+            </p>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
