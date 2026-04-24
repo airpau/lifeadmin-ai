@@ -429,15 +429,15 @@ export default function MoneyHubPage() {
  if (user) {
  setUserId(user.id);
  const { data: conns } = await supabase.from('bank_connections')
- .select('id, bank_name, status')
+ .select('id, bank_name, status, account_ids, account_display_names')
  .eq('user_id', user.id)
- .in('status', ['expired', 'token_expired', 'expired_legacy', 'revoked', 'expiring_soon']);
+ .in('status', ['expired', 'token_expired', 'expired_legacy', 'expiring_soon']);
  if (conns?.length) setExpiredConnections(conns);
  else setExpiredConnections([]); // Clear if all now active
 
  // Fetch active connections too
  const { data: activeConns } = await supabase.from('bank_connections')
- .select('id, bank_name, status')
+ .select('id, bank_name, status, account_ids, account_display_names')
  .eq('user_id', user.id)
  .eq('status', 'active');
  setActiveConnections(activeConns || []);
@@ -501,10 +501,10 @@ export default function MoneyHubPage() {
  body: JSON.stringify({ connectionId }),
  });
  if (res.ok) {
- // Remove from local state optimistically
  setActiveConnections(activeConnections.filter(c => c.id !== connectionId));
  setExpiredConnections(expiredConnections.filter(c => c.id !== connectionId));
  showToast(`${bankName || 'Bank'} disconnected`, 'success');
+ await refreshData();
  } else {
  showToast('Failed to disconnect bank', 'error');
  }
@@ -693,12 +693,21 @@ export default function MoneyHubPage() {
  return new Date(acc.last_synced_at) > new Date(latest) ? acc.last_synced_at : latest;
  }, null as string | null);
 
+ const lastManualSyncAt = data.accounts.reduce((latest: string | null, acc: any) => {
+ if (!acc.last_manual_sync_at) return latest;
+ if (!latest) return acc.last_manual_sync_at;
+ return new Date(acc.last_manual_sync_at) > new Date(latest) ? acc.last_manual_sync_at : latest;
+ }, null as string | null);
+
  const lastSyncMins = lastSyncedAt ? Math.round((Date.now() - new Date(lastSyncedAt).getTime()) / 60000) : null;
+ // Cooldown gate must mirror the server: it is keyed on the last *manual* sync,
+ // not the cron-driven last_synced_at — otherwise a recent cron run disables the button.
+ const lastManualSyncMins = lastManualSyncAt ? Math.round((Date.now() - new Date(lastManualSyncAt).getTime()) / 60000) : null;
  const canSync = (() => {
  if (syncing) return false;
- if (!lastSyncMins) return true;
- if (data.tier === 'pro') return lastSyncMins >= 360;
- return lastSyncMins >= 1440;
+ if (data.tier !== 'pro' && !data.isTestUserOverride) return false;
+ if (!lastManualSyncMins) return true;
+ return lastManualSyncMins >= 360;
  })();
 
  const syncTierText = (() => {
@@ -856,21 +865,32 @@ export default function MoneyHubPage() {
  <button onClick={() => { setBankPromptDismissed(true); localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString()); }} className="text-slate-500 hover:text-slate-900"><X className="h-4 w-4" /></button>
  </div>
  <div className="space-y-2">
- {expiredConnections.map((conn) => (
- <div key={conn.id} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
+ {expiredConnections.flatMap((conn) => {
+ const names: string[] = (conn.account_display_names && conn.account_display_names.length > 0)
+ ? conn.account_display_names
+ : [];
+ const rows = names.length > 0 ? names : [null];
+ return rows.map((accName, i) => (
+ <div key={`${conn.id}-${i}`} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
  <div className="flex items-center gap-2">
  <Building2 className="h-4 w-4 text-amber-600" />
  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
+ {accName && names.length > 1 && <span className="text-slate-500 text-xs">· {accName}</span>}
  <span className="text-slate-500 text-xs">· expired</span>
  </div>
  <div className="flex items-center gap-2">
+ {i === 0 && (
+ <>
  <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
  <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
  <Trash2 className="h-4 w-4" />
  </button>
+ </>
+ )}
  </div>
  </div>
- ))}
+ ));
+ })}
  </div>
  <p className="text-slate-500 text-xs mt-2">Reconnect to keep your data up to date</p>
  </div>
@@ -886,18 +906,27 @@ export default function MoneyHubPage() {
  </div>
  </div>
  <div className="space-y-2">
- {activeConnections.map((conn) => (
- <div key={conn.id} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
+ {activeConnections.flatMap((conn) => {
+ const names: string[] = (conn.account_display_names && conn.account_display_names.length > 0)
+ ? conn.account_display_names
+ : [];
+ const rows = names.length > 0 ? names : [null];
+ return rows.map((accName, i) => (
+ <div key={`${conn.id}-${i}`} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
  <div className="flex items-center gap-2">
  <Building2 className="h-4 w-4 text-green-400" />
  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
+ {accName && names.length > 1 && <span className="text-slate-500 text-xs">· {accName}</span>}
  <span className="text-slate-500 text-xs">· active</span>
  </div>
+ {i === 0 && (
  <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title="Disconnect this bank">
  <Trash2 className="h-4 w-4" />
  </button>
+ )}
  </div>
- ))}
+ ));
+ })}
  </div>
  <p className="text-slate-500 text-xs mt-2">Click the trash icon to disconnect a bank account</p>
  </div>
