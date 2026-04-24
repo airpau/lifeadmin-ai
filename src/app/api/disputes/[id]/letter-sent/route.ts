@@ -98,7 +98,9 @@ export async function POST(
       // auto_domain, auto_ai). email_connections.provider_type uses
       // 'google' rather than 'gmail', so normalise before insert.
       const providerMap: Record<string, 'gmail' | 'outlook' | 'imap'> = {
-        google: 'gmail', gmail: 'gmail', outlook: 'outlook', imap: 'imap',
+        google: 'gmail', gmail: 'gmail',
+        outlook: 'outlook', microsoft: 'outlook',
+        imap: 'imap',
       };
       const normalisedProvider = providerMap[emailConn.provider_type as string] ?? 'imap';
 
