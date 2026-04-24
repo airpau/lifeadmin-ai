@@ -193,7 +193,7 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
               >
                 <Tag className="h-3 w-3" />
                 {getCategoryLabel(payment.category)}
-                <ChevronDown className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ChevronDown className="h-3 w-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" />
               </button>
             </div>
             <div className="text-right flex-shrink-0 ml-2">
