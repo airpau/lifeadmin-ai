@@ -811,9 +811,9 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="hero-copy">
               <span className="eyebrow">Free forever tier · No card required</span>
               <h1>
-                <span className="l1">Find Hidden Overcharges.</span>
-                <span className="l2">Fight Unfair Bills.</span>
-                <span className="l3">Get Your Money Back.</span>
+                <span className="l1">Find the £1,000+</span>
+                <span className="l2">you&rsquo;re overpaying.</span>
+                <span className="l3">Get your money back.</span>
               </h1>
               <p className="hero-sub">
                 Paybacker scans your bank and email to spot overcharges, forgotten
@@ -822,7 +822,7 @@ export default function HomepageV3PreviewPage() {
               </p>
               <div className="hero-cta-row">
                 <Link className="btn btn-mint" href="/auth/signup">
-                  Sign up for free →
+                  Start free — 3 AI letters included →
                 </Link>
                 <a className="btn btn-ghost" href="#how">
                   See how it works
@@ -1484,7 +1484,7 @@ export default function HomepageV3PreviewPage() {
           </Reveal>
           <Reveal className="fc-btn-row">
             <Link className="btn btn-mint" href="/auth/signup">
-              Sign up for free →
+              Find my money — free →
             </Link>
           </Reveal>
           <p className="fine">No card. Cancel anytime. Your data stays in the UK.</p>

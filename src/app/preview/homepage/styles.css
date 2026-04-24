@@ -226,7 +226,7 @@
 
 .m-v2-root .nav-cta-row { display: flex; align-items: center; gap: 6px; }
 
-.m-v2-root .nav-signin { font-size: 14px; font-weight: 500; color: var(--text-primary); text-decoration: none; padding: 8px 14px; }
+.m-v2-root .nav-signin { font-size: 14px; font-weight: 500; color: var(--text-primary); text-decoration: none; padding: 12px 16px; min-height: 44px; display: inline-flex; align-items: center; }
 
 .m-v2-root .nav-start {
   background: var(--accent-mint); color: #052E1C;
@@ -1958,10 +1958,10 @@
    ============================================================ */
 .m-v2-root .nav-burger {
   display: none;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border: 1px solid var(--divider, #E5E7EB);
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fff;
   cursor: pointer;
   padding: 0;
@@ -2021,8 +2021,8 @@
   border-bottom: 1px solid var(--divider, #E5E7EB);
 }
 .m-v2-root .nav-drawer-close {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 0;
   background: transparent;
   cursor: pointer;
