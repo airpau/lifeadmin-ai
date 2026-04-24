@@ -102,8 +102,8 @@ function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Legal</h5>
-            <Link href="/legal/privacy">Privacy</Link>
-            <Link href="/legal/terms">Terms</Link>
+            <Link href="/privacy-policy">Privacy</Link>
+            <Link href="/terms-of-service">Terms</Link>
             <Link href="/cookie-policy">Cookies</Link>
           </div>
           <div className="footer-col">

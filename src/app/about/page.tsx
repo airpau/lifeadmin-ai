@@ -98,8 +98,8 @@ function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Legal</h5>
-            <Link href="/legal/privacy">Privacy</Link>
-            <Link href="/legal/terms">Terms</Link>
+            <Link href="/privacy-policy">Privacy</Link>
+            <Link href="/terms-of-service">Terms</Link>
             <Link href="/cookie-policy">Cookies</Link>
           </div>
           <div className="footer-col">
@@ -387,6 +387,72 @@ export default function AboutPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* WHO WE ARE — factual company block. Per
+          redesign/CONTENT_SOURCES_OF_TRUTH.md we explicitly do not
+          tell a founder anecdote or investor-pitch story, so this
+          section sticks to the registered-facts: company, location,
+          founding date, size, contact. It reinforces trust (small UK
+          team behind a fintech that reads your bank feed) without
+          fabricating a narrative. */}
+      <section style={{ padding: '96px 0' }}>
+        <div className="wrap">
+          <div
+            style={{
+              maxWidth: 880,
+              margin: '0 auto',
+              display: 'grid',
+              gridTemplateColumns: '1fr',
+              gap: 28,
+              textAlign: 'center',
+            }}
+          >
+            <span className="eyebrow">Who we are</span>
+            <h2
+              style={{
+                fontSize: 'clamp(32px, 4vw, 44px)',
+                fontWeight: 700,
+                letterSpacing: 'var(--track-tight)',
+                lineHeight: 1.05,
+                margin: 0,
+                color: 'var(--text-primary)',
+              }}
+            >
+              A small UK team building one thing well.
+            </h2>
+            <p style={{ fontSize: 17, lineHeight: 1.55, color: 'var(--text-secondary)', margin: '0 auto', maxWidth: 640 }}>
+              Paybacker LTD is a privately-owned UK company, incorporated in
+              London in March 2026. Company number 15289174, registered in
+              England &amp; Wales. We&rsquo;re a small team and keep it that
+              way on purpose &mdash; every feature we ship is reviewed by a
+              human who actually uses it to fight their own bills. If you
+              want to talk to us, <a href="mailto:hello@paybacker.co.uk" style={{ color: 'var(--accent-mint-deep)', fontWeight: 600 }}>hello@paybacker.co.uk</a>{' '}
+              goes straight to the inbox.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: '10px 24px',
+                marginTop: 8,
+                fontSize: 13,
+                color: 'var(--text-tertiary)',
+                fontWeight: 500,
+                letterSpacing: 0.02,
+              }}
+            >
+              <span>🇬🇧 UK-registered &amp; UK-hosted</span>
+              <span>·</span>
+              <span>FCA-authorised bank sync via Yapily</span>
+              <span>·</span>
+              <span>ICO registered</span>
+              <span>·</span>
+              <span>GDPR compliant</span>
+            </div>
           </div>
         </div>
       </section>

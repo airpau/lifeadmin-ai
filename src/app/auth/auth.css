@@ -200,6 +200,29 @@
   margin-top: 4px;
 }
 
+/* "Keep me signed in" checkbox on /auth/login — styled to match the
+   consent rows on /auth/signup but less heavy (no card background,
+   no border) because it sits in the main form flow, not in a dedicated
+   consent block. */
+.m-land-root .stay-signed-in {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: center;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin: 4px 0 12px;
+  user-select: none;
+}
+.m-land-root .stay-signed-in input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent-mint-deep);
+  cursor: pointer;
+}
+
 /* Field footer — small right-aligned helper link under an input
    (e.g. "Forgot password?" on the login form). Kept outside the
    <label> so keyboard users and screen readers don't confuse it
