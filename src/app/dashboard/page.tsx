@@ -801,7 +801,7 @@ export default function DashboardPage() {
                 fontSize: 13,
               }}
             >
-              No active alerts yet. Keep your bank and email connected — we&apos;ll flag overcharges and price rises here automatically.
+              Ready to find your first saving? Connect a bank account to scan transactions for forgotten subscriptions and silent price rises — we&apos;ll flag every one automatically.
             </div>
           ) : (
             actionRowsTop.map((r, i) => (
@@ -915,6 +915,95 @@ export default function DashboardPage() {
       {/* ─── Two-column body ───────────────────────────────────────── */}
       <div className="overview-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          {/* Next-up banner — surfaces the single most important
+              missing-setup step at the top of the main column, where
+              it's visible on first scroll. The full "Get the most out
+              of Paybacker" checklist still lives on the right rail,
+              but on phones the rail stacks *below* the main column —
+              without this banner, a fresh user on iPhone has to scroll
+              past 1200px of widgets before they see their first
+              setup cue. Only renders while any core step is missing. */}
+          {(!bankConnected || !emailConnected || complaintsGenerated === 0) && (() => {
+            const nextStep = !bankConnected
+              ? { label: 'Connect a bank to unlock price alerts & auto-detected subscriptions', cta: 'Connect bank →', onClick: () => { if (!connectBankDirect()) setShowBankPicker(true); }, href: null }
+              : !emailConnected
+              ? { label: 'Connect an email inbox to catch hidden bills and forgotten subs', cta: 'Connect email →', onClick: null, href: '/dashboard/profile?connect_email=true' }
+              : { label: 'Write your first dispute letter — we\'ll cite the exact UK law', cta: 'Start a letter →', onClick: null, href: '/dashboard/complaints' };
+            return (
+              <div
+                className="card"
+                style={{
+                  background: 'linear-gradient(135deg, var(--mint-wash), #D1FAE5)',
+                  border: '1px solid #86EFAC',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  padding: 16,
+                  minHeight: 68,
+                }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Sparkles className="h-5 w-5" style={{ color: 'var(--mint-deep)' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--mint-deep)', marginBottom: 2 }}>
+                    Next up
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-1)', lineHeight: 1.35 }}>
+                    {nextStep.label}
+                  </div>
+                </div>
+                {nextStep.href ? (
+                  <Link
+                    href={nextStep.href}
+                    style={{
+                      flexShrink: 0,
+                      padding: '10px 14px',
+                      background: 'var(--mint-deep)',
+                      color: '#fff',
+                      borderRadius: 8,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {nextStep.cta}
+                  </Link>
+                ) : (
+                  <button
+                    onClick={nextStep.onClick!}
+                    style={{
+                      flexShrink: 0,
+                      padding: '10px 14px',
+                      background: 'var(--mint-deep)',
+                      color: '#fff',
+                      borderRadius: 8,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      border: 'none',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {nextStep.cta}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Savings Opportunity Widget — existing */}
           {dealsLoading ? (
             <SavingsSkeleton />
@@ -978,7 +1067,9 @@ export default function DashboardPage() {
               </h3>
               <p style={{ margin: '-6px 0 10px', fontSize: 12, color: 'var(--text-3)' }}>
                 {emailScanResults !== null
-                  ? `Found ${emailScanResults} opportunities in your inbox.`
+                  ? emailScanResults === 0
+                    ? 'No billing or subscription emails to flag yet.'
+                    : `Found ${emailScanResults} bill${emailScanResults === 1 ? '' : 's'} and subscription${emailScanResults === 1 ? '' : 's'} to review.`
                   : emailAddress
                   ? `Connected: ${emailAddress}${emailLastScanned ? ` · Last scanned ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
                   : 'Scan your inbox to find bills, overcharges and savings.'}
