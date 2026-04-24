@@ -49,22 +49,6 @@ function Icon({ n, ...p }: { n: IconName } & React.SVGProps<SVGSVGElement>) {
   );
 }
 
-function IconSun(p: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...p}
-    >
-      <circle cx={12} cy={12} r={4} />
-      <path d={I.sun} />
-    </svg>
-  );
-}
-
 // ─── Nav structure ───────────────────────────────────────────────────────
 // Groups follow the Claude design handoff (Main / Save money / Account).
 // hrefs map to the existing app routes — we keep dashboard paths as they
@@ -382,14 +366,6 @@ function Topbar({ crumb }: { crumb: string[] }) {
         <kbd>⌘K</kbd>
       </div>
       <div className="topbar-actions">
-        <div className="theme-toggle" aria-hidden="true">
-          <button type="button" className="on" title="Light">
-            <IconSun />
-          </button>
-          <button type="button" title="Dark">
-            <Icon n="moon" />
-          </button>
-        </div>
         <div className="shell-v2-bell-slot">
           <NotificationBell />
         </div>
