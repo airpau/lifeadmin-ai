@@ -99,7 +99,9 @@ export async function GET(request: NextRequest) {
       count: domainMessages.length,
       messages: domainMessages.map((m) => ({
         messageId: m.messageId, threadId: m.threadId,
-        from: m.fromAddress, subject: m.subject,
+        from: m.fromAddress, fromRaw: (m as any).fromRaw,
+        fromName: m.fromName, fromDomain: m.fromDomain,
+        subject: m.subject,
         receivedAt: m.receivedAt instanceof Date ? m.receivedAt.toISOString() : m.receivedAt,
         snippet: m.snippet?.slice(0, 200),
         bodyPreview: (m.body ?? '').slice(0, 400),
