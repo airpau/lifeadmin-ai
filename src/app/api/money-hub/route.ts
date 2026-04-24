@@ -299,7 +299,9 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({
-      tier,
+      // Use effectiveTier so onboarding-trial users see Pro UI (including the
+      // manual Sync button), matching the server-side getUserPlan() override.
+      tier: effectiveTier,
       score: healthScore.overall,
       healthScore,
       selectedMonth,
