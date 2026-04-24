@@ -391,13 +391,100 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* WHO WE ARE — factual company block. Per
-          redesign/CONTENT_SOURCES_OF_TRUTH.md we explicitly do not
-          tell a founder anecdote or investor-pitch story, so this
-          section sticks to the registered-facts: company, location,
-          founding date, size, contact. It reinforces trust (small UK
-          team behind a fintech that reads your bank feed) without
-          fabricating a narrative. */}
+      {/* FOUNDER'S NOTE — Paul explicitly approved a real founder
+          bio here, overriding the "no founder anecdote" rule in
+          CONTENT_SOURCES_OF_TRUTH.md. Emotional, first-person,
+          grounded in the frustration that led to building this. */}
+      <section style={{ padding: '96px 0', background: 'var(--accent-mint-wash)' }}>
+        <div className="wrap">
+          <div
+            style={{
+              maxWidth: 760,
+              margin: '0 auto',
+              display: 'grid',
+              gridTemplateColumns: '1fr',
+              gap: 20,
+            }}
+          >
+            <span className="eyebrow" style={{ textAlign: 'center' }}>
+              A note from the founder
+            </span>
+            <h2
+              style={{
+                fontSize: 'clamp(32px, 4vw, 44px)',
+                fontWeight: 700,
+                letterSpacing: 'var(--track-tight)',
+                lineHeight: 1.05,
+                margin: 0,
+                color: 'var(--text-primary)',
+                textAlign: 'center',
+              }}
+            >
+              I got sick of being ripped off.
+            </h2>
+            <div
+              style={{
+                fontSize: 17,
+                lineHeight: 1.7,
+                color: 'var(--text-secondary)',
+                margin: 0,
+                display: 'grid',
+                gap: 16,
+              }}
+            >
+              <p>
+                Every year the same thing. Broadband goes up &pound;8 a month
+                without warning. The gym charges me for three months after I
+                cancelled. An energy bill arrives that doesn&rsquo;t match a
+                single reading I&rsquo;ve ever given them. A parking ticket
+                I didn&rsquo;t deserve. A flight cancelled with no refund
+                offered until I make noise.
+              </p>
+              <p>
+                Every single one, I&rsquo;d sit on hold for 45 minutes, get
+                handed round four call-centre agents, and be told
+                &ldquo;that&rsquo;s just how it works.&rdquo; It&rsquo;s
+                <em> not</em> just how it works. Half the time what they
+                were doing was flat-out against UK consumer law. But the
+                only way to actually fight back was to pay a solicitor
+                &pound;250 an hour to write a letter that might recover
+                &pound;47.
+              </p>
+              <p>
+                So the system quietly runs on that maths. Companies know
+                most people won&rsquo;t bother. They know a lawyer costs
+                more than the overcharge. They know you&rsquo;ll sigh, tick
+                the direct debit, and let them have it. And that adds up
+                to over a grand a year for a typical household &mdash;
+                silently siphoned off by people banking on you being too
+                tired, too busy, and too polite to push back.
+              </p>
+              <p>
+                I was done with it. AI can now read the Consumer Rights
+                Act faster than any paralegal, cite the exact statute, and
+                draft a letter that makes a supplier take you seriously
+                in 30 seconds. The expensive part of hiring a lawyer
+                &mdash; the reading and the writing &mdash; just got cheap.
+                So I built Paybacker to pass that power back to people
+                like me, who were tired of being the ones paying for
+                everyone else&rsquo;s convenience.
+              </p>
+              <p>
+                We&rsquo;ll never take a cut of your refund. Your win is
+                your win. We just want it to start happening a lot more
+                often.
+              </p>
+              <p style={{ marginTop: 8, fontWeight: 600, color: 'var(--text-primary)' }}>
+                &mdash; Paul, founder &middot; Paybacker
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* WHO WE ARE — factual company block, sits below the founder
+          note to reinforce the personal story with registered-company
+          credentials. */}
       <section style={{ padding: '96px 0' }}>
         <div className="wrap">
           <div

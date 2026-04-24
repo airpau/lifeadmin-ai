@@ -906,6 +906,82 @@ export default function HomepageV3PreviewPage() {
         </div>
       </section>
 
+      {/* ========== Regulated trust band ==========
+          Honest, in-house SVG badges — no scraped brand marks, no
+          licensing risk. Each one reflects a credential we can
+          document: FCA-authorised bank sync (via Yapily), ICO
+          registration (we hold one), UK-based Open Banking (the
+          network we operate on), and GDPR compliance. Sits between
+          stats and features so the trust signal lands before the
+          product pitch. */}
+      <section className="trust-band section-light" aria-label="Regulated and compliant">
+        <div className="wrap">
+          <div className="trust-band__grid">
+            {/* FCA — shield with tick */}
+            <div className="trust-badge">
+              <svg className="trust-badge__icon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <path d="M32 4 L56 12 V32 C56 46 45 56 32 60 C19 56 8 46 8 32 V12 Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" />
+                <path d="M21 32 L29 40 L44 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div>
+                <div className="trust-badge__title">FCA-authorised</div>
+                <div className="trust-badge__sub">Bank sync via Yapily — regulated by the FCA</div>
+              </div>
+            </div>
+
+            {/* ICO — document with seal */}
+            <div className="trust-badge">
+              <svg className="trust-badge__icon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <path d="M16 6 H40 L52 18 V58 H16 Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" />
+                <path d="M40 6 V18 H52" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" />
+                <circle cx="34" cy="40" r="8" stroke="currentColor" strokeWidth="2.5" />
+                <path d="M34 40 L34 48 L30 52 M34 48 L38 52" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div>
+                <div className="trust-badge__title">ICO-registered</div>
+                <div className="trust-badge__sub">UK Information Commissioner&rsquo;s Office</div>
+              </div>
+            </div>
+
+            {/* Open Banking — stylised OB mark */}
+            <div className="trust-badge">
+              <svg className="trust-badge__icon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <circle cx="32" cy="32" r="22" stroke="currentColor" strokeWidth="2.5" />
+                <path d="M32 18 V32 L42 38" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="32" cy="32" r="3" fill="currentColor" />
+              </svg>
+              <div>
+                <div className="trust-badge__title">Open Banking</div>
+                <div className="trust-badge__sub">Read-only access, never stored longer than needed</div>
+              </div>
+            </div>
+
+            {/* GDPR — EU star circle */}
+            <div className="trust-badge">
+              <svg className="trust-badge__icon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <circle cx="32" cy="32" r="22" stroke="currentColor" strokeWidth="2.5" />
+                {Array.from({ length: 8 }).map((_, i) => {
+                  const angle = (i * 360) / 8;
+                  return (
+                    <circle
+                      key={i}
+                      cx={32 + 14 * Math.cos((angle * Math.PI) / 180 - Math.PI / 2)}
+                      cy={32 + 14 * Math.sin((angle * Math.PI) / 180 - Math.PI / 2)}
+                      r="2"
+                      fill="currentColor"
+                    />
+                  );
+                })}
+              </svg>
+              <div>
+                <div className="trust-badge__title">GDPR-compliant</div>
+                <div className="trust-badge__sub">Export or delete your data in one click</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ========== Features intro ========== */}
       <section className="features-intro section-light" id="features">
         <div className="wrap">
