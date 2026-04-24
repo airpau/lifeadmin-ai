@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { detectPriceIncreases } from '@/lib/price-increase-detector';
 import { buildPriceIncreaseEmail } from '@/lib/email/price-increase-alerts';
-import { canSendEmail } from '@/lib/email-rate-limit';
+import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const maxDuration = 60;
@@ -128,7 +128,10 @@ export async function GET(request: NextRequest) {
           telegram: { text: telegramText },
           push: { title: 'Price hike detected', body: headline.replace(/\*/g, '') },
         });
-        if (result.delivered.includes('email')) totalEmailsSent++;
+        if (result.delivered.includes('email')) {
+          totalEmailsSent++;
+          await markEmailSent(supabase, userId, 'price_increase_alert', `Price increase alert: ${newIncreases.length} merchant${newIncreases.length === 1 ? '' : 's'}`);
+        }
       }
     } catch (err) {
       errors.push(`Error processing user ${userId}: ${err instanceof Error ? err.message : String(err)}`);
