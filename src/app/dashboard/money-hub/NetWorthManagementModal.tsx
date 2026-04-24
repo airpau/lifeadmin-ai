@@ -54,12 +54,18 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-white backdrop-blur-sm" onClick={onClose} />
-      <div className="relative card w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+      <div className="relative card w-full max-w-xl max-h-[92vh] sm:max-h-[85vh] flex flex-col shadow-2xl rounded-b-none sm:rounded-2xl">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 pt-1"><PiggyBank className="h-6 w-6 text-mint-400" /> Manage Net Worth</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition-colors"><X className="h-5 w-5" /></button>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-500 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         <div className="flex border-b border-slate-200">
@@ -67,13 +73,13 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
           <button onClick={() => setActiveTab('liabilities')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${activeTab === 'liabilities' ? 'text-red-400 border-b-2 border-red-400' : 'text-slate-500 hover:text-slate-700'}`}>Liabilities</button>
         </div>
 
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1">
           {activeTab === 'assets' ? (
             <div className="space-y-6">
               <div className="bg-white p-4 rounded-xl border border-slate-200">
                 <h3 className="text-slate-900 font-semibold mb-3 text-sm flex items-center gap-2"><Building2 className="h-4 w-4 text-green-400" /> Add Asset</h3>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <input type="text" placeholder="Asset Name (e.g. Monzo, House)" value={assetForm.name} onChange={e => setAssetForm(prev => ({ ...prev, name: e.target.value }))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-green-400 focus:outline-none col-span-2" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <input type="text" placeholder="Asset Name (e.g. Monzo, House)" value={assetForm.name} onChange={e => setAssetForm(prev => ({ ...prev, name: e.target.value }))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-green-400 focus:outline-none sm:col-span-2" />
                   <select value={assetForm.type} onChange={e => setAssetForm(prev => ({ ...prev, type: e.target.value }))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-green-400 focus:outline-none">
                     <option value="savings">Savings</option><option value="property">Property</option><option value="investment">Investment</option><option value="vehicle">Vehicle</option><option value="crypto">Crypto</option><option value="business">Business</option><option value="pension">Pension</option><option value="other">Other</option>
                   </select>
@@ -94,8 +100,8 @@ export default function NetWorthManagementModal({ isOpen, onClose, data, onUpdat
             <div className="space-y-6">
               <div className="bg-white p-4 rounded-xl border border-slate-200">
                 <h3 className="text-slate-900 font-semibold mb-3 text-sm flex items-center gap-2"><CreditCard className="h-4 w-4 text-red-400" /> Add Liability</h3>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <input type="text" placeholder="Liability Name (e.g. Loan, Mortgage)" value={liabilityForm.name} onChange={e => setLiabilityForm(prev => ({ ...prev, name: e.target.value }))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-red-400 focus:outline-none col-span-2" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <input type="text" placeholder="Liability Name (e.g. Loan, Mortgage)" value={liabilityForm.name} onChange={e => setLiabilityForm(prev => ({ ...prev, name: e.target.value }))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-red-400 focus:outline-none sm:col-span-2" />
                   <select value={liabilityForm.type} onChange={e => setLiabilityForm(prev => ({ ...prev, type: e.target.value }))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:border-red-400 focus:outline-none">
                     <option value="loan">Loan</option><option value="mortgage">Mortgage</option><option value="credit_card">Credit Card</option><option value="car_finance">Car Finance</option><option value="overdraft">Overdraft</option><option value="other">Other</option>
                   </select>
