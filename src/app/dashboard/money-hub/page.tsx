@@ -37,6 +37,17 @@ function formatTimeAgo(dateStr: string) {
  return `${days} days ago`;
 }
 
+function formatAbsoluteDateTime(dateStr: string) {
+ const d = new Date(dateStr);
+ return d.toLocaleString('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+ });
+}
+
 type ExpectedBill = {
  name: string; expected_amount: number; category: string;
  paid: boolean; past_due: boolean; source: string; expected_date?: string;
@@ -437,7 +448,7 @@ export default function MoneyHubPage() {
 
  // Fetch active connections too
  const { data: activeConns } = await supabase.from('bank_connections')
- .select('id, bank_name, status, account_ids, account_display_names')
+ .select('id, bank_name, status, account_ids, account_display_names, last_synced_at')
  .eq('user_id', user.id)
  .eq('status', 'active');
  setActiveConnections(activeConns || []);
@@ -724,8 +735,9 @@ export default function MoneyHubPage() {
  })();
 
  const syncTierText = (() => {
- if (data.tier === 'pro') return `Auto-syncs up to 4× daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
- if (data.tier === 'essential') return `Auto-syncs daily${lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)}` : ''}`;
+ const stamp = lastSyncedAt ? ` · Last synced: ${formatTimeAgo(lastSyncedAt)} (${formatAbsoluteDateTime(lastSyncedAt)})` : '';
+ if (data.tier === 'pro') return `Auto-syncs up to 4× daily${stamp}`;
+ if (data.tier === 'essential') return `Auto-syncs daily${stamp}`;
  return 'Manual sync · 1× per day';
  })();
 
@@ -929,11 +941,16 @@ export default function MoneyHubPage() {
  const rows = names.length > 0 ? names : [null];
  return rows.map((accName, i) => (
  <div key={`${conn.id}-${i}`} className="flex items-center justify-between bg-slate-50/40 rounded-lg px-3 py-2">
- <div className="flex items-center gap-2">
+ <div className="flex items-center gap-2 flex-wrap">
  <Building2 className="h-4 w-4 text-green-400" />
  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
  {accName && names.length > 1 && <span className="text-slate-500 text-xs">· {accName}</span>}
  <span className="text-slate-500 text-xs">· active</span>
+ {i === 0 && conn.last_synced_at && (
+ <span className="text-slate-500 text-xs" title={`Last synced ${formatTimeAgo(conn.last_synced_at)}`}>
+ · Last synced {formatAbsoluteDateTime(conn.last_synced_at)}
+ </span>
+ )}
  </div>
  {i === 0 && (
  <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" title="Disconnect this bank">
