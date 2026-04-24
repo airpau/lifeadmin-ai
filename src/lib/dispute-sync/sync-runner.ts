@@ -16,7 +16,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { fetchNewMessages } from './fetchers';
+import { fetchNewMessages, fetchDomainMessages } from './fetchers';
 import type { EmailConnection } from './types';
 import {
   classifyReply,
@@ -38,6 +38,88 @@ export interface SyncResult {
   disputeId: string;
   imported: number;
   error?: string;
+}
+
+// Subject patterns that strongly indicate the message is an auto-reply
+// / acknowledgement of a complaint — these fire even when the subject
+// doesn't mention the original thread.
+const AUTO_REPLY_PATTERNS = [
+  /\bauto[- ]?reply\b/i,
+  /\bout of office\b/i,
+  /\bwe(?:'ve| have) received\b/i,
+  /\bthanks? for (?:contacting|getting in touch|your email)\b/i,
+  /\byour (?:case|ticket|reference|complaint|message|enquiry)\b/i,
+  /\backnowledg(?:e|ment|ement)\b/i,
+  /\breceipt of\b/i,
+  /\bconfirm(?:ation|ing) receipt\b/i,
+];
+
+/**
+ * Decide whether a domain-matched message (not from the originally linked
+ * thread) belongs on THIS dispute's timeline. Prevents a separate ACI
+ * thread about an unrelated invoice from polluting the user's current
+ * dispute context.
+ *
+ * Import only if at least one of:
+ *   1. Subject contains a strong auto-reply / acknowledgement pattern
+ *   2. Subject or body mentions the dispute's account_number / ref
+ *   3. Received within 7 days of the dispute's most recent correspondence
+ *      AND (subject echoes some keyword from the dispute's subject, OR
+ *      the sender looks like an auto-reply mailbox: starts with
+ *      autoresponse / noreply / no-reply / donotreply / reply / support)
+ */
+function isDomainMessageRelevant(
+  msg: { subject: string; body: string; fromAddress: string; receivedAt: Date },
+  dispute: {
+    issue_summary?: string | null;
+    account_number?: string | null;
+    thread_subject?: string | null;
+    latest_activity_at?: Date | null;
+  },
+): { relevant: boolean; reason: string } {
+  const subject = (msg.subject || '').trim();
+  const body = (msg.body || '').trim();
+  const haystack = `${subject}\n${body}`;
+
+  // 1. Auto-reply patterns
+  for (const re of AUTO_REPLY_PATTERNS) {
+    if (re.test(subject)) return { relevant: true, reason: 'auto-reply subject' };
+  }
+
+  // 2. Account / reference number match (highest signal)
+  if (dispute.account_number) {
+    const acct = dispute.account_number.trim();
+    if (acct.length >= 4 && haystack.toLowerCase().includes(acct.toLowerCase())) {
+      return { relevant: true, reason: 'account number match' };
+    }
+  }
+
+  // 3. Time-and-subject-similarity match. Only trust sender-hint senders
+  // (autoresponse@, noreply@ etc.) when the message landed in the window.
+  const localPart = msg.fromAddress.split('@')[0]?.toLowerCase() ?? '';
+  const senderLooksAutomated = /^(autoresponse|noreply|no-reply|donotreply|reply|support|customer|help|complaints?)(?:$|[.+-])/.test(localPart);
+
+  const latest = dispute.latest_activity_at ?? null;
+  const withinWindow = latest
+    ? Math.abs(msg.receivedAt.getTime() - latest.getTime()) <= 7 * 86400_000
+    : false;
+
+  if (withinWindow && senderLooksAutomated) {
+    const originalSubj = (dispute.thread_subject || dispute.issue_summary || '').toLowerCase();
+    if (originalSubj) {
+      // Share any 4+ char keyword from the original subject
+      const tokens = originalSubj
+        .split(/\W+/)
+        .filter((t) => t.length >= 4 && !['this', 'that', 'with', 'your', 'from', 'have', 'been'].includes(t));
+      for (const t of tokens) {
+        if (subject.toLowerCase().includes(t)) {
+          return { relevant: true, reason: `within window; matches "${t}"` };
+        }
+      }
+    }
+  }
+
+  return { relevant: false, reason: 'not clearly related to this dispute' };
 }
 
 /**
@@ -89,6 +171,63 @@ export async function syncLinkedThread(
     // Still bump last_synced_at a little so we don't loop fast on persistent errors
     return { linkId, disputeId: link.dispute_id, imported: 0, error: message };
   }
+
+  // Second pass — scan for auto-responses / acknowledgements that the
+  // supplier sent from a different address on the same domain. Gmail /
+  // Outlook surface these as brand-new threads, so the thread-scoped
+  // sync above would never see them. Relevance filter below prevents
+  // unrelated threads from the same domain polluting this dispute.
+  let domainMessages: Awaited<ReturnType<typeof fetchDomainMessages>> = [];
+  if (link.sender_domain) {
+    try {
+      // On initial link we import the full thread history already, so
+      // a full-history domain scan would duplicate. Anchor on the link
+      // creation time when no prior sync ran.
+      const domainSince = since ?? new Date(new Date(link.created_at ?? Date.now()).getTime() - 7 * 86400_000);
+      domainMessages = await fetchDomainMessages(conn, link.sender_domain, domainSince, link.thread_id);
+    } catch (err) {
+      console.warn(`[watchdog] domain scan failed for link ${linkId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  // Resolve dispute context for the relevance filter — account_number
+  // is the strongest signal we have.
+  let disputeForRelevance: { issue_summary?: string | null; account_number?: string | null; thread_subject?: string | null; latest_activity_at?: Date | null } = {
+    thread_subject: link.subject ?? null,
+  };
+  try {
+    const { data: d } = await db
+      .from('disputes')
+      .select('issue_summary, account_number, last_reply_received_at, updated_at')
+      .eq('id', link.dispute_id)
+      .maybeSingle();
+    if (d) {
+      disputeForRelevance = {
+        issue_summary: d.issue_summary,
+        account_number: d.account_number,
+        thread_subject: link.subject ?? null,
+        latest_activity_at: d.last_reply_received_at ? new Date(d.last_reply_received_at) : d.updated_at ? new Date(d.updated_at) : null,
+      };
+    }
+  } catch {
+    // Fall through with defaults.
+  }
+
+  // Filter + merge. Messages we can confidently attribute get appended
+  // to the same import loop as thread messages so the classifier and
+  // notification path run identically.
+  for (const m of domainMessages) {
+    const verdict = isDomainMessageRelevant(
+      { subject: m.subject, body: m.body, fromAddress: m.fromAddress, receivedAt: m.receivedAt },
+      disputeForRelevance,
+    );
+    if (!verdict.relevant) {
+      console.log(`[watchdog] skipped domain message ${m.messageId}: ${verdict.reason}`);
+      continue;
+    }
+    messages.push(m);
+  }
+  messages.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
 
   const disputeRow = link.disputes as {
     provider_name?: string;
