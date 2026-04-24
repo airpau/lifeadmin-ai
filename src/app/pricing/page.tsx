@@ -341,6 +341,7 @@ export default function PricingPage() {
             </h2>
           </div>
           <div
+            className="compare-table-wrap"
             style={{
               background: '#fff',
               border: '1px solid var(--divider)',
