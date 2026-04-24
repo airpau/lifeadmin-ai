@@ -177,7 +177,14 @@ async function sendEmail(email: string, payload: EmailPayload): Promise<boolean>
 }
 
 async function sendTelegram(chatId: number, payload: TelegramPayload): Promise<boolean> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  // Route via the user-facing Pocket Agent bot (TELEGRAM_USER_BOT_TOKEN)
+  // when available, same precedence as sendProactiveAlert in
+  // `src/lib/telegram/user-bot.ts`. Falling back to the admin bot
+  // (TELEGRAM_BOT_TOKEN) was landing user-facing alerts — price
+  // increases, renewal reminders, dispute replies — in the founder\'s
+  // "Paybacker Assistant" admin chat instead of the customer\'s
+  // "Paybacker" chat.
+  const token = process.env.TELEGRAM_USER_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return false;
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
