@@ -224,8 +224,20 @@ export async function POST(request: Request) {
   }
 
   // 5. Link the email thread for ongoing Watchdog monitoring + import history.
+  //
+  // Pick the SUPPLIER side of the conversation. fetchNewMessages already
+  // strips user-own messages, so walking backwards here picks the most
+  // recent supplier sender. If every message is from the user (outbound-
+  // only thread, e.g. they only just sent the complaint), fall back to the
+  // user\'s own address so we at least store something non-null — a
+  // follow-up sync will replace this once the supplier replies.
+  let supplierMsg = [...messages].reverse().find((m) => {
+    const addr = (m.fromAddress ?? '').toLowerCase();
+    return addr && addr !== (conn.email_address ?? '').toLowerCase();
+  });
+  if (!supplierMsg) supplierMsg = messages[messages.length - 1];
+  const senderDomain = (supplierMsg.fromAddress.split('@')[1] || '').toLowerCase();
   const lastMsg = messages[messages.length - 1];
-  const senderDomain = (lastMsg.fromAddress.split('@')[1] || '').toLowerCase();
   const { data: link, error: linkErr } = await admin
     .from('dispute_watchdog_links')
     .insert({
@@ -236,7 +248,7 @@ export async function POST(request: Request) {
       thread_id: threadId,
       subject: lastMsg.subject,
       sender_domain: senderDomain,
-      sender_address: lastMsg.fromAddress.toLowerCase(),
+      sender_address: supplierMsg.fromAddress.toLowerCase(),
       sync_enabled: true,
       match_source: 'user_confirmed',
       match_confidence: 1.0,

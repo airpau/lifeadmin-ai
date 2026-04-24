@@ -78,22 +78,52 @@ async function listGmailRecent(conn: any, q: string, days: number, includeAll: b
   const list = await res.json();
   if (!list.threads?.length) return [];
 
+  const ownAddr = (conn.email_address ?? '').toLowerCase().trim();
   const out: BrowsedThread[] = [];
   for (const t of list.threads as Array<{ id: string }>) {
     const detail = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+      `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=To`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     if (!detail.ok) continue;
     const thr = await detail.json();
     const msgs = thr.messages ?? [];
     if (msgs.length === 0) continue;
+
+    // Identify the "supplier" side of the thread by walking backwards
+    // from the most recent message until we find one NOT sent by the
+    // user. If every message is from the user (e.g. a complaint
+    // letter that hasn\'t been replied to yet) we fall back to the
+    // last message\'s To: address so domain-scan later still has a
+    // valid supplier domain to search on.
+    let supplierMsg: any = null;
+    let fallbackTo: string | null = null;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      const hdrs = (m.payload?.headers ?? []) as Array<{ name: string; value: string }>;
+      const readH = (n: string) => hdrs.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value ?? '';
+      const fStr = readH('From');
+      const fAddr = fStr.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0]?.toLowerCase() ?? '';
+      if (fAddr && fAddr !== ownAddr) { supplierMsg = m; break; }
+      if (!fallbackTo) {
+        const toStr = readH('To');
+        fallbackTo = toStr.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0]?.toLowerCase() ?? null;
+      }
+    }
+    const rep = supplierMsg ?? msgs[msgs.length - 1];
+    const repHdrs = (rep.payload?.headers ?? []) as Array<{ name: string; value: string }>;
+    const h = (n: string) => repHdrs.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value ?? '';
     const last = msgs[msgs.length - 1];
-    const headers = (last.payload?.headers ?? []) as Array<{ name: string; value: string }>;
-    const h = (n: string) => headers.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value ?? '';
     const fromStr = h('From');
-    const fromAddr = fromStr.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0]?.toLowerCase() ?? '';
-    const fromName = (fromStr.split('<')[0] || '').replace(/"/g, '').trim() || fromAddr;
+    let fromAddr = fromStr.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0]?.toLowerCase() ?? '';
+    let fromName = (fromStr.split('<')[0] || '').replace(/"/g, '').trim() || fromAddr;
+    if (!supplierMsg && fallbackTo && fallbackTo !== ownAddr) {
+      // Thread is entirely outbound; surface the recipient domain
+      // so the Watchdog link ends up with the supplier domain
+      // instead of the user\'s own.
+      fromAddr = fallbackTo;
+      fromName = fallbackTo;
+    }
     out.push({
       connectionId: conn.id,
       emailAddress: conn.email_address,
