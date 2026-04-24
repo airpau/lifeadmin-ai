@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
+import PricingGrid from './PricingGrid';
 import './styles.css';
 
 /**
@@ -221,58 +222,16 @@ export default function PricingPage() {
       {/* PRICING GRID */}
       <section className="pricing-section" style={{ paddingTop: 40 }}>
         <div className="wrap">
-          <div className="pricing-grid">
-            <div className="price-card">
-              <div className="tier">Free</div>
-              <div className="price">
-                £0<span className="per">/forever</span>
-              </div>
-              <div className="founding" style={{ visibility: 'hidden' }}>—</div>
-              <ul>
-                <li>3 AI dispute letters / month</li>
-                <li>Manual subscription tracker</li>
-                <li>Public deals marketplace</li>
-              </ul>
-              <Link className="btn btn-ghost cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
-                Start free →
-              </Link>
-            </div>
-
-            <div className="price-card featured">
-              <span className="ribbon">Most popular</span>
-              <div className="tier">Essential</div>
-              <div className="price">
-                £4.99<span className="per">/month</span>
-              </div>
-              <div className="founding">Founding member · locked-in forever</div>
-              <ul>
-                <li>Unlimited AI dispute letters</li>
-                <li>Bank sync — 2 accounts</li>
-                <li>Email inbox scan</li>
-                <li>Pocket Agent in Telegram</li>
-              </ul>
-              <Link className="btn btn-mint cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
-                Start 14-day trial →
-              </Link>
-            </div>
-
-            <div className="price-card">
-              <div className="tier">Pro</div>
-              <div className="price">
-                £9.99<span className="per">/month</span>
-              </div>
-              <div className="founding">Founding member · locked-in forever</div>
-              <ul>
-                <li>Everything in Essential</li>
-                <li>Unlimited bank &amp; email connections</li>
-                <li>Deal alerts on bill changes</li>
-                <li>Priority human review on complex disputes</li>
-              </ul>
-              <Link className="btn btn-ghost cta" href={SIGNUP_HREF} style={{ justifyContent: 'center' }}>
-                Go Pro →
-              </Link>
-            </div>
-          </div>
+          <p className="trust-row" aria-label="Plan guarantees">
+            <span>No card for Free</span>
+            <span className="trust-row__dot">·</span>
+            <span>Cancel anytime</span>
+            <span className="trust-row__dot">·</span>
+            <span>0% success fee, ever</span>
+            <span className="trust-row__dot">·</span>
+            <span>Your data stays in the UK</span>
+          </p>
+          <PricingGrid />
           <p className="compare-link">
             <a href="#compare">See the full feature comparison ↓</a>
           </p>
@@ -521,7 +480,7 @@ export default function PricingPage() {
               style={{ color: 'var(--accent-mint)', borderColor: 'rgba(52,211,153,.3)' }}
               href={SIGNUP_HREF}
             >
-              Try Essential 14 days free →
+              Start Essential — £4.99/mo →
             </Link>
           </div>
           <p style={{ textAlign: 'center', marginTop: 20, color: 'var(--text-on-ink-dim)', fontSize: 13 }}>
