@@ -1,21 +1,23 @@
 /**
  * GET /api/cron/refresh-cancellation-info
  *
- * Weekly cron that re-verifies the oldest rows in
- * `provider_cancellation_info` using Perplexity (UK-grounded web
- * research). Promotes rows from data_source='seed' | 'ai' to
- * 'perplexity' with confidence='high' when the answer parses cleanly
- * + at least one concrete contact field (email / phone / url) is
- * present.
+ * Weekly cron with two legs:
  *
- * Processing rules:
- *  - Up to MAX_PER_RUN rows per invocation to cap Perplexity spend
- *  - Pick rows where last_verified_at IS NULL or < 30 days ago,
- *    oldest first
- *  - Changes to contact fields are captured in a log so admins can
- *    review if anything shifts dramatically
+ *  1. Refresh — re-verifies the oldest rows in
+ *     `provider_cancellation_info` (last_verified_at null or < 30d)
+ *     via Perplexity. Promotes data_source to 'perplexity' and sets
+ *     confidence based on how much the answer could confirm. Changes
+ *     per row are captured in business_log for admin review.
  *
- * Schedule: registered in vercel.json — "0 3 * * 1" (Mondays 03:00 UTC)
+ *  2. Discover — scans every active subscription across all users for
+ *     merchant names that aren't yet covered (neither canonical match
+ *     nor alias match) and INSERTs new rows via Perplexity. Keeps the
+ *     DB growing in lockstep with what users actually pay for, not
+ *     just what we hand-seeded.
+ *
+ * Both legs cap at a small N per run to keep Perplexity spend bounded.
+ *
+ * Schedule: vercel.json — "0 3 * * 1" (Mondays 03:00 UTC).
  *
  * Rule compliance: per CLAUDE.md #3, ALL real-time web research goes
  * through Perplexity. No direct scraping, no alternative APIs.
@@ -28,6 +30,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const MAX_PER_RUN = 10;
+const MAX_DISCOVERY_PER_RUN = 5;
 const STALE_DAYS = 30;
 
 function getAdmin() {
@@ -35,6 +38,33 @@ function getAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
+}
+
+function normalise(input: string): string {
+  return input.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+}
+
+/**
+ * Does this merchant name already have a cancellation-info row? Mirrors
+ * the fuzzy match logic in src/lib/cancellation-provider.ts so discovery
+ * doesn't duplicate seed entries.
+ */
+function hasExistingCoverage(
+  providerName: string,
+  rows: Array<{ provider: string; aliases: string[] | null }>,
+): boolean {
+  const search = normalise(providerName);
+  if (!search) return true;
+  const firstWord = search.split(/\s+/)[0];
+  for (const r of rows) {
+    if (search.includes(r.provider) || r.provider.includes(firstWord)) return true;
+    for (const alias of r.aliases ?? []) {
+      const a = alias.toLowerCase();
+      if (!a) continue;
+      if (search.includes(a) || a.includes(firstWord)) return true;
+    }
+  }
+  return false;
 }
 
 interface PerplexityAnswer {
@@ -121,9 +151,9 @@ export async function GET(request: NextRequest) {
   const admin = getAdmin();
   const staleCutoff = new Date(Date.now() - STALE_DAYS * 86_400_000).toISOString();
 
-  // Oldest-first ordering — null verification dates come before any real
-  // timestamp thanks to NULLS FIRST on the index created in the
-  // 20260424070000 migration.
+  // Refresh leg — null last_verified_at first (NULLS FIRST via the
+  // idx_provider_cancellation_verified index on the 20260424070000
+  // migration), then oldest real timestamps.
   const { data: candidates, error } = await admin
     .from('provider_cancellation_info')
     .select('id, provider, display_name, method, email, phone, url, tips, category, data_source, confidence, last_verified_at')
@@ -134,9 +164,6 @@ export async function GET(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (!candidates || candidates.length === 0) {
-    return NextResponse.json({ ok: true, processed: 0, reason: 'Nothing stale enough to refresh' });
-  }
 
   const results: Array<{
     provider: string;
@@ -146,7 +173,10 @@ export async function GET(request: NextRequest) {
     error?: string;
   }> = [];
 
-  for (const row of candidates) {
+  // Skip gracefully when nothing is stale — the discovery leg below
+  // still runs, so a newly-added subscription doesn't wait a full
+  // week for its first row.
+  for (const row of candidates ?? []) {
     const displayName = row.display_name || row.provider;
     const answer = await askPerplexity(displayName);
 
@@ -198,13 +228,84 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // ─── Discovery leg ───────────────────────────────────────────────
+  // Scan every active subscription across all users for provider names
+  // that aren't yet covered (neither canonical nor alias match) and
+  // run up to MAX_DISCOVERY_PER_RUN through Perplexity. Keeps the DB
+  // in step with what users actually pay for rather than only what we
+  // hand-seeded.
+  const discovered: Array<{
+    provider: string;
+    status: 'added' | 'failed';
+    confidence?: string;
+    error?: string;
+  }> = [];
+
+  try {
+    const [{ data: subs }, { data: existing }] = await Promise.all([
+      admin
+        .from('subscriptions')
+        .select('provider_name')
+        .eq('status', 'active')
+        .is('dismissed_at', null),
+      admin
+        .from('provider_cancellation_info')
+        .select('provider, aliases'),
+    ]);
+
+    const rows = (existing ?? []) as Array<{ provider: string; aliases: string[] | null }>;
+    const distinctNames = Array.from(
+      new Set(
+        (subs ?? [])
+          .map((s) => (s.provider_name as string | null)?.trim())
+          .filter((s): s is string => !!s && s.length >= 3),
+      ),
+    );
+
+    const uncovered = distinctNames.filter((name) => !hasExistingCoverage(name, rows));
+
+    for (const name of uncovered.slice(0, MAX_DISCOVERY_PER_RUN)) {
+      const answer = await askPerplexity(name);
+      if (!answer || !answer.method) {
+        discovered.push({ provider: name, status: 'failed', error: 'no parseable answer' });
+        continue;
+      }
+      const confidence = scoreConfidence(answer);
+      const { error: insErr } = await admin
+        .from('provider_cancellation_info')
+        .insert({
+          provider: normalise(name),
+          display_name: name,
+          method: answer.method,
+          email: answer.email ?? null,
+          phone: answer.phone ?? null,
+          url: answer.url ?? null,
+          tips: answer.tips ?? null,
+          category: answer.category ?? null,
+          data_source: 'perplexity',
+          confidence,
+          last_verified_at: new Date().toISOString(),
+        });
+      if (insErr) {
+        // 23505 = unique_violation — a parallel run added it; ignore.
+        if ((insErr as { code?: string }).code !== '23505') {
+          discovered.push({ provider: name, status: 'failed', error: insErr.message });
+          continue;
+        }
+      }
+      discovered.push({ provider: name, status: 'added', confidence });
+    }
+  } catch (err) {
+    console.error('[refresh-cancel] discovery leg failed:', err);
+  }
+
   // Audit log so admins can review week-over-week drift. business_log is
   // the pattern CLAUDE.md recommends for cross-cutting audit entries.
   try {
     await admin.from('business_log').insert({
       category: 'cancel_info_refresh',
-      summary: `Refreshed ${results.filter((r) => r.status === 'updated').length} providers (${results.filter((r) => r.status === 'failed').length} failed)`,
-      details: { results },
+      summary: `Refreshed ${results.filter((r) => r.status === 'updated').length} providers, discovered ${discovered.filter((d) => d.status === 'added').length} new (${results.filter((r) => r.status === 'failed').length + discovered.filter((d) => d.status === 'failed').length} failed)`,
+      details: { refreshed: results, discovered },
     });
   } catch {
     // non-fatal — logging shouldn't fail the cron
@@ -216,6 +317,9 @@ export async function GET(request: NextRequest) {
     updated: results.filter((r) => r.status === 'updated').length,
     unchanged: results.filter((r) => r.status === 'unchanged').length,
     failed: results.filter((r) => r.status === 'failed').length,
+    discovered: discovered.filter((d) => d.status === 'added').length,
+    discovery_failed: discovered.filter((d) => d.status === 'failed').length,
     results,
+    new_providers: discovered,
   });
 }
