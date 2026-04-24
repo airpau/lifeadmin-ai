@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [error, setError] = useState('');
   const [useMagicLink, setUseMagicLink] = useState(false);
+  const [stayLoggedIn, setStayLoggedIn] = useState(true);
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
   const router = useRouter();
@@ -56,6 +57,18 @@ export default function LoginPage() {
       });
 
       if (error) throw error;
+
+      // Persist the user's "stay signed in" choice so the dashboard
+      // auto-signout timer (TODO) can honour it. Supabase's own session
+      // cookie is long-lived by default, so today this flag is purely
+      // a UX affordance + audit hook — the functional difference lands
+      // in a follow-up PR that watches `pb_stay_signed_in=false` and
+      // calls supabase.auth.signOut() after ~60 min of inactivity.
+      try {
+        localStorage.setItem('pb_stay_signed_in', stayLoggedIn ? 'true' : 'false');
+      } catch {
+        /* storage unavailable — default (stay signed in) applies */
+      }
 
       router.push(redirectTo);
       router.refresh();
@@ -196,24 +209,35 @@ export default function LoginPage() {
                   </div>
 
                   {!useMagicLink && (
-                    <div className="field">
-                      <label htmlFor="password">Password</label>
-                      <div className="field-control">
-                        <Lock className="lead h-4 w-4" aria-hidden="true" />
+                    <>
+                      <div className="field">
+                        <label htmlFor="password">Password</label>
+                        <div className="field-control">
+                          <Lock className="lead h-4 w-4" aria-hidden="true" />
+                          <input
+                            id="password"
+                            type="password"
+                            required
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete="current-password"
+                          />
+                        </div>
+                        <div className="field-footer">
+                          <Link href="/auth/reset-password">Forgot password?</Link>
+                        </div>
+                      </div>
+
+                      <label className="stay-signed-in">
                         <input
-                          id="password"
-                          type="password"
-                          required
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="••••••••"
-                          autoComplete="current-password"
+                          type="checkbox"
+                          checked={stayLoggedIn}
+                          onChange={(e) => setStayLoggedIn(e.target.checked)}
                         />
-                      </div>
-                      <div className="field-footer">
-                        <Link href="/auth/reset-password">Forgot password?</Link>
-                      </div>
-                    </div>
+                        <span>Keep me signed in on this device</span>
+                      </label>
+                    </>
                   )}
 
                   {error && <div className="form-error">{error}</div>}
