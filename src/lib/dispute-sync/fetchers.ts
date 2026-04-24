@@ -358,3 +358,118 @@ export async function fetchNewMessages(
     .filter((m) => m.fromAddress && m.fromAddress.toLowerCase() !== ownAddr)
     .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
 }
+
+/**
+ * Fetch recent messages from a sender domain that ARE NOT in the currently-
+ * linked thread. Catches auto-responses and follow-up replies that suppliers
+ * send from a different address on the same domain
+ * (e.g. an `autoresponse@aciuk.uk` ack after you wrote to `customer@aciuk.uk`)
+ * which Gmail / Outlook treat as a brand-new thread.
+ *
+ * Returns messages in oldest → newest order. Caller is responsible for
+ * deduping against already-imported correspondence via supplier_message_id.
+ */
+export async function fetchDomainMessages(
+  conn: EmailConnection,
+  senderDomain: string,
+  since: Date | null,
+  excludeThreadId: string,
+): Promise<FetchedMessage[]> {
+  if (!senderDomain) return [];
+  const provider = providerFromConnection(conn);
+  const ownAddr = conn.email_address.toLowerCase().trim();
+
+  if (provider === 'gmail') {
+    const token = await ensureFreshToken(conn, 'gmail');
+    const afterTs = since ? `after:${Math.floor(since.getTime() / 1000)}` : 'newer_than:90d';
+    const q = `from:@${senderDomain} ${afterTs}`;
+    const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
+    listUrl.searchParams.set('q', q);
+    listUrl.searchParams.set('maxResults', '20');
+    const listRes = await fetch(listUrl.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!listRes.ok) return [];
+    const list = await listRes.json();
+    const out: FetchedMessage[] = [];
+    for (const m of (list.messages ?? []) as Array<{ id: string; threadId: string }>) {
+      if (m.threadId === excludeThreadId) continue; // already covered by thread sync
+      const detailRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!detailRes.ok) continue;
+      const msg = await detailRes.json();
+      const headers: { name: string; value: string }[] = msg.payload?.headers ?? [];
+      const get = (h: string) =>
+        headers.find((x) => x.name.toLowerCase() === h.toLowerCase())?.value ?? '';
+      const from = parseFrom(get('From'));
+      if (!from.address || from.address.toLowerCase() === ownAddr) continue;
+      const body = extractGmailBody(msg.payload);
+      out.push({
+        messageId: msg.id,
+        threadId: msg.threadId,
+        subject: get('Subject'),
+        fromRaw: get('From'),
+        fromAddress: from.address,
+        fromName: from.name,
+        fromDomain: from.domain,
+        receivedAt: new Date(Number(msg.internalDate)),
+        snippet: makeSnippet(body || msg.snippet || ''),
+        body,
+      });
+    }
+    return out.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+  }
+
+  if (provider === 'outlook') {
+    const token = await ensureFreshToken(conn, 'outlook');
+    const sinceIso = (since ?? new Date(Date.now() - 90 * 86400_000)).toISOString();
+    const url = new URL('https://graph.microsoft.com/v1.0/me/messages');
+    // Graph doesn't expose `from:@domain` in $filter, but it does in $search
+    // — which scans headers. We then exclude the current thread client-side.
+    url.searchParams.set('$search', `"from:${senderDomain}"`);
+    url.searchParams.set('$top', '20');
+    url.searchParams.set(
+      '$select',
+      'id,conversationId,subject,from,receivedDateTime,bodyPreview,body',
+    );
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const out: FetchedMessage[] = [];
+    for (const m of (data.value ?? []) as GraphMessage[]) {
+      if (m.conversationId === excludeThreadId) continue;
+      const received = new Date(m.receivedDateTime);
+      if (received < new Date(sinceIso)) continue;
+      const raw = m.from?.emailAddress?.address ?? '';
+      if (!raw || raw.toLowerCase() === ownAddr) continue;
+      const name = m.from?.emailAddress?.name ?? '';
+      const fromRaw = name ? `${name} <${raw}>` : raw;
+      const parsed = parseFrom(fromRaw);
+      if (!parsed.domain.toLowerCase().endsWith(senderDomain.toLowerCase())) continue;
+      const bodyText =
+        m.body?.contentType === 'html'
+          ? stripHtml(m.body.content ?? '')
+          : (m.body?.content ?? '').trim();
+      out.push({
+        messageId: m.id,
+        threadId: m.conversationId ?? '',
+        subject: m.subject ?? '',
+        fromRaw,
+        fromAddress: parsed.address,
+        fromName: parsed.name,
+        fromDomain: parsed.domain,
+        receivedAt: received,
+        snippet: makeSnippet(bodyText || m.bodyPreview || ''),
+        body: bodyText.slice(0, 8000),
+      });
+    }
+    return out.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+  }
+
+  // IMAP domain-scan not implemented yet — uncommon on Watchdog right now.
+  return [];
+}
