@@ -42,3 +42,8 @@ next-env.d.ts
 TASK.md
 TASK2.md
 .env*.local
+
+# graphify — commit graph outputs, skip local-only bits
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
