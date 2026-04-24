@@ -79,6 +79,10 @@
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
+.m-land-root .oauth-btn:active:not(:disabled) {
+  background: #E5E7EB;
+  transform: translateY(0) scale(0.98);
+}
 .m-land-root .oauth-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -269,6 +273,10 @@
 .m-land-root .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
   background: #2CC48A;
+}
+.m-land-root .auth-submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  background: #1FA878;
 }
 .m-land-root .auth-submit:disabled {
   opacity: 0.55;
