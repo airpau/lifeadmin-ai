@@ -42,3 +42,8 @@ next-env.d.ts
 TASK.md
 TASK2.md
 .env*.local
+
+# playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
