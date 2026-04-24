@@ -810,7 +810,8 @@ export default function MoneyHubPage() {
  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
  <span>{spaces.length > 1 ? 'Manage' : 'Spaces'}</span>
  </Link>
- {/* Month nav */}
+ {/* Month nav — grouped so the prev/select/next cluster stays together on mobile wrap */}
+ <div className="inline-flex items-center gap-1">
  <button
  onClick={() => {
  const months = Array.from({ length: 12 }, (_, i) => {
@@ -821,7 +822,8 @@ export default function MoneyHubPage() {
  const next = cur < months.length - 1 ? months[cur + 1] : months[months.length - 1];
  setSelectedMonth(next); refreshData(next); fetchExpectedBills(next);
  }}
- className="text-slate-600 hover:text-slate-900 p-1.5 rounded transition-colors"
+ className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-10 w-10 rounded transition-colors active:bg-slate-100"
+ aria-label="Previous month"
  title="Previous month"
  >
  <ArrowLeft className="h-4 w-4" />
@@ -849,11 +851,13 @@ export default function MoneyHubPage() {
  if (cur > 0) { setSelectedMonth(months[cur - 1]); refreshData(months[cur - 1]); fetchExpectedBills(months[cur - 1]); }
  }}
  disabled={!selectedMonth}
- className="text-slate-600 hover:text-slate-900 p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+ className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-10 w-10 rounded transition-colors active:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+ aria-label="Next month"
  title="Next month"
  >
  <ArrowRight className="h-4 w-4" />
  </button>
+ </div>
 
  <button
  onClick={handleSync}
