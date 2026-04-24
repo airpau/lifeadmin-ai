@@ -191,6 +191,23 @@
   margin-top: 4px;
 }
 
+/* Field footer — small right-aligned helper link under an input
+   (e.g. "Forgot password?" on the login form). Kept outside the
+   <label> so keyboard users and screen readers don't confuse it
+   with the field caption. */
+.m-land-root .field .field-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.m-land-root .field .field-footer a {
+  color: var(--accent-mint-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+.m-land-root .field .field-footer a:hover { text-decoration: underline; }
+
 /* Form error -------------------------------------------------------- */
 .m-land-root .form-error {
   margin: 10px 0 4px;
@@ -252,6 +269,80 @@
 .m-land-root .auth-finepr a {
   color: var(--text-secondary);
   text-decoration: underline;
+}
+
+/* Password strength checklist (real-time feedback) ------------------ */
+.m-land-root .pw-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+.m-land-root .pw-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: color 150ms ease;
+}
+.m-land-root .pw-checklist li.ok { color: var(--accent-mint-deep); }
+.m-land-root .pw-checklist li.todo { color: var(--text-tertiary); }
+.m-land-root .pw-checklist__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.m-land-root .pw-checklist li.ok .pw-checklist__mark {
+  background: var(--accent-mint-wash);
+  color: var(--accent-mint-deep);
+}
+.m-land-root .pw-checklist li.todo .pw-checklist__mark {
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--divider);
+}
+
+/* Consent checkboxes (required T&Cs + optional marketing) ----------- */
+.m-land-root .consent {
+  margin: 14px 0 4px;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  background: #FAFAF7;
+}
+.m-land-root .consent__row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.m-land-root .consent__row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent-mint-deep);
+  cursor: pointer;
+}
+.m-land-root .consent__row a {
+  color: var(--accent-mint-deep);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.m-land-root .consent__row--optional {
+  color: var(--text-tertiary);
+  font-size: 12.5px;
 }
 
 /* Check / sent screens --------------------------------------------- */
