@@ -1595,6 +1595,35 @@
   }
 }
 
+/* iOS Safari fallback — same root cause as PR #198 (hero video).
+   Mobile Safari occasionally evaluates `100cqw` to 1px on first paint
+   when a `transform: scale(calc(100cqw / N))` resolves before the
+   container query stabilises, leaving each demo rendered at its
+   native 980px and clipped against the wrapper. Re-state the same
+   transform using `100vw` (which IS reliably available on first
+   paint) so the scale lands correctly. The @media rule comes after
+   the @container rule so the cascade hands it the win. The two
+   subtractions account for the .wrap horizontal padding at each
+   breakpoint (24px each side ≤900, 16px each side ≤560). */
+@media (max-width: 900px) {
+  .m-v2-root .feature-stage > .demo-stage,
+  .m-v2-root .demo-slot > .demo-stage {
+    width: 980px;
+    height: 612.5px;
+    max-width: none;
+    aspect-ratio: auto;
+    margin: 0;
+    transform-origin: top left;
+    transform: scale(calc((100vw - 48px) / 980));
+  }
+}
+@media (max-width: 560px) {
+  .m-v2-root .feature-stage > .demo-stage,
+  .m-v2-root .demo-slot > .demo-stage {
+    transform: scale(calc((100vw - 32px) / 980));
+  }
+}
+
 /* ============================================================
    Section grids — desktop two-column layout for sections that
    are currently unstyled (why-grid, subs-grid, etc.).
