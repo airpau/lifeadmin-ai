@@ -20,6 +20,16 @@ AS $$
 DECLARE
   v_new_total DECIMAL;
 BEGIN
+  -- Caller identity guard. Because this function is SECURITY DEFINER, Postgres
+  -- runs it as the owner (bypassing RLS) — without this check, any signed-in
+  -- user could invoke the RPC with another user's UUID and mutate their
+  -- profiles.total_money_recovered. auth.uid() returns the JWT subject of the
+  -- calling Supabase session, so we require it to match p_user_id.
+  IF auth.uid() IS NULL OR auth.uid() <> p_user_id THEN
+    RAISE EXCEPTION 'increment_money_recovered: unauthorized caller'
+      USING ERRCODE = '42501';
+  END IF;
+
   IF p_amount IS NULL OR p_amount <= 0 THEN
     SELECT total_money_recovered INTO v_new_total FROM profiles WHERE id = p_user_id;
     RETURN COALESCE(v_new_total, 0);
