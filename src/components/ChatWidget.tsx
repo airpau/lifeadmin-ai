@@ -294,7 +294,7 @@ export default function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] card shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
+        <div className="fixed bottom-16 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[460px] max-h-[calc(100vh-8rem)] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden md:bottom-6 md:right-6 md:h-[520px] md:max-h-[calc(100vh-6rem)]">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-slate-100 border-b border-slate-200">
             <div className="flex items-center gap-2">

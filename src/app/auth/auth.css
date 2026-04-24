@@ -174,7 +174,12 @@
   width: 100%;
   padding: 12px 14px;
   padding-left: 38px;
-  font-size: 15px;
+  /* Must be ≥16px on mobile — iOS Safari auto-zooms any text input
+     with font-size < 16px on focus, and then doesn't always zoom
+     back out, leaving the whole /auth/login and /auth/signup pages
+     stuck in a pinched-out state until the user manually pinch-zooms.
+     Reported post-#269 on /auth/login. */
+  font-size: 16px;
   color: var(--text-primary);
   background: #fff;
   border: 1px solid var(--divider);

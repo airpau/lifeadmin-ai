@@ -1648,13 +1648,21 @@
     aspect-ratio: auto;
     margin: 0;
     transform-origin: top left;
-    transform: scale(min(1, calc((100vw - 72px) / 980)));
+    /* CRITICAL: divisor MUST be `980px` (length / length = number),
+       not `980` (length / number = length, rejected by scale()).
+       Safari strict-rejected the invalid declaration through PRs
+       #226/#265/#267/#269, leaving every demo rendered at its
+       native 980×612.5 and clipped by the parent's overflow —
+       exactly what the user's post-#269 screenshot shows. Chrome
+       was lenient and treated the length as unitless, so desktop
+       math testing never surfaced the bug. */
+    transform: scale(min(1, calc((100vw - 72px) / 980px)));
   }
 }
 @media (max-width: 560px) {
   .m-v2-root .feature-stage > .demo-stage,
   .m-v2-root .demo-slot > .demo-stage {
-    transform: scale(min(1, calc((100vw - 40px) / 980)));
+    transform: scale(min(1, calc((100vw - 40px) / 980px)));
   }
 }
 
