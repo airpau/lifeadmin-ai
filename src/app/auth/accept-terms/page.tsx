@@ -143,6 +143,16 @@ export default function AcceptTermsPage() {
         },
       });
       if (updateError) throw updateError;
+      // Also clear any pending OAuth blob that may still be in the tab
+      // (e.g. when the gate was entered from /onboarding, which never
+      // hits the dashboard-layout drain). Without this, a stale blob
+      // could auto-drain onto a different account later in the same
+      // 15-min window. Belt-and-braces with the auto-drain branch above.
+      try {
+        sessionStorage.removeItem('pb_pending_consent');
+      } catch {
+        /* storage unavailable — nothing to clean up */
+      }
       router.replace(next);
     } catch (err: unknown) {
       const message =
