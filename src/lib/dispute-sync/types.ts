@@ -30,6 +30,14 @@ export interface FetchedMessage {
   snippet: string;
   /** Plain-text body, HTML stripped, capped to 8000 chars. */
   body: string;
+  /**
+   * Provider-supplied deep-link that opens this message in their web UI.
+   * Microsoft Graph returns this as `webLink` on /me/messages and it's
+   * the only reliable way to open an Outlook message from us. Gmail
+   * doesn't expose an equivalent field — constructed client-side for
+   * Gmail users, so this stays undefined for Gmail-imported rows.
+   */
+  webLink?: string;
 }
 
 /**

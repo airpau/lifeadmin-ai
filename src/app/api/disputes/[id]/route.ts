@@ -17,7 +17,7 @@ export async function GET(
       *,
       correspondence(
         id, entry_type, title, content, summary, attachments, task_id, entry_date, created_at,
-        detected_from_email, sender_address, email_thread_id, supplier_message_id,
+        detected_from_email, sender_address, email_thread_id, supplier_message_id, supplier_web_link,
         ai_respond_needed, ai_urgency, ai_rationale
       ),
       contract_extractions(
@@ -73,21 +73,24 @@ export async function GET(
     return c;
   });
 
-  // Flag whether the user has a Gmail connection so the UI can gate
-  // the "Open in Gmail" deep-link — mail.google.com doesn't resolve
-  // message IDs for Outlook users, so showing the button to them
-  // would just land them on their own inbox.
+  // Flag which mail providers the user has connected so the UI can
+  // gate the "Open in Gmail" / "Open in Outlook" deep-links — those
+  // deep-links only resolve in the matching web mail app, so without
+  // the gate clicking them just lands a signed-in user on their own
+  // empty inbox.
   const { data: emailConns } = await supabase
     .from('email_connections')
     .select('provider_type')
     .eq('user_id', user.id)
     .eq('status', 'active');
   const userHasGmail = (emailConns ?? []).some((c) => c.provider_type === 'google');
+  const userHasOutlook = (emailConns ?? []).some((c) => c.provider_type === 'outlook');
 
   return NextResponse.json({
     ...dispute,
     correspondence: enrichedCorrespondence,
     user_has_gmail: userHasGmail,
+    user_has_outlook: userHasOutlook,
   });
 }
 

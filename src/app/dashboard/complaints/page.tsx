@@ -45,6 +45,7 @@ interface Dispute {
   unread_reply_count?: number;
   last_reply_received_at?: string | null;
   user_has_gmail?: boolean;
+  user_has_outlook?: boolean;
   correspondence?: Correspondence[];
   contract_extractions?: ContractExtraction[];
 }
@@ -97,6 +98,7 @@ interface Correspondence {
   sender_name?: string | null;
   email_thread_id?: string | null;
   supplier_message_id?: string | null;
+  supplier_web_link?: string | null;
   ai_category?: string | null;
   ai_respond_needed?: boolean | null;
   ai_urgency?: string | null;
@@ -1608,24 +1610,27 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     <p className="text-sm text-slate-600 whitespace-pre-wrap">{entry.content}</p>
                   )}
 
-                  {/* Action row for company replies — Draft AI response,
-                      open the original in the user's inbox, or start a
-                      blank reply via mailto. Covers the "I just want to
-                      reply in Gmail" case without forcing the user to
-                      dig through their inbox to find the thread. */}
-                  {isFromCompany && !isResolved(dispute.status) && (
+                  {/* Action row — Draft AI response, open the original
+                      in the user's webmail, or start a blank reply via
+                      mailto. Broader than isFromCompany so classifier
+                      false-positives (auto-replies tagged as user_note
+                      etc.) still surface the send/reply actions as long
+                      as we know who sent it. */}
+                  {(isFromCompany || entry.detected_from_email || entry.sender_address) && !isResolved(dispute.status) && (
                     <div className="mt-3 pt-3 border-t border-slate-200/30 flex flex-wrap gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          generateFollowUp();
-                        }}
-                        disabled={generating}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg text-sm transition-all border border-amber-200 font-medium"
-                      >
-                        {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                        Draft response to this
-                      </button>
+                      {isFromCompany && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            generateFollowUp();
+                          }}
+                          disabled={generating}
+                          className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg text-sm transition-all border border-amber-200 font-medium"
+                        >
+                          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                          Draft response to this
+                        </button>
+                      )}
                       {entry.sender_address && (
                         <a
                           href={`mailto:${entry.sender_address}?subject=${encodeURIComponent('Re: ' + (entry.title || dispute.issue_summary || dispute.provider_name || ''))}`}
@@ -1637,6 +1642,10 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Reply by email
                         </a>
                       )}
+                      {/* Gmail deep-link — only for Gmail users. Uses
+                          the Gmail internal message ID we store as
+                          supplier_message_id; mail.google.com accepts
+                          that in the #inbox/<id> fragment. */}
                       {entry.supplier_message_id && dispute.user_has_gmail && (
                         <a
                           href={`https://mail.google.com/mail/u/0/#inbox/${entry.supplier_message_id}`}
@@ -1644,10 +1653,28 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-sm transition-all font-medium"
-                          title="Open this message in Gmail (uses the Gmail internal message ID)"
+                          title="Open this message in Gmail"
                         >
                           <ArrowRight className="h-4 w-4" />
                           Open in Gmail
+                        </a>
+                      )}
+                      {/* Outlook deep-link — Microsoft Graph hands us a
+                          per-message webLink that opens OWA. Captured
+                          at sync time; older rows imported before
+                          migration 20260424090000 have it null so this
+                          gracefully hides. */}
+                      {entry.supplier_web_link && dispute.user_has_outlook && (
+                        <a
+                          href={entry.supplier_web_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-sm transition-all font-medium"
+                          title="Open this message in Outlook"
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                          Open in Outlook
                         </a>
                       )}
                     </div>
