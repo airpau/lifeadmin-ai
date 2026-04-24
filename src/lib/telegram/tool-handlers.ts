@@ -1330,18 +1330,24 @@ async function getFinancialOverview(
   userId: string,
 ): Promise<ToolResult> {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
 
-  const [subs, disputes, banks, transactions, budgets, savings] = await Promise.all([
+  // Use the same RPCs Money Hub calls (`get_monthly_spending_total`,
+  // `get_monthly_income_total`, `get_monthly_spending`) instead of a raw
+  // SELECT, so the numbers match. The raw SELECT double-counted transfers
+  // and credit-loan inflows as income / spending, which is why the bot's
+  // totals diverged from Money Hub.
+  const [subs, disputes, banks, incomeRes, spendRes, breakdownRes, budgets, savings] = await Promise.all([
     supabase.from('subscriptions').select('amount, billing_cycle, category', { count: 'exact' })
       .eq('user_id', userId).eq('status', 'active').is('dismissed_at', null),
     supabase.from('disputes').select('id', { count: 'exact', head: true })
       .eq('user_id', userId).not('status', 'in', '("resolved","dismissed")'),
     supabase.from('bank_connections').select('bank_name, status', { count: 'exact' })
-      .eq('user_id', userId),
-    supabase.from('bank_transactions').select('amount, category')
-      .eq('user_id', userId).gte('timestamp', monthStart).lt('timestamp', monthEnd),
+      .eq('user_id', userId).is('deleted_at', null),
+    supabase.rpc('get_monthly_income_total', { p_user_id: userId, p_year: year, p_month: month }),
+    supabase.rpc('get_monthly_spending_total', { p_user_id: userId, p_year: year, p_month: month }),
+    supabase.rpc('get_monthly_spending', { p_user_id: userId, p_year: year, p_month: month }),
     supabase.from('money_hub_budgets').select('category, monthly_limit')
       .eq('user_id', userId),
     supabase.from('verified_savings').select('amount_saved, annual_saving')
@@ -1350,7 +1356,6 @@ async function getFinancialOverview(
 
   const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
-  // Calculate totals
   const subsList = subs.data ?? [];
   const monthlySubsTotal = subsList.reduce((sum, s) => {
     const amt = Number(s.amount);
@@ -1360,22 +1365,17 @@ async function getFinancialOverview(
     return sum;
   }, 0);
 
-  const txs = transactions.data ?? [];
-  const totalSpending = txs.filter(t => Number(t.amount) < 0).reduce((sum, t) => sum + (-Number(t.amount)), 0);
-  const totalIncome = txs.filter(t => Number(t.amount) > 0).reduce((sum, t) => sum + Number(t.amount), 0);
+  const totalIncome = Number(incomeRes.data ?? 0);
+  const totalSpending = Number(spendRes.data ?? 0);
 
   const totalSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.amount_saved ?? 0), 0);
   const annualSaved = (savings.data ?? []).reduce((sum, s) => sum + Number(s.annual_saving ?? 0), 0);
 
-  // Category breakdown (top 5)
-  const catTotals: Record<string, number> = {};
-  txs.filter(t => Number(t.amount) < 0).forEach(t => {
-    const cat = t.category || 'other';
-    if (cat !== 'transfers') {
-      catTotals[cat] = (catTotals[cat] ?? 0) + (-Number(t.amount));
-    }
-  });
-  const topCats = Object.entries(catTotals).sort(([, a], [, b]) => b - a).slice(0, 5);
+  type BreakdownRow = { category: string; category_total: string };
+  const topCats = ((breakdownRes.data as BreakdownRow[]) ?? [])
+    .map((r) => [r.category, Number(r.category_total) || 0] as [string, number])
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5);
 
   const activeBanks = (banks.data ?? []).filter(b => b.status === 'active');
 
@@ -1614,9 +1614,13 @@ async function getMonthlyTrends(
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth() - lookback, 1).toISOString();
 
+  // Pull the same columns the get_monthly_*_total RPCs filter on so we
+  // can replicate their exclusions client-side (one query is cheaper
+  // than N-months × 2 RPC round-trips). Otherwise transfers + credit-loan
+  // flows inflate both sides and make trends disagree with Money Hub.
   const { data, error } = await supabase
     .from('bank_transactions')
-    .select('amount, timestamp')
+    .select('amount, timestamp, category, user_category, income_type')
     .eq('user_id', userId)
     .gte('timestamp', startDate)
     .order('timestamp', { ascending: true });
@@ -1627,12 +1631,24 @@ async function getMonthlyTrends(
 
   const monthlyData: Record<string, { income: number; spending: number }> = {};
   data.forEach((txn: any) => {
+    const rawCat = (txn.category ?? '').toString().toUpperCase();
+    const userCat = (txn.user_category ?? '').toString();
+    const incomeType = (txn.income_type ?? '').toString();
+    if (rawCat === 'TRANSFER') return;
+
     const m = txn.timestamp.slice(0, 7);
     const key = `${m}-01`;
     const amt = Number(txn.amount);
     if (!monthlyData[key]) monthlyData[key] = { income: 0, spending: 0 };
-    if (amt > 0) monthlyData[key].income += amt;
-    else monthlyData[key].spending += (-amt);
+
+    if (amt > 0) {
+      if (userCat === 'transfers') return;
+      if (incomeType === 'transfer' || incomeType === 'credit_loan') return;
+      monthlyData[key].income += amt;
+    } else if (amt < 0) {
+      if (userCat === 'transfers' || userCat === 'income') return;
+      monthlyData[key].spending += -amt;
+    }
   });
 
   const sorted = Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b));
