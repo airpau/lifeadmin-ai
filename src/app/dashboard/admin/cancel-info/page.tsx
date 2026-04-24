@@ -35,6 +35,11 @@ interface Stats {
   by_source: Record<DataSource, number>;
 }
 
+interface UncoveredRow {
+  provider_name: string;
+  user_count: number;
+}
+
 function freshnessLabel(v: string | null): { text: string; tone: 'ok' | 'warn' | 'stale' } {
   if (!v) return { text: 'Never verified', tone: 'stale' };
   const days = Math.floor((Date.now() - new Date(v).getTime()) / 86_400_000);
@@ -60,6 +65,7 @@ const SOURCE_COLOR: Record<DataSource, string> = {
 export default function AdminCancelInfoPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [uncovered, setUncovered] = useState<UncoveredRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -83,6 +89,7 @@ export default function AdminCancelInfoPage() {
       const data = await res.json();
       setRows(data.rows ?? []);
       setStats(data.stats ?? null);
+      setUncovered(data.uncovered ?? []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -364,6 +371,41 @@ export default function AdminCancelInfoPage() {
                     </td>
                   </tr>
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Uncovered providers — merchant names that appear on a user's
+          subscriptions but have no match in the cancel-info table. The
+          Monday discovery cron processes up to 5 of these per run, so
+          this list is a preview of what it'll pick up next + an
+          indication of the highest-impact gaps by user count. */}
+      {uncovered.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="text-lg font-semibold text-slate-900">Providers seen but not covered</h2>
+            <span className="text-xs text-slate-500">{uncovered.length} — top {Math.min(uncovered.length, 50)} by user count</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-3">
+            Merchant names from active subscriptions that don&apos;t match any row above — neither by canonical name nor alias. Discovery cron adds up to 5 per week, highest user-count first.
+          </p>
+          <div className="card p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="text-left px-4 py-2">Provider name</th>
+                  <th className="text-right px-4 py-2 w-32">Users</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {uncovered.map((u) => (
+                  <tr key={u.provider_name} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2 text-slate-900">{u.provider_name}</td>
+                    <td className="px-4 py-2 text-right text-slate-600">{u.user_count}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
