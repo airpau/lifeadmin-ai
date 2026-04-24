@@ -334,7 +334,17 @@ export async function syncLinkedThread(
       );
     }
 
-    if (options.sendNotifications !== false) {
+    // Don\'t alert on historical / backfill imports. When the user
+    // links a thread we pull past messages in for context, and the
+    // domain-scan pass can also turn up messages that pre-date the
+    // link. Notifying on those is noise (the user already knows
+    // about the 3-week-old default notice they were trying to
+    // dispute). Only alert on messages that arrived AFTER the
+    // Watchdog link existed.
+    const linkCreatedAt = link.created_at ? new Date(link.created_at).getTime() : 0;
+    const isNewSinceLink = m.receivedAt.getTime() >= linkCreatedAt;
+
+    if (options.sendNotifications !== false && isNewSinceLink) {
       const notifCopy = buildNotificationCopy({
         providerName,
         snippet: m.snippet,
