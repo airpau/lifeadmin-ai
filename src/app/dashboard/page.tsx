@@ -18,6 +18,7 @@ import { formatGBP } from '@/lib/format';
 import PriceIncreaseCard from '@/components/alerts/PriceIncreaseCard';
 import SavingsOpportunityWidget from '@/components/dashboard/SavingsOpportunityWidget';
 import SavingsSkeleton from '@/components/dashboard/SavingsSkeleton';
+import OpportunityDrawer, { type Opportunity, type OpportunityAction } from '@/components/dashboard/OpportunityDrawer';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import BankPickerModal, { connectBankDirect } from '@/components/BankPickerModal';
@@ -62,6 +63,7 @@ export default function DashboardPage() {
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [openOpportunity, setOpenOpportunity] = useState<Opportunity | null>(null);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -1076,39 +1078,65 @@ export default function DashboardPage() {
               </p>
               {emailOpportunities.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                  {emailOpportunities.slice(0, 5).map((opp: any, i: number) => (
-                    <div
-                      key={opp.id || i}
-                      style={{
-                        display: 'flex',
-                        gap: 10,
-                        padding: '10px 0',
-                        borderTop: i ? '1px solid var(--divider-2)' : '1px solid var(--divider-2)',
-                        alignItems: 'flex-start',
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{opp.title}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
-                          {opp.provider} · {(opp.type || 'opportunity').replace(/_/g, ' ')}
-                        </div>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== opp.id));
-                          setEmailScanResults((prev) => (prev !== null ? prev - 1 : null));
-                          try {
-                            await supabase.from('email_scan_findings').update({ status: 'dismissed' }).eq('id', opp.id);
-                            await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
-                          } catch {}
+                  {emailOpportunities.slice(0, 5).map((opp: any, i: number) => {
+                    const openDrawer = () =>
+                      setOpenOpportunity({
+                        id: opp.id,
+                        title: opp.title,
+                        description: opp.description ?? '',
+                        provider: opp.provider,
+                        amount: Number(opp.amount) || 0,
+                        type: opp.type,
+                        category: opp.category ?? 'other',
+                        paymentFrequency: opp.paymentFrequency ?? null,
+                        contractEndDate: opp.contractEndDate ?? null,
+                        confidence: opp.confidence,
+                      });
+                    return (
+                      <div
+                        key={opp.id || i}
+                        role="button"
+                        tabIndex={0}
+                        onClick={openDrawer}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openDrawer();
+                          }
                         }}
-                        style={{ background: 'transparent', border: 0, color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}
-                        title="Dismiss"
+                        style={{
+                          display: 'flex',
+                          gap: 10,
+                          padding: '10px 0',
+                          borderTop: i ? '1px solid var(--divider-2)' : '1px solid var(--divider-2)',
+                          alignItems: 'flex-start',
+                          cursor: 'pointer',
+                        }}
                       >
-                        Dismiss
-                      </button>
-                    </div>
-                  ))}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{opp.title}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.35 }}>
+                            {opp.provider} · {(opp.type || 'opportunity').replace(/_/g, ' ')}
+                          </div>
+                        </div>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== opp.id));
+                            setEmailScanResults((prev) => (prev !== null ? prev - 1 : null));
+                            try {
+                              await supabase.from('email_scan_findings').update({ status: 'dismissed' }).eq('id', opp.id);
+                              await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
+                            } catch {}
+                          }}
+                          style={{ background: 'transparent', border: 0, color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}
+                          title="Dismiss"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    );
+                  })}
                   {emailOpportunities.length > 5 && (
                     <Link
                       href="/dashboard/scanner"
@@ -1562,6 +1590,22 @@ export default function DashboardPage() {
       )}
 
       <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
+
+      {/* Opportunity Drawer — opens when a scanner item is tapped */}
+      <OpportunityDrawer
+        item={openOpportunity}
+        onClose={() => setOpenOpportunity(null)}
+        onActionComplete={(id: string, action: OpportunityAction) => {
+          setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== id));
+          setEmailScanResults((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
+          const label =
+            action === 'tracked' ? 'Added to subscriptions'
+            : action === 'disputed' ? 'Dispute created'
+            : 'Removed from scan';
+          setToast({ message: label, type: 'success' });
+          setTimeout(() => setToast(null), 3000);
+        }}
+      />
     </div>
   );
 }
