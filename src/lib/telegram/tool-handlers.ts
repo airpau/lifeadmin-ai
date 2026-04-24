@@ -1652,7 +1652,11 @@ export function isTransferLike(t: {
   const rawCat = (t.category ?? '').toString().toUpperCase();
   if (rawCat === 'TRANSFER') return true;
   if (userCat === 'transfers') return true;
-  if (incomeType === 'transfer' || incomeType === 'credit_loan') return true;
+  // Only pure transfers are excluded. credit_loan / loan_repayment
+  // contribute to income totals via migration 20260423020000 — they
+  // surface as "Loan Credit" in the Money Hub UI, so dropping them
+  // here would make Telegram trends diverge downward from the web.
+  if (incomeType === 'transfer') return true;
   return false;
 }
 
@@ -1857,7 +1861,10 @@ async function getMonthlyTrends(
 
     if (amt > 0) {
       if (userCat === 'transfers') return;
-      if (incomeType === 'transfer' || incomeType === 'credit_loan') return;
+      // Keep credit_loan / loan_repayment — the income RPC includes
+      // them since migration 20260423020000; dropping them here would
+      // make the bot trend short by real loan drawdowns.
+      if (incomeType === 'transfer') return;
       monthlyData[key].income += amt;
     } else if (amt < 0) {
       if (userCat === 'transfers' || userCat === 'income') return;

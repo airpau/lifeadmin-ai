@@ -122,6 +122,7 @@ export async function GET(request: NextRequest) {
     .in('status', ['active', 'token_expired'])
     .in('provider', ['truelayer', 'yapily'])
     .is('archived_at', null)
+    .is('deleted_at', null)
     .in('user_id', orderedUserIds.length > 0 ? orderedUserIds : ['00000000-0000-0000-0000-000000000000']);
 
   if (connError || !connections || connections.length === 0) {

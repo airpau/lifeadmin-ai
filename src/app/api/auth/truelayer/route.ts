@@ -22,7 +22,8 @@ export async function GET(request: Request) {
     .from('bank_connections')
     .select('id')
     .eq('user_id', user.id)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('deleted_at', null);
 
   const connectionCount = existingConnections?.length || 0;
 
