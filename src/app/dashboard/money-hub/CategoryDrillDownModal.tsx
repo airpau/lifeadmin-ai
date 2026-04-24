@@ -196,15 +196,19 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-white backdrop-blur-sm" onClick={onClose} />
-      <div className="relative card w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 capitalize">{displayTitle}</h2>
+      <div className="relative card w-full max-w-2xl max-h-[92vh] sm:max-h-[85vh] flex flex-col shadow-2xl rounded-b-none sm:rounded-2xl">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-slate-900 capitalize truncate">{displayTitle}</h2>
             <p className="text-slate-500 text-sm mt-1">{selectedMonth ? new Date(`${selectedMonth}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) : 'This month'}</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 p-2 rounded-lg hover:bg-slate-100 transition-colors">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-500 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 transition-colors"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -218,7 +222,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
           </div>
         )}
 
-        <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 text-mint-400 animate-spin" />
@@ -255,7 +259,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                       </div>
                       
                       {merchantRecatIdx === idx && (
-                        <div className="absolute top-16 right-0 w-56 bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                        <div className="absolute top-16 right-0 w-56 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
                           {renderReassignOptions(m.merchant)}
                         </div>
                       )}
@@ -288,7 +292,7 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
                         </div>
 
                         {isRecatOpen && (
-                          <div className="absolute top-12 right-4 w-56 bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
+                          <div className="absolute top-12 right-4 w-56 max-w-[calc(100vw-2.5rem)] bg-slate-100 border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden">
                             {renderReassignOptions(cleanMerchantName(txn.description || ''))}
                           </div>
                         )}

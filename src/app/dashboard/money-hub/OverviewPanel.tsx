@@ -191,7 +191,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   return (
                     <div
                       key={entry.type}
-                      className="group cursor-pointer hover:bg-slate-100 p-2 -mx-2 rounded-lg transition-colors"
+                      className="group cursor-pointer hover:bg-slate-100 active:bg-slate-200 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillIncomeType(entry.type)}
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
@@ -247,7 +247,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
                   return (
                     <div
                       key={c.category}
-                      className="group cursor-pointer hover:bg-slate-100 p-2 -mx-2 rounded-lg transition-colors"
+                      className="group cursor-pointer hover:bg-slate-100 active:bg-slate-200 p-2 -mx-2 rounded-lg transition-colors"
                       onClick={() => setDrillSpendingCategory(c.category)}
                     >
                       <div className="flex items-center justify-between text-sm mb-1">

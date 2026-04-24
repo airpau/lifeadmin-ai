@@ -41,6 +41,18 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
             <div className="text-right"><p className="text-xs text-slate-500">Liabilities</p><p className="text-lg text-slate-900 font-semibold">£---</p></div>
           </div>
         </div>
+      ) : assetsList.length === 0 && liabilitiesList.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center bg-white border border-slate-200 rounded-xl p-6">
+          <PiggyBank className="h-8 w-8 text-mint-400 mb-3" />
+          <p className="text-slate-900 font-semibold text-sm mb-1">See your true wealth</p>
+          <p className="text-slate-500 text-xs mb-4 max-w-[240px]">Add what you own (savings, property, investments) and what you owe (loans, mortgage) to track your real financial position.</p>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 bg-mint-500 hover:bg-mint-600 text-white font-semibold text-sm px-4 h-10 rounded-lg transition-colors"
+          >
+            Add your first entry
+          </button>
+        </div>
       ) : (
         <div className="flex-1 flex flex-col">
           {/* Assets vs Liabilities summary */}
@@ -55,13 +67,15 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
               <p className="text-lg text-red-400 font-semibold">£{fmtNum(liabilities)}</p>
             </div>
           </div>
-          
+
           <div className="space-y-4">
             {/* Top assets */}
             <div>
               <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 font-semibold">Assets</p>
               {assetsList.length === 0 ? (
-                <p className="text-xs text-slate-500">Add assets manually to track net worth.</p>
+                <button onClick={() => setModalOpen(true)} className="text-xs text-mint-600 hover:text-mint-700 underline decoration-dotted">
+                  Add an asset to start tracking
+                </button>
               ) : (
                 assetsList.slice(0, 3).map((a: any) => (
                   <div key={a.id} className="flex justify-between text-sm py-1.5 border-b border-slate-200 last:border-0">
@@ -76,7 +90,9 @@ export default function NetWorthPanel({ data, isPro, refreshData }: { data: any,
             <div>
               <p className="text-xs text-slate-500 uppercase tracking-wider mb-2 font-semibold">Liabilities</p>
               {liabilitiesList.length === 0 ? (
-                <p className="text-xs text-slate-500">No liabilities tracked.</p>
+                <button onClick={() => setModalOpen(true)} className="text-xs text-mint-600 hover:text-mint-700 underline decoration-dotted">
+                  Add a liability (optional)
+                </button>
               ) : (
                 liabilitiesList.slice(0, 3).map((l: any) => (
                   <div key={l.id} className="flex justify-between text-sm py-1.5 border-b border-slate-200 last:border-0">
