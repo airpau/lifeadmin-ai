@@ -50,17 +50,29 @@ async function ensureToken(conn: any): Promise<string> {
   return r.access_token;
 }
 
-async function listGmailRecent(conn: any, q: string, days: number): Promise<BrowsedThread[]> {
+async function listGmailRecent(conn: any, q: string, days: number, includeAll: boolean): Promise<BrowsedThread[]> {
   const token = await ensureToken(conn);
   const queryParts = [`newer_than:${days}d`];
-  if (q) queryParts.push(q);
-  // Skip Gmail\'s own "Promotions" + "Updates" categories so the picker
-  // is closer to actionable mail. Users with everything in Primary still
-  // see all their threads.
-  queryParts.push('-category:promotions -category:updates -category:social');
+  if (q) {
+    // Gmail full-text query — combine subject, sender, and body
+    // matches so a search for "ACI" finds threads where ACI appears
+    // anywhere (sender, subject, or body) without the user knowing
+    // Gmail\'s `subject:` / `from:` operators.
+    const safe = q.replace(/[\\"]/g, '');
+    queryParts.push(`(subject:${safe} OR from:${safe} OR ${safe})`);
+  }
+  // By default we include every category — even Promotions / Updates —
+  // because users often want disputes on receipts (Updates) or
+  // marketing-flagged renewal notices (Promotions). The previous
+  // `-category:promotions -category:updates -category:social` filter
+  // was hiding legitimate disputable mail (e.g. ACI debt notices that
+  // Google routes into Updates). Pass ?strict=1 to opt back in.
+  if (!includeAll) {
+    queryParts.push('-category:social');
+  }
   const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
   listUrl.searchParams.set('q', queryParts.join(' '));
-  listUrl.searchParams.set('maxResults', '25');
+  listUrl.searchParams.set('maxResults', '40');
   const res = await fetch(listUrl.toString(), { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return [];
   const list = await res.json();
@@ -141,7 +153,11 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get('q') ?? '').trim();
-  const days = Math.min(365, Math.max(7, parseInt(searchParams.get('days') ?? '90', 10) || 90));
+  // Default look-back bumped to 180 days — debt-collector and council
+  // letters often sit unread for a few months before the user wants
+  // to action them. Capped at 365 to keep API calls bounded.
+  const days = Math.min(365, Math.max(7, parseInt(searchParams.get('days') ?? '180', 10) || 180));
+  const strict = searchParams.get('strict') === '1';
 
   // Active, non-archived email connections only.
   const { data: connections } = await supabase
@@ -161,7 +177,7 @@ export async function GET(request: Request) {
     try {
       const provider = (conn.provider_type ?? '').toLowerCase();
       if (provider === 'google' || provider === 'gmail') {
-        all.push(...await listGmailRecent(conn, q, days));
+        all.push(...await listGmailRecent(conn, q, days, !strict));
       } else if (provider === 'microsoft' || provider === 'outlook') {
         all.push(...await listOutlookRecent(conn, q, days));
       }

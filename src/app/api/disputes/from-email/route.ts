@@ -133,6 +133,13 @@ interface Body {
   userContext?: string;
   desiredOutcome?: string;
   issueTypeHint?: string;
+  // Optional pre-extracted overrides — when the UI has already shown
+  // the user the AI preview, these come back so we don\'t bin
+  // changes the user made (e.g. correcting a wrong company name).
+  providerOverride?: string;
+  amountOverride?: number | null;
+  accountOverride?: string | null;
+  issueTypeOverride?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -179,12 +186,21 @@ export async function POST(request: Request) {
     .map((m) => `From: ${m.fromName || m.fromAddress}\nDate: ${m.receivedAt.toISOString()}\nSubject: ${m.subject}\n\n${m.body || m.snippet}`)
     .join('\n\n---\n\n');
 
-  // 3. AI extraction.
+  // 3. AI extraction. User-provided overrides win over AI guesses
+  // so corrections made on the preview screen survive the create.
   let facts: ExtractedFacts;
   try {
     facts = await extractFacts(threadText, userContext, desiredOutcome, body.issueTypeHint);
   } catch (err) {
     return NextResponse.json({ error: `AI extraction failed: ${err instanceof Error ? err.message : 'unknown'}` }, { status: 500 });
+  }
+  if (body.providerOverride && body.providerOverride.trim()) {
+    facts.provider_name = body.providerOverride.trim();
+  }
+  if (body.amountOverride !== undefined) facts.disputed_amount = body.amountOverride;
+  if (body.accountOverride !== undefined) facts.account_number = body.accountOverride;
+  if (body.issueTypeOverride && ALLOWED_ISSUE_TYPES.has(body.issueTypeOverride)) {
+    facts.issue_type = body.issueTypeOverride;
   }
 
   // 4. Create dispute row directly so we can also stamp the
