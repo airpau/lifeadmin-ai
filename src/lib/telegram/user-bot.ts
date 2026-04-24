@@ -127,7 +127,8 @@ READ TOOLS — Core:
 - get_financial_overview — Complete financial overview: income, spending, net position, open disputes
 - get_savings_goals — Savings goals with progress, target amount, and target date
 - get_savings_challenges — Active gamified savings challenges (No-Spend Week, etc.)
-- get_bank_connections — Connected bank accounts, sync status, last synced time
+- get_bank_connections — Connected bank accounts, sync status, last synced time (revoked + removed are hidden)
+- remove_bank_connection — Permanently hide a connection the user no longer wants (e.g. a sandbox/test one). Only call AFTER the user explicitly confirms ("yes remove it", "get rid of it"). Historical transactions are preserved.
 - get_verified_savings — Confirmed money saved through disputes, cancellations, and refunds
 - get_monthly_trends — Income vs spending trends over the last N months
 - get_income_breakdown — Income by source for a given month

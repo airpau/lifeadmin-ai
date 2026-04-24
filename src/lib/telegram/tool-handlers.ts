@@ -128,6 +128,8 @@ export async function executeToolCall(
       return getSavingsChallenges(supabase, userId);
     case 'get_bank_connections':
       return getBankConnections(supabase, userId);
+    case 'remove_bank_connection':
+      return removeBankConnection(supabase, userId, toolInput.identifier as string);
     case 'get_verified_savings':
       return getVerifiedSavings(supabase, userId);
     case 'get_monthly_trends':
@@ -1487,10 +1489,15 @@ async function getBankConnections(
   supabase: ReturnType<typeof getAdmin>,
   userId: string,
 ): Promise<ToolResult> {
+  // Hide revoked + expired_legacy (terminal states the user can't fix) and
+  // anything soft-deleted via /api/bank/remove. Keeps the bot list in sync
+  // with what Money Hub shows.
   const { data, error } = await supabase
     .from('bank_connections')
-    .select('bank_name, status, last_synced_at, connected_at, account_display_names, consent_expires_at')
+    .select('id, bank_name, status, last_synced_at, connected_at, account_display_names, consent_expires_at')
     .eq('user_id', userId)
+    .is('deleted_at', null)
+    .not('status', 'in', '("revoked","expired_legacy")')
     .order('connected_at', { ascending: false });
 
   if (error || !data || data.length === 0) {
@@ -1498,7 +1505,7 @@ async function getBankConnections(
   }
 
   const statusEmoji: Record<string, string> = {
-    active: '🟢', expired: '🔴', expiring_soon: '🟡', revoked: '⚫', expired_legacy: '⚫',
+    active: '🟢', expired: '🔴', expiring_soon: '🟡', token_expired: '🔴',
   };
 
   let text = `*Bank Connections (${data.length})*\n\n`;
@@ -1514,6 +1521,56 @@ async function getBankConnections(
   }
 
   return { text };
+}
+
+/**
+ * Soft-delete a bank connection the user no longer wants to see —
+ * typically a sandbox/test connection still showing as revoked.
+ * Matches by name substring (case-insensitive) so the user can say
+ * "remove the modelo connection" rather than quote a UUID.
+ */
+async function removeBankConnection(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  identifier: string,
+): Promise<ToolResult> {
+  const needle = identifier?.trim().toLowerCase();
+  if (!needle) {
+    return { text: "I need a bank name to remove — try e.g. 'remove the modelo connection'." };
+  }
+
+  const { data: matches } = await supabase
+    .from('bank_connections')
+    .select('id, bank_name, status, account_display_names')
+    .eq('user_id', userId)
+    .is('deleted_at', null);
+
+  const candidates = (matches ?? []).filter((m) => {
+    const name = (m.bank_name ?? '').toLowerCase();
+    const accounts = (m.account_display_names ?? []).join(' ').toLowerCase();
+    return name.includes(needle) || accounts.includes(needle);
+  });
+
+  if (candidates.length === 0) {
+    return { text: `No connection matches "${identifier}". Try get_bank_connections to see what's connected.` };
+  }
+  if (candidates.length > 1) {
+    const list = candidates.map((c) => `• ${c.bank_name} (${c.status})`).join('\n');
+    return { text: `Multiple connections match "${identifier}":\n${list}\n\nTell me which one — e.g. include the bank name as it appears above.` };
+  }
+
+  const target = candidates[0];
+  const { error } = await supabase
+    .from('bank_connections')
+    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', target.id)
+    .eq('user_id', userId);
+
+  if (error) {
+    return { text: `Couldn't remove ${target.bank_name}: ${error.message}` };
+  }
+
+  return { text: `✅ Removed *${target.bank_name}* from your connections. It won't appear here or in Money Hub again.` };
 }
 
 async function getVerifiedSavings(
