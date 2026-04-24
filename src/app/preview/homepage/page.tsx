@@ -1105,15 +1105,18 @@ export default function HomepageV3PreviewPage() {
             <Reveal className="feature-copy">
               <h2 className="feature-title">Subscriptions Tracker</h2>
               <p className="feature-tagline">
-                Every fixed outgoing — surfaced, sorted, savings-flagged.
+                Every fixed outgoing — surfaced, sorted, cancelled with one tap.
               </p>
               <p>
                 Auto-detects every subscription, direct debit and recurring
                 charge. Flags price rises, duplicates, and forgotten trials.
+                When you&apos;re ready to walk away, we draft the letter, address
+                it to the right team, and track their reply in Disputes for you.
               </p>
               <ul className="feature-bullets">
+                <li>One-tap cancellation — letter drafted with UK consumer law, pre-addressed to the provider&apos;s cancellation team</li>
+                <li>Auto-reply tracking — Watchdog picks up the provider&apos;s response from your inbox and progresses the dispute without you chasing</li>
                 <li>Renewal reminders 30, 14 and 7 days before charge</li>
-                <li>One-tap AI cancellation emails citing your right to exit</li>
                 <li>Contract end-date tracking for broadband, energy &amp; mobile</li>
               </ul>
               <div className="feature-cta-row">

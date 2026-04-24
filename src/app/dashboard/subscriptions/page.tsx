@@ -2482,20 +2482,32 @@ export default function SubscriptionsPage() {
                   onClick={async () => {
                     if (!selectedSub) return;
                     try {
-                      const res = await fetch(`/api/subscriptions/${selectedSub.id}`, {
-                        method: 'PUT',
+                      // Single endpoint call does three things atomically:
+                      // flip subscription status, find the open dispute,
+                      // and register a domain-scoped watchdog link so the
+                      // sync-runner picks up the provider's reply from
+                      // the user's inbox without needing the mailto
+                      // thread_id (which we never see).
+                      const res = await fetch(`/api/subscriptions/${selectedSub.id}/cancellation-sent`, {
+                        method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          status: 'pending_cancellation',
-                          notes: `Cancellation letter sent ${new Date().toLocaleDateString('en-GB')} — awaiting provider response`,
-                        }),
+                        body: JSON.stringify({ providerEmail: cancelInfo?.email ?? null }),
                       });
                       if (res.ok) {
-                        capture('cancellation_marked_sent', { provider: selectedSub.provider_name });
+                        const data = await res.json().catch(() => ({}));
+                        capture('cancellation_marked_sent', {
+                          provider: selectedSub.provider_name,
+                          watchdog_link_created: !!data.watchdog_link_created,
+                          sender_domain: data.sender_domain ?? null,
+                        });
                         setSelectedSub({ ...selectedSub, status: 'pending_cancellation' });
                         await fetchSubscriptions();
-                        setBankToast(`Tracking ${selectedSub.provider_name}'s reply in Disputes`);
-                        setTimeout(() => setBankToast(null), 5000);
+                        setBankToast(
+                          data.watchdog_link_created
+                            ? `Tracking replies from ${data.sender_domain} in Disputes`
+                            : `Marked as sent — link a reply thread in Disputes if no confirmation arrives`,
+                        );
+                        setTimeout(() => setBankToast(null), 5500);
                       } else {
                         setBankToast('Failed to update — try again');
                         setTimeout(() => setBankToast(null), 5000);
