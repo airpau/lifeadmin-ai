@@ -283,7 +283,16 @@ export async function detectRecurring(
     });
 
     if (insertError) {
-      console.error(`Failed to create subscription for ${displayName}:`, insertError);
+      // Partial unique index on (user_id, lower(provider_name), round(amount,2))
+      // guards against concurrent bank-sync runs — when two crons both see no
+      // Patreon row and both try to insert, the second one lands here with
+      // PG error 23505. That's the expected path, not a failure: silently
+      // skip so we don't noisy-log or double-count.
+      if ((insertError as { code?: string }).code === '23505') {
+        // Already inserted by a parallel run — nothing to do.
+      } else {
+        console.error(`Failed to create subscription for ${displayName}:`, insertError);
+      }
     } else {
       newRecurringCount++;
       console.log(`Detected recurring: ${finalDisplayName} £${avgAmount.toFixed(2)}/${cycle} [${category}]${rule ? ' (from merchant rules)' : ''}`);
