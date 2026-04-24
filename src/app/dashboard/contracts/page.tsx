@@ -527,7 +527,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <h2 className="text-lg font-bold text-slate-900">Add a contract</h2>
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
         </div>
 
         {/* Tab switcher */}
@@ -651,7 +651,7 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Start date</label>
                   <input

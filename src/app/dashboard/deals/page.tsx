@@ -257,10 +257,11 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
       {onDismiss && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
-          className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-label="Dismiss deal"
+          className="absolute top-2 right-2 inline-flex items-center justify-center h-10 w-10 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 hover:text-slate-900 rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
           title="Not interested"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </button>
       )}
       {/* Body — grows to fill, pushes footer to bottom */}
@@ -392,12 +393,13 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
   return (
     <div className="group relative bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-5 transition-all flex flex-col overflow-hidden hover:border-slate-200">
       {onDismiss && (
-        <button 
+        <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
-          className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          aria-label="Dismiss deal"
+          className="absolute top-2 right-2 inline-flex items-center justify-center h-10 w-10 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 hover:text-slate-900 rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10"
           title="Not interested"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </button>
       )}
       {/* Body — identical to DealCard */}

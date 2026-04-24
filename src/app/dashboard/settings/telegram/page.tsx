@@ -213,7 +213,7 @@ export default function TelegramSettingsPage() {
               Unlink
             </button>
           </div>
-          <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4 text-sm">
+          <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-slate-500">Linked</span>
               <p className="text-slate-700">{formatDate(status.session.linked_at)}</p>
