@@ -206,19 +206,64 @@ function timeAgo(d: string) {
 // ============================================================
 // Letter Modal (reused from before)
 // ============================================================
-function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
+function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeId, providerName, onSentMarked }: {
   content: string;
   title: string;
   legalRefs: string[];
   rightsPills?: RightsPill[];
   onClose: () => void;
+  disputeId?: string;
+  providerName?: string;
+  onSentMarked?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [providerEmail, setProviderEmail] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sentNote, setSentNote] = useState<string | null>(null);
+
+  // Look up the provider's contact email so the mailto pre-addresses
+  // to them rather than forcing the user to find it themselves.
+  useEffect(() => {
+    if (!providerName) return;
+    let cancelled = false;
+    fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(providerName)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setProviderEmail(d?.info?.email ?? null); })
+      .catch(() => { /* non-fatal — just no pre-addressed mailto */ });
+    return () => { cancelled = true; };
+  }, [providerName]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleMarkSent = async () => {
+    if (!disputeId) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/disputes/${disputeId}/letter-sent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerEmail }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSentNote(
+          data?.watchdog_link_created
+            ? "Marked as sent. We'll track the reply in this dispute."
+            : 'Marked as sent. Check this dispute for the reply.',
+        );
+        onSentMarked?.();
+      } else {
+        setSentNote('Could not mark as sent. Try again in a moment.');
+      }
+    } catch {
+      setSentNote('Could not mark as sent. Try again in a moment.');
+    } finally {
+      setSending(false);
+    }
   };
 
   const handlePDF = () => {
@@ -312,14 +357,40 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose }: {
           )}
           <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
         </div>
-        <div className="flex gap-3 p-6 border-t border-slate-200/50 flex-shrink-0">
-          <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
-            {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            {copied ? 'Copied!' : 'Copy Letter'}
-          </button>
-          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold">
-            <Download className="h-4 w-4" /> Download PDF
-          </button>
+        <div className="flex flex-col gap-3 p-6 border-t border-slate-200/50 flex-shrink-0">
+          {sentNote && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 flex items-center gap-2 text-sm text-emerald-700">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              {sentNote}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={handleCopy} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
+              {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              {copied ? 'Copied!' : 'Copy Letter'}
+            </button>
+            <button onClick={handlePDF} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
+              <Download className="h-4 w-4" /> Download PDF
+            </button>
+            {providerEmail && (
+              <a
+                href={`mailto:${providerEmail}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(content)}`}
+                className="flex-1 min-w-[160px] flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold"
+              >
+                <Mail className="h-4 w-4" /> Open in Email
+              </a>
+            )}
+          </div>
+          {disputeId && !sentNote && (
+            <button
+              onClick={handleMarkSent}
+              disabled={sending}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border border-emerald-500/30 py-3 rounded-lg transition-all font-medium disabled:opacity-60"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              I&apos;ve sent it — track the reply
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1039,6 +1110,9 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
           title={letterModal.title}
           legalRefs={letterModal.refs}
           rightsPills={letterModal.pills}
+          disputeId={disputeId}
+          providerName={dispute?.provider_name}
+          onSentMarked={fetchDispute}
           onClose={() => setLetterModal(null)}
         />
       )}
