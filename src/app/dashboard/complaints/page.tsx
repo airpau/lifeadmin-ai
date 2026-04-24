@@ -44,6 +44,7 @@ interface Dispute {
   latest_snippet?: string | null;
   unread_reply_count?: number;
   last_reply_received_at?: string | null;
+  user_has_gmail?: boolean;
   correspondence?: Correspondence[];
   contract_extractions?: ContractExtraction[];
 }
@@ -1636,7 +1637,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Reply by email
                         </a>
                       )}
-                      {entry.supplier_message_id && (
+                      {entry.supplier_message_id && dispute.user_has_gmail && (
                         <a
                           href={`https://mail.google.com/mail/u/0/#inbox/${entry.supplier_message_id}`}
                           target="_blank"

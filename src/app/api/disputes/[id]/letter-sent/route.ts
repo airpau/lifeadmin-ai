@@ -93,17 +93,26 @@ export async function POST(
       .maybeSingle();
 
     if (emailConn) {
+      // dispute_watchdog_links CHECK constraints require provider ∈
+      // (gmail, outlook, imap) and match_source ∈ (user_confirmed,
+      // auto_domain, auto_ai). email_connections.provider_type uses
+      // 'google' rather than 'gmail', so normalise before insert.
+      const providerMap: Record<string, 'gmail' | 'outlook' | 'imap'> = {
+        google: 'gmail', gmail: 'gmail', outlook: 'outlook', imap: 'imap',
+      };
+      const normalisedProvider = providerMap[emailConn.provider_type as string] ?? 'imap';
+
       const { error: linkErr } = await supabase
         .from('dispute_watchdog_links')
         .insert({
           dispute_id: disputeId,
           user_id: user.id,
           email_connection_id: emailConn.id,
-          provider: emailConn.provider_type,
+          provider: normalisedProvider,
           thread_id: null,
           sender_domain: senderDomain,
           sync_enabled: true,
-          match_source: 'letter_send',
+          match_source: 'auto_domain',
           match_confidence: 0.7,
         });
       if (linkErr) {

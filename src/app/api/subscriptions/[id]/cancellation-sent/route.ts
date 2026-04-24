@@ -97,17 +97,28 @@ export async function POST(
     const senderDomain = extractDomain(providerEmail);
 
     if (emailConn && senderDomain) {
+      // dispute_watchdog_links constrains provider ∈ (gmail, outlook, imap)
+      // and match_source ∈ (user_confirmed, auto_domain, auto_ai).
+      // email_connections.provider_type stores 'google' rather than
+      // 'gmail', so normalise before insert. 'auto_domain' is the right
+      // semantic here — the link is created automatically, scoped by
+      // domain, without the user confirming a specific thread.
+      const providerMap: Record<string, 'gmail' | 'outlook' | 'imap'> = {
+        google: 'gmail', gmail: 'gmail', outlook: 'outlook', imap: 'imap',
+      };
+      const normalisedProvider = providerMap[emailConn.provider_type as string] ?? 'imap';
+
       const { data: linkRow, error: linkErr } = await supabase
         .from('dispute_watchdog_links')
         .insert({
           dispute_id: dispute.id,
           user_id: user.id,
           email_connection_id: emailConn.id,
-          provider: emailConn.provider_type,
+          provider: normalisedProvider,
           thread_id: null,
           sender_domain: senderDomain,
           sync_enabled: true,
-          match_source: 'cancellation_send',
+          match_source: 'auto_domain',
           match_confidence: 0.7,
         })
         .select('id')
