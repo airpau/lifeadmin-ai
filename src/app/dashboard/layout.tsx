@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import TrialBanner from '@/components/TrialBanner';
+import ConnectionHealthBanner from '@/components/ConnectionHealthBanner';
 import DashboardShell, { type UserSummary } from '@/components/dashboard/DashboardShell';
 import './shell-v2.css';
 import './dashboard.css';
@@ -184,10 +185,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     trialDaysLeft,
   };
 
-  const topBanner =
-    isTrial || trialExpired ? (
-      <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />
-    ) : null;
+  // Stacked banners — trial status (when active) then the connection
+  // health banner (only renders if any email connection is broken).
+  // Order matters: billing/trial is the more urgent signal so it sits
+  // above any sync-health nagging.
+  const topBanner = (
+    <>
+      {(isTrial || trialExpired) && (
+        <TrialBanner daysLeft={trialDaysLeft} trialExpired={trialExpired} />
+      )}
+      <ConnectionHealthBanner />
+    </>
+  );
 
   return (
     <DashboardShell
