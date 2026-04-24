@@ -1,7 +1,7 @@
 'use client';
 
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import UpgradePrompt from '@/components/UpgradePrompt';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
@@ -66,6 +66,45 @@ export default function DashboardPage() {
   const searchParams = useSearchParams();
 
   const potentialSavings = calculateTotalSavings(comparisonDeals, priceAlerts);
+
+  // Action items: de-dupe by (provider + title) so re-scans that inserted the
+  // same task multiple times collapse into one row, then apply the selected
+  // filter pill. Without this, users saw "Complaint to OneStream" x3 and the
+  // filter pills had no visible effect (taskFilter was set in state but not
+  // read by the render).
+  const visiblePendingTasks = useMemo(() => {
+    const effectiveType = (t: { description?: string | null; type?: string | null; title?: string | null }): string => {
+      try {
+        const parsed = t.description ? JSON.parse(t.description) : null;
+        const title = String(t.title || '').toLowerCase();
+        const k = String(parsed?.type || t.type || '').toLowerCase();
+        if (k) return k;
+        if (title.startsWith('complaint to ') || title.startsWith('dispute ')) return 'complaint';
+        return '';
+      } catch {
+        return String(t.type || '').toLowerCase();
+      }
+    };
+    const matchesPill = (t: { description?: string | null; type?: string | null; title?: string | null }): boolean => {
+      if (taskFilter === 'all') return true;
+      const k = effectiveType(t);
+      if (taskFilter === 'subscriptions') return k.includes('subscription');
+      if (taskFilter === 'disputes')
+        return /complaint|dispute|overcharge|price_increase|bill/.test(k);
+      if (taskFilter === 'deals') return /deal|switch|better|renewal/.test(k);
+      return true;
+    };
+    const seen = new Set<string>();
+    return pendingTasks
+      .filter((t) => !((t.provider_name || '').toLowerCase().includes('paybacker')))
+      .filter(matchesPill)
+      .filter((t) => {
+        const key = `${(t.provider_name || '').toLowerCase()}::${(t.title || '').toLowerCase()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [pendingTasks, taskFilter]);
 
   // Disconnect bank function
   const disconnectBank = async (connectionId: string, bankName: string) => {
@@ -1161,7 +1200,7 @@ export default function DashboardPage() {
             <div className="card">
               <h3 style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <Clock className="h-4 w-4" /> Action items <span className="count-tag">{pendingTasks.length}</span>
+                  <Clock className="h-4 w-4" /> Action items <span className="count-tag">{visiblePendingTasks.length}</span>
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {(['all', 'disputes', 'deals', 'subscriptions'] as const).map((f) => (
@@ -1177,8 +1216,7 @@ export default function DashboardPage() {
                 </div>
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {pendingTasks
-                  .filter((t) => !((t.provider_name || '').toLowerCase().includes('paybacker')))
+                {visiblePendingTasks
                   .slice(0, showAllTasks ? 50 : 5)
                   .map((task, i) => {
                     const parsedDesc = (() => {
@@ -1245,7 +1283,7 @@ export default function DashboardPage() {
                     );
                   })}
               </div>
-              {pendingTasks.length > 5 && (
+              {visiblePendingTasks.length > 5 && (
                 <button
                   onClick={() => setShowAllTasks((v) => !v)}
                   style={{
@@ -1260,7 +1298,7 @@ export default function DashboardPage() {
                     padding: 8,
                   }}
                 >
-                  {showAllTasks ? 'Show less' : `Show all ${pendingTasks.length} items`}
+                  {showAllTasks ? 'Show less' : `Show all ${visiblePendingTasks.length} items`}
                 </button>
               )}
             </div>
