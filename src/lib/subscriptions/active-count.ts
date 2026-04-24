@@ -50,7 +50,14 @@ const CREDIT_KEYWORDS = [
   'credit card',
 ];
 
-function isFinanceProvider(name: string | null | undefined): boolean {
+/**
+ * True when the merchant name looks like a loan / mortgage / credit
+ * card rather than a cancellable subscription. Reused by the admin
+ * cancel-info uncovered-providers list and the Perplexity discovery
+ * cron so we don't waste a call researching "how to cancel a Santander
+ * loan" — that's a debt, not a subscription.
+ */
+export function isFinanceProvider(name: string | null | undefined): boolean {
   if (!name) return false;
   const lower = name.toLowerCase();
   return DEBT_KEYWORDS.some((k) => lower.includes(k)) || CREDIT_KEYWORDS.some((k) => lower.includes(k));

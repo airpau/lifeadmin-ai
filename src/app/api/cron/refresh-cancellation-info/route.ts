@@ -26,6 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { isFinanceProvider } from '@/lib/subscriptions/active-count';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -264,7 +265,14 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    const uncovered = distinctNames.filter((name) => !hasExistingCoverage(name, rows));
+    // Skip loan/mortgage/credit-card names — they're debts the user
+    // can't "cancel" in the consumer-rights sense, so spending a
+    // Perplexity call on them is wasted quota and the result would
+    // be a generic "contact your lender" message the UI already
+    // handles with the fallback.
+    const uncovered = distinctNames
+      .filter((name) => !isFinanceProvider(name))
+      .filter((name) => !hasExistingCoverage(name, rows));
 
     for (const name of uncovered.slice(0, MAX_DISCOVERY_PER_RUN)) {
       const answer = await askPerplexity(name);
