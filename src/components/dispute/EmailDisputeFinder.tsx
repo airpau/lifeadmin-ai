@@ -2,16 +2,20 @@
 
 /**
  * Two-step modal: pick an email from the user's connected inbox(es)
- * → add user context + desired outcome → fire `/api/disputes/from-email`
- * which extracts facts via AI, creates the dispute, links the thread
- * for Watchdog monitoring, and drafts the complaint letter.
+ * → confirm what we read + add user context + desired outcome →
+ * fire `/api/disputes/from-email` which creates the dispute, links
+ * the thread for Watchdog monitoring, and drafts the complaint
+ * letter.
  *
- * Used as the "From an email" entry point on the New Dispute flow.
+ * Step 2 pre-runs an AI extraction (`/api/disputes/from-email/preview`)
+ * the moment a thread is selected so the user sees what we read
+ * and can correct the company name + issue type if needed before
+ * spending time on context.
  */
 
 import { useEffect, useState } from 'react';
 import {
-  X, Loader2, Mail, ArrowLeft, ArrowRight, Search, Sparkles, Inbox, AlertCircle, Check,
+  X, Loader2, Mail, ArrowLeft, ArrowRight, Search, Sparkles, Inbox, AlertCircle, Pencil, Check,
 } from 'lucide-react';
 
 interface BrowsedThread {
@@ -28,6 +32,36 @@ interface BrowsedThread {
   snippet: string;
 }
 
+interface PreviewFacts {
+  provider_name: string;
+  account_number: string | null;
+  disputed_amount: number | null;
+  issue_type: string;
+  issue_type_label: string;
+  issue_summary: string;
+  thread_summary: string;
+  suggested_user_context: string;
+  suggested_outcome: string;
+  sender_email: string;
+  sender_name: string;
+  subject: string;
+  message_count: number;
+}
+
+const ISSUE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'complaint', label: 'General complaint' },
+  { value: 'energy_dispute', label: 'Energy bill dispute' },
+  { value: 'broadband_complaint', label: 'Broadband / mobile complaint' },
+  { value: 'flight_compensation', label: 'Flight delay / cancellation' },
+  { value: 'parking_appeal', label: 'Parking ticket appeal' },
+  { value: 'debt_dispute', label: 'Debt dispute' },
+  { value: 'refund_request', label: 'Refund request' },
+  { value: 'hmrc_tax_rebate', label: 'HMRC tax issue' },
+  { value: 'council_tax_band', label: 'Council tax / business rates' },
+  { value: 'dvla_vehicle', label: 'DVLA / vehicle' },
+  { value: 'nhs_complaint', label: 'NHS complaint' },
+];
+
 interface Props {
   onClose: () => void;
   onCreated: (disputeId: string) => void;
@@ -39,15 +73,29 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [searched, setSearched] = useState(false);
   const [selected, setSelected] = useState<BrowsedThread | null>(null);
+
+  // Preview state — populated by /api/disputes/from-email/preview
+  // when the user picks a thread.
+  const [preview, setPreview] = useState<PreviewFacts | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // User-overridable fields (default to preview values, user can edit)
+  const [providerName, setProviderName] = useState('');
+  const [issueType, setIssueType] = useState('complaint');
   const [userContext, setUserContext] = useState('');
   const [desiredOutcome, setDesiredOutcome] = useState('');
+  const [editingProvider, setEditingProvider] = useState(false);
+
   const [creating, setCreating] = useState(false);
   const [hasNoEmail, setHasNoEmail] = useState(false);
 
   const fetchThreads = async (q?: string) => {
     setLoading(true);
     setError(null);
+    setSearched(!!q);
     try {
       const params = new URLSearchParams();
       if (q) params.set('q', q);
@@ -73,6 +121,41 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
     void fetchThreads(search.trim());
   };
 
+  const pickThread = async (t: BrowsedThread) => {
+    setSelected(t);
+    setStep('context');
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    // Sensible defaults BEFORE the AI replies — the form is usable
+    // immediately even if extraction is slow or fails.
+    setProviderName(t.senderName || '');
+    setIssueType('complaint');
+    setUserContext('');
+    setDesiredOutcome('');
+    setEditingProvider(false);
+    try {
+      const res = await fetch('/api/disputes/from-email/preview', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId: t.connectionId, threadId: t.threadId }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || `Preview failed (${res.status})`);
+      setPreview(d as PreviewFacts);
+      setProviderName(d.provider_name || t.senderName || '');
+      setIssueType(d.issue_type || 'complaint');
+      // Pre-fill suggested context only if the user hasn\'t typed anything.
+      if (d.suggested_user_context) setUserContext(d.suggested_user_context);
+      if (d.suggested_outcome) setDesiredOutcome(d.suggested_outcome);
+    } catch (e: any) {
+      setPreviewError(e?.message || 'Couldn\'t read the email');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const create = async () => {
     if (!selected) return;
     if (!userContext.trim() || !desiredOutcome.trim()) return;
@@ -89,6 +172,8 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
           threadId: selected.threadId,
           userContext: userContext.trim(),
           desiredOutcome: desiredOutcome.trim(),
+          providerOverride: providerName.trim() || undefined,
+          issueTypeOverride: issueType,
         }),
       });
       const d = await res.json();
@@ -110,7 +195,7 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
             <Inbox className="h-5 w-5 text-emerald-600" />
             <h2 className="text-lg font-semibold text-slate-900">
               {step === 'pick' && 'Pick an email to dispute'}
-              {step === 'context' && 'Add a bit of context'}
+              {step === 'context' && 'Confirm and add your side'}
               {step === 'creating' && 'Creating your dispute…'}
             </h2>
           </div>
@@ -138,12 +223,15 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search subject or sender (e.g. Broxbourne, parking, energy)"
+                      placeholder="Search subject, sender or body (e.g. ACI, parking, council)"
                       className="w-full pl-8 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                   <button type="submit" className="bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium rounded-lg px-3 py-2">Search</button>
                 </form>
+                <p className="text-[11px] text-slate-500 mb-3">
+                  Showing recent threads from the last 180 days. Try a sender keyword if you don\'t see it — search runs across subject, sender, and email body.
+                </p>
 
                 {loading && (
                   <div className="py-12 flex items-center justify-center">
@@ -159,7 +247,19 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
                 )}
 
                 {!loading && !error && threads.length === 0 && (
-                  <p className="text-sm text-slate-500 italic text-center py-8">No threads found in the last 90 days. Try a different search term.</p>
+                  <div className="text-center py-8">
+                    <p className="text-sm text-slate-500 italic mb-2">
+                      {searched ? `Nothing matched "${search}" in the last 180 days.` : 'No threads found in the last 180 days.'}
+                    </p>
+                    {searched && (
+                      <button
+                        onClick={() => { setSearch(''); void fetchThreads(); }}
+                        className="text-xs text-emerald-700 hover:underline"
+                      >
+                        Show recent threads instead
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 <ul className="space-y-2">
@@ -168,24 +268,31 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
                     return (
                       <li key={`${t.connectionId}:${t.threadId}`}>
                         <button
-                          onClick={() => { setSelected(t); setStep('context'); }}
+                          onClick={() => pickThread(t)}
                           className="w-full text-left p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all"
                         >
                           <div className="flex items-start justify-between gap-2 mb-1">
-                            <p className="text-sm font-semibold text-slate-900 line-clamp-1 flex-1">{t.subject}</p>
-                            <span className="text-xs text-slate-500 flex-shrink-0">
-                              {date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            <p className="text-sm font-semibold text-slate-900 line-clamp-1 flex-1">{t.subject || '(no subject)'}</p>
+                            <span className="text-xs text-slate-500 flex-shrink-0 whitespace-nowrap">
+                              {date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: date.getFullYear() !== new Date().getFullYear() ? '2-digit' : undefined })}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-600 mb-1">
-                            {t.senderName} <span className="text-slate-400">·</span> <span className="text-slate-500">{t.senderAddress}</span>
+                          <p className="text-xs text-slate-600 mb-1 truncate">
+                            <span className="font-medium">{t.senderName}</span>
+                            <span className="text-slate-400"> · </span>
+                            <span className="text-slate-500">{t.senderAddress}</span>
                           </p>
                           <p className="text-xs text-slate-500 line-clamp-2">{t.snippet}</p>
-                          {t.messageCount > 1 && (
-                            <span className="inline-block mt-1.5 text-[10px] uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-                              {t.messageCount} messages
+                          <div className="flex items-center gap-2 mt-1.5">
+                            {t.messageCount > 1 && (
+                              <span className="text-[10px] uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                {t.messageCount} msgs
+                              </span>
+                            )}
+                            <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              {t.provider}
                             </span>
-                          )}
+                          </div>
                         </button>
                       </li>
                     );
@@ -198,35 +305,119 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
 
         {step === 'context' && selected && (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Selected thread summary card */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
               <p className="text-xs text-slate-500 mb-1">Selected email</p>
-              <p className="text-sm font-semibold text-slate-900 mb-1">{selected.subject}</p>
+              <p className="text-sm font-semibold text-slate-900 mb-1 line-clamp-2">{selected.subject || '(no subject)'}</p>
               <p className="text-xs text-slate-600">{selected.senderName} · {selected.senderAddress}</p>
               <button onClick={() => { setSelected(null); setStep('pick'); }} className="text-xs text-emerald-700 hover:underline mt-2 inline-flex items-center gap-1">
                 <ArrowLeft className="h-3 w-3" /> Pick a different email
               </button>
             </div>
 
+            {/* AI preview card */}
+            {previewLoading && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+                <Loader2 className="h-5 w-5 text-emerald-600 animate-spin" />
+                <div>
+                  <p className="text-sm font-medium text-emerald-900">Reading the email…</p>
+                  <p className="text-xs text-emerald-700">Pulling out the company name, amount and what they\'re asking.</p>
+                </div>
+              </div>
+            )}
+
+            {previewError && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Couldn\'t auto-read this email</p>
+                  <p className="text-xs">{previewError} — fill in the fields below manually.</p>
+                </div>
+              </div>
+            )}
+
+            {preview && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-700" />
+                  <p className="text-sm font-semibold text-emerald-900">We read your email — here\'s what we got</p>
+                </div>
+                <p className="text-xs text-emerald-900 leading-relaxed">{preview.thread_summary}</p>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-700 mb-0.5">Company</p>
+                    {editingProvider ? (
+                      <input
+                        autoFocus
+                        value={providerName}
+                        onChange={(e) => setProviderName(e.target.value)}
+                        onBlur={() => setEditingProvider(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditingProvider(false); }}
+                        className="w-full text-sm font-semibold text-slate-900 bg-white border border-emerald-300 rounded px-2 py-0.5"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => setEditingProvider(true)}
+                        className="text-sm font-semibold text-slate-900 hover:text-emerald-700 inline-flex items-center gap-1 group"
+                      >
+                        {providerName || 'Unknown'}
+                        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60" />
+                      </button>
+                    )}
+                  </div>
+                  {preview.disputed_amount !== null && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-emerald-700 mb-0.5">Amount</p>
+                      <p className="text-sm font-semibold text-slate-900">£{preview.disputed_amount.toFixed(2)}</p>
+                    </div>
+                  )}
+                  {preview.account_number && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-emerald-700 mb-0.5">Reference</p>
+                      <p className="text-sm font-semibold text-slate-900 truncate">{preview.account_number}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-700 mb-0.5">Type</p>
+                    <select
+                      value={issueType}
+                      onChange={(e) => setIssueType(e.target.value)}
+                      className="text-sm font-semibold text-slate-900 bg-white border border-emerald-300 rounded px-1.5 py-0.5 w-full"
+                    >
+                      {ISSUE_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-slate-900 mb-1">What\'s your side of the story?</label>
-              <p className="text-xs text-slate-500 mb-2">Tell us what actually happened — anything the company doesn\'t know yet, or where they\'ve got the facts wrong.</p>
+              <label className="block text-sm font-medium text-slate-900 mb-1">Your side of the story</label>
+              <p className="text-xs text-slate-500 mb-2">
+                {preview?.suggested_user_context
+                  ? 'We\'ve made a guess — edit to add anything we missed (dates, evidence, what they got wrong).'
+                  : 'Tell us what actually happened — anything the company doesn\'t know yet, or where they\'ve got the facts wrong.'}
+              </p>
               <textarea
                 value={userContext}
                 onChange={(e) => setUserContext(e.target.value)}
                 rows={5}
-                placeholder="e.g. The parking ticket was issued at 14:03 but I have proof I left at 13:55 — I was there for 8 minutes only and the signage was obscured by a delivery van."
+                placeholder="e.g. The parking ticket was issued at 14:03 but I have proof I left at 13:55."
                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-900 mb-1">What outcome do you want?</label>
-              <p className="text-xs text-slate-500 mb-2">Be specific — refund of £X, cancel without penalty, write off the debt, etc.</p>
+              <p className="text-xs text-slate-500 mb-2">
+                {preview?.suggested_outcome ? 'We\'ve guessed below — adjust if needed.' : 'Be specific — refund of £X, cancel without penalty, write off the debt.'}
+              </p>
               <textarea
                 value={desiredOutcome}
                 onChange={(e) => setDesiredOutcome(e.target.value)}
                 rows={3}
-                placeholder="e.g. Cancel the parking charge in full and confirm in writing it won\'t escalate to debt recovery."
+                placeholder="e.g. Cancel the charge and confirm in writing it won\'t escalate to debt recovery."
                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
               />
             </div>
@@ -237,13 +428,6 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
                 {error}
               </div>
             )}
-
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-emerald-900">
-                We\'ll read the email, combine it with your context, and write a complaint letter that cites the exact UK consumer law that protects you. We\'ll also start watching the email thread — when the company replies you\'ll get a notification.
-              </p>
-            </div>
 
             <div className="flex items-center justify-between gap-2 pt-2">
               <button onClick={() => { setStep('pick'); }} className="text-sm text-slate-600 hover:text-slate-900 px-3 py-2">
@@ -264,7 +448,7 @@ export default function EmailDisputeFinder({ onClose, onCreated }: Props) {
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
             <Loader2 className="h-10 w-10 text-emerald-600 animate-spin mb-4" />
             <p className="text-sm font-semibold text-slate-900 mb-1">Writing your dispute</p>
-            <p className="text-xs text-slate-500 max-w-xs">Reading the thread, extracting the key facts, and drafting a legally-grounded reply. About 20 seconds.</p>
+            <p className="text-xs text-slate-500 max-w-xs">Combining the email, your context and UK consumer law into a legally-grounded reply. About 20 seconds.</p>
           </div>
         )}
       </div>
