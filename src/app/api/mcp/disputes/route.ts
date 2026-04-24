@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   let q = admin()
     .from('disputes')
     .select(
-      'id, provider_name, issue_type, issue_summary, desired_outcome, status, amount, created_at, updated_at',
+      'id, provider_name, provider_type, issue_type, issue_summary, desired_outcome, status, disputed_amount, currency, created_at, updated_at',
     )
     .eq('user_id', auth.userId)
     .order('created_at', { ascending: false })
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   if (error) return mcpJson({ error: error.message }, { status: 500 });
 
   const rows = data ?? [];
-  const totalDisputedGbp = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const totalDisputedGbp = rows.reduce((s, r) => s + Number(r.disputed_amount ?? 0), 0);
 
   return mcpJson({
     count: rows.length,
