@@ -2455,9 +2455,14 @@ export default function SubscriptionsPage() {
                     </>
                   )}
                 </button>
-                {selectedSub?.account_email && (
+                {/* Prefer the provider's cancellation address (from the
+                    cancel-info DB) over the user's own account_email
+                    so the mailto opens pre-addressed to the right
+                    recipient. Falls back to account_email for rows
+                    where we don't have a provider address yet. */}
+                {(cancelInfo?.email || selectedSub?.account_email) && (
                   <a
-                    href={`mailto:${selectedSub.account_email}?subject=${encodeURIComponent(cancellationEmail.subject)}&body=${encodeURIComponent(cancellationEmail.body)}`}
+                    href={`mailto:${cancelInfo?.email || selectedSub?.account_email}?subject=${encodeURIComponent(cancellationEmail.subject)}&body=${encodeURIComponent(cancellationEmail.body)}`}
                     className="flex-1 flex items-center justify-center gap-2 cta font-semibold py-3 rounded-lg transition-all"
                   >
                     <Mail className="h-4 w-4" />
@@ -2465,6 +2470,53 @@ export default function SubscriptionsPage() {
                   </a>
                 )}
               </div>
+
+              {/* "I've sent it" confirmation — closes the loop without
+                  needing Gmail/Outlook send scopes. Flips the
+                  subscription to pending_cancellation so the Watchdog
+                  cron (already polling the user's inbox for dispute
+                  replies) picks up the provider's response and
+                  progresses the dispute automatically. */}
+              {selectedSub && selectedSub.status !== 'pending_cancellation' && selectedSub.status !== 'cancelled' && (
+                <button
+                  onClick={async () => {
+                    if (!selectedSub) return;
+                    try {
+                      const res = await fetch(`/api/subscriptions/${selectedSub.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          status: 'pending_cancellation',
+                          notes: `Cancellation letter sent ${new Date().toLocaleDateString('en-GB')} — awaiting provider response`,
+                        }),
+                      });
+                      if (res.ok) {
+                        capture('cancellation_marked_sent', { provider: selectedSub.provider_name });
+                        setSelectedSub({ ...selectedSub, status: 'pending_cancellation' });
+                        await fetchSubscriptions();
+                        setBankToast(`Tracking ${selectedSub.provider_name}'s reply in Disputes`);
+                        setTimeout(() => setBankToast(null), 5000);
+                      } else {
+                        setBankToast('Failed to update — try again');
+                        setTimeout(() => setBankToast(null), 5000);
+                      }
+                    } catch {
+                      setBankToast('Failed to update — try again');
+                      setTimeout(() => setBankToast(null), 5000);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 py-3 rounded-lg transition-all font-medium"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  I&apos;ve sent it — track the reply
+                </button>
+              )}
+              {selectedSub?.status === 'pending_cancellation' && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 flex items-center gap-2 text-sm text-emerald-600">
+                  <CheckCircle className="h-4 w-4" />
+                  Sent — Watchdog is monitoring your inbox for {selectedSub.provider_name}&apos;s reply
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
