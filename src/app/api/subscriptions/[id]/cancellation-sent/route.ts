@@ -104,7 +104,9 @@ export async function POST(
       // semantic here — the link is created automatically, scoped by
       // domain, without the user confirming a specific thread.
       const providerMap: Record<string, 'gmail' | 'outlook' | 'imap'> = {
-        google: 'gmail', gmail: 'gmail', outlook: 'outlook', imap: 'imap',
+        google: 'gmail', gmail: 'gmail',
+        outlook: 'outlook', microsoft: 'outlook',
+        imap: 'imap',
       };
       const normalisedProvider = providerMap[emailConn.provider_type as string] ?? 'imap';
 

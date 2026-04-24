@@ -83,8 +83,14 @@ export async function GET(
     .select('provider_type')
     .eq('user_id', user.id)
     .eq('status', 'active');
-  const userHasGmail = (emailConns ?? []).some((c) => c.provider_type === 'google');
-  const userHasOutlook = (emailConns ?? []).some((c) => c.provider_type === 'outlook');
+  // Handle both the canonical values ('google', 'outlook') and the legacy
+  // aliases ('gmail', 'microsoft') that still exist on older rows — see
+  // providerFromConnection in src/lib/dispute-sync/types.ts for the full
+  // normalisation table.
+  const GMAIL_TYPES = new Set(['google', 'gmail']);
+  const OUTLOOK_TYPES = new Set(['outlook', 'microsoft']);
+  const userHasGmail = (emailConns ?? []).some((c) => GMAIL_TYPES.has(c.provider_type));
+  const userHasOutlook = (emailConns ?? []).some((c) => OUTLOOK_TYPES.has(c.provider_type));
 
   return NextResponse.json({
     ...dispute,
