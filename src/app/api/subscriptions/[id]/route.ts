@@ -61,7 +61,11 @@ export async function PATCH(
         amount: data.amount,
       }).catch(err => console.error('Failed to award cancel points:', err));
 
-      // Calculate annual saving and add to total_money_recovered on profile
+      // Calculate annual saving and atomically increment profiles.total_money_recovered.
+      // The RPC `increment_money_recovered` uses a single UPDATE ... RETURNING under row
+      // locks — previously this was a read-modify-write `.then()` chain that (a) raced
+      // under concurrent cancellations and (b) was liable to be killed by Vercel's
+      // serverless runtime before completing.
       const monthlySaving = body.money_saved || (
         data.billing_cycle === 'yearly' ? data.amount / 12
         : data.billing_cycle === 'quarterly' ? data.amount / 3
@@ -69,20 +73,11 @@ export async function PATCH(
       );
       if (monthlySaving > 0) {
         const annualSaving = monthlySaving * 12;
-        supabase.from('profiles')
-          .select('total_money_recovered')
-          .eq('id', user.id)
-          .single()
-          .then(({ data: profile }) => {
-            const current = parseFloat(profile?.total_money_recovered || '0');
-            supabase.from('profiles')
-              .update({ total_money_recovered: current + annualSaving })
-              .eq('id', user.id)
-              .then(({ error: saveErr }) => {
-                if (saveErr) console.error('Failed to update money recovered:', saveErr);
-                else console.log(`Money recovered updated: +${annualSaving.toFixed(2)}/yr for ${data.provider_name}`);
-              });
-          });
+        const { error: incErr } = await supabase.rpc('increment_money_recovered', {
+          p_user_id: user.id,
+          p_amount: annualSaving,
+        });
+        if (incErr) console.error('Failed to update money recovered:', incErr);
       }
     }
 

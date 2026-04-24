@@ -121,6 +121,7 @@ export default function SubscriptionsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
   const [cancelInfo, setCancelInfo] = useState<{ email?: string; phone?: string; url?: string; method: string; tips?: string } | null>(null);
+  const [cancelInfoCache, setCancelInfoCache] = useState<Record<string, { email?: string; phone?: string; url?: string; method: string; tips?: string } | null>>({});
   const [cancellationEmail, setCancellationEmail] = useState<CancellationEmail | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -865,18 +866,28 @@ export default function SubscriptionsPage() {
   };
 
   const handleDeleteSubscription = async (id: string) => {
+    // Snapshot for rollback if the DELETE fails
+    const snapshot = subscriptions;
+    const wasSelected = selectedSub?.id === id;
+    setSubscriptions((prev) => prev.filter((s) => s.id !== id));
+    if (wasSelected) {
+      setSelectedSub(null);
+      setCancellationEmail(null);
+    }
     try {
-      await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
-      // Optimistic update for instant UI feedback
-      setSubscriptions((prev) => prev.filter((s) => s.id !== id));
-      if (selectedSub?.id === id) {
-        setSelectedSub(null);
-        setCancellationEmail(null);
+      const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setSubscriptions(snapshot);
+        setBankToast('Failed to delete subscription. Please try again.');
+        setTimeout(() => setBankToast(null), 5000);
+        return;
       }
-      // Refetch to ensure totals and all derived state are consistent
       await fetchSubscriptions();
     } catch (error) {
       console.error('Error deleting subscription:', error);
+      setSubscriptions(snapshot);
+      setBankToast('Failed to delete subscription. Please try again.');
+      setTimeout(() => setBankToast(null), 5000);
     }
   };
 
@@ -978,15 +989,27 @@ export default function SubscriptionsPage() {
 
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedForBulk);
+    let failed = 0;
     for (const id of ids) {
-      await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      try {
+        const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+        if (!res.ok) failed++;
+      } catch {
+        failed++;
+      }
     }
     setSelectedForBulk(new Set());
     await fetchSubscriptions();
+    if (failed > 0) {
+      setBankToast(`Removed ${ids.length - failed} of ${ids.length} subscriptions. ${failed} failed.`);
+      setTimeout(() => setBankToast(null), 6000);
+    }
   };
 
   const handleBulkMarkCancelled = async () => {
-    for (const id of Array.from(selectedForBulk)) {
+    const ids = Array.from(selectedForBulk);
+    let failed = 0;
+    for (const id of ids) {
       const sub = subscriptions.find(s => s.id === id);
       if (!sub) continue;
       const monthlyAmt = sub.billing_cycle === 'yearly'
@@ -994,18 +1017,27 @@ export default function SubscriptionsPage() {
         : sub.billing_cycle === 'quarterly'
           ? parseFloat(String(sub.amount)) / 3
           : parseFloat(String(sub.amount)) || 0;
-      await fetch(`/api/subscriptions/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString(),
-          money_saved: parseFloat(monthlyAmt.toFixed(2)),
-        }),
-      });
+      try {
+        const res = await fetch(`/api/subscriptions/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+            money_saved: parseFloat(monthlyAmt.toFixed(2)),
+          }),
+        });
+        if (!res.ok) failed++;
+      } catch {
+        failed++;
+      }
     }
     setSelectedForBulk(new Set());
     await fetchSubscriptions();
+    if (failed > 0) {
+      setBankToast(`Cancelled ${ids.length - failed} of ${ids.length} subscriptions. ${failed} failed.`);
+      setTimeout(() => setBankToast(null), 6000);
+    }
   };
 
   const [inlineRecatSub, setInlineRecatSub] = useState<string | null>(null);
@@ -2102,10 +2134,19 @@ export default function SubscriptionsPage() {
                 onClick={() => {
                   setSelectedSub(sub);
                   setCancellationEmail(null);
+                  const cacheKey = sub.provider_name.toLowerCase();
+                  if (cacheKey in cancelInfoCache) {
+                    setCancelInfo(cancelInfoCache[cacheKey]);
+                    return;
+                  }
                   setCancelInfo(null);
                   fetch(`/api/subscriptions/cancel-info?provider=${encodeURIComponent(sub.provider_name)}`)
                     .then(r => r.json())
-                    .then(d => setCancelInfo(d.info || null))
+                    .then(d => {
+                      const info = d.info || null;
+                      setCancelInfo(info);
+                      setCancelInfoCache(prev => ({ ...prev, [cacheKey]: info }));
+                    })
                     .catch(() => {});
                 }}
               >

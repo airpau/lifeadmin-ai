@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findCancellationMethod } from '@/lib/cancellation-methods';
+import { createClient } from '@/lib/supabase/server';
+import { checkClaudeRateLimit, recordClaudeCall, getUserTier } from '@/lib/claude-rate-limit';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({
@@ -12,13 +14,41 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'provider param required' }, { status: 400 });
   }
 
-  // First check the static database
+  // Auth gate — previously this route was open, which exposed the Claude
+  // fallback to unauthenticated traffic.
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // First check the static database (no AI cost, no rate-limit impact)
   const staticInfo = findCancellationMethod(provider);
   if (staticInfo) {
     return NextResponse.json({ info: staticInfo });
   }
 
-  // No static match: use AI to generate cancellation advice
+  // No static match: check rate limit before burning an AI call
+  const tier = await getUserTier(user.id);
+  const rateLimit = await checkClaudeRateLimit(user.id, tier);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        info: {
+          provider: provider.toLowerCase(),
+          method: `Check your ${provider} account settings for cancellation options, or contact their support team directly.`,
+          tips: null,
+          email: null,
+          phone: null,
+          url: null,
+        },
+      },
+    );
+  }
+
+  // Record the call up-front so a failed/slow response still decrements quota
+  await recordClaudeCall(user.id, tier);
+
   try {
     const response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
