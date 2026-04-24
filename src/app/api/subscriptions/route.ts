@@ -92,6 +92,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const parsedAmount = parseFloat(body.amount);
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      return NextResponse.json(
+        { error: 'amount must be a non-negative number' },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await supabase
       .from('subscriptions')
@@ -99,7 +106,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         provider_name: body.provider_name,
         category: body.category || null,
-        amount: parseFloat(body.amount),
+        amount: parsedAmount,
         currency: 'GBP',
         billing_cycle: body.billing_cycle,
         next_billing_date: body.next_billing_date || null,

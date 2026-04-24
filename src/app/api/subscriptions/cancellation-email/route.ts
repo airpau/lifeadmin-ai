@@ -156,13 +156,16 @@ Return as JSON with keys: subject (string), body (string)`;
       estimatedOutputTokens: 500,
     });
 
+    // Record the call BEFORE invoking Anthropic. If we record after and the
+    // worker is killed or the request hangs, quota doesn't decrement and the
+    // user can chain-call freely. Recording up-front is the safer default.
+    await recordClaudeCall(user.id, tier);
+
     const message = await anthropic.messages.create({
       model: CANCEL_MODEL,
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
-
-    await recordClaudeCall(user.id, tier);
 
     const content = message.content[0];
     if (content.type !== 'text') throw new Error('Unexpected response from Claude');

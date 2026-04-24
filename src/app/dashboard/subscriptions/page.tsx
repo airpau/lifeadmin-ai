@@ -191,7 +191,16 @@ export default function SubscriptionsPage() {
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(true);
-  const [bankToast, setBankToast] = useState<string | null>(null);
+  const [bankToast, setBankToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [pageToast, setPageToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success', durationMs = 4000) => {
+    setPageToast({ msg, type });
+    if (durationMs > 0) setTimeout(() => setPageToast(null), durationMs);
+  }, []);
+  const showBankToast = useCallback((msg: string, type: 'success' | 'error' = 'success', durationMs = 4000) => {
+    setBankToast({ msg, type });
+    if (durationMs > 0) setTimeout(() => setBankToast(null), durationMs);
+  }, []);
   const [bankTierInfo, setBankTierInfo] = useState<BankTierInfo>({
     tier: 'free',
     maxConnections: 1,
@@ -356,10 +365,8 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
-      setBankToast('Bank connected! We\'ve synced your last 12 months of transactions.');
+      showBankToast("Bank connected! We've synced your last 12 months of transactions.", 'success', 5000);
       capture('bank_connected');
-      const t = setTimeout(() => setBankToast(null), 5000);
-      return () => clearTimeout(t);
     }
   }, [searchParams]);
 
@@ -472,17 +479,19 @@ export default function SubscriptionsPage() {
       const keep = sorted[0];
       const duplicates = sorted.slice(1);
 
-      // Apply amount override if user edited it
+      // Apply amount override if user edited it — only accept positive, sane values.
       const key = groupKey || `${cleanMerchantName(group[0].provider_name).toLowerCase()}|${group[0].category}`;
       const overrideVal = groupAmountOverrides[key];
       if (overrideVal !== undefined) {
         const parsed = parseFloat(overrideVal);
-        if (!isNaN(parsed) && parsed !== keep.amount) {
+        if (!isNaN(parsed) && parsed > 0 && parsed < 100000 && parsed !== keep.amount) {
           await fetch(`/api/subscriptions/${keep.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ amount: parsed }),
           });
+        } else if (overrideVal.trim() !== '' && (isNaN(parsed) || parsed <= 0 || parsed >= 100000)) {
+          showToast(`Skipped invalid amount for ${keep.provider_name}.`, 'error', 4000);
         }
       }
 
@@ -596,6 +605,11 @@ export default function SubscriptionsPage() {
 
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsedAmount = parseFloat(newSub.amount);
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      showToast('Enter a valid amount.', 'error', 4000);
+      return;
+    }
     setAddingSubscription(true);
     try {
       const res = await fetch('/api/subscriptions', {
@@ -604,7 +618,7 @@ export default function SubscriptionsPage() {
         body: JSON.stringify({
           provider_name: newSub.provider_name,
           category: newSub.category,
-          amount: parseFloat(newSub.amount),
+          amount: parsedAmount,
           billing_cycle: newSub.billing_cycle,
           usage_frequency: newSub.usage_frequency,
           next_billing_date: newSub.next_billing_date || null,
@@ -623,45 +637,49 @@ export default function SubscriptionsPage() {
           source: newSub.source || 'manual',
         }),
       });
-      if (res.ok) {
-        await fetchSubscriptions();
-        setShowAddForm(false);
-        setNewSub({
-          provider_name: '',
-          category: 'streaming',
-          amount: '',
-          billing_cycle: 'monthly',
-          next_billing_date: '',
-          account_email: '',
-          usage_frequency: 'sometimes',
-          contract_type: '',
-          contract_end_date: '',
-          contract_start_date: '',
-          contract_term_months: '',
-          auto_renews: true,
-          early_exit_fee: '',
-          provider_type: '',
-          current_tariff: '',
-          alerts_enabled: true,
-          alert_before_days: '30',
-          source: 'manual',
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || 'Failed to add subscription. Please try again.', 'error', 5000);
+        return;
+      }
+      await fetchSubscriptions();
+      setShowAddForm(false);
+      setNewSub({
+        provider_name: '',
+        category: 'streaming',
+        amount: '',
+        billing_cycle: 'monthly',
+        next_billing_date: '',
+        account_email: '',
+        usage_frequency: 'sometimes',
+        contract_type: '',
+        contract_end_date: '',
+        contract_start_date: '',
+        contract_term_months: '',
+        auto_renews: true,
+        early_exit_fee: '',
+        provider_type: '',
+        current_tariff: '',
+        alerts_enabled: true,
+        alert_before_days: '30',
+        source: 'manual',
+      });
+
+      // Auto-dismiss the task that triggered this
+      const taskId = searchParams.get('taskId');
+      if (taskId) {
+        await fetch('/api/tasks/dismiss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId }),
         });
-        
-        // Auto-dismiss the task that triggered this
-        const taskId = searchParams.get('taskId');
-        if (taskId) {
-           await fetch('/api/tasks/dismiss', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ taskId })
-           });
-           const newUrl = new URL(window.location.href);
-           newUrl.searchParams.delete('taskId');
-           window.history.replaceState({}, '', newUrl.toString());
-        }
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('taskId');
+        window.history.replaceState({}, '', newUrl.toString());
       }
     } catch (error) {
       console.error('Error adding subscription:', error);
+      showToast('Failed to add subscription. Please try again.', 'error', 5000);
     } finally {
       setAddingSubscription(false);
     }
@@ -701,7 +719,7 @@ export default function SubscriptionsPage() {
         : parseFloat(String(sub.amount)) || 0;
 
     try {
-      await fetch(`/api/subscriptions/${sub.id}`, {
+      const res = await fetch(`/api/subscriptions/${sub.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -710,6 +728,11 @@ export default function SubscriptionsPage() {
           money_saved: parseFloat(monthlyAmt.toFixed(2)),
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || 'Failed to mark as cancelled. Please try again.', 'error', 5000);
+        return;
+      }
       await fetchSubscriptions();
 
       // Show share modal if the saving is substantial
@@ -718,6 +741,7 @@ export default function SubscriptionsPage() {
       }
     } catch (err) {
       console.error('Failed to mark as cancelled:', err);
+      showToast('Failed to mark as cancelled. Please try again.', 'error', 5000);
     }
   };
 
@@ -829,6 +853,11 @@ export default function SubscriptionsPage() {
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editSub) return;
+    const parsedAmount = parseFloat(editForm.amount);
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      showToast('Enter a valid amount.', 'error', 4000);
+      return;
+    }
     setSavingEdit(true);
     try {
       const res = await fetch(`/api/subscriptions/${editSub.id}`, {
@@ -837,7 +866,7 @@ export default function SubscriptionsPage() {
         body: JSON.stringify({
           provider_name: editForm.provider_name,
           category: editForm.category,
-          amount: parseFloat(editForm.amount),
+          amount: parsedAmount,
           billing_cycle: editForm.billing_cycle,
           next_billing_date: editForm.next_billing_date || null,
           account_email: editForm.account_email || null,
@@ -854,12 +883,16 @@ export default function SubscriptionsPage() {
           contract_end_source: editForm.contract_end_date ? 'manual' : null,
         }),
       });
-      if (res.ok) {
-        await fetchSubscriptions();
-        setEditSub(null);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || 'Failed to save changes. Please try again.', 'error', 5000);
+        return;
       }
+      await fetchSubscriptions();
+      setEditSub(null);
     } catch (error) {
       console.error('Error updating subscription:', error);
+      showToast('Failed to save changes. Please try again.', 'error', 5000);
     } finally {
       setSavingEdit(false);
     }
@@ -878,16 +911,14 @@ export default function SubscriptionsPage() {
       const res = await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         setSubscriptions(snapshot);
-        setBankToast('Failed to delete subscription. Please try again.');
-        setTimeout(() => setBankToast(null), 5000);
+        showToast('Failed to delete subscription. Please try again.', 'error', 5000);
         return;
       }
       await fetchSubscriptions();
     } catch (error) {
       console.error('Error deleting subscription:', error);
       setSubscriptions(snapshot);
-      setBankToast('Failed to delete subscription. Please try again.');
-      setTimeout(() => setBankToast(null), 5000);
+      showToast('Failed to delete subscription. Please try again.', 'error', 5000);
     }
   };
 
@@ -908,17 +939,14 @@ export default function SubscriptionsPage() {
       if (res.ok) {
         await fetchBankConnection();
         await fetchSubscriptions();
-        setBankToast('Sync complete!');
+        showBankToast('Sync complete!', 'success', 3000);
         capture('bank_synced_manual');
-        setTimeout(() => setBankToast(null), 3000);
       } else {
         const data = await res.json().catch(() => ({}));
-        setBankToast(data.error || 'Sync failed. Please try again.');
-        setTimeout(() => setBankToast(null), 6000);
+        showBankToast(data.error || 'Sync failed. Please try again.', 'error', 6000);
       }
     } catch {
-      setBankToast('Sync failed. Please check your connection and try again.');
-      setTimeout(() => setBankToast(null), 5000);
+      showBankToast('Sync failed. Please check your connection and try again.', 'error', 5000);
     } finally {
       setSyncing(false);
     }
@@ -1001,8 +1029,9 @@ export default function SubscriptionsPage() {
     setSelectedForBulk(new Set());
     await fetchSubscriptions();
     if (failed > 0) {
-      setBankToast(`Removed ${ids.length - failed} of ${ids.length} subscriptions. ${failed} failed.`);
-      setTimeout(() => setBankToast(null), 6000);
+      showToast(`Removed ${ids.length - failed} of ${ids.length} subscriptions. ${failed} failed.`, 'error', 6000);
+    } else if (ids.length > 0) {
+      showToast(`Removed ${ids.length} subscription${ids.length === 1 ? '' : 's'}.`, 'success', 4000);
     }
   };
 
@@ -1035,28 +1064,34 @@ export default function SubscriptionsPage() {
     setSelectedForBulk(new Set());
     await fetchSubscriptions();
     if (failed > 0) {
-      setBankToast(`Cancelled ${ids.length - failed} of ${ids.length} subscriptions. ${failed} failed.`);
-      setTimeout(() => setBankToast(null), 6000);
+      showToast(`Cancelled ${ids.length - failed} of ${ids.length} subscriptions. ${failed} failed.`, 'error', 6000);
+    } else if (ids.length > 0) {
+      showToast(`Marked ${ids.length} subscription${ids.length === 1 ? '' : 's'} as cancelled.`, 'success', 4000);
     }
   };
 
   const [inlineRecatSub, setInlineRecatSub] = useState<string | null>(null);
 
   const handleInlineRecategorise = async (sub: Subscription, newCategory: string) => {
+    const previousCategory = sub.category;
+    // Optimistic update
+    setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, category: newCategory } : s));
+    setInlineRecatSub(null);
     try {
       const res = await fetch(`/api/subscriptions/${sub.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: newCategory }),
       });
-      if (res.ok) {
-        // Also update merchant rules conceptually
-        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, category: newCategory } : s));
+      if (!res.ok) {
+        // Roll back
+        setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, category: previousCategory } : s));
+        showToast('Failed to update category.', 'error', 4000);
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      setInlineRecatSub(null);
+      setSubscriptions(prev => prev.map(s => s.id === sub.id ? { ...s, category: previousCategory } : s));
+      showToast('Failed to update category.', 'error', 4000);
     }
   };
 
@@ -1331,11 +1366,17 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      {/* Bank toast (success or error) */}
+      {/* Toasts — explicit type decides colour rather than parsing the message text */}
       {bankToast && (
-        <div className={`fixed top-6 right-6 z-50 text-slate-900 px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${bankToast.toLowerCase().includes('fail') || bankToast.toLowerCase().includes('error') ? 'bg-red-600' : 'bg-green-500'}`}>
-          <CheckCircle className="h-5 w-5" />
-          {bankToast}
+        <div className={`fixed top-6 right-6 z-50 text-slate-900 px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${bankToast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+          {bankToast.type === 'error' ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
+          {bankToast.msg}
+        </div>
+      )}
+      {pageToast && (
+        <div className={`fixed top-20 right-6 z-50 text-slate-900 px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${pageToast.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+          {pageToast.type === 'error' ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle className="h-5 w-5" />}
+          {pageToast.msg}
         </div>
       )}
 
@@ -1673,7 +1714,11 @@ export default function SubscriptionsPage() {
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) {
-                          if (f.size > 10 * 1024 * 1024) { alert('Maximum 10MB.'); return; }
+                          if (f.size > 10 * 1024 * 1024) {
+                            showToast('File is too large — 10MB max.', 'error', 4000);
+                            e.target.value = '';
+                            return;
+                          }
                           setBillFile(f);
                         }
                         e.target.value = '';
@@ -1764,21 +1809,10 @@ export default function SubscriptionsPage() {
         );
       })()}
 
-      {/* Secondary action row — preserved "detect from inbox" CTA for discoverability,
-          plus legacy Add button. Kept from the pre-redesign page so nothing is lost. */}
+      {/* Secondary Add button kept from the pre-redesign page so the CTA is
+          discoverable further down if the page scrolls past the header. */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-end mb-8 gap-3">
         <div className="flex gap-3">
-          <button
-            onClick={handleDetectFromInbox}
-            disabled={detectingFromInbox}
-            style={{display:'none'}}
-            className="flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-900 font-medium px-4 py-3 rounded-lg transition-all text-sm"
-          >
-            {detectingFromInbox
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Inbox className="h-4 w-4" />}
-            {detectingFromInbox ? 'Scanning...' : 'Inbox Scan'}
-          </button>
           <button
             onClick={() => setShowAddForm(true)}
             className="flex items-center gap-2 cta font-semibold px-4 py-3 rounded-lg transition-all text-sm"
@@ -2298,13 +2332,19 @@ export default function SubscriptionsPage() {
               {sub.needs_review && sub.status === 'active' && (
                 <div className="mt-4 pt-4 border-t border-amber-300 flex flex-wrap gap-2">
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      fetch(`/api/subscriptions/${sub.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ needs_review: false }),
-                      }).then(() => fetchSubscriptions());
+                      try {
+                        const res = await fetch(`/api/subscriptions/${sub.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ needs_review: false }),
+                        });
+                        if (!res.ok) throw new Error('Confirm failed');
+                        await fetchSubscriptions();
+                      } catch {
+                        showToast('Failed to confirm subscription. Please try again.', 'error', 4000);
+                      }
                     }}
                     className="flex items-center gap-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 px-4 py-2 rounded-lg text-sm transition-all border border-green-500/30"
                   >
@@ -2312,13 +2352,19 @@ export default function SubscriptionsPage() {
                     This Is Mine
                   </button>
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      fetch(`/api/subscriptions/${sub.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: 'flagged', needs_review: false, notes: 'User does not recognise this transaction' }),
-                      }).then(() => fetchSubscriptions());
+                      try {
+                        const res = await fetch(`/api/subscriptions/${sub.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ status: 'flagged', needs_review: false, notes: 'User does not recognise this transaction' }),
+                        });
+                        if (!res.ok) throw new Error('Flag failed');
+                        await fetchSubscriptions();
+                      } catch {
+                        showToast('Failed to flag subscription. Please try again.', 'error', 4000);
+                      }
                     }}
                     className="flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm transition-all border border-red-500/30"
                   >
