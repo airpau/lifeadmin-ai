@@ -81,9 +81,14 @@ function isDomainMessageRelevant(
   const body = (msg.body || '').trim();
   const haystack = `${subject}\n${body}`;
 
-  // 1. Auto-reply patterns
+  // 1. Auto-reply patterns — scan subject AND body so a blank-subject
+  // acknowledgement whose body starts "Thanks for your email, we aim
+  // to respond in 10 working days" still qualifies. Many bulk
+  // auto-responders deliberately leave the subject empty.
   for (const re of AUTO_REPLY_PATTERNS) {
-    if (re.test(subject)) return { relevant: true, reason: 'auto-reply subject' };
+    if (re.test(subject) || re.test(body.slice(0, 400))) {
+      return { relevant: true, reason: 'auto-reply pattern' };
+    }
   }
 
   // 2. Account / reference number match (highest signal)
@@ -94,25 +99,35 @@ function isDomainMessageRelevant(
     }
   }
 
-  // 3. Time-and-subject-similarity match. Only trust sender-hint senders
-  // (autoresponse@, noreply@ etc.) when the message landed in the window.
+  // Dedicated auto-response mailboxes (`autoresponse@`, `noreply@`,
+  // `no-reply@`, `donotreply@`) exist for exactly one reason — they
+  // send acknowledgements. If one sends us a message within the dispute
+  // window, it\'s almost certainly the ack for something we just did.
+  // This is stricter than the broad "senderLooksAutomated" below and
+  // doesn\'t require a subject keyword match.
   const localPart = msg.fromAddress.split('@')[0]?.toLowerCase() ?? '';
-  const senderLooksAutomated = /^(autoresponse|noreply|no-reply|donotreply|reply|support|customer|help|complaints?)(?:$|[.+-])/.test(localPart);
-
+  const isDedicatedAutoResponder = /^(autoresponse|auto-?reply|noreply|no-reply|donotreply|do-not-reply|mailer-daemon)(?:$|[.+-])/.test(localPart);
   const latest = dispute.latest_activity_at ?? null;
   const withinWindow = latest
     ? Math.abs(msg.receivedAt.getTime() - latest.getTime()) <= 7 * 86400_000
     : false;
+  if (isDedicatedAutoResponder && withinWindow) {
+    return { relevant: true, reason: 'dedicated auto-responder mailbox within window' };
+  }
 
+  // 3. Broader "looks automated" — senders like support@, customer@,
+  // complaints@ are also frequently auto-replying, but they're also
+  // legitimate human-handled mailboxes so we require a subject keyword
+  // match to avoid pulling unrelated mail.
+  const senderLooksAutomated = /^(reply|support|customer|help|complaints?|info|hello|contact|feedback)(?:$|[.+-])/.test(localPart);
   if (withinWindow && senderLooksAutomated) {
     const originalSubj = (dispute.thread_subject || dispute.issue_summary || '').toLowerCase();
     if (originalSubj) {
-      // Share any 4+ char keyword from the original subject
       const tokens = originalSubj
         .split(/\W+/)
         .filter((t) => t.length >= 4 && !['this', 'that', 'with', 'your', 'from', 'have', 'been'].includes(t));
       for (const t of tokens) {
-        if (subject.toLowerCase().includes(t)) {
+        if (subject.toLowerCase().includes(t) || body.toLowerCase().includes(t)) {
           return { relevant: true, reason: `within window; matches "${t}"` };
         }
       }
