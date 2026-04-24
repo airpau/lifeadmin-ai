@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  FileText, Sparkles, Download, Copy, CheckCircle, Clock, History,
+  FileText, Sparkles, Download, Copy, CheckCircle, CheckCircle2, Clock, History,
   RotateCcw, RefreshCw, X, ThumbsUp, Pencil, Volume2, Loader2,
   Plus, MessageSquare, Phone, Mail, Upload, ChevronLeft, Send,
   AlertCircle, MoreVertical, StickyNote, Shield, Paperclip, Eye,
@@ -2489,6 +2489,27 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         </div>
       </div>
 
+      {/* Cancellation cross-sell — surfaced in the Disputes tool itself
+          because this is where the ensuing reply thread lands. */}
+      <div className="bg-emerald-500/5 border border-emerald-500/30 rounded-xl p-5 mb-6">
+        <div className="flex items-start gap-4">
+          <div className="bg-emerald-500/10 rounded-full p-2.5 shrink-0">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-slate-900 font-semibold mb-1">Cancelling a subscription? Start it from your Subscriptions list</p>
+            <p className="text-slate-600 text-sm mb-3">
+              One tap drafts a cancellation letter with the right UK legal cites,
+              pre-addresses it to the provider&apos;s cancellation team, and
+              auto-tracks their reply here in Disputes — no chasing, no follow-ups.
+            </p>
+            <Link href="/dashboard/subscriptions" className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:text-emerald-800">
+              Go to Subscriptions →
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
@@ -2497,7 +2518,12 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
         <div id="tour-list" className="card p-12 text-center">
           <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-600 mb-2">No disputes yet</p>
-          <p className="text-slate-500 text-sm mb-6">Start your first dispute and we will write the perfect complaint letter</p>
+          <p className="text-slate-500 text-sm mb-2">Start your first dispute and we will write the perfect complaint letter</p>
+          <p className="text-slate-500 text-xs mb-6 max-w-md mx-auto">
+            Or cancel a subscription from your
+            {' '}<Link href="/dashboard/subscriptions" className="text-emerald-700 hover:text-emerald-800 underline">Subscriptions list</Link>{' '}
+            — the cancellation thread shows up here automatically when the provider replies.
+          </p>
           <button
             onClick={onNew}
             className="inline-flex items-center gap-2 px-6 py-3 cta font-semibold rounded-lg transition-all"

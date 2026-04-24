@@ -177,14 +177,20 @@ export async function syncLinkedThread(
   }
 
   const since = link.last_synced_at ? new Date(link.last_synced_at) : null;
-  let messages: Awaited<ReturnType<typeof fetchNewMessages>>;
-  try {
-    messages = await fetchNewMessages(conn, link.thread_id, since);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Fetch failed';
-    console.error(`[watchdog] fetch failed for link ${linkId}:`, message);
-    // Still bump last_synced_at a little so we don't loop fast on persistent errors
-    return { linkId, disputeId: link.dispute_id, imported: 0, error: message };
+  let messages: Awaited<ReturnType<typeof fetchNewMessages>> = [];
+  // Domain-only links (created by the "I've sent it" cancellation flow)
+  // have no thread_id because the message was sent via mailto, outside
+  // our OAuth scope. Skip the thread fetch in that case — the domain
+  // scan below is the only mechanism that'll find the provider's reply.
+  if (link.thread_id) {
+    try {
+      messages = await fetchNewMessages(conn, link.thread_id, since);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Fetch failed';
+      console.error(`[watchdog] fetch failed for link ${linkId}:`, message);
+      // Still bump last_synced_at a little so we don't loop fast on persistent errors
+      return { linkId, disputeId: link.dispute_id, imported: 0, error: message };
+    }
   }
 
   // Second pass — scan for auto-responses / acknowledgements that the
