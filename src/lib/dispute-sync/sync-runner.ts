@@ -231,11 +231,19 @@ export async function syncLinkedThread(
   // Filter + merge. Messages we can confidently attribute get appended
   // to the same import loop as thread messages so the classifier and
   // notification path run identically.
+  const domainDecisions: Array<{ messageId: string; from: string; subject: string; relevant: boolean; reason: string }> = [];
   for (const m of domainMessages) {
     const verdict = isDomainMessageRelevant(
       { subject: m.subject, body: m.body, fromAddress: m.fromAddress, receivedAt: m.receivedAt },
       disputeForRelevance,
     );
+    domainDecisions.push({
+      messageId: m.messageId,
+      from: m.fromAddress,
+      subject: m.subject,
+      relevant: verdict.relevant,
+      reason: verdict.reason,
+    });
     if (!verdict.relevant) {
       console.log(`[watchdog] skipped domain message ${m.messageId}: ${verdict.reason}`);
       continue;
@@ -243,6 +251,16 @@ export async function syncLinkedThread(
     messages.push(m);
   }
   messages.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+  // Stash a small diagnostic so the sync-replies-now endpoint can echo
+  // it back in debug mode — no persistence, just this-call visibility.
+  (globalThis as any).__lastWatchdogDebug = {
+    linkId,
+    threadId: link.thread_id,
+    senderDomain: link.sender_domain,
+    since: since?.toISOString() ?? null,
+    threadMessagesFetched: messages.length - messages.filter((m) => domainDecisions.some((d) => d.messageId === m.messageId && d.relevant)).length,
+    domainDecisions,
+  };
 
   const disputeRow = link.disputes as {
     provider_name?: string;
