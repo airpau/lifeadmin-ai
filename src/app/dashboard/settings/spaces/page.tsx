@@ -263,7 +263,7 @@ export default function SpacesSettingsPage() {
                   )}
                   <button onClick={() => beginEdit(s)} className="text-xs text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200">Edit</button>
                   {!s.is_default && (
-                    <button onClick={() => remove(s.id)} className="p-1.5 text-slate-500 hover:text-red-600 rounded-lg" title="Delete Space">
+                    <button onClick={() => remove(s.id)} aria-label="Delete Space" className="inline-flex items-center justify-center h-10 w-10 text-slate-500 hover:text-red-600 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors" title="Delete Space">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   )}

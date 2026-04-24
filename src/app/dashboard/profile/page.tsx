@@ -282,7 +282,8 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
           <div className="card shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
-              className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
+              aria-label="Close"
+              className="absolute top-2 right-2 text-slate-500 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -301,7 +302,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
               {/* Provider selector */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Choose your email provider</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                      onClick={() => { window.location.href = '/api/auth/google?returnPath=/dashboard/profile'; }}
                     className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left"
@@ -838,7 +839,7 @@ export default function ProfilePage() {
           {subscriptionBadge()}
         </div>
 
-        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-slate-200/50">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 pt-6 border-t border-slate-200/50">
           <div>
             <p className="text-sm text-slate-500 mb-1">Member since</p>
             <p className="text-slate-900 font-semibold">{memberSince}</p>

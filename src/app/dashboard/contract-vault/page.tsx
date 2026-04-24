@@ -518,7 +518,7 @@ function ContractCard({ contract, onDelete }: ContractCardProps) {
           <div className="border-t border-slate-200/50"></div>
           <div className="p-4 space-y-4 bg-white/50">
             {/* Key Terms Grid */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {contract.contract_start_date && (
                 <div>
                   <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Start Date</p>
