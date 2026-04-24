@@ -17,7 +17,8 @@ export async function GET(
       *,
       correspondence(
         id, entry_type, title, content, summary, attachments, task_id, entry_date, created_at,
-        detected_from_email, sender_address, email_thread_id
+        detected_from_email, sender_address, email_thread_id, supplier_message_id,
+        ai_respond_needed, ai_urgency, ai_rationale
       ),
       contract_extractions(
         id, file_url, file_name, provider_name, contract_start_date, contract_end_date,

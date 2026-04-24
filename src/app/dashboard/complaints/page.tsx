@@ -95,6 +95,7 @@ interface Correspondence {
   sender_address?: string | null;
   sender_name?: string | null;
   email_thread_id?: string | null;
+  supplier_message_id?: string | null;
   ai_category?: string | null;
   ai_respond_needed?: boolean | null;
   ai_urgency?: string | null;
@@ -372,14 +373,17 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
             <button onClick={handlePDF} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
               <Download className="h-4 w-4" /> Download PDF
             </button>
-            {providerEmail && (
-              <a
-                href={`mailto:${providerEmail}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(content)}`}
-                className="flex-1 min-w-[160px] flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold"
-              >
-                <Mail className="h-4 w-4" /> Open in Email
-              </a>
-            )}
+            {/* Always offer Open-in-Email. When we know the provider
+                address the mailto pre-addresses to them; when we don't,
+                the To field opens empty for the user to fill in. Better
+                than forcing them back to copy-paste into a fresh draft. */}
+            <a
+              href={`mailto:${providerEmail ?? ''}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(content)}`}
+              className="flex-1 min-w-[160px] flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold"
+            >
+              <Mail className="h-4 w-4" />
+              {providerEmail ? 'Open in Email' : 'Open in Email (add recipient)'}
+            </a>
           </div>
           {disputeId && !sentNote && (
             <button
@@ -1603,9 +1607,13 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     <p className="text-sm text-slate-600 whitespace-pre-wrap">{entry.content}</p>
                   )}
 
-                  {/* Draft response button — shown on company responses */}
+                  {/* Action row for company replies — Draft AI response,
+                      open the original in the user's inbox, or start a
+                      blank reply via mailto. Covers the "I just want to
+                      reply in Gmail" case without forcing the user to
+                      dig through their inbox to find the thread. */}
                   {isFromCompany && !isResolved(dispute.status) && (
-                    <div className="mt-3 pt-3 border-t border-slate-200/30">
+                    <div className="mt-3 pt-3 border-t border-slate-200/30 flex flex-wrap gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1617,6 +1625,30 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                         Draft response to this
                       </button>
+                      {entry.sender_address && (
+                        <a
+                          href={`mailto:${entry.sender_address}?subject=${encodeURIComponent('Re: ' + (entry.title || dispute.issue_summary || dispute.provider_name || ''))}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 rounded-lg text-sm transition-all font-medium"
+                          title={`Reply to ${entry.sender_address}`}
+                        >
+                          <Mail className="h-4 w-4" />
+                          Reply by email
+                        </a>
+                      )}
+                      {entry.supplier_message_id && (
+                        <a
+                          href={`https://mail.google.com/mail/u/0/#inbox/${entry.supplier_message_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-sm transition-all font-medium"
+                          title="Open this message in Gmail (uses the Gmail internal message ID)"
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                          Open in Gmail
+                        </a>
+                      )}
                     </div>
                   )}
                 </div>
