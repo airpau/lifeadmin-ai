@@ -39,17 +39,20 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
   const [recatDropdown, setRecatDropdown] = useState<string | null>(null);
   const [merchantRecatIdx, setMerchantRecatIdx] = useState<number | null>(null);
   const [recatLoading, setRecatLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && (category || incomeType || searchQuery)) {
       loadData();
     } else {
       setData(null);
+      setErrorMsg(null);
     }
   }, [isOpen, category, incomeType, searchQuery, selectedMonth]);
 
   const loadData = async () => {
     setLoading(true);
+    setErrorMsg(null);
     try {
       const monthParam = selectedMonth ? `&month=${selectedMonth}` : '';
       let typeParam = '';
@@ -58,10 +61,16 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
       else typeParam = `category=${encodeURIComponent(category!)}`;
 
       const res = await fetch(`/api/money-hub/transactions?${typeParam}${monthParam}`);
+      if (!res.ok) {
+        setErrorMsg('Could not load transactions — please retry.');
+        setData(null);
+        return;
+      }
       const d = await res.json();
       setData(d);
     } catch {
-      // silent
+      setErrorMsg('Could not load transactions — please retry.');
+      setData(null);
     }
     setLoading(false);
   };
@@ -75,32 +84,43 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
     mode: 'incomeType' | 'category' = 'category',
   ) => {
     setRecatLoading(true);
+    setErrorMsg(null);
     try {
       const body: Record<string, any> =
         mode === 'incomeType'
           ? { merchantPattern, newIncomeType: newValue, applyToAll: true }
           : { merchantPattern, newCategory: newValue, applyToAll: true };
 
-      await fetch('/api/money-hub/recategorise', {
+      const recatRes = await fetch('/api/money-hub/recategorise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      if (!recatRes.ok) {
+        setErrorMsg('Recategorisation failed — please retry.');
+        setRecatLoading(false);
+        return;
+      }
 
-      // Teach the learning engine with the matching signal
+      // Teach the learning engine with the matching signal. A failure here
+      // means the change applied to existing transactions but won't stick
+      // for future ones — surface that so the user can retry.
       const learnBody: Record<string, any> = { rawName: merchantPattern };
       if (mode === 'incomeType') learnBody.incomeType = newValue;
       else learnBody.category = newValue;
-      await fetch('/api/learn', {
+      const learnRes = await fetch('/api/learn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(learnBody),
       });
+      if (!learnRes.ok) {
+        setErrorMsg('Applied for now, but the rule didn\'t save — future transactions may revert.');
+      }
 
       await loadData();
       onRecategorised();
     } catch {
-      // silent
+      setErrorMsg('Recategorisation failed — please retry.');
     }
     setRecatDropdown(null);
     setMerchantRecatIdx(null);
@@ -188,6 +208,15 @@ export default function CategoryDrillDownModal({ isOpen, onClose, category, inco
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {errorMsg && (
+          <div className="mx-6 mt-4 bg-red-500/10 border border-red-500/20 text-red-500 text-sm rounded-lg px-3 py-2 flex items-start justify-between gap-3">
+            <span>{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-500 shrink-0" aria-label="Dismiss error">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
           {loading ? (
