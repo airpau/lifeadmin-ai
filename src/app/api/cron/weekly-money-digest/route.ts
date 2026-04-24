@@ -136,7 +136,33 @@ export async function GET(request: NextRequest) {
           percentage: weekSpend > 0 ? (total / weekSpend) * 100 : 0,
         }));
 
-      // Upcoming renewals (next 14 days)
+      // All tracked subscriptions (active + detected + pending — not just 'active')
+      // pending_cancellation = user has requested cancellation but sub is still live
+      const TRACKED_STATUSES = ['active', 'pending_cancellation'];
+
+      const { data: allTrackedSubs } = await admin
+        .from('subscriptions')
+        .select('amount, billing_cycle')
+        .eq('user_id', userId)
+        .in('status', TRACKED_STATUSES)
+        .is('dismissed_at', null);
+
+      const subscriptionCount = (allTrackedSubs || []).length;
+
+      function toMonthly(amount: number, cycle: string | null): number {
+        switch (cycle) {
+          case 'yearly':    return amount / 12;
+          case 'quarterly': return amount / 3;
+          default:          return amount; // monthly or unrecognised
+        }
+      }
+
+      const monthlyOutgoings = (allTrackedSubs || []).reduce((sum, s) => {
+        const raw = parseFloat(String(s.amount)) || 0;
+        return sum + toMonthly(raw, s.billing_cycle ?? null);
+      }, 0);
+
+      // Upcoming renewals (next 14 days) — active-only to avoid false alerts
       const { data: renewals } = await admin
         .from('subscriptions')
         .select('provider_name, amount, next_billing_date')
@@ -211,6 +237,8 @@ export async function GET(request: NextRequest) {
           budgetAlerts,
           totalSaved,
           transactionCount: (thisWeekTx || []).length,
+          subscriptionCount,
+          monthlyOutgoings,
         },
         tier,
       );
