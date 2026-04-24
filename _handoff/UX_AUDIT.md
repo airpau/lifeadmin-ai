@@ -47,6 +47,13 @@ Several icon buttons across the dashboard were caught and fixed in #288/#290/#29
 `STATUS_CONFIG` patterns in complaints, subscriptions, deals all convey state purely by color (amber/green/red). Fails for colorblind users and monochrome printing.
 **Fix:** pair every color with either an icon, label, or distinctive shape (✓ for done, ⏸ for pending, ⚠ for attention).
 
+### A8. Cookie consent banner intercepts clicks on auth forms — `HIGH`
+`CookieConsentBanner.tsx:59` uses `fixed bottom-0 inset-x-0 z-[9999]` covering the entire bottom of the viewport. At typical desktop heights (<900px) and most mobile heights, the banner covers the "Sign in" submit button on `/auth/login` and "Create account" on `/auth/signup`. First-time visitors must dismiss the banner before they can finish authenticating — **discovered by the E2E suite on first run**, but a real user on a mid-sized laptop will hit this too.
+**Fix:**
+1. At minimum, reserve bottom padding on the page body equal to the banner height so the submit button never sits under the banner.
+2. Better: render the banner as a centered card/toast rather than a full-width bottom sticky.
+3. Ideal: pre-accept-essential on auth pages (GDPR-compliant in the UK since essential cookies don't need consent), defer the full preferences banner until after the user reaches the dashboard.
+
 ---
 
 ## `/` (homepage via `preview/homepage/page.tsx`)
