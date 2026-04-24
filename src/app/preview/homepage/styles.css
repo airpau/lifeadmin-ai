@@ -1585,14 +1585,23 @@
 
 /* The wrapper itself must reserve the scaled height so the page
    layout doesn't collapse around the now-transformed child. Range
-   matches the transform-fallback range (≤1024px) below. */
+   matches the transform-fallback range (≤1024px) below.
+
+   `overflow: clip` (instead of `hidden`) is stricter and — crucially
+   on iOS Safari — doesn't create a scroll container, so the child's
+   transform can't be partially painted outside the box before the
+   compositor applies the scale. This closes the last gap where a
+   first-paint race left the top-right of the native 980px stage
+   visible for a frame before the transform settled. */
 @media (max-width: 1024px) {
   .m-v2-root .feature-stage,
   .m-v2-root .demo-slot {
     aspect-ratio: 16 / 10;
-    overflow: hidden;
+    overflow: clip;
     position: relative;
     display: block;
+    width: 100%;
+    max-width: 100%;
   }
 }
 
@@ -1605,29 +1614,47 @@
    paint) so the scale lands correctly. The @media rule comes after
    the @container rule so the cascade hands it the win.
 
-   The breakpoint cascade must mirror `.wrap` padding exactly:
-     • default           → 32px each side = 64px total
-     • @media ≤560px     → 16px each side = 32px total
-   Fallback extends to 1024px because the container (.feature-stage
-   / .demo-slot, which fills .wrap's inner width) stays ≤900px up to
-   viewport ≈ 964px — catching iPhone landscape (~932px) and small
-   iPads where the container query can mis-fire on first paint. */
+   Two hardening changes versus PR #265:
+
+   1. `position: absolute; inset: 0` on the stage so it's bounded by
+      its parent at layout time regardless of whether the transform
+      applied. Without this, if the transform fails (Safari's calc()
+      race, a user with a blocking extension, JS-disabled browsers),
+      the demo renders at its full 980px width and gets clipped to
+      the viewport — the user sees only the leftmost portion, which
+      reads as "cut off". Now the parent's width fully contains the
+      child even if transform is a no-op.
+
+   2. `min(1, …)` wrapper on the scale calc caps it at 1 so at wider
+      viewports the transform can't accidentally stretch the demo
+      past its native size (defensive — shouldn't happen under the
+      1024px breakpoint, but belt-and-braces).
+
+   The breakpoint cascade mirrors `.wrap` padding exactly:
+     • default        → 32px each side = 64px total
+     • @media ≤560px  → 16px each side = 32px total
+   Each also subtracts an extra 8px safety buffer to leave a visible
+   gap between the demo and the wrapper edge, so any sub-pixel
+   rounding on 3x-density screens can't paint the demo touching or
+   exceeding the wrapper. */
 @media (max-width: 1024px) {
   .m-v2-root .feature-stage > .demo-stage,
   .m-v2-root .demo-slot > .demo-stage {
+    position: absolute;
+    inset: 0;
     width: 980px;
     height: 612.5px;
     max-width: none;
     aspect-ratio: auto;
     margin: 0;
     transform-origin: top left;
-    transform: scale(calc((100vw - 64px) / 980));
+    transform: scale(min(1, calc((100vw - 72px) / 980)));
   }
 }
 @media (max-width: 560px) {
   .m-v2-root .feature-stage > .demo-stage,
   .m-v2-root .demo-slot > .demo-stage {
-    transform: scale(calc((100vw - 32px) / 980));
+    transform: scale(min(1, calc((100vw - 40px) / 980)));
   }
 }
 
