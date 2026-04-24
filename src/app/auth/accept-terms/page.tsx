@@ -77,8 +77,28 @@ export default function AcceptTermsPage() {
       // Try to auto-drain sessionStorage pending consent for the fresh
       // OAuth signup path. Matches the dashboard-layout guardrails so
       // the two entry points can't disagree.
+      //
+      // Every storage access is individually guarded because Safari
+      // private mode (and enterprise-locked browsers) throw on both
+      // getItem and removeItem. Without these guards, a throw in the
+      // outer catch clause's cleanup call would re-throw and leave the
+      // page stuck on "Checking your account…" indefinitely.
+      const safeRemove = () => {
+        try {
+          sessionStorage.removeItem('pb_pending_consent');
+        } catch {
+          /* storage unavailable — nothing to clean up */
+        }
+      };
+
       try {
-        const raw = sessionStorage.getItem('pb_pending_consent');
+        let raw: string | null = null;
+        try {
+          raw = sessionStorage.getItem('pb_pending_consent');
+        } catch {
+          /* storage unavailable — skip auto-drain, fall through to form */
+        }
+
         if (raw) {
           const pending = JSON.parse(raw) as {
             terms_accepted_at?: string;
@@ -94,7 +114,7 @@ export default function AcceptTermsPage() {
             Number.isFinite(userCreatedMs) && now - userCreatedMs < CONSENT_TTL_MS;
 
           if (!isFreshPayload) {
-            sessionStorage.removeItem('pb_pending_consent');
+            safeRemove();
           } else if (isFreshUser && pending.terms_accepted_at) {
             const { error: updateError } = await supabase.auth.updateUser({
               data: {
@@ -103,7 +123,7 @@ export default function AcceptTermsPage() {
               },
             });
             if (!updateError && !cancelled) {
-              sessionStorage.removeItem('pb_pending_consent');
+              safeRemove();
               router.replace(next);
               return;
             }
@@ -115,10 +135,13 @@ export default function AcceptTermsPage() {
           // records their own consent instead.
         }
       } catch {
-        sessionStorage.removeItem('pb_pending_consent');
+        // JSON.parse failure → payload is corrupt. safeRemove is
+        // guarded so a secondary storage-unavailable exception can't
+        // abort run() before we reach setLoading(false) below.
+        safeRemove();
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      if (!cancelled) setLoading(false);
     };
 
     run();
