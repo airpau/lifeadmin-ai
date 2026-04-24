@@ -1,3 +1,14 @@
+# Active Sessions — Last Updated 24 Apr 2026 (dev-sprint-runner)
+
+## Latest: Dev Sprint Runner — 24 Apr 2026
+- Audited all SKILL.md critical tasks — most already implemented (Savings Rate card, monthly RPCs, routing redirects, auto-categorise, spending totals all done)
+- Found genuine bug: price-increases cron called `canSendEmail()` but never `markEmailSent()` — daily email cap was being bypassed
+- Fix: added `markEmailSent` call after confirmed email delivery in `price-increases/route.ts`
+- Created PR #247: https://github.com/airpau/lifeadmin-ai/pull/247
+- Supabase/Telegram notification attempted — network blocked in local environment; logged to shared-context instead
+
+---
+
 # Active Sessions — Last Updated 22 Apr 2026 18:00 UTC
 
 ## Latest: Business Monitor — 22 Apr 2026 (evening)

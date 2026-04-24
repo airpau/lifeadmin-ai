@@ -1,3 +1,33 @@
+# Handoff Notes — Last Updated 24 Apr 2026
+
+## Session: Dev Sprint Runner — Email Rate Limit Fix (24 Apr 2026)
+
+### What was done
+Fixed bug in `src/app/api/cron/price-increases/route.ts`. The cron called `canSendEmail()` to check the daily email cap but never called `markEmailSent()` after a successful send. The tasks table had no record of price-increase emails, so deal-alerts and targeted-deals would see 0 marketing emails that day and bypass `MAX_MARKETING_EMAILS_PER_DAY=1`.
+
+PR #247 created: https://github.com/airpau/lifeadmin-ai/pull/247
+
+### SKILL.md task audit
+Most critical tasks in the sprint SKILL.md are already done:
+- Savings Rate card (OverviewPanel has it, no Net Position card)
+- get_monthly_spending/income RPCs (already called in /api/money-hub/route.ts)
+- localStorage dismiss replaced (uses dismiss_expected_bill RPC already)
+- auto_categorise called after bank sync (already in sync-now and bank-sync cron)
+- URL routing 404s (disputes/ and overview/ redirects already exist)
+- Spending category totals (already shown in OverviewPanel)
+
+Remaining unimplemented SKILL.md tasks needing new Supabase functions:
+- Task 6: `get_subscriptions_with_actions` RPC (doesn't exist yet)
+- Task 7: `dismiss_subscription` / `cancel_subscription` RPCs (don't exist yet)
+
+### Next steps
+1. **Merge PR #247** — small, safe, single-file fix
+2. **Also merge PR #99** — email rate limit types fix (still open)
+3. For next sprint: create `get_subscriptions_with_actions` SQL migration + update subscriptions page
+4. Next URGENT email task: consolidate deal-alerts + targeted-deals + price-increases into single daily digest
+
+---
+
 # Handoff Notes — Last Updated 17 Apr 2026
 
 ## Session: Cowork Desktop — Agent Reality Audit + CLAUDE.md Correction (17 Apr 2026)
