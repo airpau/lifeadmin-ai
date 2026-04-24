@@ -72,8 +72,8 @@
 10. `PATCH()` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `handleBillUpload()` --calls--> `test()`  [INFERRED]
-  src/app/dashboard/complaints/page.tsx → test-claude.js
+- `test()` --calls--> `handleBillUpload()`  [INFERRED]
+  test-claude.js → src/app/dashboard/complaints/page.tsx
 - `loadAlerts()` --calls--> `GET()`  [INFERRED]
   extension/side-panel/App.tsx → src/app/api/outlook/auth/route.ts
 - `getSupabase()` --calls--> `createClient()`  [INFERRED]
