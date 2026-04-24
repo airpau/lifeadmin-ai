@@ -18,6 +18,7 @@ import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
 import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
+import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
@@ -890,6 +891,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
   // long disputes are skimmable. User taps "Show full history" to
   // unfurl the rest.
   const [showFullHistory, setShowFullHistory] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
 
   const fetchDispute = async () => {
     try {
@@ -1052,6 +1054,22 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         />
       )}
 
+      {editingDetails && (
+        <EditDisputeDetailsModal
+          disputeId={disputeId}
+          initial={{
+            provider_name: dispute.provider_name,
+            issue_type: dispute.issue_type,
+            issue_summary: dispute.issue_summary,
+            desired_outcome: dispute.desired_outcome,
+            account_number: dispute.account_number,
+            disputed_amount: dispute.disputed_amount,
+          }}
+          onClose={() => setEditingDetails(false)}
+          onSaved={() => { setEditingDetails(false); fetchDispute(); }}
+        />
+      )}
+
       {/* Back link + Variant A dispute-detail header (batch7 DisputeDetail).
           Data-wired: dispute.provider_name, issue_type, disputed_amount,
           money_recovered (nullable), status label + resolved flag. */}
@@ -1063,11 +1081,18 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         <ChevronLeft className="h-3.5 w-3.5" /> Back to all disputes
       </button>
 
-      <div className="page-title-row" style={{marginBottom:14}}>
+      <div className="page-title-row" style={{marginBottom:14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12}}>
         <div>
           <h1 className="page-title" style={{fontSize:26}}>{dispute.provider_name}</h1>
           <p className="page-sub">{ISSUE_TYPE_LABELS[dispute.issue_type] || dispute.issue_type}</p>
         </div>
+        <button
+          onClick={() => setEditingDetails(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm text-slate-700 font-medium transition-colors"
+          title="Edit provider, amount, summary and outcome"
+        >
+          <Pencil className="h-3.5 w-3.5" /> Edit details
+        </button>
       </div>
 
       {/* Top status strip — 4 tiles, Variant A pattern */}
