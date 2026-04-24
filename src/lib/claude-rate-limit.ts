@@ -34,28 +34,25 @@ function getLimit(tier: string): number {
 
 /**
  * Fetch a user's subscription tier from their profile.
- * Verifies active Stripe subscription for paid tiers.
+ *
+ * Trusts `profile.subscription_tier` per CLAUDE.md — demotion is
+ * webhook-driven only. Transitional Stripe states (past_due, unpaid,
+ * incomplete) do NOT demote — the webhook writes 'canceled' on an
+ * actual termination. Previously we demoted on anything other than
+ * active/trialing, which silently flipped past_due Pro users to Free.
  */
 export async function getUserTier(userId: string): Promise<string> {
   const admin = getAdmin();
   const { data } = await admin
     .from('profiles')
-    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+    .select('subscription_tier, subscription_status')
     .eq('id', userId)
     .single();
 
   const tier = (data?.subscription_tier as string) ?? 'free';
-  const isPaid = tier !== 'free';
-  const hasActiveStripe =
-    data?.stripe_subscription_id &&
-    ['active', 'trialing'].includes(data?.subscription_status ?? '');
-
-  // Founding member trial: tier != free, status = trialing, no Stripe, valid trial_ends_at
-  const isFoundingTrial = isPaid && !data?.stripe_subscription_id &&
-    data?.subscription_status === 'trialing' &&
-    data?.trial_ends_at && new Date(data.trial_ends_at) > new Date();
-
-  return isPaid && !hasActiveStripe && !isFoundingTrial ? 'free' : tier;
+  const status = data?.subscription_status ?? 'free';
+  const terminated = ['canceled', 'cancelled', 'expired', 'incomplete_expired'].includes(status);
+  return terminated ? 'free' : tier;
 }
 
 /**

@@ -7,6 +7,7 @@ export interface UserPlan {
   status: string;
   isActive: boolean;
   isTrial: boolean;
+  isPastDue: boolean;
   trialDaysLeft: number | null;
 }
 
@@ -17,9 +18,25 @@ function getAdmin() {
   );
 }
 
+// Statuses that Stripe (or our webhook) write when the subscription has
+// actually ended. Anything outside this set — including `past_due`,
+// `incomplete`, `unpaid` — is a retry state, not a termination, and
+// must NOT demote the stored tier. Per CLAUDE.md: demotion is
+// webhook-driven only (customer.subscription.deleted → 'canceled').
+const TERMINATED_STATUSES = new Set(['canceled', 'cancelled', 'expired', 'incomplete_expired']);
+
 /**
- * Single source of truth for a user's effective plan.
- * Handles: Stripe subscribers, founding member trials, and free users.
+ * Single source of truth for a user's effective plan tier.
+ *
+ * Rule (matches CLAUDE.md + getEffectiveTier in plan-limits.ts): the
+ * stored `profile.subscription_tier` is authoritative. We only demote
+ * when the status column is in TERMINATED_STATUSES (written by the
+ * Stripe webhook). Transitional states like past_due keep the user on
+ * their paid tier; they just get an `isPastDue` flag so the UI can
+ * surface a "payment retrying" banner instead of silently downgrading.
+ *
+ * Onboarding trials upgrade the user to Pro for the trial window even
+ * if the stored tier is Free.
  */
 export async function getUserPlan(userId: string): Promise<UserPlan> {
   const admin = getAdmin();
@@ -30,47 +47,36 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
     .eq('id', userId)
     .single();
 
-  const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
+  const storedTier = (profile?.subscription_tier as PlanTier) ?? 'free';
   const status = profile?.subscription_status ?? 'free';
-  const hasStripe = !!profile?.stripe_subscription_id;
+  const isPastDue = status === 'past_due' || status === 'unpaid' || status === 'incomplete';
 
-  // Stripe subscriber — use their tier directly
-  if (hasStripe && ['active', 'trialing'].includes(status)) {
-    return { tier, status, isActive: true, isTrial: status === 'trialing', trialDaysLeft: null };
-  }
-
-  // Onboarding trial: trial_ends_at in the future, not yet converted or expired → treat as pro
+  // Onboarding trial override — grant Pro while the trial window is open.
   const trialEnd = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
   const now = new Date();
-  const isOnboardingTrial = trialEnd &&
-    trialEnd > now &&
-    !profile?.trial_converted_at &&
-    !profile?.trial_expired_at;
+  const onboardingTrialActive = !!trialEnd
+    && trialEnd > now
+    && !profile?.trial_converted_at
+    && !profile?.trial_expired_at;
 
-  if (!hasStripe && isOnboardingTrial) {
+  if (onboardingTrialActive) {
     const daysLeft = Math.ceil((trialEnd!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return { tier: 'pro', status: 'trialing', isActive: true, isTrial: true, trialDaysLeft: daysLeft };
+    return { tier: 'pro', status: 'trialing', isActive: true, isTrial: true, isPastDue: false, trialDaysLeft: daysLeft };
   }
 
-  // Founding member trial (no Stripe, but tier=pro/essential + trialing)
-  if (tier !== 'free' && status === 'trialing' && !hasStripe) {
-    if (trialEnd && trialEnd > now) {
-      const daysLeft = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      return { tier, status: 'trialing', isActive: true, isTrial: true, trialDaysLeft: daysLeft };
-    }
-    // Trial expired — treat as free
-    return { tier: 'free', status: 'expired', isActive: false, isTrial: false, trialDaysLeft: 0 };
+  // Explicit termination → demote. This is the only path that can flip a
+  // paid user to Free; everything else trusts the stored tier.
+  if (TERMINATED_STATUSES.has(status)) {
+    return { tier: 'free', status, isActive: false, isTrial: false, isPastDue: false, trialDaysLeft: null };
   }
 
-  // Manually granted active status (lifetime or admin granted)
-  if (tier !== 'free' && status === 'active' && !hasStripe) {
-    return { tier, status, isActive: true, isTrial: false, trialDaysLeft: null };
-  }
-
-  // Paid tier but no active Stripe, not manually active, and not trialing — downgrade
-  if (tier !== 'free' && !hasStripe) {
-    return { tier: 'free', status, isActive: false, isTrial: false, trialDaysLeft: null };
-  }
-
-  return { tier, status, isActive: tier !== 'free', isTrial: false, trialDaysLeft: null };
+  const isTrial = status === 'trialing';
+  return {
+    tier: storedTier,
+    status,
+    isActive: storedTier !== 'free',
+    isTrial,
+    isPastDue,
+    trialDaysLeft: null,
+  };
 }

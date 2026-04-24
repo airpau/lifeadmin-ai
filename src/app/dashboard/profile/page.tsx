@@ -687,11 +687,15 @@ export default function ProfilePage() {
     }
   };
 
-  // Fetch saved reports for Pro users
+  // Fetch saved reports for Pro users. Per CLAUDE.md, paid tiers are
+  // only demoted by explicit webhook-driven statuses; past_due /
+  // unpaid / incomplete are Stripe retry states and must still count
+  // as Pro so the user doesn't lose access while their card retries.
   useEffect(() => {
-    const isPro = profile?.subscription_tier &&
-      profile.subscription_tier === 'pro' &&
-      ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+    const tier = profile?.subscription_tier;
+    const status = profile?.subscription_status ?? '';
+    const terminated = ['canceled', 'cancelled', 'expired', 'incomplete_expired'].includes(status);
+    const isPro = tier === 'pro' && !terminated;
     if (profile && isPro) {
       fetchSavedReports();
     }
@@ -709,13 +713,18 @@ export default function ProfilePage() {
     ? new Date(profile.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : 'Unknown';
 
-  // Trust the DB tier — covers both Stripe-paying and manually upgraded users
-  const hasActiveSubscription = profile?.subscription_tier && profile.subscription_tier !== 'free' &&
-    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+  // Trust the DB tier unless the webhook has explicitly marked the
+  // subscription as terminated. past_due / unpaid / incomplete are
+  // retry states — the user keeps their tier while Stripe reattempts
+  // the payment, matching CLAUDE.md's "demotion is webhook-driven"
+  // rule and getEffectiveTier in plan-limits.ts.
+  const status = profile?.subscription_status ?? '';
+  const terminated = ['canceled', 'cancelled', 'expired', 'incomplete_expired'].includes(status);
   const hasActiveStripe = !!profile?.stripe_subscription_id;
-  const effectiveTier = hasActiveSubscription
-    ? (profile.subscription_tier || 'free')
+  const effectiveTier = (profile?.subscription_tier && !terminated)
+    ? profile.subscription_tier
     : 'free';
+  const isPastDue = ['past_due', 'unpaid', 'incomplete'].includes(status);
 
   const subscriptionBadge = () => {
     const colors = {
