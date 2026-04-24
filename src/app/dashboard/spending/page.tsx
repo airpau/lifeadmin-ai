@@ -206,7 +206,7 @@ export default function SpendingPage() {
                 {/* Expanded detail with individual payments */}
                 {isExpanded && isPaid && (
                   <div className="ml-12 mt-2 mb-3 bg-slate-50 rounded-lg p-4 border border-slate-200">
-                    <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                       <div>
                         <p className="text-slate-500 text-xs">Total ({summary.months_analysed}mo)</p>
                         <p className="text-slate-900 font-semibold">£{cat.total.toLocaleString()}</p>
