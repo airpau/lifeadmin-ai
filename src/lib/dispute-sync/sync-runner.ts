@@ -325,11 +325,30 @@ export async function syncLinkedThread(
 
     imported++;
 
-    // Bump dispute counters atomically
-    await db.rpc('record_dispute_reply', {
-      p_dispute_id: link.dispute_id,
-      p_received_at: m.receivedAt.toISOString(),
-    });
+    // Only bump unread_reply_count for messages received AFTER the
+    // Watchdog link was created. Backfill imports (initial thread
+    // history + domain-scan pulling old messages from the same
+    // sender) land in the timeline for context but should not
+    // inflate the "new replies" badge — they\'re not new to the
+    // user. Same gate the notification path uses below.
+    const linkCreatedAtForCounter = link.created_at ? new Date(link.created_at).getTime() : 0;
+    if (m.receivedAt.getTime() >= linkCreatedAtForCounter) {
+      await db.rpc('record_dispute_reply', {
+        p_dispute_id: link.dispute_id,
+        p_received_at: m.receivedAt.toISOString(),
+      });
+    } else {
+      // Still want last_reply_received_at to reflect actual chronology
+      // even for backfill, just without bumping the unread counter.
+      await db
+        .from('disputes')
+        .update({
+          last_reply_received_at: m.receivedAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', link.dispute_id)
+        .lt('last_reply_received_at', m.receivedAt.toISOString());
+    }
 
     // --- Intelligence layer -----------------------------------------------
     // Classify the reply so the notification can tell the user whether they
