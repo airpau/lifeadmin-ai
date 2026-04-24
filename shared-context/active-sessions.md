@@ -1,6 +1,22 @@
-# Active Sessions — Last Updated 22 Apr 2026 18:00 UTC
+# Active Sessions — Last Updated 24 Apr 2026 18:00 UTC
 
-## Latest: Business Monitor — 22 Apr 2026 (evening)
+## Latest: Business Monitor — 24 Apr 2026 (evening)
+- 10 PRs merged to production today (cancellations feature sprint + mobile/UX fixes):
+  - #282: feat(disputes): Open-in-Email + "I've sent it" for every dispute
+  - #281: fix(mobile): iOS input zoom prevention + onboarding UX wins
+  - #280: feat(cancellations): watchdog auto-tracks replies + copy updates
+  - #279: feat(cancellations): mailto uses provider address + handoff flow
+  - #278: feat(marketing): founder note on /about + regulated trust band on /
+  - #277: feat(cancellations): discovery leg for unseen providers
+  - #276: fix(marketing): footer 404s + login stay-signed-in + about page
+  - #275: feat(cancellations): weekly Perplexity refresh cron
+  - #274: feat(cancellations): DB-backed cancel info + AI persistence
+  - #273: fix(money-hub): reverse-sync recategorisation + Pro-gate exports
+- 3 new PRs opened today: #256 (mcp schema bugs), #247 (email rate limit fix), #246 (subscriptions 22 UX findings)
+- 30 open PRs in queue — review backlog building
+- Evening Telegram check-in sent to Paul
+
+## Previous: Business Monitor — 22 Apr 2026 (evening)
 - 5 PRs merged to production today:
   - #150: fix(watchdog): fail loudly on OAuth refresh failures + tighten price alerts
   - #149: feat(dashboard): Claude Design shell chrome — Phase 1 foundation
