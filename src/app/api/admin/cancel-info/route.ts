@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { authorizeAdminOrCron } from '@/lib/admin-auth';
+import { isFinanceProvider } from '@/lib/subscriptions/active-count';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -100,6 +101,10 @@ export async function GET(request: NextRequest) {
   }
 
   const uncovered = Array.from(userCountByName.entries())
+    // Skip finance providers — debts, not cancellable. Matches the
+    // discovery cron's own filter so this preview reflects what the
+    // cron will actually process, not a superset.
+    .filter(([name]) => !isFinanceProvider(name))
     .filter(([name]) => !hasCoverage(name))
     .map(([name, users]) => ({ provider_name: name, user_count: users.size }))
     .sort((a, b) => b.user_count - a.user_count)
