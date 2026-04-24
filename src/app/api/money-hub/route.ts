@@ -140,7 +140,7 @@ export async function GET(request: Request) {
       { data: rpcIncomeCategories },
     ] = await Promise.all([
       admin.from('bank_transactions').select('*').eq('user_id', user.id).gte('timestamp', sixMonthsAgo).order('timestamp', { ascending: false }).limit(20000),
-      admin.from('bank_connections').select('id, bank_name, status, last_synced_at, account_ids, account_display_names').eq('user_id', user.id).neq('status', 'revoked'),
+      admin.from('bank_connections').select('id, bank_name, status, last_synced_at, last_manual_sync_at, account_ids, account_display_names').eq('user_id', user.id).neq('status', 'revoked'),
       admin.from('money_hub_budgets').select('*').eq('user_id', user.id),
       admin.from('money_hub_assets').select('*').eq('user_id', user.id),
       admin.from('money_hub_liabilities').select('*').eq('user_id', user.id),
@@ -242,8 +242,8 @@ export async function GET(request: Request) {
     const accounts = (bankConns || []).flatMap((conn: any) => {
       const accountIds = conn.account_ids || [];
       const displayNames = conn.account_display_names || [];
-      if (accountIds.length <= 1) return [{ id: conn.id, bank_name: conn.bank_name || 'Bank', status: conn.status, last_synced_at: conn.last_synced_at }];
-      return accountIds.map((accId: string, i: number) => ({ id: `${conn.id}_${accId}`, bank_name: displayNames[i] || conn.bank_name || 'Bank', status: conn.status, last_synced_at: conn.last_synced_at }));
+      if (accountIds.length <= 1) return [{ id: conn.id, bank_name: conn.bank_name || 'Bank', status: conn.status, last_synced_at: conn.last_synced_at, last_manual_sync_at: conn.last_manual_sync_at }];
+      return accountIds.map((accId: string, i: number) => ({ id: `${conn.id}_${accId}`, bank_name: displayNames[i] || conn.bank_name || 'Bank', status: conn.status, last_synced_at: conn.last_synced_at, last_manual_sync_at: conn.last_manual_sync_at }));
     });
 
     return NextResponse.json({
