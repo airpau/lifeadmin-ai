@@ -1584,8 +1584,9 @@
 }
 
 /* The wrapper itself must reserve the scaled height so the page
-   layout doesn't collapse around the now-transformed child. */
-@media (max-width: 900px) {
+   layout doesn't collapse around the now-transformed child. Range
+   matches the transform-fallback range (≤1024px) below. */
+@media (max-width: 1024px) {
   .m-v2-root .feature-stage,
   .m-v2-root .demo-slot {
     aspect-ratio: 16 / 10;
@@ -1602,10 +1603,16 @@
    native 980px and clipped against the wrapper. Re-state the same
    transform using `100vw` (which IS reliably available on first
    paint) so the scale lands correctly. The @media rule comes after
-   the @container rule so the cascade hands it the win. The two
-   subtractions account for the .wrap horizontal padding at each
-   breakpoint (24px each side ≤900, 16px each side ≤560). */
-@media (max-width: 900px) {
+   the @container rule so the cascade hands it the win.
+
+   The breakpoint cascade must mirror `.wrap` padding exactly:
+     • default           → 32px each side = 64px total
+     • @media ≤560px     → 16px each side = 32px total
+   Fallback extends to 1024px because the container (.feature-stage
+   / .demo-slot, which fills .wrap's inner width) stays ≤900px up to
+   viewport ≈ 964px — catching iPhone landscape (~932px) and small
+   iPads where the container query can mis-fire on first paint. */
+@media (max-width: 1024px) {
   .m-v2-root .feature-stage > .demo-stage,
   .m-v2-root .demo-slot > .demo-stage {
     width: 980px;
@@ -1614,7 +1621,7 @@
     aspect-ratio: auto;
     margin: 0;
     transform-origin: top left;
-    transform: scale(calc((100vw - 48px) / 980));
+    transform: scale(calc((100vw - 64px) / 980));
   }
 }
 @media (max-width: 560px) {
