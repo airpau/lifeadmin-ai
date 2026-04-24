@@ -312,7 +312,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
               );
             })()}
           </div>
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1 flex-shrink-0"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-white rounded-xl p-6 border border-slate-200/50 mb-4">
@@ -475,7 +475,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
         <div className="flex items-center justify-between p-5 border-b border-slate-200/50 flex-shrink-0">
           <h2 className="text-lg font-bold text-slate-900">Add to your dispute</h2>
-          <button type="button" onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
           style={{ WebkitOverflowScrolling: 'touch' as any }}>
@@ -652,13 +652,13 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
             <h2 className="text-lg font-bold text-slate-900">Resolve Dispute</h2>
             <p className="text-slate-500 text-sm mt-0.5">Record the outcome of your dispute</p>
           </div>
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Outcome selector */}
           <div>
             <label className="block text-sm font-medium text-slate-600 mb-2">What was the outcome?</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {outcomeOptions.map((opt) => (
                 <button
                   key={opt.value}
@@ -891,7 +891,7 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
             <h2 className="text-lg font-bold text-slate-900">Review your dispute</h2>
             <p className="text-slate-600 text-sm mt-0.5">Check the details before we write your letter</p>
           </div>
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1">
+          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -2235,7 +2235,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-600 mb-2">Amount (£)</label>
               <input
@@ -2797,11 +2797,13 @@ function NewDisputeChooser({
   onScratch, onFromEmail, onClose,
 }: { onScratch: () => void; onFromEmail: () => void; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-900">Start a new dispute</h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-slate-500 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
+            <X className="h-5 w-5" />
+          </button>
         </div>
         <p className="text-sm text-slate-600 mb-5">How do you want to begin?</p>
         <div className="grid grid-cols-1 gap-3">
