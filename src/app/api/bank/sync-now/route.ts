@@ -277,6 +277,10 @@ export async function POST(request: NextRequest) {
             is_pending: false,
           }));
 
+          // Upsert settled transactions.
+          // The DB trigger trg_reconcile_pending_on_settle automatically deletes any
+          // matching is_pending=true rows (same account_id + amount + date) after
+          // each settled row is inserted, so pending→settled duplicates are self-healing.
           const { error } = await supabase
             .from('bank_transactions')
             .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
