@@ -146,6 +146,7 @@ export async function GET(request: Request) {
       .from('bank_connections')
       .select('id, bank_name, status, last_synced_at, last_manual_sync_at, account_ids, account_display_names')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .neq('status', 'revoked');
     if (connectionFilter) {
       connQuery = connQuery.in('id', connectionFilter);

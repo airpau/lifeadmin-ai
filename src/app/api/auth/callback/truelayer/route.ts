@@ -112,6 +112,10 @@ export async function GET(request: NextRequest) {
       bank_name: bankName,
       status: 'active',
       connected_at: new Date().toISOString(),
+      // Clear any prior soft-delete so reconnecting an existing
+      // provider brings the row back to life instead of staying
+      // hidden by the deleted_at filters in Money Hub / Telegram.
+      deleted_at: null,
     }, { onConflict: 'user_id,provider_id' })
     .select()
     .single();
