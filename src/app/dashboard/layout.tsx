@@ -32,6 +32,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setUserEmail(user.email || null);
       setAuthChecked(true);
 
+      // OAuth signup path leaves Terms/marketing consent in localStorage
+      // (the signup page can't write to user_metadata before the OAuth
+      // redirect). Drain it here so Google-signup users have the same
+      // audit trail as email/password users.
+      try {
+        const raw = localStorage.getItem('pb_pending_consent');
+        if (raw && !user.user_metadata?.terms_accepted_at) {
+          const pending = JSON.parse(raw) as {
+            terms_accepted_at?: string;
+            marketing_opt_in?: boolean;
+          };
+          if (pending?.terms_accepted_at) {
+            await supabase.auth.updateUser({
+              data: {
+                terms_accepted_at: pending.terms_accepted_at,
+                marketing_opt_in: !!pending.marketing_opt_in,
+              },
+            });
+          }
+        }
+        localStorage.removeItem('pb_pending_consent');
+      } catch {
+        localStorage.removeItem('pb_pending_consent');
+      }
+
       const { data } = await supabase
         .from('profiles')
         .select('first_name, full_name, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')

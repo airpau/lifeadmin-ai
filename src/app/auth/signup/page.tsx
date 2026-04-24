@@ -63,15 +63,56 @@ export default function SignupPage() {
       router.replace('/');
       return;
     }
-    // Redirect to dashboard if already logged in
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) router.replace(redirectTo || '/dashboard');
+    // Redirect to dashboard if already logged in. If they landed back here
+    // via the OAuth callback and had pre-accepted the Terms / opted into
+    // marketing, drain that from localStorage onto the new user before
+    // routing them onwards so the audit trail is consistent with the
+    // email/password path.
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      try {
+        const raw = localStorage.getItem('pb_pending_consent');
+        if (raw) {
+          const pending = JSON.parse(raw) as {
+            terms_accepted_at?: string;
+            marketing_opt_in?: boolean;
+          };
+          if (pending?.terms_accepted_at && !user.user_metadata?.terms_accepted_at) {
+            await supabase.auth.updateUser({
+              data: {
+                terms_accepted_at: pending.terms_accepted_at,
+                marketing_opt_in: !!pending.marketing_opt_in,
+              },
+            });
+          }
+          localStorage.removeItem('pb_pending_consent');
+        }
+      } catch {
+        localStorage.removeItem('pb_pending_consent');
+      }
+      router.replace(redirectTo || '/dashboard');
     });
     if (searchParams.get('verify') === 'true') setVerifyMode(true);
   }, [searchParams, router]);
 
   const handleGoogleSignup = async () => {
+    // Same consent gate as the email/password path — don't start the
+    // OAuth redirect without explicit T&Cs acceptance, otherwise we'd
+    // end up with Google accounts that skipped the checkbox entirely.
+    if (!termsAccepted) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     try {
+      // Stash consent choices for /auth/callback → the useEffect above
+      // drains them onto user_metadata once the session is established.
+      localStorage.setItem(
+        'pb_pending_consent',
+        JSON.stringify({
+          terms_accepted_at: new Date().toISOString(),
+          marketing_opt_in: marketingOptIn,
+        })
+      );
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -276,10 +317,43 @@ export default function SignupPage() {
               </div>
             ) : (
               <>
+                {/* Consent gate — sits above both signup paths so Google
+                    OAuth and email/password both respect the same T&Cs
+                    checkbox. Without this, Google skipped consent entirely
+                    and `terms_accepted_at` only landed on email users. */}
+                <div className="consent">
+                  <label className="consent__row">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                    />
+                    <span>
+                      I agree to the{' '}
+                      <Link href="/terms-of-service">Terms of Service</Link>
+                      {' '}and{' '}
+                      <Link href="/privacy-policy">Privacy Policy</Link>.
+                    </span>
+                  </label>
+                  <label className="consent__row consent__row--optional">
+                    <input
+                      type="checkbox"
+                      checked={marketingOptIn}
+                      onChange={(e) => setMarketingOptIn(e.target.checked)}
+                    />
+                    <span>
+                      Send me the Paybacker newsletter — savings tips and
+                      product updates (optional, unsubscribe anytime).
+                    </span>
+                  </label>
+                </div>
+
                 <button
                   type="button"
                   onClick={handleGoogleSignup}
                   className="oauth-btn"
+                  disabled={!termsAccepted}
+                  aria-disabled={!termsAccepted}
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -397,37 +471,13 @@ export default function SignupPage() {
                     </ul>
                   </div>
 
-                  <div className="consent">
-                    <label className="consent__row">
-                      <input
-                        type="checkbox"
-                        required
-                        checked={termsAccepted}
-                        onChange={(e) => setTermsAccepted(e.target.checked)}
-                      />
-                      <span>
-                        I agree to the{' '}
-                        <Link href="/terms-of-service">Terms of Service</Link>
-                        {' '}and{' '}
-                        <Link href="/privacy-policy">Privacy Policy</Link>.
-                      </span>
-                    </label>
-                    <label className="consent__row consent__row--optional">
-                      <input
-                        type="checkbox"
-                        checked={marketingOptIn}
-                        onChange={(e) => setMarketingOptIn(e.target.checked)}
-                      />
-                      <span>
-                        Send me the Paybacker newsletter — savings tips and
-                        product updates (optional, unsubscribe anytime).
-                      </span>
-                    </label>
-                  </div>
-
                   {error && <div className="form-error">{error}</div>}
 
-                  <button type="submit" disabled={loading} className="auth-submit">
+                  <button
+                    type="submit"
+                    disabled={loading || !termsAccepted}
+                    className="auth-submit"
+                  >
                     {loading ? 'Creating account…' : 'Create account'}
                   </button>
                 </form>

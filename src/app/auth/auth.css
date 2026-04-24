@@ -74,10 +74,14 @@
   cursor: pointer;
   transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
-.m-land-root .oauth-btn:hover {
+.m-land-root .oauth-btn:hover:not(:disabled) {
   background: #F8FAFC;
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
+}
+.m-land-root .oauth-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* OR divider -------------------------------------------------------- */
