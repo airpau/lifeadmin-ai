@@ -120,7 +120,16 @@ export default function SubscriptionsPage() {
   const [fraudStep, setFraudStep] = useState<'initial' | 'fraud_guidance'>('initial');
   const [loading, setLoading] = useState(true);
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
-  const [cancelInfo, setCancelInfo] = useState<{ email?: string; phone?: string; url?: string; method: string; tips?: string } | null>(null);
+  const [cancelInfo, setCancelInfo] = useState<{
+    email?: string;
+    phone?: string;
+    url?: string;
+    method: string;
+    tips?: string;
+    freshness?: string | null;
+    confidence?: 'high' | 'medium' | 'low';
+    data_source?: 'seed' | 'ai' | 'admin' | 'perplexity';
+  } | null>(null);
   const [cancellationEmail, setCancellationEmail] = useState<CancellationEmail | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -2514,7 +2523,15 @@ export default function SubscriptionsPage() {
                   {/* Cancellation method info (when available) */}
                   {cancelInfo && (
                     <div className="bg-white rounded-xl p-5 border border-slate-200/50">
-                      <h4 className="text-sm font-semibold text-emerald-600 mb-3">How to cancel</h4>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold text-emerald-600">How to cancel</h4>
+                        {cancelInfo.freshness && (
+                          <span className="text-[11px] text-slate-500">{cancelInfo.freshness}</span>
+                        )}
+                        {!cancelInfo.freshness && cancelInfo.data_source === 'ai' && (
+                          <span className="text-[11px] text-amber-600" title="Automatically suggested — verify before acting on it">AI suggested</span>
+                        )}
+                      </div>
                       <p className="text-sm text-slate-600 mb-3">{cancelInfo.method}</p>
                       {cancelInfo.tips && (
                         <p className="text-xs text-slate-600 mb-3">{cancelInfo.tips}</p>
