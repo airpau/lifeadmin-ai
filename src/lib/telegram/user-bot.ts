@@ -175,6 +175,7 @@ WRITE TOOLS:
 - draft_dispute_letter — Draft a complaint letter citing exact UK consumer law (TERMINAL — call once, nothing before or after)
 - generate_cancellation_email — Generate a formal cancellation letter with correct UK legal references for the service type
 - create_support_ticket — Create a help ticket when the user needs the Paybacker support team
+- generate_spending_chart — Generate and send a real chart image (pie or bar) of spending or subscriptions. Use whenever the user asks to visualise, chart, or graph their spending or subscriptions. Do NOT use get_spending_summary for chart requests — use this instead. The chart image is sent automatically; write a brief summary as your text response.
 
 RULES:
 - ALWAYS call the relevant tool before answering — never make up numbers or say "I can't access that"
@@ -287,7 +288,7 @@ async function callClaudeWithTools(
   userId: string,
   userMessage: string,
   chatId: number,
-): Promise<{ text: string; pendingAction?: PendingAction }> {
+): Promise<{ text: string; pendingAction?: PendingAction; chartUrl?: string }> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const supabase = getAdmin();
 
@@ -324,6 +325,7 @@ async function callClaudeWithTools(
   let iterations = 0;
   const HARD_TIMEOUT_MS = 230_000; // 230s — leaves 70s buffer before Vercel's 300s kill
   const loopStart = Date.now();
+  let chartUrl: string | undefined;
 
   while (response.stop_reason === 'tool_use' && iterations < MAX_ITERATIONS) {
     // Hard timeout check — abort before Vercel kills the function
@@ -336,7 +338,7 @@ async function callClaudeWithTools(
 
     for (const block of response.content) {
       if (block.type === 'tool_use') {
-        let result: { text: string; pendingAction?: PendingAction };
+        let result: { text: string; pendingAction?: PendingAction; chartUrl?: string };
         try {
           result = await executeToolCall(
             block.name,
@@ -354,6 +356,8 @@ async function callClaudeWithTools(
           // and generate duplicate letters. Return directly, bypassing both loops.
           return { text: result.text, pendingAction: result.pendingAction };
         }
+
+        if (result.chartUrl) chartUrl = result.chartUrl;
 
         toolResults.push({
           type: 'tool_result',
@@ -384,7 +388,7 @@ async function callClaudeWithTools(
     finalText = "I'm having trouble retrieving that information right now. Could you please specify exactly what you need in a different way?";
   }
 
-  return { text: finalText };
+  return { text: finalText, chartUrl };
 }
 
 // ============================================================
@@ -1969,7 +1973,7 @@ Return JSON: { "subject": "...", "body": "..." }`;
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TIMEOUT: Claude processing exceeded 250s')), CLAUDE_TIMEOUT_MS)
       );
-      const { text, pendingAction } = await Promise.race([claudePromise, timeoutPromise]);
+      const { text, pendingAction, chartUrl } = await Promise.race([claudePromise, timeoutPromise]);
 
       // Log outbound
       supabase
@@ -2007,6 +2011,15 @@ Return JSON: { "subject": "...", "body": "..." }`;
           } else {
             await ctx.reply(chunks[i]);
           }
+        }
+      } else if (chartUrl) {
+        // Send chart image — use text as caption if short enough, otherwise follow-up message
+        const CAPTION_LIMIT = 1024;
+        if (text.length <= CAPTION_LIMIT) {
+          await ctx.replyWithPhoto(chartUrl, { caption: text, parse_mode: 'Markdown' });
+        } else {
+          await ctx.replyWithPhoto(chartUrl);
+          await sendChunked(ctx, text);
         }
       } else {
         await sendChunked(ctx, text);
