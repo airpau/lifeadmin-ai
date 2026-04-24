@@ -138,9 +138,16 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     emailConnections === null
       ? null
       : emailConnections.some((c) => c.status === 'active');
+  // "stale" covers every non-active status the DB actually writes —
+  // needs_reauth and expired landed via the original design doc, but
+  // google_oauth also writes 'disconnected' when the refresh token is
+  // revoked. Anything non-active means the inbox is silently invisible
+  // to the search until the user re-auths.
   const hasStaleEmail =
     emailConnections !== null &&
-    emailConnections.some((c) => c.status === 'needs_reauth' || c.status === 'expired');
+    emailConnections.some((c) => c.status !== 'active' && !(c as any).archived_at);
+  const staleConnections =
+    emailConnections?.filter((c) => c.status !== 'active' && !(c as any).archived_at) ?? [];
 
   // When a thread is linked, find the specific connection backing it so we can
   // surface a reconnect CTA if that connection's tokens have died. Falls back
@@ -517,6 +524,27 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                 <X className="h-5 w-5" />
               </button>
             </div>
+            {staleConnections.length > 0 && (
+              <div className="mx-5 mt-3 bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-amber-900 mb-1">
+                    {staleConnections.length === 1
+                      ? '1 inbox isn\'t being searched'
+                      : `${staleConnections.length} inboxes aren\'t being searched`}
+                  </p>
+                  <p className="text-xs text-amber-800 mb-2">
+                    {staleConnections.map((c) => c.email_address).join(', ')} — the connection has expired, so we can\'t see into it. Reconnect to include these threads in the search.
+                  </p>
+                  <a
+                    href="/dashboard/profile"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900 underline"
+                  >
+                    <Link2 className="h-3 w-3" /> Reconnect in Profile
+                  </a>
+                </div>
+              </div>
+            )}
             <div className="px-5 pt-3">
               <form
                 onSubmit={(e) => { e.preventDefault(); void runSearch(searchTerm); }}
