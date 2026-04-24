@@ -197,10 +197,7 @@ export default function LoginPage() {
 
                   {!useMagicLink && (
                     <div className="field">
-                      <label htmlFor="password">
-                        Password
-                        <Link href="/auth/reset-password">Forgot password?</Link>
-                      </label>
+                      <label htmlFor="password">Password</label>
                       <div className="field-control">
                         <Lock className="lead h-4 w-4" aria-hidden="true" />
                         <input
@@ -212,6 +209,9 @@ export default function LoginPage() {
                           placeholder="••••••••"
                           autoComplete="current-password"
                         />
+                      </div>
+                      <div className="field-footer">
+                        <Link href="/auth/reset-password">Forgot password?</Link>
                       </div>
                     </div>
                   )}

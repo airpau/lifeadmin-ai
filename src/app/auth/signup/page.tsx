@@ -14,15 +14,29 @@ import { MarkNav } from '@/app/blog/_shared';
 import '../../(marketing)/styles.css';
 import '../auth.css';
 
+// Password strength helpers — used to drive the live checklist below the
+// password field. Same rules Supabase will enforce server-side so the
+// user gets immediate feedback instead of a post-submit bounce.
+const PW_RULES = [
+  { id: 'length', label: 'At least 8 characters', test: (v: string) => v.length >= 8 },
+  { id: 'letter', label: 'Contains a letter', test: (v: string) => /[A-Za-z]/.test(v) },
+  { id: 'number', label: 'Contains a number', test: (v: string) => /\d/.test(v) },
+] as const;
+
 export default function SignupPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verifyMode, setVerifyMode] = useState(false);
+
+  const passedRules = PW_RULES.filter((r) => r.test(password));
+  const passwordValid = passedRules.length === PW_RULES.length;
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -93,6 +107,18 @@ export default function SignupPage() {
       }
     }
 
+    if (!passwordValid) {
+      setError('Password must be at least 8 characters and include a letter and a number.');
+      setLoading(false);
+      return;
+    }
+
+    if (!termsAccepted) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      setLoading(false);
+      return;
+    }
+
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
 
     try {
@@ -105,6 +131,8 @@ export default function SignupPage() {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             mobile_number: mobile.trim() || null,
+            terms_accepted_at: new Date().toISOString(),
+            marketing_opt_in: marketingOptIn,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
@@ -325,6 +353,7 @@ export default function SignupPage() {
                       <input
                         id="signup-mobile"
                         type="tel"
+                        inputMode="tel"
                         value={mobile}
                         onChange={(e) => setMobile(e.target.value)}
                         placeholder="+44 7700 900000"
@@ -346,9 +375,54 @@ export default function SignupPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
                         autoComplete="new-password"
+                        aria-describedby="password-requirements"
                       />
                     </div>
-                    <p className="hint">Minimum 8 characters.</p>
+                    <ul
+                      id="password-requirements"
+                      className={`pw-checklist ${password.length === 0 ? 'is-idle' : ''}`}
+                      aria-live="polite"
+                    >
+                      {PW_RULES.map((rule) => {
+                        const ok = rule.test(password);
+                        return (
+                          <li key={rule.id} className={ok ? 'ok' : 'todo'}>
+                            <span className="pw-checklist__mark" aria-hidden="true">
+                              {ok ? '✓' : '○'}
+                            </span>
+                            {rule.label}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+
+                  <div className="consent">
+                    <label className="consent__row">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={termsAccepted}
+                        onChange={(e) => setTermsAccepted(e.target.checked)}
+                      />
+                      <span>
+                        I agree to the{' '}
+                        <Link href="/terms-of-service">Terms of Service</Link>
+                        {' '}and{' '}
+                        <Link href="/privacy-policy">Privacy Policy</Link>.
+                      </span>
+                    </label>
+                    <label className="consent__row consent__row--optional">
+                      <input
+                        type="checkbox"
+                        checked={marketingOptIn}
+                        onChange={(e) => setMarketingOptIn(e.target.checked)}
+                      />
+                      <span>
+                        Send me the Paybacker newsletter — savings tips and
+                        product updates (optional, unsubscribe anytime).
+                      </span>
+                    </label>
                   </div>
 
                   {error && <div className="form-error">{error}</div>}
@@ -365,12 +439,6 @@ export default function SignupPage() {
                   >
                     Sign in
                   </Link>
-                </div>
-
-                <div className="auth-finepr">
-                  By creating an account, you agree to our{' '}
-                  <Link href="/terms-of-service">Terms of Service</Link> and{' '}
-                  <Link href="/privacy-policy">Privacy Policy</Link>.
                 </div>
               </>
             )}
