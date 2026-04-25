@@ -202,17 +202,19 @@ async function sendTelegram(chatId: number, payload: TelegramPayload): Promise<b
 /**
  * Push transport.
  *
- * Reads the user's registered devices from `push_tokens` (populated
- * by /api/push/register when the mobile shell boots). If no tokens
- * exist yet — the user hasn't installed the app or denied permission
- * — we log "push_pending" and exit silently.
+ * Delegates to src/lib/push/dispatch-push.ts which fans the payload
+ * out to every registered device (APNs for ios rows, FCM for android
+ * rows), cleans up bad tokens, and logs the outcome to
+ * notification_log. Lazy-imported so non-push code paths don't drag
+ * apns2 + firebase-admin into the bundle.
  *
- * Real APNs / FCM delivery is stubbed pending two env vars:
- *   APNS_KEY_ID + APNS_TEAM_ID + APNS_KEY_P8  (iOS)
- *   FCM_SERVICE_ACCOUNT_JSON                  (Android)
- * When those land, the marked TODO below becomes an apns2 +
- * firebase-admin call. Returning false keeps the event routed
- * through email/telegram fallbacks so users aren\'t silenced.
+ * Required env vars (set in Vercel — task #41):
+ *   APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8, APNS_BUNDLE_ID, APNS_HOST
+ *   FCM_SERVICE_ACCOUNT_JSON
+ *
+ * Returns true if at least one device was reached. False keeps email
+ * + telegram fallbacks active so users aren't silenced when push
+ * fails (no devices, all tokens dead, FCM/APNs outage, etc.).
  */
 async function sendPush(
   supabase: SupabaseClient,
@@ -220,31 +222,12 @@ async function sendPush(
   payload: PushPayload,
 ): Promise<boolean> {
   try {
-    const { data: tokens } = await supabase
-      .from('push_tokens')
-      .select('platform, token')
-      .eq('user_id', userId);
-    if (!tokens || tokens.length === 0) {
-      await supabase.from('notification_log').insert({
-        user_id: userId,
-        notification_type: 'push_no_device',
-        reference_key: `${payload.title}|${Date.now()}`,
-      });
-      return false;
-    }
-    // TODO: wire APNs (iOS) + FCM (Android) senders here. For each
-    // token row, dispatch based on row.platform. Today we log
-    // intent — users with the app installed will start receiving
-    // pushes once the credentials env vars are set.
-    await supabase.from('notification_log').insert({
-      user_id: userId,
-      notification_type: 'push_pending_transport',
-      reference_key: `${payload.title}|${tokens.length}|${Date.now()}`,
-    });
-  } catch {
-    // notification_log may not have this shape — log and move on
+    const { dispatchPushToUser } = await import('@/lib/push/dispatch-push');
+    return await dispatchPushToUser(supabase, userId, payload);
+  } catch (err) {
+    console.error('[notifications] push dispatch failed:', err);
+    return false;
   }
-  return false;
 }
 
 export async function sendNotification(
