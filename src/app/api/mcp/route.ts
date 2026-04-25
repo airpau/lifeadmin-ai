@@ -270,20 +270,29 @@ function getGithubToken(): string {
 const GITHUB_REPO = process.env.GITHUB_REPO || "airpau/lifeadmin-ai";
 
 function getPosthogCreds(): { apiKey: string; host: string; projectId: string } {
-  const apiKey = process.env.POSTHOG_API_KEY || process.env.POSTHOG_PROJECT_API_KEY || "";
-  const host = process.env.POSTHOG_HOST || "https://app.posthog.com";
-  const projectId = process.env.POSTHOG_PROJECT_ID || "";
-  if (!apiKey) throw new Error("POSTHOG_API_KEY env var not configured");
-  if (!projectId) throw new Error("POSTHOG_PROJECT_ID env var not configured");
+  // Prefer POSTHOG_PERSONAL_API_KEY (capability: full read API) over project keys.
+  const apiKey =
+    process.env.POSTHOG_PERSONAL_API_KEY ||
+    process.env.POSTHOG_API_KEY ||
+    process.env.POSTHOG_PROJECT_API_KEY ||
+    "";
+  // PostHog API host. EU instance for Paybacker (per .env.local).
+  const host =
+    process.env.POSTHOG_HOST ||
+    process.env.NEXT_PUBLIC_POSTHOG_HOST ||
+    "https://eu.posthog.com";
+  // Project id is numeric (looked up via /api/projects/). Hardcoded fallback for ours.
+  const projectId = process.env.POSTHOG_PROJECT_ID || "145782";
+  if (!apiKey) throw new Error("POSTHOG_PERSONAL_API_KEY env var not configured");
   return { apiKey, host, projectId };
 }
 
 function getVercelCreds(): { token: string; projectId: string; teamId: string | null } {
   const token = process.env.VERCEL_TOKEN || "";
-  const projectId = process.env.VERCEL_PROJECT_ID || "";
-  const teamId = process.env.VERCEL_TEAM_ID || null;
-  if (!token) throw new Error("VERCEL_TOKEN env var not configured");
-  if (!projectId) throw new Error("VERCEL_PROJECT_ID env var not configured");
+  // Hardcoded defaults from .vercel/project.json so the only required env var is VERCEL_TOKEN.
+  const projectId = process.env.VERCEL_PROJECT_ID || "prj_BXE0Vi66KEwNqisNRnGjRtl35yXT";
+  const teamId = process.env.VERCEL_TEAM_ID || "team_SJyVnrkwVgA4RigQCvYWDOua";
+  if (!token) throw new Error("VERCEL_TOKEN env var not configured (create at vercel.com/account/tokens)");
   return { token, projectId, teamId };
 }
 
