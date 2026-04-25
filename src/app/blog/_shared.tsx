@@ -67,9 +67,9 @@ export function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Legal</h5>
-            <Link href="/privacy">Privacy</Link>
-            <Link href="/terms">Terms</Link>
-            <Link href="/cookies">Cookies</Link>
+            <Link href="/privacy-policy">Privacy</Link>
+            <Link href="/terms-of-service">Terms</Link>
+            <Link href="/cookie-policy">Cookies</Link>
             <Link href="/ico-notice">ICO notice</Link>
           </div>
           <div className="footer-col">
