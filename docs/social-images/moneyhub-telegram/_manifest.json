@@ -1,0 +1,34 @@
+[
+  {
+    "name": "moneyhub-square-mockup",
+    "aspect": "1:1"
+  },
+  {
+    "name": "moneyhub-portrait-mockup",
+    "aspect": "9:16"
+  },
+  {
+    "name": "moneyhub-landscape-mockup",
+    "aspect": "16:9"
+  },
+  {
+    "name": "moneyhub-square-illustrated",
+    "aspect": "1:1"
+  },
+  {
+    "name": "telegram-square-mockup",
+    "aspect": "1:1"
+  },
+  {
+    "name": "telegram-portrait-mockup",
+    "aspect": "9:16"
+  },
+  {
+    "name": "telegram-landscape-mockup",
+    "aspect": "16:9"
+  },
+  {
+    "name": "telegram-square-illustrated",
+    "aspect": "1:1"
+  }
+]

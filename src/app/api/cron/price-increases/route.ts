@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
             annual_impact: increase.annualImpact,
             old_date: increase.oldDate,
             new_date: increase.newDate,
+            category: increase.category,
             status: 'active',
           });
 

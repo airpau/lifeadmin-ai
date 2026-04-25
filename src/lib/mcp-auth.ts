@@ -1,6 +1,7 @@
 // src/lib/mcp-auth.ts
 // Bearer-token auth for the Paybacker MCP HTTP layer.
 //
+<<<<<<< HEAD
 // Every /api/mcp/* data endpoint (the token-management ones use the browser
 // session instead) calls `authenticateMcp(req)` first. It:
 //   1. Pulls the Bearer token from the Authorization header (header-only —
@@ -10,6 +11,18 @@
 //   4. Verifies the owning user still has an active Pro plan
 //   5. Bumps last_used_at / use_count on the token (best-effort)
 //   6. Returns { userId, tokenId } or a NextResponse error
+=======
+// Every /api/mcp/* endpoint (except the token-management ones, which use the
+// browser session) calls `authenticateMcp(req)` first. It:
+//   1. Pulls the Bearer token from Authorization or ?token=…
+//   2. Hashes it (SHA-256) and looks up a non-revoked, non-expired row
+//   3. Verifies the owning user still has an active Pro plan
+//   4. Bumps last_used_at / use_count on the token (best-effort)
+//   5. Returns { userId, tokenId } or a NextResponse error
+//
+// Rate limiting is deliberately simple for v1: 10 active tokens per user +
+// Pro gate + revocable. We can layer a token-bucket on top later.
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
@@ -36,6 +49,7 @@ function admin() {
   );
 }
 
+<<<<<<< HEAD
 // Tokens must travel in the Authorization header only. Query params leak into
 // Vercel access logs, Referer headers and browser history — that's how
 // credentials get quietly exfiltrated.
@@ -67,6 +81,18 @@ function checkTokenRateLimit(tokenId: string): boolean {
   if (entry.count >= RATE_LIMIT_MAX) return false;
   entry.count++;
   return true;
+=======
+function extractToken(req: NextRequest): string | null {
+  const auth = req.headers.get('authorization') ?? req.headers.get('Authorization');
+  if (auth) {
+    const match = auth.match(/^Bearer\s+(.+)$/i);
+    if (match) return match[1].trim();
+  }
+  // Fallback — query param lets curl users test without headers
+  const q = req.nextUrl.searchParams.get('token');
+  if (q) return q.trim();
+  return null;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 /**
@@ -96,6 +122,7 @@ export async function authenticateMcp(
     console.error('[mcp-auth] lookup failed:', error.message);
     return NextResponse.json({ error: 'Auth lookup failed' }, { status: 500 });
   }
+<<<<<<< HEAD
   // Don't tell the caller whether the token is merely unknown or revoked —
   // an attacker with a list of leaked tokens shouldn't be able to tell which
   // state each is in. Genuinely expired tokens get a distinct message because
@@ -103,6 +130,14 @@ export async function authenticateMcp(
   if (!row || row.revoked_at) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
   }
+=======
+  if (!row) {
+    return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+  }
+  if (row.revoked_at) {
+    return NextResponse.json({ error: 'Token revoked' }, { status: 401 });
+  }
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   if (new Date(row.expires_at) <= new Date()) {
     return NextResponse.json(
       { error: 'Token expired. Generate a new one at /dashboard/settings/mcp.' },
@@ -110,6 +145,7 @@ export async function authenticateMcp(
     );
   }
 
+<<<<<<< HEAD
   // Per-token rate limit — capped *before* the Pro gate so we don't run plan
   // lookups for abusive callers.
   if (!checkTokenRateLimit(row.id)) {
@@ -119,6 +155,8 @@ export async function authenticateMcp(
     );
   }
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   // Pro gate — re-checked on every call, so downgrades cut off access immediately
   const plan = await getUserPlan(row.user_id);
   if (plan.tier !== 'pro' || !plan.isActive) {

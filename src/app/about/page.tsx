@@ -98,8 +98,13 @@ function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Legal</h5>
+<<<<<<< HEAD
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
+=======
+            <Link href="/legal/privacy">Privacy</Link>
+            <Link href="/legal/terms">Terms</Link>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <Link href="/cookie-policy">Cookies</Link>
           </div>
           <div className="footer-col">
@@ -188,11 +193,15 @@ export default function AboutPage() {
         style={{ '--glow-opacity': 0.18, paddingTop: 140, paddingBottom: 80 } as CSSVarProperties}
       >
         <div className="wrap">
+<<<<<<< HEAD
           <span className="eyebrow">
             About · Paybacker LTD · Launched March 2026
             <span className="eyebrow-dot" aria-hidden="true"> · </span>
             <span className="eyebrow-trust">ICO registered · FCA-authorised via Yapily</span>
           </span>
+=======
+          <span className="eyebrow">About · Paybacker LTD · Launched March 2026</span>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <h1
             style={{
               fontSize: 'var(--fs-display)',
@@ -220,7 +229,11 @@ export default function AboutPage() {
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Link className="btn btn-mint" href={SIGNUP_HREF}>
+<<<<<<< HEAD
               Start free — no card needed →
+=======
+              Start free 14-day trial →
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             </Link>
             <Link className="btn btn-ghost" href="/careers">
               We&apos;re hiring — see roles
@@ -391,6 +404,7 @@ export default function AboutPage() {
         </div>
       </section>
 
+<<<<<<< HEAD
       {/* FOUNDER'S NOTE — Paul explicitly approved a real founder
           bio here, overriding the "no founder anecdote" rule in
           CONTENT_SOURCES_OF_TRUTH.md. Emotional, first-person,
@@ -544,6 +558,8 @@ export default function AboutPage() {
         </div>
       </section>
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       {/* FINAL CTA */}
       <section
         className="final-cta section-ink glow-wrap"

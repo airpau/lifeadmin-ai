@@ -21,7 +21,10 @@ import { Loader2, Mail, Link2, RefreshCw, CheckCircle2, AlertCircle, X, Search, 
 
 interface LinkedThread {
   id: string;
+<<<<<<< HEAD
   email_connection_id: string | null;
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   provider: 'gmail' | 'outlook' | 'imap';
   thread_id: string;
   subject: string | null;
@@ -34,10 +37,13 @@ interface LinkedThread {
 
 interface Candidate {
   connectionId: string;
+<<<<<<< HEAD
   /** Email address of the inbox this thread lives in — surfaced on
    *  every row so users with multiple linked accounts know which one
    *  contains the thread. */
   inboxEmail?: string;
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   provider: 'gmail' | 'outlook' | 'imap';
   threadId: string;
   subject: string;
@@ -46,10 +52,15 @@ interface Candidate {
   latestDate: string;
   messageCount: number;
   snippet: string;
+<<<<<<< HEAD
   /** 0-1 match confidence (from auto-suggest) or undefined when the
    *  candidate came from free-text search. */
   confidence?: number;
   reason?: string;
+=======
+  confidence: number;
+  reason: string;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 interface EmailConnectionSummary {
@@ -88,11 +99,14 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
   const [needsEmailConnection, setNeedsEmailConnection] = useState(false);
   const [searchErrors, setSearchErrors] = useState<Array<{ connectionId: string; message: string }>>([]);
+<<<<<<< HEAD
   // Free-text inbox search — mirrors the new-dispute flow so users
   // can find any thread regardless of whether it matches the current
   // dispute\'s provider_name.
   const [searchTerm, setSearchTerm] = useState('');
   const [searchMode, setSearchMode] = useState<'auto' | 'search'>('auto');
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
   const [linking, setLinking] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -138,6 +152,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     emailConnections === null
       ? null
       : emailConnections.some((c) => c.status === 'active');
+<<<<<<< HEAD
   // "stale" covers every non-active status the DB actually writes —
   // needs_reauth and expired landed via the original design doc, but
   // google_oauth also writes 'disconnected' when the refresh token is
@@ -174,6 +189,19 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     setLoadingCandidates(true);
     setCandidatesError(null);
     setSearchErrors([]);
+=======
+  const hasStaleEmail =
+    emailConnections !== null &&
+    emailConnections.some((c) => c.status === 'needs_reauth' || c.status === 'expired');
+
+  const openPicker = async () => {
+    setPickerOpen(true);
+    setCandidates(null);
+    setCandidatesError(null);
+    setNeedsEmailConnection(false);
+    setSearchErrors([]);
+    setLoadingCandidates(true);
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     try {
       const res = await fetch(`/api/disputes/${disputeId}/suggest-threads`, { cache: 'no-store' });
       const data = await res.json();
@@ -189,17 +217,29 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
       }
       if (data.error === 'no_email_connection') {
         setNeedsEmailConnection(true);
+<<<<<<< HEAD
         setCandidates([]);
         return;
       }
       setCandidates(decorateWithInbox(data.candidates ?? []));
       if (Array.isArray(data.errors) && data.errors.length > 0) setSearchErrors(data.errors);
+=======
+        setCandidatesError(data.message ?? 'Connect an email account first.');
+        setCandidates([]);
+        return;
+      }
+      setCandidates(data.candidates ?? []);
+      if (Array.isArray(data.errors) && data.errors.length > 0) {
+        setSearchErrors(data.errors);
+      }
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     } catch (e) {
       setCandidatesError(e instanceof Error ? e.message : 'Something went wrong');
       setCandidates([]);
     } finally {
       setLoadingCandidates(false);
     }
+<<<<<<< HEAD
   }, [disputeId, decorateWithInbox]);
 
   const runSearch = useCallback(async (q: string) => {
@@ -258,6 +298,8 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     setSearchTerm('');
     setSearchMode('auto');
     await runAutoSuggest();
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   };
 
   const pickCandidate = async (c: Candidate) => {
@@ -343,14 +385,22 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
   };
 
   return (
+<<<<<<< HEAD
     <div className="card p-5 mb-6">
+=======
+    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg bg-mint-400/10 text-mint-400 flex items-center justify-center">
               <Mail className="h-4 w-4" />
             </div>
+<<<<<<< HEAD
             <h3 className="text-sm font-semibold text-slate-900">
+=======
+            <h3 className="text-sm font-semibold text-white">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               Watchdog <span className="text-slate-500">— email reply sync</span>
             </h3>
           </div>
@@ -366,6 +416,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
         </div>
       ) : linked ? (
         <>
+<<<<<<< HEAD
           {linkedConnectionStale && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-3 flex items-start gap-3">
               <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0 mt-0.5" />
@@ -391,6 +442,9 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
             </div>
           )}
           <div className="bg-white rounded-lg p-3 mb-3">
+=======
+          <div className="bg-navy-950 rounded-lg p-3 mb-3">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="text-xs uppercase tracking-wide text-mint-400 font-semibold">
                 Linked thread
@@ -399,15 +453,22 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                 {linked.provider}
               </span>
             </div>
+<<<<<<< HEAD
             <p className="text-sm text-slate-900 truncate" title={linked.subject ?? ''}>
+=======
+            <p className="text-sm text-white truncate" title={linked.subject ?? ''}>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               {linked.subject || '(no subject)'}
             </p>
             {linked.sender_address && (
               <p className="text-xs text-slate-500 mt-0.5 truncate">from {linked.sender_address}</p>
             )}
+<<<<<<< HEAD
             {linkedConnection?.email_address && (
               <p className="text-[10px] text-slate-500 mt-0.5 truncate">in {linkedConnection.email_address}</p>
             )}
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-500">
               <span>Last checked {fmtDate(linked.last_synced_at)}</span>
               {linked.last_message_date && (
@@ -432,7 +493,11 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
             <button
               type="button"
               onClick={openPicker}
+<<<<<<< HEAD
               className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-100 text-slate-700 rounded-lg text-sm transition-all"
+=======
+              className="flex items-center gap-2 px-3 py-2 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg text-sm transition-all"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             >
               <Link2 className="h-4 w-4" /> Relink different thread
             </button>
@@ -446,11 +511,19 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
           </div>
         </>
       ) : (
+<<<<<<< HEAD
         <div className="bg-white rounded-lg p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-slate-700">
+=======
+        <div className="bg-navy-950 rounded-lg p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-slate-300">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 Link an email thread so we can auto-import {providerName}'s replies.
               </p>
             </div>
@@ -508,6 +581,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
 
       {pickerOpen && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+<<<<<<< HEAD
           <div className="bg-white border border-slate-200 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
               <div>
@@ -519,11 +593,20 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               <button
                 onClick={() => setPickerOpen(false)}
                 className="text-slate-500 hover:text-slate-900 p-1"
+=======
+          <div className="bg-navy-900 border border-navy-700/60 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-navy-700/50">
+              <h4 className="text-base font-semibold text-white">Pick the thread to watch</h4>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="text-slate-400 hover:text-white p-1"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 aria-label="Close"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
+<<<<<<< HEAD
             {staleConnections.length > 0 && (
               <div className="mx-5 mt-3 bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -576,6 +659,8 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                 )}
               </form>
             </div>
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="p-5 overflow-y-auto flex-1">
               {loadingCandidates ? (
                 <div className="flex items-center gap-2 text-slate-500 py-10 justify-center">
@@ -587,8 +672,13 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                     <div className="flex items-start gap-2 mb-3">
                       <Mail className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
                       <div>
+<<<<<<< HEAD
                         <p className="font-semibold text-slate-900 mb-1">Connect an email first</p>
                         <p className="text-slate-500">
+=======
+                        <p className="font-semibold text-white mb-1">Connect an email first</p>
+                        <p className="text-slate-400">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                           Watchdog needs to read your inbox to find replies from {providerName}. Connect Gmail or Outlook in your Profile — takes about 30 seconds.
                         </p>
                       </div>
@@ -608,6 +698,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                 )
               ) : !candidates || candidates.length === 0 ? (
                 <div className="text-center py-10">
+<<<<<<< HEAD
                   <Mail className="h-10 w-10 text-slate-400 mx-auto mb-3" />
                   <p className="text-slate-700 font-semibold mb-1">
                     {searchMode === 'search' ? `Nothing matched "${searchTerm}"` : 'No auto-suggested threads'}
@@ -616,6 +707,13 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                     {searchMode === 'search'
                       ? 'Try a different keyword — sender name, amount, subject line.'
                       : `We couldn\'t auto-match a thread for ${providerName}. Use the search box above to find any thread across your inboxes.`}
+=======
+                  <Mail className="h-10 w-10 text-slate-700 mx-auto mb-3" />
+                  <p className="text-slate-300 font-semibold mb-1">No matching threads found</p>
+                  <p className="text-slate-500 text-sm">
+                    We searched the last 365 days for mail mentioning {providerName}. If the thread
+                    is older, forward the most recent message to yourself first, then try again.
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   </p>
                   {searchErrors.length > 0 && (
                     <div className="mt-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-lg p-3 text-left text-xs">
@@ -647,6 +745,7 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                         type="button"
                         disabled={linking}
                         onClick={() => pickCandidate(c)}
+<<<<<<< HEAD
                         className="w-full text-left bg-white hover:bg-slate-100 border border-slate-200 hover:border-mint-400/40 rounded-xl p-3 transition-all disabled:opacity-50 disabled:cursor-wait"
                       >
                         <div className="flex items-center justify-between gap-2 mb-1">
@@ -677,6 +776,28 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                           {c.reason && (
                             <span className="text-[10px] text-slate-500 truncate">· {c.reason}</span>
                           )}
+=======
+                        className="w-full text-left bg-navy-950 hover:bg-navy-800 border border-navy-700/50 hover:border-mint-400/40 rounded-xl p-3 transition-all disabled:opacity-50 disabled:cursor-wait"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <p className="text-sm font-semibold text-white truncate" title={c.subject}>
+                            {c.subject || '(no subject)'}
+                          </p>
+                          <span className="text-[10px] uppercase tracking-wide text-mint-400 font-semibold flex-shrink-0">
+                            {Math.round(c.confidence * 100)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 truncate">from {c.senderAddress}</p>
+                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.snippet}</p>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="text-[10px] text-slate-500">
+                            {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            · {new Date(c.latestDate).toLocaleDateString('en-GB')}
+                          </span>
+                          <span className="text-[10px] text-slate-500 truncate">· {c.reason}</span>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                         </div>
                       </button>
                     </li>
@@ -685,7 +806,11 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               )}
             </div>
             {linking && (
+<<<<<<< HEAD
               <div className="px-5 py-3 border-t border-slate-200 bg-white">
+=======
+              <div className="px-5 py-3 border-t border-navy-700/50 bg-navy-950">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 <div className="flex items-center gap-2 text-mint-400 text-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Importing history… this can take a few seconds.

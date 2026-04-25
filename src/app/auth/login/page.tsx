@@ -209,6 +209,7 @@ export default function LoginPage() {
                   </div>
 
                   {!useMagicLink && (
+<<<<<<< HEAD
                     <>
                       <div className="field">
                         <label htmlFor="password">Password</label>
@@ -242,6 +243,30 @@ export default function LoginPage() {
 
                   {error && <div className="form-error">{error}</div>}
 
+=======
+                    <div className="field">
+                      <label htmlFor="password">
+                        Password
+                        <Link href="/auth/reset-password">Forgot password?</Link>
+                      </label>
+                      <div className="field-control">
+                        <Lock className="lead h-4 w-4" aria-hidden="true" />
+                        <input
+                          id="password"
+                          type="password"
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {error && <div className="form-error">{error}</div>}
+
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   <button type="submit" disabled={loading} className="auth-submit">
                     {loading ? 'Please wait…' : useMagicLink ? 'Send magic link' : 'Sign in'}
                   </button>

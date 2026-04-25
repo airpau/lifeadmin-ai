@@ -10,6 +10,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+<<<<<<< HEAD
+=======
+import { createClient } from '@/lib/supabase/client';
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 import {
   Terminal,
   Copy,
@@ -23,6 +27,7 @@ import {
   Zap,
   AlertCircle,
   KeyRound,
+<<<<<<< HEAD
   FileJson,
 } from 'lucide-react';
 
@@ -30,6 +35,10 @@ import {
 // screen if the tab is left open or shared over screen-sharing.
 const JUST_MINTED_TTL_MS = 5 * 60 * 1000;
 
+=======
+} from 'lucide-react';
+
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 interface TokenRow {
   id: string;
   name: string;
@@ -43,6 +52,11 @@ interface TokenRow {
 }
 
 export default function McpSettingsPage() {
+<<<<<<< HEAD
+=======
+  const supabase = createClient();
+
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const [isPro, setIsPro] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [tokens, setTokens] = useState<TokenRow[]>([]);
@@ -52,6 +66,7 @@ export default function McpSettingsPage() {
   const [newName, setNewName] = useState('Paybacker Assistant');
   const [creating, setCreating] = useState(false);
   const [justMinted, setJustMinted] = useState<string | null>(null);
+<<<<<<< HEAD
   const [copied, setCopied] = useState<string | null>(null);
 
   // revoke flow
@@ -59,15 +74,27 @@ export default function McpSettingsPage() {
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
 
   const loadPlanAndTokens = useCallback(async () => {
+=======
+  const [copied, setCopied] = useState(false);
+
+  // revoke flow
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const loadTokens = useCallback(async () => {
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     try {
       const res = await fetch('/api/mcp/tokens');
       if (res.status === 401) {
         setError('Please sign in.');
+<<<<<<< HEAD
         setIsPro(false);
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         return;
       }
       if (!res.ok) throw new Error('Failed to load tokens');
       const data = await res.json();
+<<<<<<< HEAD
       setIsPro(!!data.isPro);
       setTokens((data.tokens ?? []) as TokenRow[]);
     } catch (e) {
@@ -75,11 +102,16 @@ export default function McpSettingsPage() {
       // token manager from actual Pro users exactly when the API is flaky.
       // Surface the error banner and leave the Pro state unchanged so the
       // existing UI (or the loading state, on first load) is preserved.
+=======
+      setTokens(data.tokens ?? []);
+    } catch (e) {
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       setError(e instanceof Error ? e.message : 'Unknown error');
     }
   }, []);
 
   useEffect(() => {
+<<<<<<< HEAD
     loadPlanAndTokens().finally(() => setLoading(false));
   }, [loadPlanAndTokens]);
 
@@ -90,6 +122,38 @@ export default function McpSettingsPage() {
     const t = setTimeout(() => setJustMinted(null), JUST_MINTED_TTL_MS);
     return () => clearTimeout(t);
   }, [justMinted]);
+=======
+    const init = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('subscription_tier, subscription_status, stripe_subscription_id')
+          .eq('id', user.id)
+          .single();
+        const tier = profile?.subscription_tier;
+        const status = profile?.subscription_status;
+        const hasStripe = !!profile?.stripe_subscription_id;
+        const pro =
+          tier === 'pro' &&
+          (hasStripe
+            ? ['active', 'trialing'].includes(status ?? '')
+            : status === 'trialing' || status === 'active');
+        setIsPro(pro);
+        if (pro) await loadTokens();
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, [supabase, loadTokens]);
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
   const handleCreate = async () => {
     setCreating(true);
@@ -107,7 +171,11 @@ export default function McpSettingsPage() {
       }
       setJustMinted(body.token as string);
       setNewName('Paybacker Assistant');
+<<<<<<< HEAD
       await loadPlanAndTokens();
+=======
+      await loadTokens();
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -115,6 +183,7 @@ export default function McpSettingsPage() {
     }
   };
 
+<<<<<<< HEAD
   const handleCopy = async (key: string, value: string) => {
     await navigator.clipboard.writeText(value);
     setCopied(key);
@@ -122,6 +191,16 @@ export default function McpSettingsPage() {
   };
 
   const handleRevoke = async (id: string) => {
+=======
+  const handleCopy = async (value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const handleRevoke = async (id: string, name: string) => {
+    if (!confirm(`Revoke "${name}"? Any AI assistant session using this token will stop working immediately.`)) return;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     setRevokingId(id);
     try {
       const res = await fetch(`/api/mcp/tokens/${id}`, { method: 'DELETE' });
@@ -129,8 +208,12 @@ export default function McpSettingsPage() {
         const body = await res.json();
         throw new Error(body.error ?? 'Failed to revoke');
       }
+<<<<<<< HEAD
       setConfirmRevokeId(null);
       await loadPlanAndTokens();
+=======
+      await loadTokens();
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -138,6 +221,7 @@ export default function McpSettingsPage() {
     }
   };
 
+<<<<<<< HEAD
   const configSnippet = (token: string) =>
     JSON.stringify(
       {
@@ -153,6 +237,8 @@ export default function McpSettingsPage() {
       2,
     );
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString('en-GB', {
       day: '2-digit',
@@ -175,14 +261,22 @@ export default function McpSettingsPage() {
           <div className="bg-orange-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
             <Sparkles className="h-8 w-8 text-orange-600" />
           </div>
+<<<<<<< HEAD
           <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Pro feature</h2>
+=======
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Pro feature</h2>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <p className="text-slate-600 mb-6">
             The Paybacker Assistant lets a desktop AI app read your transactions, subscriptions,
             budgets and net worth. It&rsquo;s available on the Pro plan.
           </p>
           <Link
             href="/dashboard/upgrade"
+<<<<<<< HEAD
             className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-colors"
+=======
+            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-colors"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             <Sparkles className="h-4 w-4" />
             Upgrade to Pro
@@ -198,7 +292,11 @@ export default function McpSettingsPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <div>
+<<<<<<< HEAD
         <h1 className="page-title flex items-center gap-3">
+=======
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <Terminal className="h-7 w-7 text-emerald-600" />
           Paybacker Assistant (MCP)
         </h1>
@@ -260,7 +358,11 @@ export default function McpSettingsPage() {
           <li>Generate a token below and copy it (you only see it once).</li>
           <li>
             In a terminal, run:
+<<<<<<< HEAD
             <pre className="mt-2 bg-white text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
+=======
+            <pre className="mt-2 bg-slate-900 text-emerald-300 rounded-lg p-3 text-xs overflow-x-auto font-mono">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               npx @paybacker/mcp setup
             </pre>
           </li>
@@ -292,6 +394,7 @@ export default function McpSettingsPage() {
                   {justMinted}
                 </code>
                 <button
+<<<<<<< HEAD
                   onClick={() => handleCopy('token', justMinted)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-medium rounded-lg text-sm transition-colors"
                 >
@@ -329,6 +432,15 @@ export default function McpSettingsPage() {
               <p className="mt-3 text-[11px] text-emerald-700/70">
                 This token will auto-hide after 5 minutes so it doesn&rsquo;t sit on screen.
               </p>
+=======
+                  onClick={() => handleCopy(justMinted)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg text-sm transition-colors"
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             </div>
             <button
               onClick={() => setJustMinted(null)}
@@ -355,7 +467,11 @@ export default function McpSettingsPage() {
           <button
             onClick={handleCreate}
             disabled={creating}
+<<<<<<< HEAD
             className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+=======
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg text-sm transition-colors disabled:opacity-50"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Generate token
@@ -379,6 +495,7 @@ export default function McpSettingsPage() {
         {active.length > 0 && (
           <ul className="divide-y divide-slate-200">
             {active.map((t) => (
+<<<<<<< HEAD
               <li key={t.id} className="p-5 flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -439,6 +556,39 @@ export default function McpSettingsPage() {
                     </div>
                   </div>
                 )}
+=======
+              <li key={t.id} className="p-5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-slate-900 truncate">{t.name}</span>
+                    <code className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                      {t.token_prefix}…
+                    </code>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span>Created {formatDate(t.created_at)}</span>
+                    <span>Expires {formatDate(t.expires_at)}</span>
+                    <span>
+                      {t.use_count === 0
+                        ? 'Never used'
+                        : `${t.use_count} call${t.use_count === 1 ? '' : 's'}`}
+                      {t.last_used_at ? ` · last ${formatDate(t.last_used_at)}` : ''}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRevoke(t.id, t.name)}
+                  disabled={revokingId === t.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+                >
+                  {revokingId === t.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  Revoke
+                </button>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               </li>
             ))}
           </ul>
@@ -447,7 +597,11 @@ export default function McpSettingsPage() {
 
       {/* Revoked history */}
       {revoked.length > 0 && (
+<<<<<<< HEAD
         <details className="card">
+=======
+        <details className="bg-white border border-slate-200 rounded-2xl">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <summary className="p-4 text-sm text-slate-600 cursor-pointer hover:text-slate-800">
             Revoked tokens ({revoked.length})
           </summary>

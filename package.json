@@ -22,7 +22,10 @@
     "clsx": "^2.1.1",
     "elevenlabs": "^1.59.0",
     "exceljs": "^4.4.0",
+<<<<<<< HEAD
     "firebase-admin": "^13.2.0",
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     "framer-motion": "^12.38.0",
     "google-ads-api": "^23.0.0",
     "grammy": "^1.41.1",

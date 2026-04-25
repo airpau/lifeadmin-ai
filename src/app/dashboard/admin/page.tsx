@@ -216,7 +216,11 @@ export default function AdminPage() {
     <div className="max-w-7xl">
       <div className="mb-6 flex items-start justify-between">
         <div>
+<<<<<<< HEAD
           <h1 className="page-title">
+=======
+          <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <ShieldAlert className="h-10 w-10 text-red-500" />
             Admin Dashboard
           </h1>
@@ -224,7 +228,11 @@ export default function AdminPage() {
         </div>
         <button
           onClick={() => setMeetingOpen(true)}
+<<<<<<< HEAD
           className="cta font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
+=======
+          className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all text-sm shrink-0"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         >
           <Users className="h-4 w-4" />
           Call a Meeting
@@ -301,7 +309,11 @@ export default function AdminPage() {
               <p className="text-3xl font-bold text-slate-900">{metrics.revenue.paying_customers}</p>
               <p className="text-slate-600 text-sm">Paying customers</p>
             </div>
+<<<<<<< HEAD
             <div className="card">
+=======
+            <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <Users className="h-6 w-6 text-slate-600 mb-2" />
               <p className="text-3xl font-bold text-slate-900">{metrics.revenue.free_users}</p>
               <p className="text-slate-600 text-sm">Free users</p>
@@ -309,7 +321,11 @@ export default function AdminPage() {
           </div>
 
           {/* Tier Breakdown */}
+<<<<<<< HEAD
           <div className="card mb-6">
+=======
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <h3 className="text-slate-900 font-semibold mb-3">Plan Distribution</h3>
             <div className="flex gap-4">
               {Object.entries(metrics.tier_breakdown).map(([tier, count]) => (
@@ -333,7 +349,11 @@ export default function AdminPage() {
               { label: 'AI Agent Runs', value: metrics.overview.agent_runs, icon: Bot, color: 'text-pink-500' },
               { label: 'Merchant Rules', value: metrics.overview.merchant_rules, icon: BarChart3, color: 'text-emerald-500' },
             ].map(({ label, value, icon: Icon, color }) => (
+<<<<<<< HEAD
               <div key={label} className="card">
+=======
+              <div key={label} className="bg-white border border-slate-200/50 rounded-xl p-4">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 <Icon className={`h-5 w-5 ${color} mb-2`} />
                 <p className="text-2xl font-bold text-slate-900">{value.toLocaleString()}</p>
                 <p className="text-slate-500 text-xs">{label}</p>
@@ -343,7 +363,11 @@ export default function AdminPage() {
 
           {/* Deal Health */}
           {dealHealth && (
+<<<<<<< HEAD
             <div className="card mb-6">
+=======
+            <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-slate-900 font-semibold flex items-center gap-2">
                   <Tag className="h-5 w-5 text-emerald-600" /> Deal Health
@@ -360,7 +384,11 @@ export default function AdminPage() {
                     setVerifyingDeals(false);
                   }}
                   disabled={verifyingDeals}
+<<<<<<< HEAD
                   className="flex items-center gap-1.5 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
+=======
+                  className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs disabled:opacity-50"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${verifyingDeals ? 'animate-spin' : ''}`} />
                   {verifyingDeals ? 'Verifying...' : 'Verify Deals Now'}
@@ -392,7 +420,11 @@ export default function AdminPage() {
           )}
 
           {/* Recent Signups */}
+<<<<<<< HEAD
           <div className="card">
+=======
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <h3 className="text-slate-900 font-semibold mb-4">Recent Signups</h3>
             <div className="space-y-2">
               {metrics.recent_signups.map((u) => (
@@ -416,7 +448,11 @@ export default function AdminPage() {
 
       {/* MEMBERS TAB */}
       {tab === 'members' && !selectedMember && (
+<<<<<<< HEAD
         <div className="card">
+=======
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <h3 className="text-slate-900 font-semibold mb-4">All Members ({members.length})</h3>
           <div className="space-y-2">
             {members.map((m) => (
@@ -457,7 +493,11 @@ export default function AdminPage() {
           </button>
 
           {/* Profile Header */}
+<<<<<<< HEAD
           <div className="card mb-6">
+=======
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">{selectedMember.profile?.full_name || selectedMember.profile?.email}</h2>
@@ -475,6 +515,7 @@ export default function AdminPage() {
 
           {/* Member Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+<<<<<<< HEAD
             <div className="card">
               <p className="text-2xl font-bold text-slate-900">£{selectedMember.stats.monthly_spend}</p>
               <p className="text-slate-500 text-xs">Monthly spend tracked</p>
@@ -484,6 +525,17 @@ export default function AdminPage() {
               <p className="text-slate-500 text-xs">Subscriptions</p>
             </div>
             <div className="card">
+=======
+            <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+              <p className="text-2xl font-bold text-slate-900">£{selectedMember.stats.monthly_spend}</p>
+              <p className="text-slate-500 text-xs">Monthly spend tracked</p>
+            </div>
+            <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+              <p className="text-2xl font-bold text-slate-900">{selectedMember.stats.total_subscriptions}</p>
+              <p className="text-slate-500 text-xs">Subscriptions</p>
+            </div>
+            <div className="bg-white border border-slate-200/50 rounded-xl p-4">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <p className="text-2xl font-bold text-slate-900">{selectedMember.stats.total_agent_runs}</p>
               <p className="text-slate-500 text-xs">AI agent runs</p>
             </div>
@@ -495,7 +547,11 @@ export default function AdminPage() {
 
           {/* Bank Connections */}
           {selectedMember.bank_connections.length > 0 && (
+<<<<<<< HEAD
             <div className="card mb-6">
+=======
+            <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <h3 className="text-slate-900 font-semibold mb-3">Bank Connections</h3>
               {selectedMember.bank_connections.map((b: any) => (
                 <div key={b.id} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-2 border border-slate-200/50">
@@ -510,7 +566,11 @@ export default function AdminPage() {
           )}
 
           {/* Subscriptions */}
+<<<<<<< HEAD
           <div className="card mb-6">
+=======
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <h3 className="text-slate-900 font-semibold mb-3">Subscriptions ({selectedMember.subscriptions.length})</h3>
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {selectedMember.subscriptions.map((s, i) => (
@@ -530,7 +590,11 @@ export default function AdminPage() {
           </div>
 
           {/* Task History */}
+<<<<<<< HEAD
           <div className="card">
+=======
+          <div className="bg-white border border-slate-200/50 rounded-2xl p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <h3 className="text-slate-900 font-semibold mb-3">Task History ({selectedMember.tasks.length})</h3>
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {selectedMember.tasks.map((t: any) => (

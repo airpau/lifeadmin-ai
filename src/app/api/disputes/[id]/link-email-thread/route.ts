@@ -42,7 +42,11 @@ export async function GET(
 
   const { data, error } = await supabase
     .from('dispute_watchdog_links')
+<<<<<<< HEAD
     .select('id, email_connection_id, provider, thread_id, subject, sender_domain, sender_address, last_synced_at, last_message_date, sync_enabled, created_at')
+=======
+    .select('id, provider, thread_id, subject, sender_domain, sender_address, last_synced_at, last_message_date, sync_enabled, created_at')
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     .eq('dispute_id', disputeId)
     .eq('user_id', user.id)
     .eq('sync_enabled', true)
@@ -121,6 +125,7 @@ export async function POST(
     return NextResponse.json({ error: 'Email connection not found' }, { status: 404 });
   }
 
+<<<<<<< HEAD
   // Disable all existing active watchdog links for this dispute before creating a new one.
   // This ensures only one active link per dispute at a time.
   const db = admin();
@@ -130,6 +135,10 @@ export async function POST(
     .eq('dispute_id', disputeId)
     .eq('user_id', user.id)
     .eq('sync_enabled', true);
+=======
+  // Upsert dispute_watchdog_links (user may have previously unlinked the same thread)
+  const db = admin();
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const senderDomain =
     body.senderAddress && typeof body.senderAddress === 'string' && body.senderAddress.includes('@')
       ? body.senderAddress.split('@')[1].toLowerCase()
@@ -163,6 +172,7 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to save link' }, { status: 500 });
   }
 
+<<<<<<< HEAD
   // Initial sync: pull the entire thread history into correspondence.
   // Guard against concurrent requests for the same thread both running the sync —
   // if last_synced_at is already set, another request already completed it.
@@ -177,6 +187,10 @@ export async function POST(
       linksLimit: limitCheck.limit,
     });
   }
+=======
+  // Initial sync: pull the entire thread history into correspondence
+  let imported = 0;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   try {
     const messages = await fetchNewMessages(conn as EmailConnection, body.threadId, null);
     for (const m of messages) {

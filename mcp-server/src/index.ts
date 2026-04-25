@@ -11,7 +11,14 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 // Constants
+<<<<<<< HEAD
 const PROJECT_DIR = process.env.PAYBACKER_PROJECT_DIR || "/Users/paul-ops/lifeadmin-ai";
+=======
+// PROJECT_DIR can be overridden via env var so this MCP works on any machine
+// (previously hard-coded to a stale ~/.openclaw path that no longer exists).
+const PROJECT_DIR =
+  process.env.PAYBACKER_PROJECT_DIR || "/Users/paul-ops/lifeadmin-ai";
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 const CONTEXT_DIR = join(PROJECT_DIR, "shared-context");
 const FACEBOOK_PAGE_ID = "1056645287525328";
 const INSTAGRAM_ID = "17841440175351137";
@@ -99,6 +106,25 @@ const TELEGRAM_SEVERITY_PREFIX: Record<string, string> = {
 
 // Tool definitions
 const TOOLS = [
+  // --- Session bootstrap (call this FIRST in any new Paybacker chat) ---
+  {
+    name: "get_project_briefing",
+    description:
+      "Returns a single consolidated briefing for the Paybacker project: all shared-context files, current git status, open PRs, and recent business_log entries. Call this at the START of any new chat to pick up where the last session left off. Replaces having to call read_context 9 times + get_git_status + read_business_log separately.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        business_log_limit: {
+          type: "number",
+          description: "How many recent business_log rows to include (default 10)",
+        },
+        include_git: {
+          type: "boolean",
+          description: "Include git status + recent commits + open PRs (default true)",
+        },
+      },
+    },
+  },
   // Shared Context Tools
   {
     name: "read_context",
@@ -414,6 +440,94 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
   ensureContextDir();
 
   switch (name) {
+    // --- Session bootstrap ---
+    case "get_project_briefing": {
+      const includeGit = args.include_git !== false;
+      const logLimit = (args.business_log_limit as number) || 10;
+      const sections: string[] = [];
+
+      sections.push("# Paybacker project briefing");
+      sections.push(`_Generated: ${timestamp()}_`);
+      sections.push(`_Project dir: ${PROJECT_DIR}_`);
+      sections.push("");
+
+      // 1. All shared-context files
+      sections.push("## Shared context");
+      for (const file of VALID_CONTEXT_FILES) {
+        const path = join(CONTEXT_DIR, file);
+        sections.push(`\n### ${file}`);
+        if (existsSync(path)) {
+          const body = readFileSync(path, "utf-8").trim();
+          sections.push(body || "_(empty)_");
+        } else {
+          sections.push("_(file does not exist yet)_");
+        }
+      }
+
+      // 2. Git status
+      if (includeGit) {
+        sections.push("\n## Git status");
+        try {
+          const branch = execSync("git branch --show-current", {
+            cwd: PROJECT_DIR,
+            encoding: "utf-8",
+          }).trim();
+          const status =
+            execSync("git status --short", { cwd: PROJECT_DIR, encoding: "utf-8" }).trim() ||
+            "(clean working tree)";
+          const log = execSync("git log --oneline -10", {
+            cwd: PROJECT_DIR,
+            encoding: "utf-8",
+          }).trim();
+          let prs = "";
+          try {
+            prs = execSync("gh pr list --limit 5 2>/dev/null || echo '(gh CLI unavailable)'", {
+              cwd: PROJECT_DIR,
+              encoding: "utf-8",
+            }).trim();
+          } catch {
+            prs = "(could not fetch PRs)";
+          }
+          sections.push(`**Branch:** ${branch}`);
+          sections.push("\n**Working tree:**\n```\n" + status + "\n```");
+          sections.push("\n**Recent commits:**\n```\n" + log + "\n```");
+          sections.push("\n**Open PRs:**\n```\n" + prs + "\n```");
+        } catch (e) {
+          sections.push(`_(git status failed: ${(e as Error).message})_`);
+        }
+      }
+
+      // 3. Recent business_log rows
+      sections.push("\n## Recent business_log rows");
+      try {
+        const { url, key } = getSupabaseCredentials();
+        const res = await fetch(
+          `${url}/rest/v1/business_log?select=created_at,category,title,content,created_by&order=created_at.desc&limit=${logLimit}`,
+          {
+            headers: {
+              apikey: key,
+              Authorization: `Bearer ${key}`,
+            },
+          },
+        );
+        const data = (await res.json()) as unknown;
+        if (!res.ok) {
+          sections.push(`_(business_log fetch failed: ${JSON.stringify(data)})_`);
+        } else if (Array.isArray(data) && data.length === 0) {
+          sections.push("_(no recent rows)_");
+        } else {
+          sections.push("```json\n" + JSON.stringify(data, null, 2) + "\n```");
+        }
+      } catch (e) {
+        sections.push(`_(business_log unavailable: ${(e as Error).message})_`);
+      }
+
+      sections.push(
+        "\n---\nTip: end of session? call `log_session` and `log_handoff` so the next chat inherits the context.",
+      );
+      return sections.join("\n");
+    }
+
     // --- Shared Context ---
     case "read_context": {
       return readContextFile(args.file as string);

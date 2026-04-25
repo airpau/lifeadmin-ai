@@ -5,10 +5,13 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
+<<<<<<< HEAD
   /** Maximum number of connected bank accounts. null = unlimited. */
   maxBanks: number | null;
   /** Maximum number of connected email accounts. null = unlimited. */
   maxEmails: number | null;
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   /**
    * Max number of active dispute→email-thread links (Watchdog feature).
    * null = unlimited. A "link" is one row in dispute_watchdog_links with
@@ -17,6 +20,7 @@ export interface PlanLimits {
   disputeThreadLinks: number | null;
   /**
    * Minimum minutes between automatic background syncs of a linked thread.
+<<<<<<< HEAD
    * Every paying tier and Free now share the same 30-min cadence — Emma and
    * other competitors don't cap this, and the cost of a Gmail poll is
    * negligible. Differentiation between tiers is on scope (bank / email
@@ -28,6 +32,11 @@ export interface PlanLimits {
    * "Everything" Space; Pro can create more to split personal/business/joint.
    */
   maxSpaces: number | null;
+=======
+   * Free tier has no background sync (manual only) — represented by null.
+   */
+  watchdogSyncIntervalMinutes: number | null;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   features: string[];
 }
 
@@ -63,6 +72,7 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     complaintsPerMonth: 3,
+<<<<<<< HEAD
     scanRunsPerMonth: null, // scanning is free; gating is on account counts + features
     maxBanks: 2,
     maxEmails: 1,
@@ -134,6 +144,26 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
       'export',
       'mcp',
     ],
+=======
+    scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
+    disputeThreadLinks: 1,
+    watchdogSyncIntervalMinutes: null, // manual only
+    features: ['complaints', 'basic_scanner', 'one_time_email_scan', 'one_time_opportunity_scan', 'watchdog_manual'],
+  },
+  essential: {
+    complaintsPerMonth: null,
+    scanRunsPerMonth: 4, // monthly re-scans (bank daily auto, email/opportunity monthly)
+    disputeThreadLinks: 5,
+    watchdogSyncIntervalMinutes: 60,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'watchdog_auto'],
+  },
+  pro: {
+    complaintsPerMonth: null,
+    scanRunsPerMonth: null, // unlimited everything
+    disputeThreadLinks: null,
+    watchdogSyncIntervalMinutes: 30,
+    features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant'],
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   },
 };
 
@@ -237,11 +267,16 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const admin = getAdmin();
   const { data: profile } = await admin
     .from('profiles')
+<<<<<<< HEAD
     .select('subscription_tier, trial_ends_at, trial_converted_at, trial_expired_at')
+=======
+    .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     .eq('id', userId)
     .single();
 
   const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
+<<<<<<< HEAD
 
   // Onboarding trial still grants Pro access while the trial window is open.
   // Founder / Stripe / founding-member gymnastics removed — the profile row
@@ -255,6 +290,16 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   if (onboardingTrialActive) return 'pro';
 
   return tier;
+=======
+  const isPaid = tier !== 'free';
+  const hasActiveStripe = profile?.stripe_subscription_id &&
+    ['active', 'trialing'].includes(profile?.subscription_status ?? '');
+  const isFoundingTrial = isPaid && !profile?.stripe_subscription_id &&
+    profile?.subscription_status === 'trialing' &&
+    profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
+
+  return (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 /**

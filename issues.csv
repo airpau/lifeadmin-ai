@@ -1,0 +1,64 @@
+Unnamed: 0,Unnamed: 1,Unnamed: 2,Unnamed: 3,Unnamed: 4,Unnamed: 5,Unnamed: 6,Unnamed: 7,Unnamed: 8,Unnamed: 9
+Issue ID,Cast ID,Severity,Priority,Browser,Description,Steps to Reproduce,Expect Result,Actual Result,Screenshots/Recording
+#ISSUE-001,"LP-001
+
+",Critical ,P3,Firefox,Console error happens when enable cookie on firefox browser.,"1. Fress install latest Firefox.
+2. Open dev tools.
+3. Open https://paybacker.co.uk/
+4. Enable cookies.",No console errors.,"Below errors found:
+Cookie “_ga_GRL9XKYTN1” has been rejected for invalid domain.
+Cookie “_ga” has been rejected for invalid domain.
+Cookie “_fbp” has been rejected for invalid domain.",
+#ISSUE-002,"AU-002
+
+",High,P2,All,Invalid email still can signup success without confirmation email.,"1. Click 'Sign UP'
+2. Input invalid email address, e.g. 'abcd@123'
+3. Input other field and then ""Create account""",Only valid email address should be sign up.,Invalid email address can be sign up successfully without confirmation email.,
+ISSUE-003,"AU-002
+
+",High,P2,All,Phone number field not has validation,"1. Click 'Sign UP'
+2. Input valid ""First name"", ""Last name"" and email address.
+2. Input string as phone number, e.g. ""abcd""
+3. Click ""Create account"" button.",Phone number should be only support number.,String value can be set to phone number.,
+ISSUE-004,"AU-006
+
+",High,P1,All,No limitation for wrong password try to login,"1. Click 'Sign in'.
+2. Input valid existing account.
+3. Input wrong password and keep try.",Limit the user login after multiple failures.,User still can login after more than 20 times retry.,
+ISSUE-005,AU-007,High,P1,All,No 'Continue with Google',"1. Open the home page
+2. Enter in 'Sign in',  'Sign up', 'Start Free 14-Day Pro Trial' etc., try to found 'Continue with Google'",Continue with Google' should be found in somewhere to login or signup page.,No 'Continue with Google',
+ISSUE-006,AU-008,Critical,P3,All,The logout button jumps to the bottom after the content loads.,"1. Login the system
+2. Click user menu/profile.","Logout button should be keep list the current screen, no need to scroll down to see it.","The logout button jumps to the bottom after the content loads, it's not friendly for user experience.",
+ISSUE-007,AU-009,High,P2,All,No 'Forgot Password' in login page,"1. Open home page
+2. Click ""Sign in"" button",There should be have a 'Forgot Password' on login page.,No 'Forgot Password' found on login page.,
+ISSUE-008,AU-010,Medium ,P3,All,"Home page display 'Sign in"" button let user confused for Session persistence","1. Login the system
+2. Close current tab
+3. Open new and open Paybacker home page","Home page display 'Sign in"" button let user confused for Session persistence",The page better redirect to the user overview page.,
+ISSUE-009,DB-001,Critical,P2,All,It take almost 10 seconds to load the dashboard,"Use any browser (chrome, firefox, safari) to login Paybacker.","Dashboard loads within 2 seconds. Overview stats visible (subscriptions count, total spend, etc.). No loading errors.",It take almost 10 seconds to load the dashboard with 406 errors.,
+ISSUE-010,CL-005,Critical,P1,All,Trail user can generate more the 3 letters in a day if some of the letters closed ,"1. Generate 3 letters 
+2. Try to generate the 4th letter
+3. Resolve Dispute for 1 of the existing letter.
+4. Try to generate the 4th letter again.",Free tier limit - 3 letters/month,Trail user can generate more the 3 letters in a day if some of the letters closed ,
+ISSUE-011,MCL-07,Medium ,P3,All,Minimum description length enforced for form submission,"1. Generate a letter.
+2. Input only a character in each input box.",Minimum description length enforced for form submission,User can proceed to generate letter.,
+ISSUE-012,ST-003,High,P2,All,No confirmation dialog appear when delete a subscription.,"1. Add a subscripiton.
+2. Click delete button to try to delete this subscription.","Confirmation dialog appears before deletion. After confirming, subscription removed from list. Totals recalculated.",Subscription deleted directly without confirmation dailog.,
+ISSUE-013,RC-001,High,P3,All,Not able to see 'Add Subscription' button if expand the  'Contract Details',"1. Click 'Add subscripiton' button on Subscriptions page.
+2. Click 'Contract Details'  to expand the contract details.","Add subscription button should be available in the add subcrition dialog, add scroll bar if the current screen cannot has enough space.","Not able to see 'Add subscrition' button from dialog, even not has scroll bar.",
+ISSUE-014,PA-002,High,P2,All,No password change opiton in profile page,"1. Login system.
+2. Navigate to profile (not found account settings page)
+3. Find password change option",Password change option should be available.,"Not able to see password change option or account setting page.
+(Even the answer from AI suppoort is incorrect.)",
+ISSUE-015,SE-002,Critical,P3,All,API returned 307 when access https://paybacker.co.uk/dashboard,"1. Logout system.
+2. Try accessing /dashboard directly",All protected routes redirect to login. No data exposed. API returns 401 Unauthorized.,All protected routes redirect to login. No data exposed. But API returns 307. ,
+ISSUE-016,SE-005,Medium ,P2,All,500 error happens when input long text in subscription title and large amount number.,"1. Login system.
+2. Navigate to Subscripition
+3. Add subscription with a long text (I used a generated legal letter) and a large number for amount ( e.g. 12496234u8639423694723093427)",Long text handled gracefully (truncated or error). Special characters display correctly. Emojis render. Whitespace-only rejected.,500 error happens for subscriptions API.,
+ISSUE-017,SE-005,Medium ,P3,All,Cannot see generate letter button when input long text in the input boxes.,"1. Login system.
+2. Navigate to Disputes
+3. Click new disputes
+4. Input a long text for 'Who is it with? ' and 'What happened? ' (I used a generated legal letter) 
+5. Click 'Preview and Confirm'",Long text handled gracefully (truncated or error). Special characters display correctly. Emojis render. Whitespace-only rejected.,No scrollbar to scroll down to see the 'Generate letter' button.,
+ISSUE-018,MH-003,Medium ,P3,All,"The ""Add Progress"" dialog for the Savings Goals Tracker does not match the overall dark premium aesthetic of the platform.","1. Create a new savings goal (e.g. Holiday £1000)
+2. Add progress manually
+","The dialog should follow the same design language — deep navy/dark background, gold accent buttons, consistent sans-serif typography, and proper spacing.",It pop up a alert dialog which is not follow the same design language.,

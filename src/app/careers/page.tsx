@@ -107,9 +107,15 @@ function MarkFoot() {
           </div>
           <div className="footer-col">
             <h5>Legal</h5>
+<<<<<<< HEAD
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
             <Link href="/cookie-policy">Cookies</Link>
+=======
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/terms">Terms</Link>
+            <Link href="/cookies">Cookies</Link>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <Link href="/ico-notice">ICO notice</Link>
           </div>
           <div className="footer-col">

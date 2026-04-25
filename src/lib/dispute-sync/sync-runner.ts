@@ -16,7 +16,11 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+<<<<<<< HEAD
 import { fetchNewMessages, fetchDomainMessages } from './fetchers';
+=======
+import { fetchNewMessages } from './fetchers';
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 import type { EmailConnection } from './types';
 import {
   classifyReply,
@@ -40,6 +44,7 @@ export interface SyncResult {
   error?: string;
 }
 
+<<<<<<< HEAD
 // Subject patterns that strongly indicate the message is an auto-reply
 // / acknowledgement of a complaint — these fire even when the subject
 // doesn't mention the original thread.
@@ -137,6 +142,8 @@ function isDomainMessageRelevant(
   return { relevant: false, reason: 'not clearly related to this dispute' };
 }
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 /**
  * Run a sync for a single linked thread. Returns a summary the caller can
  * pass back to the UI or aggregate in the cron's response.
@@ -177,6 +184,7 @@ export async function syncLinkedThread(
   }
 
   const since = link.last_synced_at ? new Date(link.last_synced_at) : null;
+<<<<<<< HEAD
   let messages: Awaited<ReturnType<typeof fetchNewMessages>> = [];
   // Domain-only links (created by the "I've sent it" cancellation flow)
   // have no thread_id because the message was sent via mailto, outside
@@ -268,6 +276,18 @@ export async function syncLinkedThread(
     domainDecisions,
   };
 
+=======
+  let messages: Awaited<ReturnType<typeof fetchNewMessages>>;
+  try {
+    messages = await fetchNewMessages(conn, link.thread_id, since);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Fetch failed';
+    console.error(`[watchdog] fetch failed for link ${linkId}:`, message);
+    // Still bump last_synced_at a little so we don't loop fast on persistent errors
+    return { linkId, disputeId: link.dispute_id, imported: 0, error: message };
+  }
+
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const disputeRow = link.disputes as {
     provider_name?: string;
     provider_type?: string;
@@ -313,7 +333,10 @@ export async function syncLinkedThread(
         sender_address: m.fromAddress,
         sender_name: m.fromName || null,
         supplier_message_id: m.messageId,
+<<<<<<< HEAD
         supplier_web_link: m.webLink ?? null,
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         detected_from_email: true,
         email_thread_id: link.id,
         entry_date: m.receivedAt.toISOString(),
@@ -332,6 +355,7 @@ export async function syncLinkedThread(
 
     imported++;
 
+<<<<<<< HEAD
     // Only bump unread_reply_count for messages received AFTER the
     // Watchdog link was created. Backfill imports (initial thread
     // history + domain-scan pulling old messages from the same
@@ -356,6 +380,13 @@ export async function syncLinkedThread(
         .eq('id', link.dispute_id)
         .lt('last_reply_received_at', m.receivedAt.toISOString());
     }
+=======
+    // Bump dispute counters atomically
+    await db.rpc('record_dispute_reply', {
+      p_dispute_id: link.dispute_id,
+      p_received_at: m.receivedAt.toISOString(),
+    });
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
     // --- Intelligence layer -----------------------------------------------
     // Classify the reply so the notification can tell the user whether they
@@ -393,6 +424,7 @@ export async function syncLinkedThread(
       );
     }
 
+<<<<<<< HEAD
     // Don\'t alert on historical / backfill imports. When the user
     // links a thread we pull past messages in for context, and the
     // domain-scan pass can also turn up messages that pre-date the
@@ -404,6 +436,9 @@ export async function syncLinkedThread(
     const isNewSinceLink = m.receivedAt.getTime() >= linkCreatedAt;
 
     if (options.sendNotifications !== false && isNewSinceLink) {
+=======
+    if (options.sendNotifications !== false) {
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       const notifCopy = buildNotificationCopy({
         providerName,
         snippet: m.snippet,
@@ -428,6 +463,7 @@ export async function syncLinkedThread(
         },
       });
 
+<<<<<<< HEAD
       // Telegram alert — MUST be awaited. In Vercel serverless the function
       // instance can terminate the moment the handler returns, which means a
       // fire-and-forget Telegram call gets killed mid-HTTPS and the user never
@@ -465,6 +501,20 @@ export async function syncLinkedThread(
         }
         // Swallow — a failed Telegram alert must never abort the sync loop.
       }
+=======
+      // Telegram alert — fire-and-forget. Import lazily so the module graph stays light.
+      sendTelegramSafely({
+        userId: link.user_id,
+        disputeId: link.dispute_id,
+        providerName,
+        subject: m.subject,
+        snippet: m.snippet,
+        linkUrl,
+        classification,
+      }).catch((err) =>
+        console.warn('[watchdog] telegram send failed:', err instanceof Error ? err.message : err),
+      );
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     }
   }
 
@@ -521,7 +571,10 @@ async function sendTelegramSafely(args: {
   snippet: string;
   linkUrl: string;
   disputeId: string;
+<<<<<<< HEAD
   correspondenceId: string;
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   classification: ReplyClassification | null;
 }): Promise<void> {
   const db = admin();
@@ -545,6 +598,7 @@ async function sendTelegramSafely(args: {
   if (!session?.telegram_chat_id) return;
 
   // Late import — only load the Telegram helper when we actually send.
+<<<<<<< HEAD
   const { sendProactiveAlert, escapeMarkdown } = await import('../telegram/user-bot');
   const rawPreview = args.snippet.length > 200
     ? args.snippet.slice(0, 200) + '…'
@@ -557,10 +611,18 @@ async function sendTelegramSafely(args: {
   const safePreview = escapeMarkdown(rawPreview);
   const safeProvider = escapeMarkdown(args.providerName);
 
+=======
+  const { sendProactiveAlert } = await import('../telegram/user-bot');
+  const preview = args.snippet.length > 200
+    ? args.snippet.slice(0, 200) + '…'
+    : args.snippet;
+
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const c = args.classification;
   const emoji = c ? categoryEmoji(c.category, c.urgency) : '🔔';
   const label = c ? categoryLabel(c.category) : 'New reply';
   const actionLine = c?.respondNeeded
+<<<<<<< HEAD
     ? '\n\n⚠️ *Action needed* — tap *✍️ Draft response* below and I\'ll write your reply.'
     : c?.category === 'holding_reply'
       ? '\n\n_No action needed — they\'re still looking into it._'
@@ -570,15 +632,31 @@ async function sendTelegramSafely(args: {
 
   const aiLine = c?.rationale
     ? `\n\n🧠 *Paybacker read:* ${escapeMarkdown(c.rationale)}`
+=======
+    ? '\n\n⚠️ *Action needed* — reply *draft* below to generate your response.'
+    : c?.category === 'holding_reply'
+      ? '\n\n_No action needed — they\'re still looking into it._'
+      : c?.category === 'resolution'
+        ? '\n\n_Looks resolved — confirm with a 👍 if you\'re happy._'
+        : '';
+
+  const aiLine = c?.rationale
+    ? `\n\n🧠 *Paybacker read:* ${c.rationale}`
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     : '';
 
   await sendProactiveAlert({
     chatId: Number(session.telegram_chat_id),
     issue: {
       id: args.disputeId,
+<<<<<<< HEAD
       correspondenceId: args.correspondenceId,
       title: `${emoji} ${safeProvider} — ${label}`,
       detail: `*Subject:* ${safeSubject}\n\n_${safePreview}_${aiLine}${actionLine}`,
+=======
+      title: `${emoji} ${args.providerName} — ${label}`,
+      detail: `*Subject:* ${args.subject}\n\n_${preview}_${aiLine}${actionLine}`,
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       issue_type: c?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
     },
     showFollowUpButtons: false,

@@ -46,6 +46,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+<<<<<<< HEAD
   // Pro gate — same rule as mint + runtime auth, so the settings UI never
   // needs to duplicate the "what counts as Pro?" logic client-side.
   const plan = await getUserPlan(user.id);
@@ -55,6 +56,8 @@ export async function GET() {
     return NextResponse.json({ isPro: false, tokens: [] as TokenRow[] });
   }
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const { data, error } = await admin()
     .from('mcp_tokens')
     .select(
@@ -68,7 +71,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to load tokens' }, { status: 500 });
   }
 
+<<<<<<< HEAD
   return NextResponse.json({ isPro: true, tokens: (data ?? []) as TokenRow[] });
+=======
+  return NextResponse.json({ tokens: (data ?? []) as TokenRow[] });
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 export async function POST(req: NextRequest) {

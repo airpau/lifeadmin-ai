@@ -47,6 +47,7 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
+<<<<<<< HEAD
   // CSV export is Pro-only per plan-limits.ts. Previously the route only
   // gated on auth, so any authenticated user with the URL could download
   // their full ledger regardless of tier.
@@ -59,6 +60,8 @@ export async function GET(_req: NextRequest) {
     )
   }
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   // Pull the user's bank connections so we can map account_id -> bank/account name.
   const { data: bankConns } = await supabase
     .from('bank_connections')

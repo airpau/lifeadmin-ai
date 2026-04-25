@@ -177,7 +177,11 @@ export default function LegalRefsAdminPage() {
         </Link>
         <div className="flex items-start justify-between">
           <div>
+<<<<<<< HEAD
             <h1 className="page-title">
+=======
+            <h1 className="text-4xl font-bold text-slate-900 mb-2 flex items-center gap-3 font-[family-name:var(--font-heading)]">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <Shield className="h-9 w-9 text-emerald-600" />
               Legal References
             </h1>
@@ -186,7 +190,11 @@ export default function LegalRefsAdminPage() {
           <button
             onClick={runVerification}
             disabled={verifying}
+<<<<<<< HEAD
             className="flex items-center gap-2 cta font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+=======
+            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-5 py-2.5 rounded-lg transition-all text-sm shrink-0"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {verifying ? 'Verifying...' : 'Run Verification'}
@@ -268,7 +276,11 @@ export default function LegalRefsAdminPage() {
       <p className="text-slate-700 text-sm mb-4">Showing {filtered.length} of {refs.length} references</p>
 
       {/* Table */}
+<<<<<<< HEAD
       <div className="card overflow-hidden">
+=======
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

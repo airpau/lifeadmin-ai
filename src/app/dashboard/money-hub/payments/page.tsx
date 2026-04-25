@@ -151,7 +151,11 @@ function PaymentCard({ payment, type, onCategoryChange, onDelete, onAmountChange
   };
 
   return (
+<<<<<<< HEAD
     <div className="card hover:border-emerald-200 transition-all relative group/card">
+=======
+    <div className="bg-white border border-slate-200/50 rounded-xl p-4 hover:border-emerald-200 transition-all relative group/card">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       {/* Delete (X) button */}
       <button
         onClick={() => setConfirmDelete(true)}
@@ -386,16 +390,24 @@ export default function PaymentsPage() {
       </Link>
 
       <div className="mb-6">
+<<<<<<< HEAD
         <div className="page-title-row">
         <div>
           <h1 className="page-title">Regular Payments</h1>
         </div>
       </div>
+=======
+        <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">Regular Payments</h1>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <p className="text-slate-600 mt-1">Click a category to recategorise, click an amount to edit, or hover and press ✕ to remove.</p>
       </div>
 
       {/* Overview with Pie Chart */}
+<<<<<<< HEAD
       <div className="card mb-6">
+=======
+      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <div className="flex flex-col sm:flex-row items-center gap-6">
           {pieData.length > 0 && (
             <div className="w-40 h-40 flex-shrink-0">
@@ -474,7 +486,11 @@ export default function PaymentsPage() {
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : tabPayments.length === 0 ? (
+<<<<<<< HEAD
         <div className="card p-12 text-center">
+=======
+        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <CreditCard className="h-12 w-12 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-600">No {tab.replace('_', ' ')} found</p>
           <p className="text-slate-500 text-sm mt-1">Connect your bank account to auto-detect payments</p>

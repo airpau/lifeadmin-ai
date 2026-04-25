@@ -270,6 +270,7 @@ export default function RewardsPage() {
         </div>
       )}
 
+<<<<<<< HEAD
       {/* Variant A header (batch4 Rewards) */}
       <div className="page-title-row" style={{ marginBottom: 14 }}>
         <div>
@@ -370,12 +371,37 @@ export default function RewardsPage() {
               <span style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 500 }}> / {totalBadges}</span>
             </div>
             <div className="k-delta">{Math.max(0, totalBadges - earnedCount)} left to unlock</div>
+=======
+      {/* ═══ SECTION 1: Hero Stats Bar ═══ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white border rounded-2xl p-5 text-center" style={{ borderColor: data.tierInfo.color + '44' }}>
+          <TierIcon className="h-8 w-8 mx-auto mb-2" style={{ color: data.tierInfo.color }} />
+          <p className="text-lg font-bold text-slate-900">{data.tierInfo.label}</p>
+          <p className="text-slate-500 text-xs">{data.tierInfo.multiplier}x points</p>
+        </div>
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-5 text-center">
+          <p className="text-4xl font-bold text-emerald-600">{data.balance.toLocaleString()}</p>
+          <p className="text-slate-500 text-xs">Points balance</p>
+        </div>
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-5 text-center">
+          <p className="text-2xl font-bold text-slate-700">{data.lifetime.toLocaleString()}</p>
+          <p className="text-slate-500 text-xs">Lifetime earned</p>
+        </div>
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-5 text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Flame className="h-5 w-5 text-orange-400" />
+            <p className="text-2xl font-bold text-orange-400">{data.currentStreak}</p>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           </div>
         </div>
       </div>
 
       {/* ═══ SECTION 2: Tier Progress ═══ */}
+<<<<<<< HEAD
       <div id="tiers" className="card shadow-sm p-6 mb-8">
+=======
+      <div id="tiers" className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <h2 className="text-lg font-bold text-slate-900 mb-4">Tier Progress</h2>
         {isMaxTier ? (
           <div className="text-center py-4">
@@ -443,7 +469,11 @@ export default function RewardsPage() {
                       }
                     }}
                     disabled={isRedeeming}
+<<<<<<< HEAD
                     className="cta font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
+=======
+                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold px-3 py-1.5 rounded-lg text-xs transition-all w-full"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   >
                     {isRedeeming ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : 'Redeem'}
                   </button>
@@ -455,7 +485,11 @@ export default function RewardsPage() {
       </div>
 
       {/* ═══ SECTION 4: Badges Collection ═══ */}
+<<<<<<< HEAD
       <div className="card shadow-sm p-6 mb-8">
+=======
+      <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-900">Badges</h2>
           <span className="text-slate-500 text-sm">{earnedBadgeIds.size} of {ALL_BADGES.length} earned</span>
@@ -484,7 +518,11 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 4B: Savings Challenges ═══ */}
       {challenges && (
+<<<<<<< HEAD
         <div className="card shadow-sm p-6 mb-8">
+=======
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Target className="h-5 w-5 text-emerald-600" /> Savings Challenges
@@ -588,7 +626,11 @@ export default function RewardsPage() {
       )}
 
       {/* ═══ SECTION 5: Streak Tracker ═══ */}
+<<<<<<< HEAD
       <div id="streaks" className="card shadow-sm p-6 mb-8">
+=======
+      <div id="streaks" className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
           <Flame className="h-5 w-5 text-orange-400" /> Streak Tracker
         </h2>
@@ -630,7 +672,11 @@ export default function RewardsPage() {
             <p className="text-slate-500 text-xs mb-2">Your referral link</p>
             <div className="flex items-center gap-2">
               <code className="flex-1 text-emerald-600 text-sm bg-white rounded-lg px-3 py-2 font-mono truncate">{referrals.joinUrl}</code>
+<<<<<<< HEAD
               <button onClick={handleCopyCode} className="shrink-0 cta font-semibold px-3 py-2 rounded-lg text-sm transition-all">
+=======
+              <button onClick={handleCopyCode} className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm transition-all">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 {codeCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
               <button onClick={handleWhatsAppShare} className="shrink-0 bg-green-600 hover:bg-green-700 text-slate-900 px-3 py-2 rounded-lg text-sm transition-all">
@@ -679,7 +725,11 @@ export default function RewardsPage() {
 
       {/* ═══ SECTION 7: Points History ═══ */}
       {nonZeroEvents.length > 0 && (
+<<<<<<< HEAD
         <div className="card shadow-sm p-6 mb-8">
+=======
+        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <h2 className="text-lg font-bold text-slate-900 mb-4">Points History</h2>
           <div className="space-y-2">
             {(showAllHistory ? nonZeroEvents : nonZeroEvents.slice(0, 8)).map((event, i) => (
@@ -705,7 +755,11 @@ export default function RewardsPage() {
       )}
 
       {/* ═══ SECTION 8: How Points Work (FAQ) ═══ */}
+<<<<<<< HEAD
       <div id="earn" className="card mb-8 overflow-hidden">
+=======
+      <div id="earn" className="bg-white border border-slate-200/50 rounded-2xl mb-8 overflow-hidden">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <button onClick={() => setShowFaq(!showFaq)} className="w-full flex items-center justify-between p-6 text-left">
           <h2 className="text-lg font-bold text-slate-900">How Points Work</h2>
           {showFaq ? <ChevronUp className="h-5 w-5 text-slate-600" /> : <ChevronDown className="h-5 w-5 text-slate-600" />}

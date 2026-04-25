@@ -30,6 +30,7 @@ export interface FetchedMessage {
   snippet: string;
   /** Plain-text body, HTML stripped, capped to 8000 chars. */
   body: string;
+<<<<<<< HEAD
   /**
    * Provider-supplied deep-link that opens this message in their web UI.
    * Microsoft Graph returns this as `webLink` on /me/messages and it's
@@ -38,6 +39,8 @@ export interface FetchedMessage {
    * Gmail users, so this stays undefined for Gmail-imported rows.
    */
   webLink?: string;
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 /**

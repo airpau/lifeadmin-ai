@@ -69,6 +69,7 @@ export default function SpendingPage() {
   if (!data?.hasData) {
     return (
       <div className="max-w-5xl">
+<<<<<<< HEAD
         <div className="page-title-row">
         <div>
           <h1 className="page-title">Spending Insights</h1>
@@ -80,6 +81,17 @@ export default function SpendingPage() {
           <h3 className="text-xl font-bold text-slate-900 mb-2">No spending data yet</h3>
           <p className="text-slate-600 mb-6">Connect your bank account to get personalised spending insights.</p>
           <Link href="/dashboard/subscriptions" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all">
+=======
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
+          <p className="text-slate-600">Connect your bank account to see where your money goes</p>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-12 text-center">
+          <BarChart3 className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-slate-900 mb-2">No spending data yet</h3>
+          <p className="text-slate-600 mb-6">Connect your bank account to get personalised spending insights.</p>
+          <Link href="/dashboard/subscriptions" className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-lg transition-all">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             Connect Bank Account
           </Link>
         </div>
@@ -92,10 +104,16 @@ export default function SpendingPage() {
 
   return (
     <div className="max-w-5xl">
+<<<<<<< HEAD
       <div className="page-title-row">
         <div>
           <h1 className="page-title">Spending Insights</h1>
           <p className="page-sub">
+=======
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Spending Insights</h1>
+        <p className="text-slate-600">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           Based on {summary.months_analysed} months of bank data · {summary.total_transactions.toLocaleString()} transactions
         </p>
         </div>
@@ -103,7 +121,11 @@ export default function SpendingPage() {
 
       {/* Summary Cards — Monthly Averages */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+<<<<<<< HEAD
         <div className="card shadow-sm p-5">
+=======
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <p className="text-slate-500 text-xs mb-1">Average monthly spend</p>
           <p className="text-2xl font-bold text-slate-900">£{summary.monthly_avg_spend?.toLocaleString() || Math.round(summary.total_spend / Math.max(summary.months_analysed, 1)).toLocaleString()}</p>
         </div>
@@ -111,7 +133,11 @@ export default function SpendingPage() {
           <p className="text-slate-500 text-xs mb-1">Average monthly income</p>
           <p className="text-2xl font-bold text-green-600">£{summary.monthly_avg_income?.toLocaleString() || Math.round(summary.total_income / Math.max(summary.months_analysed, 1)).toLocaleString()}</p>
         </div>
+<<<<<<< HEAD
         <div className="card shadow-sm p-5">
+=======
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <p className="text-slate-500 text-xs mb-1">This month so far</p>
           <p className="text-2xl font-bold text-slate-900">£{summary.current_month_spend.toLocaleString()}</p>
           {summary.month_change_percent !== 0 && (
@@ -121,14 +147,22 @@ export default function SpendingPage() {
             </div>
           )}
         </div>
+<<<<<<< HEAD
         <div className="card shadow-sm p-5">
+=======
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <p className="text-slate-500 text-xs mb-1">Last month</p>
           <p className="text-2xl font-bold text-slate-900">£{summary.previous_month_spend.toLocaleString()}</p>
         </div>
       </div>
 
       {/* Monthly Breakdown — Spend vs Income */}
+<<<<<<< HEAD
       <div className="card shadow-sm p-6 mb-8">
+=======
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <h2 className="text-lg font-bold text-slate-900 mb-1">Monthly Overview</h2>
         <p className="text-slate-500 text-xs mb-4">Spend vs income over the last {summary.months_analysed} months</p>
         <div className="space-y-4">
@@ -169,7 +203,11 @@ export default function SpendingPage() {
       </div>
 
       {/* Category Breakdown — Expandable */}
+<<<<<<< HEAD
       <div className="card shadow-sm p-6 mb-8">
+=======
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <h2 className="text-lg font-bold text-slate-900 mb-1">Where your money goes</h2>
         <p className="text-slate-500 text-xs mb-4">Monthly average per category · click to expand</p>
         <div className="space-y-2">
@@ -206,7 +244,11 @@ export default function SpendingPage() {
                 {/* Expanded detail with individual payments */}
                 {isExpanded && isPaid && (
                   <div className="ml-12 mt-2 mb-3 bg-slate-50 rounded-lg p-4 border border-slate-200">
+<<<<<<< HEAD
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+=======
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                       <div>
                         <p className="text-slate-500 text-xs">Total ({summary.months_analysed}mo)</p>
                         <p className="text-slate-900 font-semibold">£{cat.total.toLocaleString()}</p>
@@ -262,7 +304,11 @@ export default function SpendingPage() {
             <Lock className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
             <p className="text-slate-900 font-semibold mb-1">See all {category_breakdown.length} categories</p>
             <p className="text-slate-600 text-sm mb-3">Upgrade to Essential to unlock full spending breakdown</p>
+<<<<<<< HEAD
             <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+=======
+            <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               Upgrade Plan
             </Link>
           </div>
@@ -270,7 +316,11 @@ export default function SpendingPage() {
       </div>
 
       {/* Biggest Transactions — Pro only */}
+<<<<<<< HEAD
       <div className={`card shadow-sm p-6 mb-8 ${!isPro ? 'relative' : ''}`}>
+=======
+      <div className={`bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8 ${!isPro ? 'relative' : ''}`}>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <h2 className="text-lg font-bold text-slate-900 mb-1">Biggest Transactions</h2>
         <p className="text-slate-500 text-xs mb-4">Your largest single payments</p>
 
@@ -306,7 +356,11 @@ export default function SpendingPage() {
                 <Lock className="h-6 w-6 text-emerald-600 mx-auto mb-2" />
                 <p className="text-slate-900 font-semibold mb-1">Pro feature</p>
                 <p className="text-slate-600 text-sm mb-3">See your biggest transactions with Pro</p>
+<<<<<<< HEAD
                 <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+=======
+                <Link href="/pricing" className="inline-block bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   Upgrade to Pro
                 </Link>
               </div>
@@ -319,7 +373,11 @@ export default function SpendingPage() {
       <div className="bg-gradient-to-r from-emerald-50 to-emerald-100/60 border border-emerald-200 rounded-2xl p-6 text-center">
         <p className="text-emerald-700 font-semibold mb-2">Based on your spending, we can help you save</p>
         <p className="text-slate-600 text-sm mb-4">Check our deals page for alternatives to your most expensive bills</p>
+<<<<<<< HEAD
         <Link href="/dashboard/deals" className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all">
+=======
+        <Link href="/dashboard/deals" className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-6 py-3 rounded-lg transition-all">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           View Deals <ArrowRight className="h-4 w-4" />
         </Link>
       </div>

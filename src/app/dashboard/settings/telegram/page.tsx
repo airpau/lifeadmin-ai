@@ -126,6 +126,34 @@ export default function TelegramSettingsPage() {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <Loader2 className="h-8 w-8 text-orange-500 animate-spin" />
+<<<<<<< HEAD
+=======
+      </div>
+    );
+  }
+
+  if (isPro === false) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+          <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="h-8 w-8 text-orange-500" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Pro Feature</h2>
+          <p className="text-slate-600 mb-6">
+            The Telegram financial assistant is available to Pro subscribers only.
+            Upgrade to get proactive bill alerts, spending summaries, and complaint letters
+            delivered directly to Telegram.
+          </p>
+          <a
+            href="/dashboard/upgrade"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-black font-semibold rounded-xl transition-colors"
+          >
+            <Sparkles className="h-4 w-4" />
+            Upgrade to Pro
+          </a>
+        </div>
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       </div>
     );
   }
@@ -134,7 +162,11 @@ export default function TelegramSettingsPage() {
     <div className="max-w-2xl mx-auto p-6 space-y-6">
       {/* Header */}
       <div>
+<<<<<<< HEAD
         <h1 className="page-title flex items-center gap-3">
+=======
+        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <MessageCircle className="h-7 w-7 text-orange-500" />
           Telegram Bot
         </h1>
@@ -213,7 +245,11 @@ export default function TelegramSettingsPage() {
               Unlink
             </button>
           </div>
+<<<<<<< HEAD
           <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+=======
+          <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-2 gap-4 text-sm">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div>
               <span className="text-slate-500">Linked</span>
               <p className="text-slate-700">{formatDate(status.session.linked_at)}</p>
@@ -242,7 +278,11 @@ export default function TelegramSettingsPage() {
         </div>
       ) : (
         /* Not connected state */
+<<<<<<< HEAD
         <div className="card p-6 space-y-6">
+=======
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6">
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <div>
             <h3 className="text-slate-900 font-semibold mb-1">Connect your account</h3>
             <p className="text-slate-600 text-sm">
@@ -322,7 +362,11 @@ export default function TelegramSettingsPage() {
               <button
                 onClick={generateCode}
                 disabled={generating}
+<<<<<<< HEAD
                 className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-700 transition-colors"
+=======
+                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-300 transition-colors"
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 {generating ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

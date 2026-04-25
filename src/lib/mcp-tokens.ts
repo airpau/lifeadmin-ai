@@ -27,6 +27,7 @@ export function mintToken(): {
   tokenHash: string;
   tokenPrefix: string;
 } {
+<<<<<<< HEAD
   // Rejection sampling — a plain `byte % 30` would bias the last 6 alphabet
   // symbols because 256 is not a multiple of 30. We only accept bytes in
   // [0, MAX_VALID) where MAX_VALID is the largest multiple of 30 ≤ 256.
@@ -37,6 +38,12 @@ export function mintToken(): {
     for (let i = 0; i < buf.length && secret.length < SECRET_LEN; i++) {
       if (buf[i] < MAX_VALID) secret += ALPHABET[buf[i] % ALPHABET.length];
     }
+=======
+  const bytes = randomBytes(SECRET_LEN);
+  let secret = '';
+  for (let i = 0; i < SECRET_LEN; i++) {
+    secret += ALPHABET[bytes[i] % ALPHABET.length];
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   }
   const plaintext = `${PREFIX}${secret}`;
   const tokenHash = createHash('sha256').update(plaintext).digest('hex');

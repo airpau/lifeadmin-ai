@@ -32,6 +32,7 @@ export interface PriceIncrease {
   annualImpact: number;
   oldDate: string;
   newDate: string;
+  category: string;
 }
 
 // Categories where amounts vary naturally — skip outright.
@@ -41,8 +42,14 @@ const VARIABLE_CATEGORIES = new Set([
   // Bank categories that are one-off purchases, not recurring bills
   'PURCHASE', 'ATM', 'TRANSFER', 'FEE_CHARGE', 'CASH',
   'CREDIT', 'INTEREST', 'OTHER',
+  // Variable-by-design bills -- flagging these as "price increases" is noise
+  // because they legitimately move month to month (amortisation, council tax
+  // 10-month cycle, variable credit card balances, BNPL).
+  'mortgage', 'loans', 'credit', 'credit_card', 'council_tax',
+  'bank_transfer', 'debt_repayment',
 ]);
 
+<<<<<<< HEAD
 // Categories that can legitimately be recurring bills where a hike is
 // surface-worthy. council_tax and business_rates typically step up once
 // a year (April) — the std-dev filter below still works because the
@@ -86,6 +93,33 @@ async function loadUserNameTokens(userId: string): Promise<string[]> {
     return [];
   }
 }
+=======
+// Only these transaction categories can be recurring bills with a stable price
+const RECURRING_CATEGORIES = new Set([
+  'DIRECT_DEBIT', 'STANDING_ORDER',
+  // Mapped internal categories (fixed-price subscriptions only)
+  'energy', 'broadband', 'mobile', 'streaming', 'insurance',
+  'water', 'fitness', 'software', 'bills',
+]);
+
+// Merchant-name heuristics -- block even if category looks recurring
+const BLOCKED_MERCHANT_PATTERNS = [
+  /\bcouncil\s*tax\b/i,
+  /\bfunding\s*circle\b/i,
+  /\bklarna\b/i,
+  /\bpaypal\s*credit\b/i,
+  /\bPYMT\s*FP\b/i,          // manual Faster Payments (e.g. Halifax mobile)
+  /\bBTPP\b/i,               // Bill payment transfers
+  /\b(b\/?card|barclaycard|amex|visa\s+plat)\b/i,
+];
+
+// Hard cap -- if the "new" payment is more than this multiple of the old,
+// it is almost certainly a different kind of transaction, not a price rise.
+const MAX_PRICE_INCREASE_RATIO = 2.0;
+
+// Require at least this many prior payments to establish a stable baseline.
+const MIN_PREVIOUS_PAYMENTS = 3;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
 /**
  * Detect price increases in recurring payments for a user.
@@ -141,6 +175,11 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;
 
+    // Merchant-level blocklist -- catches transactions that slip through the
+    // category filter (manual transfers, council tax, loan repayments, etc.)
+    const haystack = `${normalised} ${tx.description || ''}`;
+    if (BLOCKED_MERCHANT_PATTERNS.some(rx => rx.test(haystack))) continue;
+
     const month = new Date(tx.timestamp).toISOString().slice(0, 7); // YYYY-MM
 
     if (!merchantGroups.has(normalised)) {
@@ -172,9 +211,16 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
+<<<<<<< HEAD
     // Need at least 3 months of data — a single comparison against one
     // previous month turned out to be too noisy in real user data.
     if (monthlyPayments.length < 3) continue;
+=======
+    // Need at least MIN_PREVIOUS_PAYMENTS months of prior data + 1 latest.
+    // A single prior payment gives a variance of zero so any spike passes --
+    // that's how manual transfers were sneaking through.
+    if (monthlyPayments.length < MIN_PREVIOUS_PAYMENTS + 1) continue;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
     const latest = monthlyPayments[monthlyPayments.length - 1];
     const previous = monthlyPayments.slice(0, -1);
@@ -190,6 +236,10 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     const variance = previous.reduce((sum, p) => sum + Math.pow(p.amount - avgPrevious, 2), 0) / previous.length;
     const stdDev = Math.sqrt(variance);
     if (avgPrevious > 0 && stdDev / avgPrevious > 0.15) continue;
+
+    // Sanity cap -- anything more than a 2x jump is almost certainly a
+    // different kind of transaction, not a price increase.
+    if (avgPrevious > 0 && latest.amount > avgPrevious * MAX_PRICE_INCREASE_RATIO) continue;
 
     // Calculate increase
     const increasePct = ((latest.amount - avgPrevious) / avgPrevious) * 100;
@@ -208,6 +258,7 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
       annualImpact: Math.round(annualImpact * 100) / 100,
       oldDate: previous[previous.length - 1].timestamp.split('T')[0],
       newDate: latest.timestamp.split('T')[0],
+      category: latest.category,
     });
   }
 

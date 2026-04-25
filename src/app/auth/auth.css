@@ -74,11 +74,16 @@
   cursor: pointer;
   transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
+<<<<<<< HEAD
 .m-land-root .oauth-btn:hover:not(:disabled) {
+=======
+.m-land-root .oauth-btn:hover {
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   background: #F8FAFC;
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
+<<<<<<< HEAD
 .m-land-root .oauth-btn:active:not(:disabled) {
   background: #E5E7EB;
   transform: translateY(0) scale(0.98);
@@ -87,6 +92,8 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
 /* OR divider -------------------------------------------------------- */
 .m-land-root .oauth-divider {
@@ -178,12 +185,16 @@
   width: 100%;
   padding: 12px 14px;
   padding-left: 38px;
+<<<<<<< HEAD
   /* Must be ≥16px on mobile — iOS Safari auto-zooms any text input
      with font-size < 16px on focus, and then doesn't always zoom
      back out, leaving the whole /auth/login and /auth/signup pages
      stuck in a pinched-out state until the user manually pinch-zooms.
      Reported post-#269 on /auth/login. */
   font-size: 16px;
+=======
+  font-size: 15px;
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   color: var(--text-primary);
   background: #fff;
   border: 1px solid var(--divider);
@@ -204,6 +215,7 @@
   margin-top: 4px;
 }
 
+<<<<<<< HEAD
 /* "Keep me signed in" checkbox on /auth/login — styled to match the
    consent rows on /auth/signup but less heavy (no card background,
    no border) because it sits in the main form flow, not in a dedicated
@@ -244,6 +256,8 @@
 }
 .m-land-root .field .field-footer a:hover { text-decoration: underline; }
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 /* Form error -------------------------------------------------------- */
 .m-land-root .form-error {
   margin: 10px 0 4px;
@@ -274,10 +288,13 @@
   transform: translateY(-1px);
   background: #2CC48A;
 }
+<<<<<<< HEAD
 .m-land-root .auth-submit:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
   background: #1FA878;
 }
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 .m-land-root .auth-submit:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -311,6 +328,7 @@
   text-decoration: underline;
 }
 
+<<<<<<< HEAD
 /* Password strength checklist (real-time feedback) ------------------ */
 .m-land-root .pw-checklist {
   list-style: none;
@@ -385,6 +403,8 @@
   font-size: 12.5px;
 }
 
+=======
+>>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 /* Check / sent screens --------------------------------------------- */
 .m-land-root .auth-sent {
   text-align: center;
