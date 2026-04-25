@@ -1,4 +1,16 @@
 {
-  "generated_at": null,
-  "stores": {}
+  "generated_at": "2026-04-25T20:49:44.149Z",
+  "stores": {
+    "paybacker_core": "memstore_01WHPRJQTEnDX4WUFpE4WkXc",
+    "alert-tester": "memstore_018e8kjSvv9RYYuMPE9We7ih",
+    "digest-compiler": "memstore_01LbPG1nmHCECrbSf6TXKYbA",
+    "support-triager": "memstore_01MddvKtCw3FoS8FCDBauneR",
+    "email-marketer": "memstore_01WV5vbaNzbm2q1TJf2QX79k",
+    "ux-auditor": "memstore_01WBhqCTHsL1Y2aDcn5qsdN1",
+    "feature-tester": "memstore_01RLmeCXtTT6vn5mbg1HjC68",
+    "finance-analyst": "memstore_01TdxjCJrG4WqU13BW3LZuTe",
+    "bug-triager": "memstore_01GeVWkkm2cu9X2Sq5HK99zK",
+    "reviewer": "memstore_01V1J1KeJv4cb2dttpxBFAep",
+    "builder": "memstore_016QjmyRNtAYH1yF9heBHCod"
+  }
 }
