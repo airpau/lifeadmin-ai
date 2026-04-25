@@ -112,7 +112,7 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
   const totalIncomeFromBreakdown = incomeEntries.reduce((s, e) => s + e.amount, 0);
 
   const spendingCategories = spending?.categories || [];
-  const totalSpentFromBreakdown = spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
+  const totalSpentFromBreakdown = spending?.totalSpent || spendingCategories.reduce((s: number, c: any) => s + c.total, 0);
 
   const VISIBLE_ROWS = 6;
   const visibleIncomeEntries = showAllIncome ? incomeEntries : incomeEntries.slice(0, VISIBLE_ROWS);
