@@ -19,6 +19,7 @@ const MAX_MARKETING_EMAILS_PER_DAY = 1;
 
 // These task types count towards the daily limit
 const MARKETING_EMAIL_TYPES = [
+  'morning_digest',
   'deal_alert_email',
   'targeted_deal_email',
   'price_increase_alert',
