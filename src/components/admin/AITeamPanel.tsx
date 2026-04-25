@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Headphones, Activity, Briefcase, Zap, BarChart3, Megaphone,
-  Sun, BookOpen, Receipt, Search,
+  Headphones, Briefcase, Megaphone, Sun,
+  Bell, FileText, ListChecks, Mail, Eye, ClipboardCheck,
+  Bug, GitPullRequest, Hammer, PoundSterling, Activity,
   ChevronDown, ChevronUp, RefreshCw, Loader2, Clock, AlertTriangle,
 } from 'lucide-react';
 
@@ -37,16 +38,23 @@ interface TeamSummary {
 }
 
 const agentIcons: Record<string, React.ElementType> = {
+  // Active worker
   'riley-support-agent': Headphones,
-  'heartbeat-monitor': Activity,
+  // Claude Managed Agents
+  'alert-tester': Bell,
+  'digest-compiler': FileText,
+  'support-triager': ListChecks,
+  'email-marketer': Mail,
+  'ux-auditor': Eye,
+  'feature-tester': ClipboardCheck,
+  'finance-analyst': PoundSterling,
+  'bug-triager': Bug,
+  'reviewer': GitPullRequest,
+  'builder': Hammer,
+  // Other infra crons
   'ceo-briefing': Briefcase,
-  'dev-sprint-runner': Zap,
-  'paperclip-business-monitor': BarChart3,
   'social-media-agent': Megaphone,
   'morning-briefing': Sun,
-  'obsidian-ideas': BookOpen,
-  'receipt-scanner': Receipt,
-  'upwork-scout': Search,
 };
 
 function timeAgo(dateStr: string | null): string {
@@ -152,7 +160,7 @@ export default function AITeamPanel() {
               )}
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-slate-500 text-xs">{summary.total} Paperclip agents</span>
+              <span className="text-slate-500 text-xs">{summary.total} agents monitored</span>
               <button
                 onClick={load}
                 className="text-slate-500 hover:text-slate-900 transition-colors"

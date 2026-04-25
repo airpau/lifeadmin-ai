@@ -129,8 +129,8 @@ _Updated 2026-04-22 after Emma-matched tier review — see
 3. **ALL real-time web research by agents uses Perplexity API.** Not web scraping, not Google Search API, not Bing — Perplexity only.
 4. **ALL product analytics and funnel tracking uses PostHog.** Never add Google Analytics or Mixpanel.
 5. **ALL transactional and lifecycle emails use Resend.** Already integrated — never add SendGrid, Mailchimp, or any other email provider.
-6. **ALL agent output is stored in Supabase** (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL. Note: Charlie's daily digest email is currently dormant (see AI AGENT TEAM section) — do not assume digests are reaching the founder unless verified.
-7. **Casey (CCO) requires founder approval before any content is posted.** Approve/reject links update `content_drafts.status`. Never auto-post without approval. Note: Casey is currently dormant — content drafting is manual until a cron trigger is wired up.
+6. **ALL agent output is stored in Supabase** (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL. Managed agents call `append_business_log` every session; the digest cron at 07:00 / 12:30 / 19:00 UTC surfaces escalated rows to the founder via Telegram.
+7. **Content drafting requires founder approval before any post or send.** Inherited from the original Casey (CCO) rule and now enforced by `email-marketer` (managed agent) which DRAFTS only — drafts land in `content_drafts` / `email_drafts` with `status='pending'`. Never auto-post without approval.
 8. **Never expose API keys in client-side code.** All API calls to external services must be server-side only.
 
 ## Project Structure
@@ -310,66 +310,78 @@ IPAPI_KEY=                      # ipapi.co/account (free tier available)
 
 ---
 
-## AI AGENT TEAM — HONEST STATE (verified 17 April 2026)
+## AI AGENT TEAM — HONEST STATE (last overhauled 25 April 2026)
 
-This section was overhauled on 17 April 2026 after a tool-grounded audit. Earlier versions of this file described an "executive C-suite" (Alex, Morgan, Jamie, Taylor, Jordan, Charlie, Casey, Drew, Pippa, Leo, Nico, Bella, Finn) as if they were firing daily. That was aspirational and is no longer true — the Railway agent-server that ran them was disabled around 5 April 2026 (see shared-context/handoff-notes.md) and nothing replaced the schedule. Do not assume any agent named below is running unless it appears in the "Active" table.
+This section was rewritten on 25 April 2026 after migrating from the dormant Railway-hosted "executive" agents to **Claude Managed Agents with native memory** (public-beta feature, beta header `managed-agents-2026-04-01`).
+
+The 14 legacy executives (Casey, Charlie, Sam, Alex, Jordan, Morgan, Jamie, Taylor, Drew, Pippa, Leo, Nico, Bella, Finn) are **decommissioned**. Their `ai_executives.status` is `disabled` (migration `20260425000000_decommission_legacy_executives.sql`). Their high-importance learnings have been seeded into the new managed agents' memory stores. Their historical `executive_reports` rows remain for audit; do not cite anything dated after 5 April 2026 from them — there isn't any.
 
 When writing about agents, always check `agent_runs`, `executive_reports`, and `business_log` before stating an agent's status. Configured ≠ firing.
 
-### Active agents (verified firing in last 7 days)
+### Layer 1 — User-facing workers (do not modify without founder approval)
 
-| Worker | Trigger | Source | What it does | Last seen |
-|---|---|---|---|---|
-| `complaint_writer` | On-demand (user clicks) | `src/app/api/agents/complaints/route.ts` | Generates UK-legislation-cited complaint letters | Active — 33 runs in last 30d |
-| `riley-support-agent` | Vercel cron | `vercel.json` | Support ticket auto-response | Active today |
-| `discover_features_cron` | Vercel cron | `vercel.json` | Feature discovery | Active today |
-| `dev-sprint-runner` | Vercel cron | `vercel.json` | Dev sprint bookkeeping | Active this week |
-| `analyze_chatbot_gaps_cron` | Vercel cron | `vercel.json` | Chatbot gap analysis | Active this week |
-| `paperclip-business-monitor` | External monitor | Paperclip | Business monitoring | Active this week |
-
-### Dormant agents (configured but not firing)
-
-These rows exist in `ai_executives` and have `executive_reports` history, but have produced no output since the Railway disable:
-
-| Agent | Role | Last report | Status |
+| Worker | Trigger | Source | What it does |
 |---|---|---|---|
-| Casey | CCO | 2026-04-06 | Dormant — no cron trigger |
-| Charlie | EA | 2026-04-06 | Dormant — no cron trigger |
-| Sam | Support Lead | 2026-04-04 | Dormant — no cron trigger |
-| Alex | CFO | 2026-04-03 | Dormant — no cron trigger |
-| Jordan | Head of Ads | 2026-03-25 | Dormant — no cron trigger |
-| Morgan | CTO | 2026-03-24 | Dormant — no cron trigger |
-| Jamie | CAO | 2026-03-24 | Dormant — no cron trigger |
-| Taylor | CMO | 2026-03-24 | Dormant — no cron trigger |
-| Drew | CGO | 2026-03-24 | Dormant — no cron trigger |
-| Pippa | CRO | 2026-03-24 | Dormant — no cron trigger |
-| Leo | CLO | 2026-03-26 | Dormant — no cron trigger |
-| Nico | CIO | 2026-03-24 | Dormant — no cron trigger |
-| Bella | CXO | 2026-03-24 | Dormant — no cron trigger |
-| Finn | CFraudO | 2026-03-24 | Dormant — no cron trigger |
+| `complaint_writer` | On-demand (user clicks) | `src/app/api/complaints/generate/route.ts` | UK-legislation-cited complaint letters |
+| `riley-support-agent` | Vercel cron `*/15` | `src/app/api/cron/support-agent/route.ts` | Support ticket auto-response |
 
-Assume none of these will run unless a Vercel cron entry is added to trigger them. Do not cite their outputs in any summary without first checking `executive_reports` for a recent row.
+### Layer 2 — Claude Managed Agents (active, with memory)
 
-### Claude Managed Agents (platform.claude.com) — configured, not scheduled
+Ten agents on `platform.claude.com`. Each session is created by `/api/cron/managed-agents` (Vercel cron, hourly at :00, filtered by `agentsDueAt()`) with two memory stores attached: shared read-only `paybacker_core` + per-role `read_write`. Memory is provisioned via `scripts/bootstrap-managed-agents-memory.ts`; resulting store ids live in `src/lib/managed-agents/memory-stores.json`.
 
-Nine agents are registered in `src/lib/managed-agents/config.ts`:
+| Agent | Schedule (UTC) | Mission |
+|---|---|---|
+| `alert-tester` | `0 */6 * * *` | Monitor MCP server health + error logs |
+| `digest-compiler` | `0 7,12,17,20 * * *` | Synthesise activity into handoff-notes |
+| `support-triager` | `0 */6 * * *` | Triage tickets, queue priorities |
+| `email-marketer` | `0 8 * * *` | Draft lifecycle emails (pending founder approval) |
+| `ux-auditor` | `0 9 * * *` | Analyse friction patterns |
+| `feature-tester` | `0 10 * * *` | Verify critical user flows |
+| `finance-analyst` | `0 11 * * *` | Track MRR / churn / tier mix / Stripe webhook health |
+| `bug-triager` | `0 */12 * * *` | Categorise issues + recommend fixes |
+| `reviewer` | `0 */12 * * *` | Check open PRs against CLAUDE.md rules |
+| `builder` | on-demand only | Pick top dev task, draft PR (founder reviews) |
 
-`alert-tester`, `digest-compiler`, `support-triager`, `email-marketer`, `ux-auditor`, `feature-tester`, `bug-triager`, `reviewer`, `builder`.
+`finance-analyst` calls the MCP `get_finance_snapshot` tool which returns paying-user counts by tier, MRR/ARR estimate, signups (7d/30d), active trials, trial conversions/expiries, plan_downgrade_events, expiring subscriptions, and upcoming payments. Test accounts (`test+%`, `googletest%`, `%@example.com`) are excluded automatically.
 
-There is an endpoint at `src/app/api/cron/managed-agents/route.ts`, but it is NOT listed in `vercel.json`, so Vercel cron never invokes it. `agent_messages` has 0 rows in the last 30 days, confirming no sessions have fired. These agents are fully configured and ready to run — they just need cron entries to wake them up.
+Every session ends by calling the paybacker MCP `append_business_log` tool, recording category + title + content + agent name. The digest cron `/api/cron/agent-digest` reads that table at 07:00, 12:30, and 19:00 UTC and posts a consolidated Telegram summary to `TELEGRAM_FOUNDER_CHAT_ID`.
+
+For interventions that can't wait for the next digest, agents call the MCP `post_to_telegram_admin` tool. Severity `recommend|warn|critical` requires a non-empty `ask` field — the tool refuses without one.
+
+### Layer 3 — Intelligence crons (preserve)
+
+| Cron | Schedule | Purpose |
+|---|---|---|
+| `/api/cron/discover-features` | Daily 02:00 | Scans `src/` for new routes |
+| `/api/cron/analyze-chatbot-gaps` | Mon 06:00 | Groups unanswered chatbot questions |
+| `/api/cron/daily-ceo-report` | Daily | CEO summary email |
+| `/api/cron/aggregate-provider-intelligence` | Sun 00:00 | Provider competitive analysis |
+
+### Layer 4 — DECOMMISSIONED (do not cite, do not restart)
+
+Casey, Charlie, Sam, Alex, Jordan, Morgan, Jamie, Taylor, Drew, Pippa, Leo, Nico, Bella, Finn. `ai_executives.config.replaced_by` records which managed agent absorbed each role.
 
 ### Disabled systems
 
-- **Railway agent-server** — legacy, flagged for disable 5 April 2026 (see handoff-notes.md). Do not restart.
+- **Railway agent-server** — legacy, disabled 5 April 2026. Do not restart.
 - **`/api/cron/executive-agents`** — returns `{status: 'deprecated'}`. Do not wire anything to it.
+
+### Memory layer (Anthropic public beta, April 2026)
+
+- 10 memory stores: 1 shared `paybacker_core` (read-only product/architecture/safety facts) + 9 per-role (read-write).
+- Static seeds in `supabase/memory-seeds/<store-name>/*.md`. Bootstrap script reads these plus high-importance `agent_memory` rows from the legacy roles each managed agent absorbs.
+- Re-seed by running `npx tsx scripts/bootstrap-managed-agents-memory.ts` (idempotent — reuses existing store ids on re-runs).
+- Per-file 100 KB cap. Per-session up to 8 stores.
+- Inspect / export via the Anthropic Console memory-store API; redact sensitive content via `memories.versions.redact`.
 
 ### Rules for agents going forward
 
 1. Before describing an agent as "running", verify with `agent_runs`, `executive_reports`, or `business_log`.
 2. New agents must be registered in `vercel.json` with an explicit cron schedule — otherwise they are dormant by default.
-3. All agent output must land in Supabase (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL.
+3. All agent output must land in Supabase (`executive_reports`, `agent_runs`, or `business_log`) so status is auditable from SQL. Managed agents call `append_business_log` every session.
 4. Never modify `complaint_writer` or Riley without explicit user approval — these are the two workers actually serving users.
-5. When in doubt, ask before you build.
+5. Managed agents are observe-and-recommend only. Code changes go through Builder which opens a PR; the founder approves merges. No auto-execution of code, content, or production data changes.
+6. When in doubt, ask before you build.
 
 ---
 

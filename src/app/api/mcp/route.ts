@@ -155,9 +155,9 @@ async function supabaseContextQuery(
   return null;
 }
 
-// Read-only Supabase access for business_log (separate function, explicit)
+// Read-only Supabase access for allowlisted tables.
 async function supabaseReadOnly(table: string, query: string): Promise<unknown> {
-  const allowedTables = ["business_log"];
+  const allowedTables = ["business_log", "profiles", "plan_downgrade_events", "subscriptions_expiring_soon", "upcoming_payments"];
   if (!allowedTables.includes(table)) {
     throw new Error(`SECURITY: Read-only access denied for table: ${table}`);
   }
@@ -176,6 +176,51 @@ async function supabaseReadOnly(table: string, query: string): Promise<unknown> 
     throw new Error(`Supabase error: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+// Append-only writes to business_log. No update, no delete. Sanitises inputs.
+async function supabaseInsertBusinessLog(row: {
+  category: string;
+  title: string;
+  content: string;
+  created_by: string;
+}): Promise<unknown> {
+  const { url, key } = getSupabaseCredentials();
+  const res = await fetch(`${url}/rest/v1/business_log`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Telegram-admin rate limit (separate from request rate limit)
+// Stricter — a leaked token mustn't be able to spam the founder.
+// ---------------------------------------------------------------------------
+
+const telegramAdminLimit = { count: 0, windowStart: 0 };
+const TELEGRAM_ADMIN_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const TELEGRAM_ADMIN_MAX = 10; // 10 admin pings per hour
+
+function checkTelegramAdminLimit(): boolean {
+  const now = Date.now();
+  if (now - telegramAdminLimit.windowStart > TELEGRAM_ADMIN_WINDOW_MS) {
+    telegramAdminLimit.windowStart = now;
+    telegramAdminLimit.count = 0;
+  }
+  if (telegramAdminLimit.count >= TELEGRAM_ADMIN_MAX) return false;
+  telegramAdminLimit.count++;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +544,350 @@ function createPaybackerMcpServer(): McpServer {
     }
   );
 
+  // === STRUCTURED BUSINESS_LOG WRITES (append-only, drives the digest cron) ===
+
+  const ALLOWED_BUSINESS_LOG_CATEGORIES = [
+    "clean",
+    "info",
+    "finding",
+    "recommendation",
+    "alert",
+    "warn",
+    "critical",
+    "escalation",
+    "agent_governance",
+  ] as const;
+
+  server.tool(
+    "append_business_log",
+    "Insert a structured row into the business_log table. Used by managed agents at the end of every session — drives the agent-digest cron (07:00/12:30/19:00 UTC).",
+    {
+      category: z.enum(ALLOWED_BUSINESS_LOG_CATEGORIES),
+      title: z.string().min(1).max(200),
+      content: z.string().min(1).max(4000),
+      created_by: z.string().min(1).max(100),
+    },
+    async ({ category, title, content, created_by }) => {
+      // Sanitise created_by to alphanumeric+hyphens (no SQL/HTML/markdown injection vectors).
+      const safeCreatedBy = created_by.replace(/[^a-zA-Z0-9\-_ ]/g, "").slice(0, 100);
+      const row = await supabaseInsertBusinessLog({
+        category,
+        title: title.slice(0, 200),
+        content: content.slice(0, 4000),
+        created_by: safeCreatedBy || "unknown-agent",
+      });
+      const id = (Array.isArray(row) ? row[0] : row) as { id?: string } | null;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Inserted business_log row ${id?.id ?? "?"} (category=${category}).`,
+          },
+        ],
+      };
+    }
+  );
+
+  // === FINANCE SNAPSHOT (read-only aggregates, used by finance-analyst) ===
+
+  server.tool(
+    "get_finance_snapshot",
+    "Returns a structured snapshot of Paybacker financial state: paying users by tier, MRR/ARR, signups (7d/30d), active trials, conversions/expiries, plan downgrade events, expiring subscriptions, upcoming payments. Aggregates only — no per-user PII. Test accounts (test+%, googletest%, %@example.com) excluded.",
+    {
+      tier_prices_gbp: z
+        .object({
+          free: z.number().default(0),
+          plus: z.number().default(4.99),
+          pro: z.number().default(9.99),
+        })
+        .partial()
+        .optional()
+        .describe("Optional override for tier monthly prices in GBP. Defaults to canonical {free:0, plus:4.99, pro:9.99}."),
+    },
+    async ({ tier_prices_gbp }) => {
+      const tierPrices: Record<string, number> = {
+        free: 0,
+        plus: 4.99,
+        pro: 9.99,
+        ...(tier_prices_gbp ?? {}),
+      };
+
+      // Fetch only the columns we aggregate. No raw email returned in output.
+      const profilesRaw = (await supabaseReadOnly(
+        "profiles",
+        "select=email,subscription_tier,trial_ends_at,trial_converted_at,trial_expired_at,stripe_subscription_id,created_at&limit=10000"
+      )) as Array<{
+        email: string | null;
+        subscription_tier: string | null;
+        trial_ends_at: string | null;
+        trial_converted_at: string | null;
+        trial_expired_at: string | null;
+        stripe_subscription_id: string | null;
+        created_at: string | null;
+      }>;
+
+      function isTestEmail(email: string | null): boolean {
+        if (!email) return false;
+        const e = email.toLowerCase();
+        return e.startsWith("test+") || e.endsWith("@example.com") || e.startsWith("googletest");
+      }
+
+      const real = profilesRaw.filter((p) => !isTestEmail(p.email));
+      const now = Date.now();
+      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+      const tierCounts: Record<string, number> = {};
+      const unknownTiers: Record<string, number> = {};
+      let payingUsers = 0;
+      let mrrPence = 0;
+      let signups7d = 0;
+      let signups30d = 0;
+      let activeTrials = 0;
+      let conv7d = 0;
+      let conv30d = 0;
+      let exp7d = 0;
+      let exp30d = 0;
+
+      for (const p of real) {
+        const tier = (p.subscription_tier ?? "free").toLowerCase();
+        tierCounts[tier] = (tierCounts[tier] ?? 0) + 1;
+        if (!(tier in tierPrices)) unknownTiers[tier] = (unknownTiers[tier] ?? 0) + 1;
+        if (tier !== "free" && p.stripe_subscription_id) {
+          payingUsers += 1;
+          mrrPence += Math.round((tierPrices[tier] ?? 0) * 100);
+        }
+        if (p.created_at) {
+          const t = new Date(p.created_at).getTime();
+          if (t >= sevenDaysAgo) signups7d += 1;
+          if (t >= thirtyDaysAgo) signups30d += 1;
+        }
+        if (
+          p.trial_ends_at &&
+          new Date(p.trial_ends_at).getTime() > now &&
+          !p.trial_converted_at &&
+          !p.trial_expired_at
+        ) {
+          activeTrials += 1;
+        }
+        if (p.trial_converted_at) {
+          const t = new Date(p.trial_converted_at).getTime();
+          if (t >= sevenDaysAgo) conv7d += 1;
+          if (t >= thirtyDaysAgo) conv30d += 1;
+        }
+        if (p.trial_expired_at) {
+          const t = new Date(p.trial_expired_at).getTime();
+          if (t >= sevenDaysAgo) exp7d += 1;
+          if (t >= thirtyDaysAgo) exp30d += 1;
+        }
+      }
+
+      // Optional aggregate count tables — tolerant if a table doesn't exist on a branch.
+      let downgrades7d: number | string = "unavailable";
+      try {
+        const sevenIso = new Date(sevenDaysAgo).toISOString();
+        const rows = (await supabaseReadOnly(
+          "plan_downgrade_events",
+          `select=id&created_at=gte.${encodeURIComponent(sevenIso)}`
+        )) as unknown[];
+        downgrades7d = rows.length;
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      let expiringSoon: number | string = "unavailable";
+      try {
+        const rows = (await supabaseReadOnly(
+          "subscriptions_expiring_soon",
+          "select=id"
+        )) as unknown[];
+        expiringSoon = rows.length;
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      let upcoming7d: number | string = "unavailable";
+      try {
+        const sevenAhead = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const rows = (await supabaseReadOnly(
+          "upcoming_payments",
+          `select=id&due_date=lte.${encodeURIComponent(sevenAhead)}`
+        )) as unknown[];
+        upcoming7d = rows.length;
+      } catch {
+        // leave as 'unavailable'
+      }
+
+      const mrr = mrrPence / 100;
+      const arr = mrr * 12;
+
+      const snapshot = {
+        generated_at: new Date().toISOString(),
+        users: {
+          total_real: real.length,
+          test_users_excluded: profilesRaw.length - real.length,
+          tier_counts: tierCounts,
+          unknown_tiers_seen: unknownTiers,
+          paying_users: payingUsers,
+        },
+        revenue: {
+          mrr_gbp: Number(mrr.toFixed(2)),
+          arr_gbp: Number(arr.toFixed(2)),
+          tier_prices_gbp_used: tierPrices,
+        },
+        growth: {
+          signups_last_7d: signups7d,
+          signups_last_30d: signups30d,
+        },
+        trials: {
+          active: activeTrials,
+          conversions_7d: conv7d,
+          conversions_30d: conv30d,
+          expiries_7d: exp7d,
+          expiries_30d: exp30d,
+          conversion_rate_30d:
+            conv30d + exp30d === 0 ? null : Number((conv30d / (conv30d + exp30d)).toFixed(3)),
+        },
+        churn: { plan_downgrade_events_7d: downgrades7d },
+        contracts: {
+          subscriptions_expiring_soon: expiringSoon,
+          upcoming_payments_next_7d: upcoming7d,
+        },
+        notes: {
+          test_email_filter:
+            "Excluded emails matching: test+%, %@example.com, googletest%",
+          mrr_method:
+            "tier × stripe_subscription_id NOT NULL × tier_prices_gbp[tier]; unknown tiers contribute 0 until acknowledged.",
+        },
+      };
+
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(snapshot, null, 2) }],
+      };
+    }
+  );
+
+  // === TELEGRAM ADMIN PING (rate-limited, append-only mirror) ===
+
+  server.tool(
+    "post_to_telegram_admin",
+    "Sends a Telegram message to the founder admin chat. Reserved for things needing the founder's decision BEFORE the next digest cycle, or critical-severity events. Routine reporting goes to append_business_log. Hard-capped at 10 admin pings per hour.",
+    {
+      agent_name: z.string().min(1).max(100),
+      severity: z.enum(["info", "notice", "recommend", "warn", "critical"]),
+      title: z.string().min(1).max(200),
+      body: z.string().min(1).max(2000),
+      ask: z.string().max(500).optional(),
+    },
+    async ({ agent_name, severity, title, body, ask }) => {
+      // Hard rule: severity recommend/warn/critical require an explicit 'ask'.
+      if (["recommend", "warn", "critical"].includes(severity) && !ask?.trim()) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Refused: severity=${severity} requires a non-empty 'ask' field. Tell me what decision the founder needs to make.`,
+            },
+          ],
+        };
+      }
+
+      // Hard rate limit so a leaked bearer token can't spam the founder.
+      if (!checkTelegramAdminLimit()) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Refused: Telegram admin rate limit hit (${TELEGRAM_ADMIN_MAX}/hour). Write to business_log instead.`,
+            },
+          ],
+        };
+      }
+
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      const chatId = process.env.TELEGRAM_FOUNDER_CHAT_ID;
+      if (!token || !chatId) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Refused: TELEGRAM_BOT_TOKEN or TELEGRAM_FOUNDER_CHAT_ID env var not configured.",
+            },
+          ],
+        };
+      }
+
+      // Sanitise inputs for Telegram HTML mode.
+      function escapeHtml(input: string): string {
+        return input
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      const safeAgent = agent_name.replace(/[^a-zA-Z0-9\-_ ]/g, "").slice(0, 100);
+
+      const sevPrefix: Record<string, string> = {
+        info: "🟢",
+        notice: "🔵",
+        recommend: "🟡",
+        warn: "🟠",
+        critical: "🔴",
+      };
+      const lines = [
+        `${sevPrefix[severity] ?? "•"} <b>${escapeHtml(title)}</b>`,
+        `<i>${escapeHtml(safeAgent)} · ${severity} · ${timestamp()} UTC</i>`,
+        "",
+        escapeHtml(body),
+      ];
+      if (ask?.trim()) {
+        lines.push("");
+        lines.push(`<b>Ask:</b> ${escapeHtml(ask)}`);
+      }
+      const text = lines.join("\n").slice(0, 3800);
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: Number(chatId),
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+      });
+      if (!tgRes.ok) {
+        const errText = await tgRes.text();
+        return {
+          content: [
+            { type: "text" as const, text: `Error sending Telegram: ${errText.slice(0, 200)}` },
+          ],
+        };
+      }
+
+      // Mirror to business_log so the digest still has a record.
+      try {
+        await supabaseInsertBusinessLog({
+          category: severity === "critical" || severity === "warn" ? severity : "escalation",
+          title: `[telegram-admin] ${title}`.slice(0, 200),
+          content: `${body}${ask ? `\n\nAsk: ${ask}` : ""}`.slice(0, 4000),
+          created_by: safeAgent,
+        });
+      } catch {
+        // Mirror failure shouldn't fail the Telegram send.
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Sent Telegram admin message (severity=${severity}) and mirrored to business_log.`,
+          },
+        ],
+      };
+    }
+  );
+
   return server;
 }
 
@@ -560,9 +949,9 @@ export async function GET(req: NextRequest) {
       {
         status: "ok",
         server: "paybacker-mcp-server",
-        version: "2.0.0",
-        tools: 13,
-        note: "Social media tools disabled on public endpoint. Use local stdio server for posting.",
+        version: "2.1.0",
+        tools: 16,
+        note: "Social media tools disabled on public endpoint. Includes get_finance_snapshot, append_business_log, post_to_telegram_admin (rate-limited at 10/hour).",
       },
       {
         headers: {

@@ -22,7 +22,11 @@ interface AgentDef {
   missedMinutes: number;
 }
 
-const PAPERCLIP_AGENTS: AgentDef[] = [
+// Roster of agents whose business_log activity feeds the admin team-status dashboard.
+// Updated 2026-04-25: removed dead paperclip-business-monitor and dev-sprint-runner;
+// added the 10 Claude Managed Agents now running with memory.
+const MONITORED_AGENTS: AgentDef[] = [
+  // --- Active production worker ---
   {
     id: 'riley-support-agent',
     name: 'Support Agent (Riley)',
@@ -31,14 +35,91 @@ const PAPERCLIP_AGENTS: AgentDef[] = [
     warningMinutes: 20,
     missedMinutes: 35,
   },
+
+  // --- Claude Managed Agents (with native memory) ---
   {
-    id: 'heartbeat-monitor',
-    name: 'Heartbeat Monitor',
-    role: 'Watches all agents, alerts if anything fails',
-    schedule: 'Every 30 mins',
-    warningMinutes: 40,
-    missedMinutes: 60,
+    id: 'alert-tester',
+    name: 'Alert Tester',
+    role: 'Monitors MCP server health and error logs',
+    schedule: 'Every 6 hours',
+    warningMinutes: 7 * 60,
+    missedMinutes: 9 * 60,
   },
+  {
+    id: 'digest-compiler',
+    name: 'Digest Compiler',
+    role: 'Synthesises agent activity into the founder digest',
+    schedule: '4x daily (07/12/17/20 UTC)',
+    warningMinutes: 7 * 60,
+    missedMinutes: 9 * 60,
+  },
+  {
+    id: 'support-triager',
+    name: 'Support Triager',
+    role: 'Triages tickets by severity, queues priorities',
+    schedule: 'Every 6 hours',
+    warningMinutes: 7 * 60,
+    missedMinutes: 9 * 60,
+  },
+  {
+    id: 'email-marketer',
+    name: 'Email Marketer',
+    role: 'Drafts lifecycle emails for founder approval',
+    schedule: 'Daily 8am UTC',
+    warningMinutes: 26 * 60,
+    missedMinutes: 32 * 60,
+  },
+  {
+    id: 'ux-auditor',
+    name: 'UX Auditor',
+    role: 'Surfaces friction patterns from tickets + funnel',
+    schedule: 'Daily 9am UTC',
+    warningMinutes: 26 * 60,
+    missedMinutes: 32 * 60,
+  },
+  {
+    id: 'feature-tester',
+    name: 'Feature Tester',
+    role: 'Verifies critical user flows and compliance',
+    schedule: 'Daily 10am UTC',
+    warningMinutes: 26 * 60,
+    missedMinutes: 32 * 60,
+  },
+  {
+    id: 'finance-analyst',
+    name: 'Finance Analyst',
+    role: 'Tracks MRR, churn, tier mix, Stripe webhook health',
+    schedule: 'Daily 11am UTC',
+    warningMinutes: 26 * 60,
+    missedMinutes: 32 * 60,
+  },
+  {
+    id: 'bug-triager',
+    name: 'Bug Triager',
+    role: 'Categorises issues + recommends fixes',
+    schedule: 'Every 12 hours',
+    warningMinutes: 14 * 60,
+    missedMinutes: 16 * 60,
+  },
+  {
+    id: 'reviewer',
+    name: 'PR Reviewer',
+    role: 'Checks open PRs against CLAUDE.md rules',
+    schedule: 'Every 12 hours',
+    warningMinutes: 14 * 60,
+    missedMinutes: 16 * 60,
+  },
+  {
+    id: 'builder',
+    name: 'Builder',
+    role: 'On-demand: picks dev task, drafts PR for founder review',
+    schedule: 'On-demand only',
+    // On-demand agents never raise alerts based on idle time.
+    warningMinutes: 365 * 24 * 60,
+    missedMinutes: 365 * 24 * 60,
+  },
+
+  // --- Other infrastructure crons that write to business_log ---
   {
     id: 'ceo-briefing',
     name: 'CEO Briefing',
@@ -46,22 +127,6 @@ const PAPERCLIP_AGENTS: AgentDef[] = [
     schedule: 'Daily 7:30am',
     warningMinutes: 26 * 60,
     missedMinutes: 32 * 60,
-  },
-  {
-    id: 'dev-sprint-runner',
-    name: 'Sprint Runner',
-    role: 'Picks tasks, writes code, creates PRs',
-    schedule: 'Daily 10am',
-    warningMinutes: 26 * 60,
-    missedMinutes: 32 * 60,
-  },
-  {
-    id: 'paperclip-business-monitor',
-    name: 'Business Monitor',
-    role: 'Coordinates team, checks activity across the platform',
-    schedule: '3x daily',
-    warningMinutes: 9 * 60,
-    missedMinutes: 12 * 60,
   },
   {
     id: 'social-media-agent',
@@ -76,30 +141,6 @@ const PAPERCLIP_AGENTS: AgentDef[] = [
     name: 'Morning Briefing',
     role: 'Sends email briefing to founder each morning',
     schedule: 'Daily 8:30am',
-    warningMinutes: 26 * 60,
-    missedMinutes: 32 * 60,
-  },
-  {
-    id: 'obsidian-ideas',
-    name: 'Obsidian Ideas',
-    role: 'Syncs ideas and notes to the task queue',
-    schedule: 'Daily 9am',
-    warningMinutes: 26 * 60,
-    missedMinutes: 32 * 60,
-  },
-  {
-    id: 'receipt-scanner',
-    name: 'Receipt Scanner',
-    role: 'Scans Gmail for receipts and tracks spending',
-    schedule: 'Daily 8pm',
-    warningMinutes: 26 * 60,
-    missedMinutes: 32 * 60,
-  },
-  {
-    id: 'upwork-scout',
-    name: 'Upwork Scout',
-    role: 'Finds and flags freelance opportunities',
-    schedule: 'Daily 3am',
     warningMinutes: 26 * 60,
     missedMinutes: 32 * 60,
   },
@@ -143,7 +184,7 @@ export async function GET(request: NextRequest) {
 
   // Fetch per-agent to avoid high-frequency agents consuming the global limit
   const perAgentResults = await Promise.all(
-    PAPERCLIP_AGENTS.map(agent =>
+    MONITORED_AGENTS.map(agent =>
       supabase
         .from('business_log')
         .select('id, category, title, content, created_by, created_at')
@@ -159,11 +200,11 @@ export async function GET(request: NextRequest) {
   }
 
   const grouped: Record<string, NonNullable<(typeof perAgentResults)[number]['data']>> = {};
-  for (let i = 0; i < PAPERCLIP_AGENTS.length; i++) {
-    grouped[PAPERCLIP_AGENTS[i].id] = perAgentResults[i].data || [];
+  for (let i = 0; i < MONITORED_AGENTS.length; i++) {
+    grouped[MONITORED_AGENTS[i].id] = perAgentResults[i].data || [];
   }
 
-  const agents = PAPERCLIP_AGENTS.map(agent => {
+  const agents = MONITORED_AGENTS.map(agent => {
     const entries = grouped[agent.id] || [];
     const latest = entries[0] || null;
     const lastRunAt = latest?.created_at || null;

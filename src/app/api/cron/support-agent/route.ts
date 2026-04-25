@@ -4,7 +4,7 @@ import { resend, FROM_EMAIL } from '@/lib/resend';
 import Anthropic from '@anthropic-ai/sdk';
 
 /**
- * Riley — Paperclip Support Agent
+ * Riley — Support Agent
  *
  * Runs every 15 minutes via Vercel Cron.
  * Flow:
