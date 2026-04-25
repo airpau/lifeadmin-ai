@@ -80,7 +80,7 @@ export default function SpendingPanel({ data, isPro, refreshData, selectedMonth 
 
   const categories = data.spending.categories || [];
   const topMerchants = data.spending.topMerchants || [];
-  const totalSpent = categories.reduce((s: number, c: any) => s + c.total, 0);
+  const totalSpent = data.spending?.totalSpent || categories.reduce((s: number, c: any) => s + c.total, 0);
 
   return (
     <div className="card p-5 flex flex-col h-full">
