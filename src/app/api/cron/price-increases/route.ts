@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { detectPriceIncreases } from '@/lib/price-increase-detector';
-import { buildPriceIncreaseEmail } from '@/lib/email/price-increase-alerts';
-import { canSendEmail, markEmailSent } from '@/lib/email-rate-limit';
 import { sendNotification } from '@/lib/notifications/dispatch';
 
 export const maxDuration = 60;
@@ -16,13 +14,14 @@ function getAdmin() {
 
 /**
  * Daily price increase detection cron.
- * Schedule: Daily at 8am (after bank sync at 3am) -- configured in vercel.json
+ * Schedule: Daily at 7:30am UTC -- configured in vercel.json
+ * Runs 30 min before morning-digest so new alerts are ready to collect.
  *
  * For each user with an active bank connection:
  * 1. Run detectPriceIncreases to find recurring payments that went up
- * 2. Check for duplicates (same merchant+user already has an active alert)
+ * 2. Check for duplicates (same merchant+user already has an active OR dismissed alert)
  * 3. Insert new alerts into price_increase_alerts
- * 4. Send email notification to Essential/Pro users
+ * 4. Send Telegram/push notification (email is handled by morning-digest at 8am UTC)
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -47,7 +46,6 @@ export async function GET(request: NextRequest) {
   const userIds = [...new Set(connections.map(c => c.user_id))];
 
   let totalAlertsCreated = 0;
-  let totalEmailsSent = 0;
   const errors: string[] = [];
 
   for (const userId of userIds) {
@@ -55,25 +53,25 @@ export async function GET(request: NextRequest) {
       const increases = await detectPriceIncreases(userId);
       if (increases.length === 0) continue;
 
-      // Get existing active alerts for this user to prevent duplicates
+      // Get existing alerts for this user (active OR dismissed) to prevent duplicates.
+      // Dismissed merchants must never be re-inserted — the user explicitly dismissed them.
       const { data: existingAlerts } = await supabase
         .from('price_increase_alerts')
-        .select('merchant_normalized')
+        .select('merchant_normalized, status')
         .eq('user_id', userId)
-        .eq('status', 'active');
+        .in('status', ['active', 'dismissed']);
 
       const existingMerchants = new Set(
         (existingAlerts || []).map(a => a.merchant_normalized)
       );
 
-      // Get user profile for email and tier
+      // Get user profile for tier (email is handled by morning-digest)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('email, full_name, first_name, subscription_tier')
+        .select('full_name, first_name, subscription_tier')
         .eq('id', userId)
         .single();
 
-      const isPaid = profile?.subscription_tier === 'essential' || profile?.subscription_tier === 'pro';
       const userName = profile?.full_name || profile?.first_name || 'there';
 
       // Collect all new increases for this user, then send ONE consolidated email
@@ -108,30 +106,21 @@ export async function GET(request: NextRequest) {
         newIncreases.push(increase);
       }
 
-      // Route via the unified dispatcher — user's notification_preferences
-      // decide which of email / telegram / push fires. Free users still
-      // skip email (the dispatcher doesn't enforce tier, but this cron does).
+      // Route Telegram/push via the unified dispatcher.
+      // Email for price increases is sent by the morning-digest cron (8am UTC)
+      // so it can be combined with renewal reminders into one email.
       if (newIncreases.length > 0) {
-        const rateCheck = await canSendEmail(supabase, userId, 'price_increase_alert');
-        const emailAllowed = isPaid && rateCheck.allowed;
-
-        const { subject, html } = buildPriceIncreaseEmail(userName, newIncreases as any);
         const headline = newIncreases.length === 1
           ? `💸 *${newIncreases[0].merchantNormalized}* went up £${(newIncreases[0].newAmount - newIncreases[0].oldAmount).toFixed(2)} (+${newIncreases[0].increasePct}%)`
           : `💸 *${newIncreases.length} price increases detected* on your bills`;
         const telegramText = `${headline}\n\n${newIncreases.map(i => `• ${i.merchantNormalized}: £${i.oldAmount} → £${i.newAmount} (+${i.increasePct}%)`).join('\n')}\n\nOpen Paybacker → Dashboard → Price increase alerts to action.`;
 
-        const result = await sendNotification(supabase, {
+        await sendNotification(supabase, {
           userId,
           event: 'price_increase',
-          email: emailAllowed ? { subject, html } : undefined,
           telegram: { text: telegramText },
           push: { title: 'Price hike detected', body: headline.replace(/\*/g, '') },
         });
-        if (result.delivered.includes('email')) {
-          totalEmailsSent++;
-          await markEmailSent(supabase, userId, 'price_increase_alert', `Price increase alert: ${newIncreases.length} merchant${newIncreases.length === 1 ? '' : 's'}`);
-        }
       }
     } catch (err) {
       errors.push(`Error processing user ${userId}: ${err instanceof Error ? err.message : String(err)}`);
@@ -141,7 +130,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     users_checked: userIds.length,
     alerts_created: totalAlertsCreated,
-    emails_sent: totalEmailsSent,
     errors: errors.length > 0 ? errors : undefined,
   });
 }

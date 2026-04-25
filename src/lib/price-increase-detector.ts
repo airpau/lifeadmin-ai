@@ -1,6 +1,34 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 
+// Government and council tax payments — flagging price changes on these is
+// misleading (PAYE varies with income, council tax is set by councils annually)
+// and creates noise the user cannot act on via a complaint letter.
+const GOVERNMENT_MERCHANT_PATTERNS: RegExp[] = [
+  /\bhmrc\b/i,
+  /\bhm revenue/i,
+  /\bhmrc\s*paye/i,
+  /\bhmrc\s*ndds/i,
+  /\bhmrc\s*vat/i,
+  /\bhm\s*treasury/i,
+  /\bdwp\b/i,
+  /\bcounty\s*council\b/i,
+  /\bcity\s*council\b/i,
+  /\bborough\s*council\b/i,
+  /\bdistrict\s*council\b/i,
+  /\bcouncil\s*tax\b/i,
+  /\blondon\s*borough\b/i,
+  /\btest\s*valley\b/i,
+  /\bwinchester\b.*\bcouncil\b/i,
+  /\bwestminster\b.*\bcouncil\b/i,
+  /\b(lbh|lbw|lbc)\b/i,
+];
+
+function isGovernmentPayment(description: string, merchantName: string | null): boolean {
+  const haystack = `${merchantName ?? ''} ${description}`.toLowerCase();
+  return GOVERNMENT_MERCHANT_PATTERNS.some((re) => re.test(haystack));
+}
+
 // Categories where amounts follow an amortisation schedule (loan balance
 // shrinks, interest changes, credit-card balances vary) so a "price
 // increase" is meaningless. These are a narrower set than the
@@ -137,6 +165,9 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     // Transfers to self (e.g. "PAUL AIREY … HALIFAX VIA MOBILE — PYMT") can
     // otherwise look like huge price rises when amounts vary. Skip them.
     if (looksLikeTransferToSelf(tx.description || '', tx.merchant_name, userNameTokens)) continue;
+
+    // Skip government and council tax payments — not actionable via complaint letter.
+    if (isGovernmentPayment(tx.description || '', tx.merchant_name)) continue;
 
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;
