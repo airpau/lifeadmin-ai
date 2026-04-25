@@ -162,10 +162,11 @@ function resolveChannels(
 
 async function sendEmail(email: string, payload: EmailPayload): Promise<boolean> {
   try {
-    const { resend, FROM_EMAIL } = await import('@/lib/resend');
+    const { resend, FROM_EMAIL, REPLY_TO } = await import('@/lib/resend');
     await resend.emails.send({
       from: FROM_EMAIL,
       to: payload.to ?? email,
+      replyTo: REPLY_TO,
       subject: payload.subject,
       html: payload.html,
     });
