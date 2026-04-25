@@ -155,10 +155,24 @@ async function supabaseContextQuery(
   return null;
 }
 
-// Read-only Supabase access for allowlisted tables.
+// Read-only Supabase access for allowlisted tables. Strictly read-only — any SELECT
+// query against an allowlisted table is permitted; writes go through dedicated
+// per-table insert helpers below.
+const READ_ALLOWED_TABLES = [
+  "business_log",
+  "profiles",
+  "plan_downgrade_events",
+  "subscriptions_expiring_soon",
+  "upcoming_payments",
+  // New (added 2026-04-25 to give agents real signal):
+  "support_tickets",     // support-triager
+  "nps_responses",       // ux-auditor + support-triager
+  "tasks",               // feature-tester (compliance check on complaint letters)
+  "content_drafts",      // email-marketer (read existing drafts)
+];
+
 async function supabaseReadOnly(table: string, query: string): Promise<unknown> {
-  const allowedTables = ["business_log", "profiles", "plan_downgrade_events", "subscriptions_expiring_soon", "upcoming_payments"];
-  if (!allowedTables.includes(table)) {
+  if (!READ_ALLOWED_TABLES.includes(table)) {
     throw new Error(`SECURITY: Read-only access denied for table: ${table}`);
   }
 
@@ -201,6 +215,82 @@ async function supabaseInsertBusinessLog(row: {
     throw new Error(`Supabase error: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+// Append-only writes to content_drafts. Only allows status='pending' (draft, not posted).
+// email-marketer uses this to queue drafts for founder approval. The agent CANNOT post,
+// approve, or modify existing drafts via this helper.
+async function supabaseInsertContentDraft(row: {
+  audience: string;
+  channel: string;
+  subject_line: string;
+  body_markdown: string;
+  cta_url: string | null;
+  cta_label: string | null;
+  recommended_send_window: string | null;
+  rationale: string;
+  created_by: string;
+}): Promise<unknown> {
+  const { url, key } = getSupabaseCredentials();
+  const res = await fetch(`${url}/rest/v1/content_drafts`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      ...row,
+      status: "pending", // ALWAYS pending — never approved, never posted.
+      // Map our friendly fields onto the actual content_drafts schema. The schema uses
+      // {platform, content_type, caption, hashtags, asset_url} per the migration in
+      // CLAUDE.md, so we adapt here.
+      platform: row.channel,
+      content_type: "email",
+      caption: row.subject_line + "\n\n" + row.body_markdown,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase content_drafts error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// External-service env vars (each tool fetches its own; never leak in errors)
+// ---------------------------------------------------------------------------
+
+function getGithubToken(): string {
+  const t = process.env.GITHUB_TOKEN || process.env.PAYBACKER_GITHUB_TOKEN;
+  if (!t) throw new Error("GITHUB_TOKEN env var not configured on Vercel");
+  return t;
+}
+const GITHUB_REPO = process.env.GITHUB_REPO || "airpau/lifeadmin-ai";
+
+function getPosthogCreds(): { apiKey: string; host: string; projectId: string } {
+  const apiKey = process.env.POSTHOG_API_KEY || process.env.POSTHOG_PROJECT_API_KEY || "";
+  const host = process.env.POSTHOG_HOST || "https://app.posthog.com";
+  const projectId = process.env.POSTHOG_PROJECT_ID || "";
+  if (!apiKey) throw new Error("POSTHOG_API_KEY env var not configured");
+  if (!projectId) throw new Error("POSTHOG_PROJECT_ID env var not configured");
+  return { apiKey, host, projectId };
+}
+
+function getVercelCreds(): { token: string; projectId: string; teamId: string | null } {
+  const token = process.env.VERCEL_TOKEN || "";
+  const projectId = process.env.VERCEL_PROJECT_ID || "";
+  const teamId = process.env.VERCEL_TEAM_ID || null;
+  if (!token) throw new Error("VERCEL_TOKEN env var not configured");
+  if (!projectId) throw new Error("VERCEL_PROJECT_ID env var not configured");
+  return { token, projectId, teamId };
+}
+
+function getStripeKey(): string {
+  const k = process.env.STRIPE_SECRET_KEY || "";
+  if (!k) throw new Error("STRIPE_SECRET_KEY env var not configured");
+  return k;
 }
 
 // ---------------------------------------------------------------------------
@@ -767,6 +857,312 @@ function createPaybackerMcpServer(): McpServer {
     }
   );
 
+  // === GITHUB (read-only) ===
+
+  server.tool(
+    "list_github_issues",
+    `List open or recently-updated issues on the ${GITHUB_REPO} repo. Used by bug-triager to triage and reviewer to cross-reference. Returns up to 50 issues.`,
+    {
+      state: z.enum(["open", "closed", "all"]).default("open"),
+      limit: z.number().min(1).max(50).default(20),
+    },
+    async ({ state, limit }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/issues?state=${state}&per_page=${limit}&sort=updated&direction=desc`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } }
+      );
+      if (!r.ok) return { content: [{ type: "text" as const, text: `GitHub error: ${r.status}` }] };
+      const issues = (await r.json()) as Array<{
+        number: number; title: string; state: string; labels: Array<{ name: string }>;
+        user: { login: string }; updated_at: string; body: string | null; pull_request?: object;
+      }>;
+      // Filter out pull requests (GitHub returns PRs in /issues unless we filter)
+      const trimmed = issues
+        .filter((i) => !i.pull_request)
+        .map((i) => ({
+          number: i.number,
+          title: i.title,
+          state: i.state,
+          labels: i.labels.map((l) => l.name),
+          author: i.user.login,
+          updated_at: i.updated_at,
+          body_excerpt: (i.body || "").slice(0, 400),
+        }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "list_open_prs",
+    `List open pull requests on ${GITHUB_REPO}. Used by reviewer to know what needs review.`,
+    { limit: z.number().min(1).max(30).default(10) },
+    async ({ limit }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/pulls?state=open&per_page=${limit}&sort=updated&direction=desc`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } }
+      );
+      if (!r.ok) return { content: [{ type: "text" as const, text: `GitHub error: ${r.status}` }] };
+      const prs = (await r.json()) as Array<{
+        number: number; title: string; user: { login: string }; updated_at: string;
+        draft: boolean; body: string | null;
+        head: { ref: string }; base: { ref: string };
+        labels: Array<{ name: string }>;
+        requested_reviewers: Array<{ login: string }>;
+      }>;
+      const trimmed = prs.map((p) => ({
+        number: p.number,
+        title: p.title,
+        author: p.user.login,
+        draft: p.draft,
+        head: p.head.ref,
+        base: p.base.ref,
+        labels: p.labels.map((l) => l.name),
+        reviewers_requested: p.requested_reviewers.map((r) => r.login),
+        updated_at: p.updated_at,
+        body_excerpt: (p.body || "").slice(0, 400),
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "get_pr_diff",
+    `Fetch the diff for a specific PR on ${GITHUB_REPO}. Capped at 50KB to avoid blowing the agent context. Used by reviewer to check for NEVER-VIOLATE rule violations (DROP TABLE, banned integrations, etc.).`,
+    { number: z.number().min(1).max(99999) },
+    async ({ number }) => {
+      const t = getGithubToken();
+      const r = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/pulls/${number}`,
+        { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github.v3.diff" } }
+      );
+      if (!r.ok) return { content: [{ type: "text" as const, text: `GitHub error: ${r.status}` }] };
+      const diff = await r.text();
+      const truncated = diff.length > 50_000;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: diff.slice(0, 50_000) + (truncated ? `\n\n[…truncated; full diff is ${diff.length} chars]` : ""),
+          },
+        ],
+      };
+    }
+  );
+
+  // === SUPPORT TICKETS (read-only) ===
+
+  server.tool(
+    "list_open_support_tickets",
+    "List open/unresolved support tickets, sorted by created_at desc. Used by support-triager to categorise the queue and flag SLA risk.",
+    {
+      severity: z.enum(["low", "medium", "high", "urgent", "any"]).default("any"),
+      limit: z.number().min(1).max(50).default(20),
+    },
+    async ({ severity, limit }) => {
+      let q = `select=id,ticket_number,priority,status,subject,created_at,updated_at&status=neq.resolved&order=created_at.desc&limit=${limit}`;
+      if (severity !== "any") q += `&priority=eq.${severity}`;
+      const data = await supabaseReadOnly("support_tickets", q);
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // === NPS (read-only) ===
+
+  server.tool(
+    "read_nps_responses",
+    "Read NPS responses (score + free-text feedback) from the last N days. Used by ux-auditor to surface recurring friction patterns and by support-triager to spot churn-risk users.",
+    { days: z.number().min(1).max(90).default(14), limit: z.number().min(1).max(100).default(30) },
+    async ({ days, limit }) => {
+      const since = new Date(Date.now() - days * 86400_000).toISOString();
+      const q = `select=id,user_id,score,feedback,created_at&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=${limit}`;
+      const data = await supabaseReadOnly("nps_responses", q);
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  // === COMPLAINT LETTERS (read-only — for compliance audit) ===
+
+  server.tool(
+    "inspect_recent_complaint_letters",
+    "Returns the most recent complaint letters generated by complaint_writer (last N rows from `tasks` where type='complaint_letter'). Used by feature-tester to verify each letter cites UK legislation (Consumer Rights Act 2015, etc.) — a critical compliance check.",
+    { limit: z.number().min(1).max(20).default(5) },
+    async ({ limit }) => {
+      const q = `select=id,user_id,output,created_at&type=eq.complaint_letter&order=created_at.desc&limit=${limit}`;
+      const data = await supabaseReadOnly("tasks", q);
+      // Truncate each output to 2KB to keep payload reasonable
+      const trimmed = (data as Array<{ output: string }>).map((row) => ({
+        ...row,
+        output: typeof row.output === "string" ? row.output.slice(0, 2000) : row.output,
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  // === POSTHOG (read-only funnel data) ===
+
+  server.tool(
+    "get_posthog_funnel",
+    "Query a saved PostHog funnel by ID and return conversion stats for the last N days. Used by ux-auditor to find drop-off cliffs and by email-marketer to detect cohort opportunities.",
+    {
+      funnel_id: z.union([z.string(), z.number()]).describe("The PostHog funnel insight ID (numeric)."),
+      days: z.number().min(1).max(90).default(7),
+    },
+    async ({ funnel_id, days }) => {
+      const { apiKey, host, projectId } = getPosthogCreds();
+      const dateFrom = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+      const r = await fetch(
+        `${host}/api/projects/${projectId}/insights/${funnel_id}?date_from=${dateFrom}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `PostHog error: ${r.status} ${(await r.text()).slice(0, 200)}` }] };
+      }
+      const data = (await r.json()) as { result?: unknown; name?: string };
+      // Trim to summary — full funnel result can be huge
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ name: data.name, summary: data.result }, null, 2).slice(0, 8000),
+          },
+        ],
+      };
+    }
+  );
+
+  // === VERCEL (read-only deployment status) ===
+
+  server.tool(
+    "get_vercel_deployment_status",
+    "Returns the latest Vercel deployment for the project (state: READY/BUILDING/ERROR/CANCELED, target: production/preview, source: github sha). Used by alert-tester to flag failed builds and stale deployments.",
+    { limit: z.number().min(1).max(10).default(5) },
+    async ({ limit }) => {
+      const { token, projectId, teamId } = getVercelCreds();
+      const teamParam = teamId ? `&teamId=${teamId}` : "";
+      const r = await fetch(
+        `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=${limit}${teamParam}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `Vercel error: ${r.status}` }] };
+      }
+      const data = (await r.json()) as {
+        deployments: Array<{
+          uid: string; state: string; target: string | null; created: number;
+          url: string; meta?: { githubCommitSha?: string; githubCommitRef?: string };
+        }>;
+      };
+      const trimmed = data.deployments.map((d) => ({
+        uid: d.uid,
+        state: d.state,
+        target: d.target,
+        url: d.url,
+        commit_sha: d.meta?.githubCommitSha?.slice(0, 7),
+        commit_ref: d.meta?.githubCommitRef,
+        created_at: new Date(d.created).toISOString(),
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(trimmed, null, 2) }] };
+    }
+  );
+
+  // === STRIPE (read-only webhook health) ===
+
+  server.tool(
+    "get_stripe_webhook_health",
+    "Returns recent Stripe webhook delivery events: success/failure counts and the last failed delivery (if any) over the past N hours. Used by alert-tester and finance-analyst to detect billing-pipeline breakage.",
+    { hours: z.number().min(1).max(168).default(24) },
+    async ({ hours }) => {
+      const k = getStripeKey();
+      const since = Math.floor((Date.now() - hours * 3600_000) / 1000);
+      const r = await fetch(
+        `https://api.stripe.com/v1/events?created[gte]=${since}&limit=100`,
+        { headers: { Authorization: `Bearer ${k}` } }
+      );
+      if (!r.ok) {
+        return { content: [{ type: "text" as const, text: `Stripe error: ${r.status}` }] };
+      }
+      const data = (await r.json()) as {
+        data: Array<{ id: string; type: string; created: number; pending_webhooks: number }>;
+      };
+      const total = data.data.length;
+      const stillPending = data.data.filter((e) => e.pending_webhooks > 0);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                window_hours: hours,
+                total_events: total,
+                events_with_pending_webhook: stillPending.length,
+                pending_examples: stillPending.slice(0, 5).map((e) => ({
+                  id: e.id, type: e.type, created: new Date(e.created * 1000).toISOString(),
+                })),
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // === EMAIL DRAFTS (read existing + insert new pending drafts) ===
+
+  server.tool(
+    "list_pending_content_drafts",
+    "Read pending content_drafts that are awaiting founder approval. Used by email-marketer to avoid drafting duplicates / when the queue is full.",
+    { limit: z.number().min(1).max(50).default(20) },
+    async ({ limit }) => {
+      const q = `select=id,platform,content_type,caption,status,scheduled_time,created_at&status=eq.pending&order=created_at.desc&limit=${limit}`;
+      const data = await supabaseReadOnly("content_drafts", q);
+      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "insert_email_draft",
+    "Inserts a new lifecycle email draft into content_drafts with status='pending'. THE AGENT CANNOT POST OR APPROVE — only the founder approves drafts via the admin UI. All sends go through Resend after explicit founder approval. This tool is the email-marketer agent's ONLY write capability.",
+    {
+      audience: z.string().min(1).max(200).describe("Cohort filter, e.g. 'Free, signed up >30 days, 0 letters generated'"),
+      channel: z.enum(["email", "telegram", "in_app"]).default("email"),
+      subject_line: z.string().min(1).max(150),
+      body_markdown: z.string().min(20).max(8000),
+      cta_url: z.string().url().nullable().optional(),
+      cta_label: z.string().max(80).nullable().optional(),
+      recommended_send_window: z.string().max(120).nullable().optional().describe("ISO datetime range or human window like 'Tue-Thu 07:30 UTC'"),
+      rationale: z.string().min(10).max(500).describe("One-sentence why-this-now."),
+      created_by: z.string().min(1).max(100).default("email-marketer"),
+    },
+    async (args) => {
+      // Sanitise created_by to alphanumeric+hyphens
+      const safeCreatedBy = args.created_by.replace(/[^a-zA-Z0-9\-_ ]/g, "").slice(0, 100) || "email-marketer";
+      const inserted = await supabaseInsertContentDraft({
+        audience: args.audience,
+        channel: args.channel,
+        subject_line: args.subject_line,
+        body_markdown: args.body_markdown,
+        cta_url: args.cta_url ?? null,
+        cta_label: args.cta_label ?? null,
+        recommended_send_window: args.recommended_send_window ?? null,
+        rationale: args.rationale,
+        created_by: safeCreatedBy,
+      });
+      const id = (Array.isArray(inserted) ? inserted[0] : inserted) as { id?: string } | null;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Inserted draft ${id?.id ?? "?"} (status=pending). Founder approves via admin UI; this agent cannot send.`,
+          },
+        ],
+      };
+    }
+  );
+
   // === TELEGRAM ADMIN PING (rate-limited, append-only mirror) ===
 
   server.tool(
@@ -949,9 +1345,9 @@ export async function GET(req: NextRequest) {
       {
         status: "ok",
         server: "paybacker-mcp-server",
-        version: "2.1.0",
-        tools: 16,
-        note: "Social media tools disabled on public endpoint. Includes get_finance_snapshot, append_business_log, post_to_telegram_admin (rate-limited at 10/hour).",
+        version: "2.2.0",
+        tools: 27,
+        note: "Real agent tools: GitHub (issues/PRs/diff), Vercel (deployments), Stripe (webhook health), PostHog (funnels), support_tickets/nps_responses/tasks reads, content_drafts insert (pending only). Social media tools disabled. post_to_telegram_admin rate-limited at 10/hour.",
       },
       {
         headers: {
