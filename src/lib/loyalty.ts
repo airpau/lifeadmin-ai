@@ -294,7 +294,8 @@ async function sendTierUpgradeEmail(userId: string, newTier: keyof typeof LOYALT
     const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
     await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
+      from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+      replyTo: 'support@paybacker.co.uk',
       to: profile.email,
       subject: emailConfig.subject,
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
@@ -357,7 +358,8 @@ export async function checkPointsExpiry(userId: string): Promise<boolean> {
         const { Resend } = await import('resend');
         const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
         await resend.emails.send({
-          from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
+          from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+          replyTo: 'support@paybacker.co.uk',
           to: profile.email,
           subject: 'Your Paybacker points are about to expire',
           html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
@@ -757,7 +759,8 @@ async function sendRedemptionEmail(
     const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key_for_build_only');
 
     await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'hello@paybacker.co.uk',
+      from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
+      replyTo: 'support@paybacker.co.uk',
       to: email,
       subject: `Reward redeemed: ${rewardTitle}`,
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"></head>

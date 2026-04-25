@@ -35,6 +35,8 @@ const MARKETING_EMAIL_TYPES = [
   'contract_expiry_alert',
   'contract_end_alert',
   'overcharge_alert',
+  // Combined morning digest replaces price_increase_alert + renewal_reminder
+  'morning_digest',
 ];
 
 // These are transactional and bypass the limit
