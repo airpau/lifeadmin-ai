@@ -1118,10 +1118,10 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
 
     try {
-      // Fetch the issue so we can also update the linked subscription
+      // Fetch the issue so we can also update linked tables
       const { data: issue } = await supabase
         .from('detected_issues')
-        .select('source_id, source_type')
+        .select('source_id, source_type, issue_type')
         .eq('id', issueId)
         .single();
 
@@ -1131,9 +1131,18 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .update({ status: 'dismissed' })
         .eq('id', issueId);
 
-      // If this alert is linked to a subscription, set dismissed_at on the subscription too.
-      // The renewal-reminders email cron filters .is('dismissed_at', null) — so this
-      // stops the email reminder as well, keeping both frontends in sync.
+      // Price increase: mirror dismissal into price_increase_alerts so the
+      // conversational bot and morning-digest cron both see it as dismissed.
+      // Without this, price_increase_alerts keeps status='active' and the
+      // bot's get_price_alerts tool continues showing dismissed alerts.
+      if (issue?.issue_type === 'price_increase' && issue.source_id) {
+        await supabase
+          .from('price_increase_alerts')
+          .update({ status: 'dismissed' })
+          .eq('id', issue.source_id);
+      }
+
+      // Subscription: set dismissed_at so renewal-reminders are also suppressed
       if (issue?.source_type === 'subscription' && issue.source_id) {
         await supabase
           .from('subscriptions')
@@ -1192,7 +1201,25 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
     const supabase = getAdmin();
     try {
+      // Fetch source_id so we can mirror into price_increase_alerts
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('source_id')
+        .eq('id', issueId)
+        .single();
+
       await supabase.from('detected_issues').update({ status: 'dismissed' }).eq('id', issueId);
+
+      // accept_increase is always a price_increase event — mirror dismissal so
+      // the conversational bot's get_price_alerts tool and morning-digest cron
+      // both see this as dismissed rather than re-showing it.
+      if (issue?.source_id) {
+        await supabase
+          .from('price_increase_alerts')
+          .update({ status: 'dismissed' })
+          .eq('id', issue.source_id);
+      }
+
       await safeEdit(bot.api, chatId, msgId, "✅ Accepted — I won't alert you about this increase again.");
     } catch (err) {
       console.error('[UserBot] accept_increase_ error:', err);

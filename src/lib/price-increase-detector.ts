@@ -16,6 +16,44 @@ const EXCLUDED_FROM_PRICE_DETECTION = new Set([
   'parking',
 ]);
 
+// UK banks and credit card issuers whose DIRECT_DEBIT transactions are
+// variable (credit card statement balance, minimum payment, etc.) and
+// must never be flagged as a subscription price increase.
+// Checked against the normalised merchant name (lowercase).
+const CREDIT_PROVIDER_MERCHANT_BLOCKLIST = new Set([
+  'bank of scotland',
+  'bos credit card',
+  'lloyds bank',
+  'lloyds credit card',
+  'barclaycard',
+  'barclays',
+  'hsbc',
+  'hsbc credit card',
+  'natwest',
+  'natwest credit card',
+  'rbs',
+  'royal bank of scotland',
+  'american express',
+  'amex',
+  'capital one',
+  'virgin money',
+  'virgin credit card',
+  'mbna',
+  'tesco bank',
+  'tesco credit card',
+  'halifax',
+  'halifax credit card',
+  'santander credit card',
+  'metro bank',
+  'first direct',
+  'm&s bank',
+  'marks and spencer bank',
+  'newday',
+  'creation finance',
+  'aqua card',
+  'marbles card',
+]);
+
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -140,6 +178,9 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
 
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;
+    // Skip credit card / bank issuers whose direct debit amounts vary by
+    // balance (min payment, statement amount) — not subscription price rises.
+    if (CREDIT_PROVIDER_MERCHANT_BLOCKLIST.has(normalised.toLowerCase())) continue;
 
     const month = new Date(tx.timestamp).toISOString().slice(0, 7); // YYYY-MM
 
