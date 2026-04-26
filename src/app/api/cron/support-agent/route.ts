@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { resend, FROM_EMAIL } from '@/lib/resend';
+import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 import Anthropic from '@anthropic-ai/sdk';
 
 /**
@@ -18,7 +18,11 @@ import Anthropic from '@anthropic-ai/sdk';
  */
 
 const AGENT_ID = 'riley-support-agent';
-const TICKET_REPLY_TO = 'support@paybacker.co.uk';
+// Routes to mail.paybacker.co.uk (the receiving-enabled subdomain). User replies
+// to support@paybacker.co.uk were silently bouncing because the apex domain
+// has receiving=disabled in Resend (verified 2026-04-26 via Resend domains API).
+// REPLY_TO is the canonical address from src/lib/resend.ts.
+const TICKET_REPLY_TO = REPLY_TO;
 
 export const maxDuration = 300;
 export const runtime = 'nodejs';

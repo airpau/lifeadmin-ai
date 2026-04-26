@@ -22,12 +22,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { resend, FROM_EMAIL } from '@/lib/resend';
+import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const TICKET_REPLY_TO = 'support@paybacker.co.uk';
+// Use the canonical REPLY_TO from src/lib/resend.ts (which routes to the
+// receiving-enabled mail.paybacker.co.uk subdomain so /api/support/inbound-email fires).
+const TICKET_REPLY_TO = REPLY_TO;
 const CHASE_AFTER_DAYS = 7;
 const CLOSE_AFTER_CHASE_HOURS = 24;
 const AGENT_ID = 'support-chase';
