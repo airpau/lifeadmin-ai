@@ -1606,6 +1606,7 @@ export default function HomepageV3PreviewPage() {
             <div className="footer-col">
               <h5>Company</h5>
               <Link href="/about">About</Link>
+              <Link href="/careers">Careers</Link>
               <a href="#how">How it works</a>
               <a href="#testimonials">Stories</a>
               <a href="mailto:hello@paybacker.co.uk">Contact</a>
