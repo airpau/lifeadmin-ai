@@ -787,6 +787,36 @@ function StickyCTA() {
 }
 
 // ---------------------------------------------------------------------------
+// Journal posts — static SEO posts always available at these routes
+// ---------------------------------------------------------------------------
+const JOURNAL_POSTS = [
+  {
+    title: 'How to Claim Flight Delay Compensation UK — Up to £520',
+    excerpt: 'A complete guide to claiming under UK261. You can claim for flights delayed in the last 6 years.',
+    href: '/blog/how-to-claim-flight-delay-compensation-uk',
+    date: '25 March 2026',
+    cat: 'Guides',
+    image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80',
+  },
+  {
+    title: 'Are You Overpaying on Energy in 2026?',
+    excerpt: 'The price cap hits £1,641 from April 2026. Find out if you\'re on an expensive standard variable tariff.',
+    href: '/blog/are-you-overpaying-on-energy',
+    date: '23 March 2026',
+    cat: 'Guides',
+    image: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=800&q=80',
+  },
+  {
+    title: 'Your Broadband Contract Has Ended — You\'re Probably Being Overcharged',
+    excerpt: 'Millions of UK households are out of contract on broadband and overpaying by up to £300 a year.',
+    href: '/blog/broadband-contract-ended',
+    date: '23 March 2026',
+    cat: 'Guides',
+    image: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=800&q=80',
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 export default function HomepageV3PreviewPage() {
@@ -1517,6 +1547,44 @@ export default function HomepageV3PreviewPage() {
           </h2>
         </Reveal>
         <Testimonials />
+      </section>
+
+      {/* ========== Journal / Blog ========== */}
+      <section className="journal-section section-light" id="journal">
+        <div className="wrap">
+          <Reveal className="section-head section-head--center">
+            <span className="eyebrow">The Paybacker Journal</span>
+            <h2>
+              What you&rsquo;re owed.
+              <br />
+              How to claim it back.
+            </h2>
+          </Reveal>
+
+          <div className="journal-grid">
+            {JOURNAL_POSTS.map((p) => (
+              <Link key={p.href} href={p.href} className="journal-card">
+                <div
+                  className="journal-card-img"
+                  style={{ backgroundImage: `url(${p.image})` } as CSSProperties}
+                >
+                  <span className="journal-cat">{p.cat}</span>
+                </div>
+                <div className="journal-card-body">
+                  <h3>{p.title}</h3>
+                  <p>{p.excerpt}</p>
+                  <span className="journal-date">{p.date}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          <Reveal className="journal-cta">
+            <Link href="/blog" className="btn btn-ghost">
+              Read all guides →
+            </Link>
+          </Reveal>
+        </div>
       </section>
 
       {/* ========== Developer · MCP ========== */}
