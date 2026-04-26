@@ -129,6 +129,8 @@ export async function executeToolCall(
       return getUpcomingRenewals(supabase, userId);
     case 'get_price_alerts':
       return getPriceAlerts(supabase, userId);
+    case 'dismiss_price_alert':
+      return dismissPriceAlert(supabase, userId, toolInput.merchant as string);
     case 'get_deals':
       return getDeals(supabase, userId, toolInput.category as string | undefined);
     case 'get_upcoming_payments':
@@ -960,7 +962,43 @@ async function getPriceAlerts(
     text += `${emoji} *${a.merchant_name ?? 'Unknown'}*: ${fmt(a.old_amount)} → ${fmt(a.new_amount)}/mo (+${pct.toFixed(0)}%) = +${fmt(a.annual_impact)}/yr\n`;
   }
 
+  text += `\nTo dismiss one, say "dismiss [merchant name]".`;
+
   return { text };
+}
+
+async function dismissPriceAlert(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  merchant: string,
+): Promise<ToolResult> {
+  const { data: alerts, error } = await supabase
+    .from('price_increase_alerts')
+    .select('id, merchant_name, merchant_normalized')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .ilike('merchant_normalized', `%${merchant}%`);
+
+  if (error) {
+    return { text: `Couldn't look up alerts: ${error.message}` };
+  }
+
+  if (!alerts || alerts.length === 0) {
+    return { text: `No active price increase alert found matching "${merchant}". It may already be dismissed — ask me to list your price alerts to check.` };
+  }
+
+  const ids = alerts.map(a => a.id);
+  const { error: updateError } = await supabase
+    .from('price_increase_alerts')
+    .update({ status: 'dismissed' })
+    .in('id', ids);
+
+  if (updateError) {
+    return { text: `Failed to dismiss the alert: ${updateError.message}` };
+  }
+
+  const names = alerts.map(a => a.merchant_name || a.merchant_normalized).join(', ');
+  return { text: `✅ Dismissed price alert for *${names}*. It won't appear in future responses or your morning digest email.` };
 }
 
 // ============================================================

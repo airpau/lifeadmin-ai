@@ -1,12 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 
-// Categories where amounts follow an amortisation schedule (loan balance
-// shrinks, interest changes, credit-card balances vary) so a "price
-// increase" is meaningless. These are a narrower set than the
-// EXCLUDED_SAVINGS_CATEGORIES used by the deals widget — council_tax
-// and business_rates are specifically NOT here, because annual hikes on
-// those bills are exactly what we want to flag.
+// Categories excluded from price-increase detection. Council tax and
+// business rates are government-mandated charges; users cannot switch
+// providers and disputing the amount is not meaningful. Loans, mortgages,
+// and credit cards follow amortisation / variable balance schedules.
 const EXCLUDED_FROM_PRICE_DETECTION = new Set([
   'mortgage', 'mortgages',
   'loan', 'loans',
@@ -14,6 +12,10 @@ const EXCLUDED_FROM_PRICE_DETECTION = new Set([
   'car_finance', 'car finance', 'car-finance',
   'fee', 'fees',
   'parking',
+  // Government-set charges — cannot be disputed or switched
+  'council_tax', 'council tax',
+  'business_rates', 'business rates',
+  'tax',
 ]);
 
 // UK banks and credit card issuers whose DIRECT_DEBIT transactions are
@@ -82,14 +84,13 @@ const VARIABLE_CATEGORIES = new Set([
 ]);
 
 // Categories that can legitimately be recurring bills where a hike is
-// surface-worthy. council_tax and business_rates typically step up once
-// a year (April) — the std-dev filter below still works because the
-// previous N monthly payments are flat, and the April jump is flagged.
+// surface-worthy (subscriptions, energy, broadband, insurance, etc.).
+// council_tax, business_rates, and tax are in EXCLUDED_FROM_PRICE_DETECTION
+// because they are government-set and cannot be disputed or switched.
 const RECURRING_CATEGORIES = new Set([
   'DIRECT_DEBIT', 'STANDING_ORDER',
   'energy', 'broadband', 'mobile', 'streaming', 'insurance',
   'water', 'fitness', 'software', 'bills',
-  'council_tax', 'business_rates', 'tax',
 ]);
 
 function looksLikeTransferToSelf(
