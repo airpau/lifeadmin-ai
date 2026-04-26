@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
           if (tweetText.length > 280) tweetText = tweetText.substring(0, 277) + '...';
         }
         const tweet = await postTweet(tweetText);
-        results.twitter = tweet ? { ok: true, tweetId: tweet.id } : { error: 'Post failed' };
+        results.twitter = { ok: true, tweetId: tweet.id };
       } catch (err: any) {
         results.twitter = { error: err.message };
       }

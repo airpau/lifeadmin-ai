@@ -53,9 +53,9 @@ function buildOAuthHeader(method: string, url: string, body?: Record<string, str
 }
 
 /**
- * Post a tweet.
+ * Post a tweet. Throws with the actual API error message on failure.
  */
-export async function postTweet(text: string): Promise<{ id: string; text: string } | null> {
+export async function postTweet(text: string): Promise<{ id: string; text: string }> {
   const url = `${API_BASE}/tweets`;
 
   try {
@@ -70,13 +70,14 @@ export async function postTweet(text: string): Promise<{ id: string; text: strin
 
     const data = await res.json();
     if (data.errors || data.detail) {
-      console.error('[twitter] Post failed:', data.errors?.[0]?.message || data.detail);
-      return null;
+      const reason = data.errors?.[0]?.message || data.detail || 'Unknown error';
+      console.error('[twitter] Post failed:', reason);
+      throw new Error(reason);
     }
     return { id: data.data?.id, text: data.data?.text };
   } catch (err: any) {
     console.error('[twitter] Post error:', err.message);
-    return null;
+    throw err;
   }
 }
 
