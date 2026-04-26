@@ -19,10 +19,11 @@ const MAX_MARKETING_EMAILS_PER_DAY = 1;
 
 // These task types count towards the daily limit
 const MARKETING_EMAIL_TYPES = [
+  'morning_digest',       // consolidated price-increases + renewal-reminders digest
   'deal_alert_email',
   'targeted_deal_email',
-  'price_increase_alert',
-  'renewal_reminder',
+  'price_increase_alert', // legacy — kept for dedup against old sends
+  'renewal_reminder',     // legacy — kept for dedup against old sends
   'churn_reengagement',
   'churn_inactive_7d',
   'churn_inactive_14d',
