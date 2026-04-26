@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { resend, FROM_EMAIL } from '@/lib/resend';
 import Anthropic from '@anthropic-ai/sdk';
 
 /**
- * Riley — Support Agent
+ * Riley — Paperclip Support Agent
  *
  * Runs every 15 minutes via Vercel Cron.
  * Flow:
@@ -18,11 +18,7 @@ import Anthropic from '@anthropic-ai/sdk';
  */
 
 const AGENT_ID = 'riley-support-agent';
-// Routes to mail.paybacker.co.uk (the receiving-enabled subdomain). User replies
-// to support@paybacker.co.uk were silently bouncing because the apex domain
-// has receiving=disabled in Resend (verified 2026-04-26 via Resend domains API).
-// REPLY_TO is the canonical address from src/lib/resend.ts.
-const TICKET_REPLY_TO = REPLY_TO;
+const TICKET_REPLY_TO = 'support@paybacker.co.uk';
 
 export const maxDuration = 300;
 export const runtime = 'nodejs';
@@ -262,13 +258,15 @@ export async function GET(request: NextRequest) {
 
       if (!messages || messages.length === 0) continue;
 
-      // GUARDRAIL: Don't double-reply — skip if last message is from an agent
+      // GUARDRAIL: Don't double-reply — only proceed when the latest message in the
+      // conversation is from the user (or the system seed message). If Riley already
+      // replied as the most recent message, skip until the user replies again.
+      // (Removed 2026-04-26: the previous "if any agent has ever replied, skip"
+      // hasAgentReply guard which made Riley single-touch and broke multi-turn after
+      // user replies came back through the Resend inbound webhook → status reset to
+      // 'open'. This single guard on the LATEST message is sufficient.)
       const lastMessage = messages[messages.length - 1];
       if (lastMessage.sender_type !== 'user' && lastMessage.sender_type !== 'system') continue;
-
-      // GUARDRAIL: Don't reply if an agent has already responded
-      const hasAgentReply = messages.some(m => m.sender_type === 'agent');
-      if (hasAgentReply) continue;
 
       // 3. Get user info
       const ticketRef = ticket.ticket_number || ticket.id.slice(0, 8).toUpperCase();
