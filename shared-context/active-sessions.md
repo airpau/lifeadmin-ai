@@ -1,6 +1,15 @@
-# Active Sessions — Last Updated 24 Apr 2026 18:00 UTC
+# Active Sessions — Last Updated 25 Apr 2026 18:00 UTC
 
-## Latest: Business Monitor — 24 Apr 2026 (evening)
+## Latest: Business Monitor — 25 Apr 2026 (evening)
+- 1 PR merged to production today:
+  - #304: fix(money-hub): spending grand total matches banner for all plan tiers
+- 4 new PRs opened today (all email morning digest fix, #308 is the final iteration):
+  - #305, #306, #307 — earlier iterations, superseded
+  - #308: fix(emails): merge morning digest, fix dismissed re-creation, Reply-To, dark HTML
+- 30 open PRs in queue — review backlog building
+- Evening Telegram check-in sent to Paul
+
+## Previous: Business Monitor — 24 Apr 2026 (evening)
 - 10 PRs merged to production today (cancellations feature sprint + mobile/UX fixes):
   - #282: feat(disputes): Open-in-Email + "I've sent it" for every dispute
   - #281: fix(mobile): iOS input zoom prevention + onboarding UX wins

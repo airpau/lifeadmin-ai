@@ -44,20 +44,32 @@ type Post = {
   href: string;
   date: string;
   cat: string;
-  gradient: string;
-  emoji: string;
+  image: string;
 };
 
-const GRADIENTS = [
-  { bg: 'linear-gradient(135deg, #34D399, #059669)', emoji: '✉' },
-  { bg: 'linear-gradient(135deg, #F59E0B, #D97706)', emoji: '📡' },
-  { bg: 'linear-gradient(135deg, #3B82F6, #2563EB)', emoji: '✈' },
-  { bg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)', emoji: '⚖' },
-  { bg: 'linear-gradient(135deg, #F43F5E, #DC2626)', emoji: '💷' },
-];
+function getPostImage(title: string, category: string): string {
+  const text = `${title} ${category}`.toLowerCase();
+  if (/flight|airline|plane|airport/.test(text))
+    return 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80';
+  if (/energy|electric|gas|utility|ofgem/.test(text))
+    return 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=800&q=80';
+  if (/broadband|internet|telecoms|ofcom/.test(text))
+    return 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=800&q=80';
+  if (/insurance/.test(text))
+    return 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80';
+  if (/subscription|cancel|gym|membership/.test(text))
+    return 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&q=80';
+  if (/debt|credit|loan|ccj/.test(text))
+    return 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&q=80';
+  if (/council|tax|hmrc|dvla|nhs/.test(text))
+    return 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&q=80';
+  if (/parking|fine|pcn/.test(text))
+    return 'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=800&q=80';
+  return 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&q=80';
+}
 
 // Hand-coded SEO posts that already exist as live pages under /blog/*.
-const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
+const STATIC_POSTS: ReadonlyArray<Post> = [
   {
     title: 'How to Claim Flight Delay Compensation UK — Up to £520',
     excerpt:
@@ -65,6 +77,7 @@ const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
     href: '/blog/how-to-claim-flight-delay-compensation-uk',
     date: '25 March 2026',
     cat: 'Guides',
+    image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&q=80',
   },
   {
     title: 'Are You Overpaying on Energy in 2026? Here\'s How to Find Out',
@@ -73,6 +86,7 @@ const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
     href: '/blog/are-you-overpaying-on-energy',
     date: '23 March 2026',
     cat: 'Guides',
+    image: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=800&q=80',
   },
   {
     title: 'Your Broadband Contract Has Ended — You\'re Probably Being Overcharged',
@@ -81,6 +95,7 @@ const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
     href: '/blog/broadband-contract-ended',
     date: '23 March 2026',
     cat: 'Guides',
+    image: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=800&q=80',
   },
 ];
 
@@ -100,8 +115,8 @@ async function fetchDynamicPosts(): Promise<Post[]> {
       .order('published_at', { ascending: false })
       .limit(20);
     if (!data) return [];
-    return data.map((p, i): Post => {
-      const g = GRADIENTS[i % GRADIENTS.length];
+    return data.map((p): Post => {
+      const category = (p.category as string | null) ?? 'Essay';
       return {
         title: p.title,
         excerpt: p.excerpt ?? '',
@@ -111,9 +126,8 @@ async function fetchDynamicPosts(): Promise<Post[]> {
           month: 'long',
           year: 'numeric',
         }),
-        cat: (p.category as string | null) ?? 'Essay',
-        gradient: g.bg,
-        emoji: g.emoji,
+        cat: category,
+        image: getPostImage(p.title, category),
       };
     });
   } catch {
@@ -123,11 +137,7 @@ async function fetchDynamicPosts(): Promise<Post[]> {
 
 export default async function BlogIndexPage() {
   const dynamicPosts = await fetchDynamicPosts();
-  const staticWithArt: Post[] = STATIC_POSTS.map((p, i) => {
-    const g = GRADIENTS[(dynamicPosts.length + i) % GRADIENTS.length];
-    return { ...p, gradient: g.bg, emoji: g.emoji };
-  });
-  const allPosts: Post[] = [...dynamicPosts, ...staticWithArt];
+  const allPosts: Post[] = [...dynamicPosts, ...STATIC_POSTS];
   const [featured, ...rest] = allPosts;
 
   return (
@@ -135,7 +145,7 @@ export default async function BlogIndexPage() {
       <MarkNav active="Blog" />
 
       {/* Hero + featured ------------------------------------------- */}
-      <section className="section-light" style={{ paddingTop: 140, paddingBottom: 40 } as CSSProperties}>
+      <section className="section-light blog-hero-section">
         <div className="wrap">
           <span className="eyebrow">The Paybacker Journal</span>
           <h1
@@ -152,27 +162,15 @@ export default async function BlogIndexPage() {
           </h1>
 
           {featured && (
-            <div
-              style={{
-                background: '#fff',
-                border: '1px solid var(--divider)',
-                borderRadius: 'var(--r-card)',
-                padding: 32,
-                display: 'grid',
-                gridTemplateColumns: '1.2fr 1fr',
-                gap: 40,
-                alignItems: 'center',
-              } as CSSProperties}
-            >
+            <div className="blog-featured-grid">
               <div
+                className="blog-card-hero"
                 style={{
                   height: 400,
-                  borderRadius: 'var(--r-input)',
-                  background: featured.gradient,
-                  position: 'relative',
-                  overflow: 'hidden',
+                  backgroundImage: `url(${featured.image})`,
                 } as CSSProperties}
               >
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,22,40,0.35)' }} />
                 <div
                   style={{
                     position: 'absolute',
@@ -189,20 +187,6 @@ export default async function BlogIndexPage() {
                   } as CSSProperties}
                 >
                   Featured
-                </div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 160,
-                    opacity: 0.22,
-                  } as CSSProperties}
-                  aria-hidden="true"
-                >
-                  {featured.emoji}
                 </div>
               </div>
               <div>
@@ -256,13 +240,7 @@ export default async function BlogIndexPage() {
       {rest.length > 0 && (
         <section style={{ padding: '40px 0 80px' } as CSSProperties}>
           <div className="wrap">
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 32,
-              } as CSSProperties}
-            >
+            <div className="blog-post-grid">
               {rest.map((p) => (
                 <Link
                   key={p.href}
@@ -271,15 +249,14 @@ export default async function BlogIndexPage() {
                 >
                   <article>
                     <div
+                      className="blog-card-hero"
                       style={{
                         height: 240,
-                        borderRadius: 'var(--r-card)',
-                        background: p.gradient,
+                        backgroundImage: `url(${p.image})`,
                         marginBottom: 20,
-                        position: 'relative',
-                        overflow: 'hidden',
                       } as CSSProperties}
                     >
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10,22,40,0.35)' }} />
                       <div
                         style={{
                           position: 'absolute',
@@ -296,20 +273,6 @@ export default async function BlogIndexPage() {
                         } as CSSProperties}
                       >
                         {p.cat}
-                      </div>
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 110,
-                          opacity: 0.2,
-                        } as CSSProperties}
-                        aria-hidden="true"
-                      >
-                        {p.emoji}
                       </div>
                     </div>
                     <h3
