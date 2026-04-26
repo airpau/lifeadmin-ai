@@ -35,6 +35,9 @@ const MARKETING_EMAIL_TYPES = [
   'contract_expiry_alert',
   'contract_end_alert',
   'overcharge_alert',
+  // Combined morning digest — counts as the day's marketing email so other
+  // crons don't send a second email on the same day
+  'morning_digest',
 ];
 
 // These are transactional and bypass the limit

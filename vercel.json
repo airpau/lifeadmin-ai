@@ -45,8 +45,8 @@
       "schedule": "0 3,14,19 * * *"
     },
     {
-      "path": "/api/cron/renewal-reminders",
-      "schedule": "0 8 * * *"
+      "path": "/api/cron/morning-digest",
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/cron/deal-alerts",

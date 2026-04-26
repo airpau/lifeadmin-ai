@@ -146,6 +146,21 @@ export const telegramTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'dismiss_price_alert',
+    description:
+      "Dismiss a specific price increase alert by merchant name. Use when the user says they want to dismiss, ignore, accept, or clear a price increase alert for a specific merchant. Dismissed alerts won't appear in future bot responses or the morning digest email.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        merchant: {
+          type: 'string' as const,
+          description: "The merchant or provider name to dismiss (e.g. 'Netflix', 'BT Broadband', 'Energie Fitness'). Partial names are matched.",
+        },
+      },
+      required: ['merchant'],
+    },
+  },
 
   {
     name: 'get_savings_goals',

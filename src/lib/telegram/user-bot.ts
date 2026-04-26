@@ -121,7 +121,8 @@ READ TOOLS — Core:
 - get_contracts — Active contracts (broadband, mobile, mortgage, etc.) with end dates
 - get_budget_status — Budget limits vs actual spend for the current month
 - get_upcoming_renewals — Subscriptions and contracts renewing within 30 days
-- get_price_alerts — Active price increase alerts on recurring payments
+- get_price_alerts — Active price increase alerts on recurring payments (status='active' only; dismissed alerts are filtered out)
+- dismiss_price_alert — Dismiss a price increase alert by merchant name; call this when the user says dismiss/ignore/accept/clear for a specific merchant
 - get_disputes — Dispute/complaint cases and their status
 - get_dispute_detail — Full detail and correspondence for a specific dispute
 - get_financial_overview — Complete financial overview: income, spending, net position, open disputes
@@ -1118,10 +1119,10 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
 
     try {
-      // Fetch the issue so we can also update the linked subscription
+      // Fetch the issue so we can also update linked tables
       const { data: issue } = await supabase
         .from('detected_issues')
-        .select('source_id, source_type')
+        .select('source_id, source_type, issue_type')
         .eq('id', issueId)
         .single();
 
@@ -1131,9 +1132,18 @@ Return JSON: { "subject": "...", "body": "..." }`;
         .update({ status: 'dismissed' })
         .eq('id', issueId);
 
-      // If this alert is linked to a subscription, set dismissed_at on the subscription too.
-      // The renewal-reminders email cron filters .is('dismissed_at', null) — so this
-      // stops the email reminder as well, keeping both frontends in sync.
+      // Price increase: mirror dismissal into price_increase_alerts so the
+      // conversational bot and morning-digest cron both see it as dismissed.
+      // Without this, price_increase_alerts keeps status='active' and the
+      // bot's get_price_alerts tool continues showing dismissed alerts.
+      if (issue?.issue_type === 'price_increase' && issue.source_id) {
+        await supabase
+          .from('price_increase_alerts')
+          .update({ status: 'dismissed' })
+          .eq('id', issue.source_id);
+      }
+
+      // Subscription: set dismissed_at so renewal-reminders are also suppressed
       if (issue?.source_type === 'subscription' && issue.source_id) {
         await supabase
           .from('subscriptions')
@@ -1192,10 +1202,64 @@ Return JSON: { "subject": "...", "body": "..." }`;
     if (!chatId) return;
     const supabase = getAdmin();
     try {
+      // Fetch source_id so we can mirror into price_increase_alerts
+      const { data: issue } = await supabase
+        .from('detected_issues')
+        .select('source_id')
+        .eq('id', issueId)
+        .single();
+
       await supabase.from('detected_issues').update({ status: 'dismissed' }).eq('id', issueId);
+
+      // accept_increase is always a price_increase event — mirror dismissal so
+      // the conversational bot's get_price_alerts tool and morning-digest cron
+      // both see this as dismissed rather than re-showing it.
+      if (issue?.source_id) {
+        await supabase
+          .from('price_increase_alerts')
+          .update({ status: 'dismissed' })
+          .eq('id', issue.source_id);
+      }
+
       await safeEdit(bot.api, chatId, msgId, "✅ Accepted — I won't alert you about this increase again.");
     } catch (err) {
       console.error('[UserBot] accept_increase_ error:', err);
+    }
+  });
+
+  // -------------------------------------------------------
+  // Callback: dismiss_pia_ — dismiss a price_increase_alerts row directly.
+  // Fired by the inline keyboard buttons that the price-increases cron
+  // attaches to its Telegram notification. callback_data = dismiss_pia_<uuid>
+  // where <uuid> is the price_increase_alerts.id.
+  // -------------------------------------------------------
+  bot.callbackQuery(/^dismiss_pia_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery({ text: 'Dismissed ✓' });
+    const alertId = ctx.match[1];
+    const chatId = ctx.update.callback_query?.message?.chat?.id;
+    const msgId = ctx.update.callback_query?.message?.message_id;
+    if (!chatId) return;
+    const supabase = getAdmin();
+    try {
+      const { error } = await supabase
+        .from('price_increase_alerts')
+        .update({ status: 'dismissed' })
+        .eq('id', alertId);
+
+      if (error) {
+        console.error('[UserBot] dismiss_pia_ error:', error);
+        return;
+      }
+
+      // Clear the inline keyboard and confirm in a new message
+      if (msgId) {
+        try {
+          await ctx.api.editMessageReplyMarkup(chatId, msgId, { reply_markup: { inline_keyboard: [] } });
+        } catch { /* message may be too old to edit */ }
+      }
+      await ctx.api.sendMessage(chatId, "Dismissed ✓ — this alert won't appear in your morning digest or bot responses anymore.");
+    } catch (err) {
+      console.error('[UserBot] dismiss_pia_ error:', err);
     }
   });
 
