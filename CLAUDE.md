@@ -5,18 +5,50 @@
 
 ## UNIFIED SYSTEM — READ FIRST
 
-This project uses a unified system across three Claude interfaces (Code, Desktop, Browser Extension). At the START of every session:
+This project uses a unified system across **all** Claude / agent interfaces:
+- **Claude Code** (terminal)
+- **Cowork mode** (Claude Desktop's file-mode)
+- **Claude in Chrome** (browser extension)
+- **Google Antigravity** (if Claude is the configured model)
+- **10 Claude Managed Agents** (platform.claude.com, run via Vercel cron)
 
-1. **Call `get_project_briefing` (paybacker MCP)** — one call returns all shared-context files, git status, open PRs, and recent business_log rows. This is the fastest way to pick up where the last session left off.
-2. If the MCP is unavailable, fall back to reading manually: `shared-context/active-sessions.md`, `shared-context/handoff-notes.md`, `shared-context/task-queue.md`, then `gh pr list -R airpau/lifeadmin-ai --state open` and the `business_log` table.
+All of them read this file. The single source of truth for "what is this project, where is it, what's safe to do" is **THIS DOCUMENT plus the `paybacker_core` Anthropic memory store** (memstore_01WHPRJQTEnDX4WUFpE4WkXc) which mirrors the same content.
 
-At the END of every session:
+### At the START of every interactive session (Code / Cowork / Chrome / Antigravity):
+
+1. **You're reading CLAUDE.md right now** — this is the canonical context. Read all of it.
+2. **Call `get_project_briefing` (paybacker MCP)** — one MCP call returns all shared-context files, git status, open PRs, and recent business_log rows. Fastest way to see what the last session / managed agents have been doing.
+3. If the local stdio paybacker MCP is unavailable in this interface, fall back to:
+   - Reading `shared-context/active-sessions.md`, `shared-context/handoff-notes.md`, `shared-context/task-queue.md`
+   - `gh pr list -R airpau/lifeadmin-ai --state open`
+   - Querying `business_log` (last 24h) via Supabase MCP if you have it
+4. **Read the latest agent-digest** — the system fires digests at 07:00 / 12:30 / 19:00 UTC into the founder's Telegram. The same content is in `business_log` rows from `created_by IN ('digest-compiler', 'agent-digest')` plus structured findings from each managed agent.
+
+### Managed-agent memory layer (separate from this file, automatic)
+
+Managed agents on platform.claude.com get **two memory stores attached at session-runtime** via the Paybacker MCP credential vault:
+
+- **`paybacker_core`** (read-only, shared across all 10 agents) — 11 markdown files: 00-overview, 01-product, 02-pricing, 03-tech-stack, 04-deployment-safety, 05-agent-roster, 06-operating-principles, 07-features-detail, 08-data-model, 09-current-state (with verified-facts + confabulation guardrail), 10-coming-soon. Source: `supabase/memory-seeds/paybacker_core/*.md`.
+- **`<agent-name>` per-role** (read-write) — each agent has its own store with `00-role.md` (mission) and `01-tools.md` (specific MCP tools and workflow). Plus any `learning` / `decision` files the agent has persisted.
+
+Memory store IDs live in `src/lib/managed-agents/memory-stores.json`. Re-bootstrap via `npx tsx scripts/bootstrap-managed-agents-memory.ts` (idempotent — reuses existing store ids).
+
+### At the END of every interactive session:
+
 1. Call `log_session` (paybacker MCP) to record what you did
 2. Call `log_handoff` (paybacker MCP) with summary and next steps for the next chat
 3. Update `shared-context/task-queue.md` with any new/completed tasks
-4. Commit and push all changes
+4. Append a `business_log` row via the public MCP `append_business_log` tool so the digest cron sees your work (use `created_by='cowork-session'` or `created_by='code-session'` or your tooling identifier)
+5. Commit and push all changes
 
-The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks. The new `get_project_briefing` tool bundles the read-side of that into a single call so every new chat starts with full context without burning tokens on repeated reads.
+### The two MCP servers — know which is which
+
+- **Local stdio MCP** at `/mcp-server/`. Used by Cowork mode and Claude Code on this machine. Has every tool including `git_push`, `post_to_facebook`, `get_project_briefing`, etc. Configured in your local Claude Desktop / Code MCP config.
+- **Public HTTP MCP** at `https://paybacker.co.uk/api/mcp` (v2.2.0, 27 tools). Used by managed agents on platform.claude.com (auth via Bearer token in the credential vault). Hardened: rate-limited, allowlisted Supabase tables, no destructive tools, no social-media posting, no money moves. Tools include `get_finance_snapshot`, `list_github_issues`, `get_pr_diff`, `read_nps_responses`, `inspect_recent_complaint_letters`, `get_posthog_funnel`, `get_vercel_deployment_status`, `get_stripe_webhook_health`, `append_business_log`, `post_to_telegram_admin`, etc.
+
+### Source of truth contradictions
+
+If `paybacker_core` memory contradicts this CLAUDE.md, **memory wins** (it's updated more frequently via the Anthropic API). If both contradict live Supabase data, **live data wins**. If you spot the contradiction, write a `business_log` row with category='agent_governance' so the founder can reconcile.
 
 ---
 
