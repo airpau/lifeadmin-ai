@@ -63,21 +63,40 @@ function getAdmin() {
   );
 }
 
+function extractEmailFromMetadataFrom(from: unknown): string | null {
+  if (typeof from !== 'string') return null;
+  // metadata.from might be "Name <email@x.com>" or just "email@x.com"
+  const m = from.match(/<([^>]+)>/);
+  const candidate = (m ? m[1] : from).trim().toLowerCase();
+  if (!candidate.includes('@') || !/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(candidate)) return null;
+  return candidate;
+}
+
 async function getUserEmail(
   supabase: ReturnType<typeof getAdmin>,
-  userId: string | null
-): Promise<{ email: string | null; firstName: string | null }> {
-  if (!userId) return { email: null, firstName: null };
-  const { data } = await supabase
-    .from('profiles')
-    .select('email, full_name')
-    .eq('id', userId)
-    .single();
-  if (!data?.email) return { email: null, firstName: null };
-  return {
-    email: data.email,
-    firstName: (data.full_name || '').split(' ')[0] || null,
-  };
+  userId: string | null,
+  metadata: TicketMetadata | null
+): Promise<{ email: string | null; firstName: string | null; source: 'profile' | 'metadata' | 'none' }> {
+  if (userId) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', userId)
+      .single();
+    if (data?.email) {
+      return {
+        email: data.email,
+        firstName: ((data.full_name as string) || '').split(' ')[0] || null,
+        source: 'profile',
+      };
+    }
+  }
+  // Fallback to metadata.from for tickets created via inbound email without a registered profile.
+  const fromEmail = extractEmailFromMetadataFrom((metadata as Record<string, unknown> | null)?.from);
+  if (fromEmail) {
+    return { email: fromEmail, firstName: null, source: 'metadata' };
+  }
+  return { email: null, firstName: null, source: 'none' };
 }
 
 function chaseEmailHtml(firstName: string, ticketRef: string, subject: string): string {
@@ -143,7 +162,7 @@ async function sendEmail(opts: {
 
 async function processChase(
   supabase: ReturnType<typeof getAdmin>
-): Promise<{ chased: number; auto_closed: number; errors: string[] }> {
+): Promise<{ chased: number; auto_closed: number; no_contact_closed: number; errors: string[] }> {
   const errors: string[] = [];
   const chaseCutoff = new Date(Date.now() - CHASE_AFTER_DAYS * 86400_000).toISOString();
   const closeCutoff = new Date(Date.now() - CLOSE_AFTER_CHASE_HOURS * 3600_000).toISOString();
@@ -158,11 +177,12 @@ async function processChase(
 
   if (error) {
     errors.push(`fetch: ${error.message}`);
-    return { chased: 0, auto_closed: 0, errors };
+    return { chased: 0, auto_closed: 0, no_contact_closed: 0, errors };
   }
 
   let chased = 0;
   let autoClosed = 0;
+  let noContactClosed = 0;
   const ticketList = (tickets || []) as Ticket[];
 
   for (const t of ticketList) {
@@ -170,10 +190,30 @@ async function processChase(
     const ref = t.ticket_number || t.id.slice(0, 8).toUpperCase();
     const userReplies = meta.user_replies || [];
     const lastUserReply = userReplies.length > 0 ? userReplies[userReplies.length - 1].at : null;
-    const { email, firstName } = await getUserEmail(supabase, t.user_id);
+    const { email, firstName } = await getUserEmail(supabase, t.user_id, meta);
 
     if (!email) {
-      // No user email = can't chase. Skip silently.
+      // No user email anywhere = chatbot escalation from anonymous user, or stale test
+      // ticket. Auto-close with a clear reason after 14 days; skip younger ones.
+      const ageMs = Date.now() - new Date(t.created_at).getTime();
+      const ageDays = ageMs / 86400_000;
+      if (ageDays >= 14) {
+        await supabase
+          .from('support_tickets')
+          .update({
+            status: 'resolved',
+            resolved_at: new Date().toISOString(),
+            metadata: {
+              ...meta,
+              auto_closed: true,
+              auto_closed_at: new Date().toISOString(),
+              close_reason: 'no_contact_info',
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', t.id);
+        noContactClosed += 1;
+      }
       continue;
     }
 
@@ -246,7 +286,7 @@ async function processChase(
     }
   }
 
-  return { chased, auto_closed: autoClosed, errors };
+  return { chased, auto_closed: autoClosed, no_contact_closed: noContactClosed, errors };
 }
 
 async function handle(req: NextRequest) {
@@ -256,7 +296,7 @@ async function handle(req: NextRequest) {
   }
 
   const supabase = getAdmin();
-  let result: { chased: number; auto_closed: number; errors: string[] };
+  let result: { chased: number; auto_closed: number; no_contact_closed: number; errors: string[] };
   try {
     result = await processChase(supabase);
   } catch (e) {
@@ -269,8 +309,8 @@ async function handle(req: NextRequest) {
   // Audit row in business_log so the digest cron sees this activity.
   await supabase.from('business_log').insert({
     category: result.errors.length > 0 ? 'warn' : 'info',
-    title: `Support chase run — ${result.chased} chased, ${result.auto_closed} auto-closed`,
-    content: `Phase 1 (chase): ${result.chased} tickets. Phase 2 (auto-close): ${result.auto_closed} tickets. Errors: ${result.errors.length === 0 ? 'none' : result.errors.join('; ')}`,
+    title: `Support chase — ${result.chased} chased, ${result.auto_closed} auto-closed, ${result.no_contact_closed} closed (no contact)`,
+    content: `Phase 1 (chase >7d awaiting_reply): ${result.chased}. Phase 2 (auto-close 24h after chase): ${result.auto_closed}. Phase 3 (close >14d with no contact info — chatbot escalations from anonymous users): ${result.no_contact_closed}. Errors: ${result.errors.length === 0 ? 'none' : result.errors.join('; ')}`,
     created_by: AGENT_ID,
   });
 
@@ -278,6 +318,7 @@ async function handle(req: NextRequest) {
     ok: true,
     chased: result.chased,
     auto_closed: result.auto_closed,
+    no_contact_closed: result.no_contact_closed,
     errors: result.errors,
     timestamp: new Date().toISOString(),
   });
