@@ -4188,6 +4188,20 @@ async function createSupportTicket(
     .eq('id', userId)
     .single();
 
+  // Look up the user's Telegram chat_id from telegram_sessions so Riley can
+  // DM them back. If we can't find one, fall back to source='chatbot' (no
+  // Telegram delivery — Riley will email as before).
+  const { data: tgSession } = await supabase
+    .from('telegram_sessions')
+    .select('chat_id')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single();
+  const telegramChatId = tgSession?.chat_id ?? null;
+
+  const ticketSource = telegramChatId ? 'telegram' : 'chatbot';
+
   const { data: ticket, error } = await supabase
     .from('support_tickets')
     .insert({
@@ -4196,9 +4210,13 @@ async function createSupportTicket(
       description: params.description,
       category: params.category,
       priority: params.priority,
-      source: 'chatbot',
+      source: ticketSource,
       status: 'open',
-      metadata: { channel: 'telegram' },
+      metadata: {
+        channel: 'telegram',
+        telegram_chat_id: telegramChatId,
+        telegram_session_lookup_at: new Date().toISOString(),
+      },
     })
     .select('id, ticket_number, created_at')
     .single();
@@ -4226,7 +4244,7 @@ async function createSupportTicket(
       const resend = new Resend(process.env.RESEND_API_KEY!);
       await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL || 'Paybacker <noreply@paybacker.co.uk>',
-        replyTo: 'support@paybacker.co.uk',
+        replyTo: process.env.RESEND_REPLY_TO || 'support@mail.paybacker.co.uk',
         to: userEmail,
         subject: `Support ticket received: ${ref}`,
         html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
