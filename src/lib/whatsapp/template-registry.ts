@@ -102,7 +102,9 @@ export const TEMPLATES = {
   },
   /** Complaint letter generated and ready to download */
   paybacker_complaint_letter_ready: {
-    sid: 'HXcb08a614aaa36c08cb45bcc0fef40b69',
+    // Resubmitted 2026-04-27 with trailing static text — Meta rejected the
+    // first version (HXcb08a...) for ending in `{{2}}`.
+    sid: 'HXb161ad4a72531943fd57068fe81074f3',
     category: 'UTILITY',
     vars: ['merchant', 'letter_url'] as const,
     description: 'Complaint letter ready (action loop)',
@@ -118,7 +120,8 @@ export const TEMPLATES = {
   },
   /** Watchdog email scanner finds a merchant reply to an open dispute */
   paybacker_dispute_reply: {
-    sid: 'HX44ac8e43f681e0c166e0772e403c9630',
+    // Resubmitted 2026-04-27 — first version ended with `{{3}}` URL.
+    sid: 'HXff77c9745533c248df3b9e0ee5c7fa95',
     category: 'UTILITY',
     vars: ['merchant', 'summary', 'thread_url'] as const,
     description: 'Merchant replied to your dispute',
@@ -158,7 +161,8 @@ export const TEMPLATES = {
   },
   /** Bank/email connection token expired — needs user action */
   paybacker_reconnect_required: {
-    sid: 'HX8a7fdadf9262acbd73a2efb60771488b',
+    // Resubmitted 2026-04-27 — first version ended with `{{2}}` URL.
+    sid: 'HXaf764eed43ddd1147c48bf3fc855e0d8',
     category: 'UTILITY',
     vars: ['provider', 'reconnect_url'] as const,
     description: 'OAuth/banking token expired',
@@ -183,7 +187,8 @@ export const TEMPLATES = {
   },
   /** Switchcraft-style cheaper-deal nudge (MARKETING — needs separate opt-in) */
   paybacker_better_deal_found: {
-    sid: 'HXdcbf7786d24b20d62dad2b61cf79585d',
+    // Resubmitted 2026-04-27 — first version ended with `{{3}}` URL.
+    sid: 'HXef2f3aa52beec5a2591154096faf741b',
     category: 'MARKETING',
     vars: ['category', 'saving_per_year', 'switch_url'] as const,
     description: 'Cheaper provider found in user category',
