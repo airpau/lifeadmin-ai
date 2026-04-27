@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { PRICE_IDS } from '@/lib/stripe';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -149,11 +150,25 @@ export async function POST(request: NextRequest) {
         // We optimistically update the local profile tier so the
         // dashboard reflects the new plan immediately — the
         // /api/stripe/sync route will reconcile on next call anyway.
-        const newTier = priceId.includes('pro') ||
-          priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY ||
-          priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_YEARLY
+        //
+        // BUG FIX 2026-04-27: previously this used `priceId.includes('pro')`
+        // which never matches because Stripe price IDs look like
+        // "price_1TEsJf7qw7mEWYpy4alOarY6" — there's no literal "pro" in
+        // them. The fallback env-var compare hit non-existent keys
+        // (NEXT_PUBLIC_STRIPE_PRICE_PRO_*) so newTier always resolved to
+        // 'essential' even when upgrading to Pro. Net effect: Stripe
+        // charged the prorated upgrade correctly but our profile row
+        // stayed on 'essential'. Compare against PRICE_IDS from
+        // @/lib/stripe instead — that's the authoritative source.
+        const isProPrice =
+          priceId === PRICE_IDS.pro_monthly || priceId === PRICE_IDS.pro_yearly;
+        const isEssentialPrice =
+          priceId === PRICE_IDS.essential_monthly || priceId === PRICE_IDS.essential_yearly;
+        const newTier: 'pro' | 'essential' | 'free' = isProPrice
           ? 'pro'
-          : 'essential';
+          : isEssentialPrice
+            ? 'essential'
+            : 'free';
 
         await supabase
           .from('profiles')
