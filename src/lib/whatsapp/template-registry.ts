@@ -176,13 +176,36 @@ export const TEMPLATES = {
     description: 'Weekly recovery digest (Sunday 9am)',
     proOnly: true,
   },
-  /** OTP for sensitive actions (password reset, plan change, etc.) */
+  /**
+   * OTP for sensitive actions (password reset, plan change, etc.)
+   *
+   * ⚠️ DEFERRED — DO NOT SEND ⚠️
+   *
+   * Status (2026-04-27): SID `HXc0ebfb1775a8a713221583a70c739334` was created
+   * on Twilio, but Meta REJECTED the approval submission with: "This WhatsApp
+   * Business account does not have permission to create message template."
+   * Confirmed via the Meta UI direct creation path as well — brand-new WABAs
+   * don't get AUTHENTICATION category permission until they have a track
+   * record of approved utility/marketing templates + sent message volume.
+   *
+   * **For v1 launch we use SMS (via the same Twilio number +447883318406)
+   * and Resend email for any OTP / step-up auth flows.** This template entry
+   * is kept here as a placeholder for the v1.1 retry — DO NOT call
+   * sendWhatsAppTemplate with it; guard at call sites or remove the entry
+   * once we know the unblock path.
+   *
+   * **When to retry**: once the 15 pending utility/marketing templates are
+   * approved AND we've sent real outbound volume for ~1-2 weeks, Meta auto-
+   * grants AUTHENTICATION category. If still blocked, open a Meta Business
+   * Support Home ticket on WABA id `1480242643594364`.
+   */
   paybacker_login_code: {
-    sid: 'HXc0ebfb1775a8a713221583a70c739334',
+    sid: 'HXc0ebfb1775a8a713221583a70c739334', // ⚠️ NOT APPROVED — see comment above
     category: 'AUTHENTICATION',
     vars: ['code'] as const,
-    description: 'One-time login / step-up auth code',
-    // Auth codes go to anyone who set up WhatsApp 2FA — not Pro-gated.
+    description: 'One-time login / step-up auth code (DEFERRED — see comment, retry v1.1)',
+    // Auth codes are not Pro-gated when they eventually work — anyone
+    // who's enabled WhatsApp 2FA gets them.
     proOnly: false,
   },
   /** Switchcraft-style cheaper-deal nudge (MARKETING — needs separate opt-in) */
