@@ -30,6 +30,8 @@ const I = {
   menu: 'M3 6h18M3 12h18M3 18h18',
   x: 'M18 6L6 18M6 6l12 12',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  sparkle:
+    'M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3zM18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8L18 14z',
 } as const;
 
 type IconName = keyof typeof I;
@@ -67,6 +69,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: 'Main',
     items: [
       { key: 'overview', label: 'Overview', icon: 'grid', href: '/dashboard' },
+      { key: 'action-centre', label: 'Action Centre', icon: 'sparkle', href: '/dashboard/action-centre' },
       { key: 'money-hub', label: 'Money Hub', icon: 'wallet', href: '/dashboard/money-hub' },
       { key: 'subscriptions', label: 'Subscriptions', icon: 'card', href: '/dashboard/subscriptions' },
       { key: 'disputes', label: 'Disputes', icon: 'file', href: '/dashboard/disputes' },
@@ -105,6 +108,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
 function getActiveKey(pathname: string): string {
   if (pathname === '/dashboard') return 'overview';
   if (pathname.startsWith('/dashboard/settings/mcp')) return 'assistant';
+  if (pathname.startsWith('/dashboard/action-centre')) return 'action-centre';
   if (pathname.startsWith('/dashboard/money-hub')) return 'money-hub';
   if (pathname.startsWith('/dashboard/subscriptions')) return 'subscriptions';
   if (pathname.startsWith('/dashboard/disputes')) return 'disputes';

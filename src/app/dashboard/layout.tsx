@@ -31,7 +31,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
       setUserEmail(user.email || null);
-      setAuthChecked(true);
 
       // OAuth signup path leaves Terms/marketing consent in sessionStorage
       // (the signup page can't write to user_metadata before the OAuth
@@ -140,6 +139,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       } catch {
         // Stripe sync failed — keep profile tier
       }
+      // Render the shell only once tier is fully resolved. Setting
+      // authChecked earlier caused a Free→Pro flicker: the badge mounted
+      // with the default 'free' state, then re-rendered to the real tier
+      // ~300-500ms later when this loader finished. Hold the spinner
+      // until the whole flow completes.
+      setAuthChecked(true);
     };
     loadUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
