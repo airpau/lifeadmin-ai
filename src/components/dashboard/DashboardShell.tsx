@@ -200,6 +200,16 @@ export default function DashboardShell({
           </div>
         </Link>
         <div className="shell-v2-mob-actions">
+          {/* Tier pill on mobile — desktop has it inside the sidebar
+              card, but mobile hides the sidebar so users had no way
+              to see what plan they're on without opening the menu. */}
+          <span
+            className="shell-v2-mob-tier"
+            title="Tap menu to manage your plan"
+            data-tier={user.tier ?? 'free'}
+          >
+            {tierLabel(user.tier, user.isTrial, user.trialDaysLeft)}
+          </span>
           <NotificationBell />
           <button
             type="button"
