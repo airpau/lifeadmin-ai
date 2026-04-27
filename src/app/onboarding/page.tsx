@@ -399,7 +399,7 @@ function OnboardingInner() {
                     We read your transactions to spot forgotten subscriptions, silent price rises, and overcharges. <strong>Most savings come from here.</strong>
                   </p>
                   <a
-                    href="/api/auth/truelayer"
+                    href="/api/auth/yapily"
                     style={{
                       marginTop: 4,
                       padding: '11px 14px',
@@ -554,7 +554,7 @@ function OnboardingInner() {
                   subtitle="Your inbox is connected — nice. A bank connection is where we find the big wins though: silent price rises, duplicate charges, forgotten subscriptions still going out months after you cancelled. Skip if you&rsquo;re not ready; you can add it any time."
                 >
                   <a
-                    href="/api/auth/truelayer"
+                    href="/api/auth/yapily"
                     className="cta"
                     style={{
                       padding: '14px 18px',

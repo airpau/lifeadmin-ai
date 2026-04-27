@@ -2,13 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdmin } from '@supabase/supabase-js';
 import { getAccounts, getTransactions } from '@/lib/yapily';
-import {
-  getAccessToken as getTrueLayerAccessToken,
-  fetchAccounts as fetchTrueLayerAccounts,
-  fetchTransactions as fetchTrueLayerTransactions,
-  fetchBalances,
-  fetchPendingTransactions,
-} from '@/lib/truelayer';
 import { decrypt } from '@/lib/encrypt';
 import { detectRecurring } from '@/lib/detect-recurring';
 import { getUserPlan } from '@/lib/get-user-plan';
@@ -133,7 +126,7 @@ export async function POST(request: NextRequest) {
     .select('*')
     .eq('user_id', user.id)
     .eq('status', 'active')
-    .in('provider', ['truelayer', 'yapily']);
+    .eq('provider', 'yapily');
 
   if (connectionId) {
     connectionsQuery = connectionsQuery.eq('id', connectionId);
@@ -178,166 +171,6 @@ export async function POST(request: NextRequest) {
   for (const conn of connections as BankConnection[]) {
     let transactionSyncSucceeded = false;
 
-    if (conn.provider === 'truelayer') {
-      // === TrueLayer path ===
-      if (!conn.access_token) {
-        await supabase
-          .from('bank_connections')
-          .update({ status: 'expired', updated_at: now })
-          .eq('id', conn.id);
-
-        await supabase.from('bank_sync_log').insert({
-          user_id: user.id,
-          connection_id: conn.id,
-          trigger_type: 'manual',
-          status: 'failed',
-          api_calls_made: apiCallsMade,
-          error_message: 'No access token — reconnect required',
-        });
-        continue;
-      }
-
-      // Get access token, refreshing if expired — mark connection expired if refresh fails
-      let accessToken: string;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        accessToken = await getTrueLayerAccessToken(conn as any);
-      } catch {
-        await supabase
-          .from('bank_connections')
-          .update({ status: 'expired', updated_at: now })
-          .eq('id', conn.id);
-
-        await supabase.from('bank_sync_log').insert({
-          user_id: user.id,
-          connection_id: conn.id,
-          trigger_type: 'manual',
-          status: 'failed',
-          api_calls_made: apiCallsMade,
-          error_message: 'Token refresh failed — reconnect required',
-        });
-
-        return NextResponse.json(
-          {
-            error: 'Your bank connection has expired. Please reconnect your bank account.',
-            reconnectRequired: true,
-          },
-          { status: 401 }
-        );
-      }
-
-      let accountIds = conn.account_ids || [];
-      if (accountIds.length === 0 || !conn.bank_name) {
-        try {
-          const accounts = await fetchTrueLayerAccounts(accessToken);
-          const bankName = accounts[0]?.provider?.display_name || accounts[0]?.display_name || null;
-          accountIds = accounts.map((a) => a.account_id);
-          const displayNames = accounts.map((a) => a.display_name || 'Account');
-          await supabase.from('bank_connections').update({
-            bank_name: bankName,
-            account_display_names: displayNames,
-            account_ids: accountIds,
-          }).eq('id', conn.id);
-        } catch (err: any) {
-          console.error(`Sync: TrueLayer account refresh error for ${conn.id}:`, err?.message || err);
-        }
-      }
-
-      if (accountIds.length === 0) {
-        await supabase.from('bank_sync_log').insert({
-          user_id: user.id,
-          connection_id: conn.id,
-          trigger_type: 'manual',
-          status: 'failed',
-          api_calls_made: apiCallsMade,
-          error_message: 'No bank accounts available to sync',
-        });
-        continue;
-      }
-
-      for (const accountId of accountIds) {
-        try {
-          const transactions = await fetchTrueLayerTransactions(accessToken, accountId, ninetyDaysAgo);
-          apiCallsMade++;
-          transactionSyncSucceeded = true;
-
-          if (transactions.length === 0) continue;
-
-          const rows = transactions.map((tx) => ({
-            user_id: user.id,
-            connection_id: conn.id,
-            transaction_id: tx.transaction_id,
-            account_id: accountId,
-            amount: tx.amount,
-            currency: tx.currency || 'GBP',
-            description: tx.description || null,
-            merchant_name: tx.merchant_name || null,
-            category: null,
-            timestamp: tx.timestamp,
-            is_pending: false,
-          }));
-
-          const { error } = await supabase
-            .from('bank_transactions')
-            .upsert(rows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
-
-          if (!error) totalSynced += rows.length;
-          else console.error(`Sync: upsert error for TrueLayer account ${accountId}:`, error);
-        } catch (err: any) {
-          console.error(`Sync: TrueLayer fetch error for account ${accountId}:`, err?.message || err);
-        }
-      }
-
-      // Fetch balances for each account
-      for (const accountId of accountIds) {
-        try {
-          const balance = await fetchBalances(accessToken, accountId);
-          apiCallsMade++;
-          if (balance) {
-            await supabase
-              .from('bank_connections')
-              .update({
-                current_balance: balance.current,
-                available_balance: balance.available,
-                balance_updated_at: now,
-              })
-              .eq('id', conn.id);
-          }
-        } catch (err: any) {
-          console.log(`Sync: balance fetch error for ${accountId}:`, err?.message || err);
-        }
-      }
-
-      // Fetch and store pending transactions for each account
-      for (const accountId of accountIds) {
-        try {
-          const pendingTxs = await fetchPendingTransactions(accessToken, accountId);
-          apiCallsMade++;
-
-          if (pendingTxs.length === 0) continue;
-
-          const pendingRows = pendingTxs.map((tx) => ({
-            user_id: user.id,
-            connection_id: conn.id,
-            transaction_id: tx.transaction_id,
-            account_id: accountId,
-            amount: tx.amount,
-            currency: tx.currency || 'GBP',
-            description: tx.description || null,
-            merchant_name: tx.merchant_name || null,
-            category: null,
-            timestamp: tx.timestamp,
-            is_pending: true,
-          }));
-
-          await supabase
-            .from('bank_transactions')
-            .upsert(pendingRows, { onConflict: 'user_id,transaction_id', ignoreDuplicates: true });
-        } catch (err: any) {
-          console.log(`Sync: pending transactions error for ${accountId}:`, err?.message || err);
-        }
-      }
-    } else {
       // === Yapily path ===
       if (!conn.consent_token) {
         await supabase
@@ -443,7 +276,6 @@ export async function POST(request: NextRequest) {
           console.error(`Sync: Yapily fetch error for account ${accountId}:`, err?.message || err);
         }
       }
-    }
 
     if (!transactionSyncSucceeded) {
       await supabase.from('bank_sync_log').insert({

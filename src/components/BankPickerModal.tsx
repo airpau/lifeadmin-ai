@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { X, Search, Loader2, Building2 } from 'lucide-react';
 
-const OPEN_BANKING_PROVIDER = process.env.NEXT_PUBLIC_OPEN_BANKING_PROVIDER || 'truelayer';
+// TrueLayer decommissioned 2026-04-27. Yapily is the only path now.
+const OPEN_BANKING_PROVIDER = 'yapily' as const;
 
 interface Institution {
   id: string;
@@ -17,16 +18,12 @@ interface BankPickerModalProps {
 }
 
 /**
- * For TrueLayer mode, call this directly from onClick handlers
- * instead of opening the modal. The useEffect approach is unreliable.
- * Passes the current page path as returnTo so the callback redirects back here.
+ * Legacy export kept so existing onClick handlers compile without
+ * change. Yapily is institution-pickered (the modal does the work),
+ * so this returns false to indicate "open the modal — there is no
+ * direct redirect path on Yapily."
  */
 export function connectBankDirect() {
-  if (OPEN_BANKING_PROVIDER === 'truelayer') {
-    const returnTo = encodeURIComponent(window.location.pathname);
-    window.location.href = `/api/auth/truelayer?returnTo=${returnTo}`;
-    return true;
-  }
   return false;
 }
 
@@ -39,12 +36,6 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
 
   useEffect(() => {
     if (!isOpen) return;
-
-    // TrueLayer has its own bank picker — redirect directly
-    if (OPEN_BANKING_PROVIDER === 'truelayer') {
-      window.location.href = '/api/auth/truelayer';
-      return;
-    }
 
     // Yapily: load institution list
     let cancelled = false;
@@ -71,22 +62,6 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
 
   if (!isOpen) return null;
 
-  // TrueLayer: show a loading state while the redirect happens
-  if (OPEN_BANKING_PROVIDER === 'truelayer') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative card w-full max-w-lg p-10 text-center shadow-2xl">
-          <Loader2 className="h-8 w-8 text-amber-500 animate-spin mx-auto mb-4" />
-          <p className="text-slate-900 font-semibold">Connecting to your bank...</p>
-          <p className="text-slate-500 text-sm mt-1">
-            You&apos;ll be redirected to TrueLayer to select your bank securely.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Yapily: institution picker
   const filtered = search
     ? institutions.filter(i => i.name.toLowerCase().includes(search.toLowerCase()))
@@ -112,7 +87,7 @@ export default function BankPickerModal({ isOpen, onClose }: BankPickerModalProp
     }
   };
 
-  const providerLabel = OPEN_BANKING_PROVIDER === 'truelayer' ? 'TrueLayer' : 'Yapily';
+  const providerLabel = 'Yapily';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

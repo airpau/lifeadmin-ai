@@ -37,7 +37,9 @@ const REQUIRED_VARS = [
   // Feature env vars referenced by other parts of the app
   "EMAIL_ENCRYPTION_KEY",
   "RESEND_API_KEY",
-  "TRUELAYER_CLIENT_ID",
+  // TRUELAYER_* decommissioned 2026-04-27. Yapily-only now.
+  "YAPILY_APPLICATION_UUID",
+  "YAPILY_APPLICATION_SECRET",
 ];
 
 function status(name: string): { present: boolean; length: number; prefix?: string } {
