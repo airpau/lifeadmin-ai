@@ -1,16 +1,34 @@
 'use client';
 
 /**
- * PricingCTA — client-side subscribe button for the /pricing marketing page.
+ * PricingCTA — client-side subscribe / upgrade button for /pricing.
  *
- * Behaviour:
- *   - Logged-out user: plain link to /auth/signup (with plan query param)
- *   - Logged-in user: POSTs to /api/stripe/checkout and redirects to Stripe
- *   - Already-on-plan: friendly alert, no redirect
+ * Three states based on the user's auth + subscription status:
  *
- * Drop-in replacement for the three <Link href="/auth/signup"> CTAs on the
- * redesigned /pricing page. Keeps the same classes/inline styles so the
- * visual design is unchanged.
+ *   Logged-out
+ *     → Plain link to /auth/signup with plan query param. Checkout
+ *       runs after they confirm their email.
+ *
+ *   Logged-in, free / no active sub
+ *     → On click, POSTs /api/stripe/checkout. Server creates a fresh
+ *       Stripe Checkout session and we redirect to Stripe to collect
+ *       payment for the first time. Same as before.
+ *
+ *   Logged-in, has active paid sub on a DIFFERENT price (Essential→Pro,
+ *   monthly→yearly, etc.)
+ *     → On click, POSTs /api/stripe/checkout. Server detects the
+ *       existing sub and updates it with `proration_behavior=always_invoice`
+ *       — Stripe credits unused time on the old plan and immediately
+ *       bills the prorated upcharge using the saved card. No Stripe
+ *       Checkout redirect needed.
+ *
+ *     Before the click, we fetch /api/stripe/upgrade-preview so the
+ *     button label shows the real prorated amount: "Upgrade — £4.83 today"
+ *     instead of the headline £9.99 that would otherwise scare a user
+ *     who paid for Essential earlier in the cycle.
+ *
+ *   Logged-in, has active sub on the SAME price (already on this plan)
+ *     → Disabled state with "Current plan" label. No checkout call.
  */
 
 import { useEffect, useState } from 'react';
@@ -29,6 +47,13 @@ interface Props {
   billingCycle?: 'monthly' | 'yearly';
 }
 
+interface PreviewState {
+  hasExistingSub: boolean;
+  prorated_amount_pennies: number;
+  prorated_amount_display: string;
+  current_price_id?: string;
+}
+
 function priceIdFor(plan: Plan, cycle: 'monthly' | 'yearly'): string | undefined {
   if (plan === 'essential') {
     return cycle === 'yearly' ? PRICE_IDS.essential_yearly : PRICE_IDS.essential_monthly;
@@ -42,8 +67,11 @@ function priceIdFor(plan: Plan, cycle: 'monthly' | 'yearly'): string | undefined
 export default function PricingCTA({ plan, className, children, style, billingCycle = 'monthly' }: Props) {
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
   const supabase = createClient();
+  const priceId = priceIdFor(plan, billingCycle);
 
+  // Resolve auth state
   useEffect(() => {
     let cancelled = false;
     supabase.auth.getUser().then(({ data }) => {
@@ -54,6 +82,25 @@ export default function PricingCTA({ plan, className, children, style, billingCy
     return () => { cancelled = true; };
   }, [supabase]);
 
+  // For paid plans, once we know the user is authed, ask Stripe what
+  // an upgrade would actually cost right now. This is what lets us
+  // show "Upgrade — £4.83 today" instead of the headline £9.99 to a
+  // user who already paid for Essential earlier in the cycle.
+  useEffect(() => {
+    if (!isAuthed || plan === 'free' || !priceId) return;
+    let cancelled = false;
+    fetch(`/api/stripe/upgrade-preview?priceId=${encodeURIComponent(priceId)}`, {
+      credentials: 'include',
+      cache: 'no-store',
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!cancelled && data) setPreview(data);
+      })
+      .catch(() => { /* preview is best-effort; fall back to headline price */ });
+    return () => { cancelled = true; };
+  }, [isAuthed, plan, priceId]);
+
   // Free tier always routes to signup
   if (plan === 'free') {
     return (
@@ -63,7 +110,8 @@ export default function PricingCTA({ plan, className, children, style, billingCy
     );
   }
 
-  // While auth is loading, render a non-interactive placeholder that looks the same.
+  // While auth is loading, render a non-interactive placeholder that
+  // looks the same so the button doesn't pop in.
   if (isAuthed === null) {
     return (
       <Link className={className} href={`/auth/signup?plan=${plan}`} style={style} aria-busy="true">
@@ -72,7 +120,7 @@ export default function PricingCTA({ plan, className, children, style, billingCy
     );
   }
 
-  // Logged-out users: preserve the existing redesign behaviour
+  // Logged-out → preserve original behaviour
   if (!isAuthed) {
     return (
       <Link className={className} href={`/auth/signup?plan=${plan}`} style={style}>
@@ -81,14 +129,31 @@ export default function PricingCTA({ plan, className, children, style, billingCy
     );
   }
 
-  // Logged-in users: click calls /api/stripe/checkout and redirects to Stripe.
+  // Already on this exact plan → disabled "Current plan" pill.
+  const onThisPlan = preview?.current_price_id && preview.current_price_id === priceId;
+  if (onThisPlan) {
+    return (
+      <span
+        className={className}
+        style={{ ...style, opacity: 0.6, cursor: 'default' }}
+        aria-disabled="true"
+      >
+        Current plan
+      </span>
+    );
+  }
+
+  // Logged-in user, paid plan, not already on it → upgrade or fresh-sub.
   const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    if (loading) return;
-    const priceId = priceIdFor(plan, billingCycle);
-    if (!priceId) {
-      window.location.href = '/dashboard';
-      return;
+    if (loading || !priceId) return;
+
+    // Confirm dialogue if it's an upgrade with a non-trivial prorated charge.
+    if (preview?.hasExistingSub && preview.prorated_amount_pennies > 0) {
+      const confirmed = window.confirm(
+        `Upgrading to ${plan === 'pro' ? 'Pro' : 'Essential'} costs ${preview.prorated_amount_display} today (with credit for the unused time on your current plan).\n\nFrom your next billing date you'll be charged the new ${plan === 'pro' ? 'Pro' : 'Essential'} rate. Continue?`,
+      );
+      if (!confirmed) return;
     }
 
     setLoading(true);
@@ -100,16 +165,31 @@ export default function PricingCTA({ plan, className, children, style, billingCy
       });
 
       const text = await res.text();
-      let data: { url?: string; alreadySubscribed?: boolean; error?: string };
+      let data: {
+        url?: string;
+        upgraded?: boolean;
+        redirectUrl?: string;
+        alreadySubscribed?: boolean;
+        error?: string;
+      };
       try {
         data = JSON.parse(text);
       } catch {
         throw new Error(`Checkout returned ${res.status}: ${text.slice(0, 200)}`);
       }
 
+      // Three response shapes:
+      //   { url } → fresh Checkout session, redirect to Stripe
+      //   { upgraded: true, redirectUrl } → already-charged via proration,
+      //                                     bounce to dashboard with banner
+      //   { alreadySubscribed } → friendly toast, no redirect
       if (data.url) {
-        try { sessionStorage.setItem('awin_checkout', JSON.stringify({ tier: plan })); } catch {}
+        try { sessionStorage.setItem('awin_checkout', JSON.stringify({ tier: plan })); } catch { /* sessionStorage may be blocked */ }
         window.location.href = data.url;
+        return;
+      }
+      if (data.upgraded && data.redirectUrl) {
+        window.location.href = data.redirectUrl;
         return;
       }
       if (data.alreadySubscribed) {
@@ -117,7 +197,7 @@ export default function PricingCTA({ plan, className, children, style, billingCy
         setLoading(false);
         return;
       }
-      throw new Error(data.error || `No checkout URL returned (status ${res.status})`);
+      throw new Error(data.error || `Checkout failed (status ${res.status})`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to start checkout. Please try again.';
       console.error('PricingCTA checkout error:', err);
@@ -125,6 +205,15 @@ export default function PricingCTA({ plan, className, children, style, billingCy
       setLoading(false);
     }
   };
+
+  // Render label — for an authenticated upgrade we surface the real
+  // prorated amount inline so the button doesn't lie. Falls back to
+  // the original `children` label when we're still loading the
+  // preview or when it's not an upgrade scenario.
+  const showProratedLabel =
+    preview?.hasExistingSub &&
+    preview.prorated_amount_pennies > 0 &&
+    !loading;
 
   return (
     <a
@@ -134,7 +223,11 @@ export default function PricingCTA({ plan, className, children, style, billingCy
       onClick={handleClick}
       aria-busy={loading}
     >
-      {loading ? 'Starting checkout…' : children}
+      {loading
+        ? 'Starting checkout…'
+        : showProratedLabel
+          ? `Upgrade — ${preview!.prorated_amount_display} today`
+          : children}
     </a>
   );
 }

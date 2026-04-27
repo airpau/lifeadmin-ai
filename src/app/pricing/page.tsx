@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import PricingGrid from './PricingGrid';
+import PricingNav from './PricingNav';
 import './styles.css';
 
 /**
@@ -186,7 +187,7 @@ const FAQS: ReadonlyArray<readonly [string, string]> = [
 export default function PricingPage() {
   return (
     <div className="m-pricing-root">
-      <MarkNav active="Pricing" />
+      <PricingNav active="Pricing" />
 
       {/* HERO */}
       <section

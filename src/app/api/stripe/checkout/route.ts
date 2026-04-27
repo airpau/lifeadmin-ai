@@ -94,16 +94,90 @@ export async function POST(request: NextRequest) {
 
     // If already on the exact same price, reject
     if (allActiveSubs.length > 0) {
-      const currentPriceId = allActiveSubs[0].items.data[0]?.price.id;
+      const currentSub = allActiveSubs[0];
+      const currentItemId: string | undefined = currentSub.items.data[0]?.id;
+      const currentPriceId: string | undefined = currentSub.items.data[0]?.price.id;
+
       if (currentPriceId === priceId) {
         return NextResponse.json({
           error: 'You are already on this plan.',
           alreadySubscribed: true,
         }, { status: 400 });
       }
+
+      // UPGRADE / DOWNGRADE / CYCLE-CHANGE FLOW
+      //
+      // The user has an existing active subscription on a different price
+      // (e.g. Essential monthly → Pro monthly, or Essential monthly → Pro
+      // yearly). We MUST NOT create a fresh checkout session here — that
+      // would leave them with two parallel subscriptions and double-bill
+      // them. Instead we update the existing subscription with
+      // `proration_behavior=always_invoice`, which:
+      //
+      //   1. Credits unused time on the old price back to the customer
+      //   2. Charges the prorated upcharge for the new price immediately
+      //   3. Sets the next billing cycle to the new price
+      //
+      // For "upgraded the same day" cases (Paul's scenario: paid £4.99
+      // for Essential today, upgrades to Pro today) the user pays
+      // ~£5.00 and lands on Pro immediately. They are not double-billed
+      // and don't lose the Essential days they already paid for.
+      //
+      // payment_behavior='error_if_incomplete' so we surface card-decline
+      // failures to the user immediately rather than leaving them on a
+      // half-upgraded subscription.
+      if (currentItemId) {
+        const updated = await stripePost(`/subscriptions/${currentSub.id}`, {
+          'items[0][id]': currentItemId,
+          'items[0][price]': priceId,
+          proration_behavior: 'always_invoice',
+          payment_behavior: 'error_if_incomplete',
+          'metadata[user_id]': user.id,
+          'metadata[billing_cycle]': billingCycle || 'monthly',
+          'metadata[upgrade_from_price]': currentPriceId ?? '',
+        });
+
+        if (updated.error) {
+          console.error('Stripe upgrade error:', JSON.stringify(updated.error));
+          return NextResponse.json(
+            { error: updated.error.message ?? 'Upgrade failed' },
+            { status: 400 },
+          );
+        }
+
+        // Stripe auto-creates and pays an invoice for the proration.
+        // We optimistically update the local profile tier so the
+        // dashboard reflects the new plan immediately — the
+        // /api/stripe/sync route will reconcile on next call anyway.
+        const newTier = priceId.includes('pro') ||
+          priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY ||
+          priceId === process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO_YEARLY
+          ? 'pro'
+          : 'essential';
+
+        await supabase
+          .from('profiles')
+          .update({
+            subscription_tier: newTier,
+            subscription_status: updated.status ?? 'active',
+            stripe_subscription_id: currentSub.id,
+          })
+          .eq('id', user.id);
+
+        return NextResponse.json({
+          upgraded: true,
+          subscriptionId: currentSub.id,
+          status: updated.status,
+          tier: newTier,
+          // Frontend can route the user back to the dashboard with a
+          // success banner. No Stripe Checkout redirect needed because
+          // we used the existing payment method on file.
+          redirectUrl: '/dashboard?upgrade=success',
+        });
+      }
     }
 
-    // Always create a fresh Stripe checkout session requiring payment
+    // No existing sub — create a fresh Stripe checkout session.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://paybacker.co.uk';
 
     // Read Awin awc cookie for attribution tracking
