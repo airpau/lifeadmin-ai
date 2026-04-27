@@ -8,6 +8,7 @@ import { pickRawMerchantSource } from '@/lib/merchant-utils';
 import { loadLearnedRules } from '@/lib/learning-engine';
 import { ensureDefaultSpace, getSpace, spaceConnectionFilter, spaceTransactionFilter } from '@/lib/spaces';
 import { bucketFor } from '@/lib/category-taxonomy';
+import { PLAN_LIMITS, type PlanTier } from '@/lib/plan-limits';
 
 export const runtime = 'nodejs';
 
@@ -130,9 +131,24 @@ export async function GET(request: Request) {
     // or the user's default. Non-default Spaces filter bank_connections
     // + bank_transactions to the chosen subset so Money Hub shows only
     // that Space's activity.
+    //
+    // TIER GATE — PLAN_LIMITS gives Free + Essential maxSpaces=1 (just
+    // the default "Everything"). If a downgraded user (or someone with
+    // a stale localStorage 'lastSpaceId') requests a non-default Space
+    // their plan no longer covers, we silently route them back to the
+    // default and surface `spaceCoercedToDefault: true` in the response
+    // so the client can show an upgrade nudge instead of rendering
+    // unexpected totals.
     const requestedSpaceId = url.searchParams.get('space_id');
     await ensureDefaultSpace(supabase, user.id);
-    const activeSpace = await getSpace(supabase, user.id, requestedSpaceId);
+    const requestedSpace = await getSpace(supabase, user.id, requestedSpaceId);
+    const planMaxSpaces = PLAN_LIMITS[effectiveTier as PlanTier]?.maxSpaces ?? 1;
+    const tierAllowsCustomSpaces = planMaxSpaces === null || planMaxSpaces > 1;
+    const requestingNonDefault = !!(requestedSpaceId && requestedSpace && requestedSpace.is_default === false);
+    const spaceCoercedToDefault = requestingNonDefault && !tierAllowsCustomSpaces;
+    const activeSpace = spaceCoercedToDefault
+      ? await getSpace(supabase, user.id, null) // forces default lookup
+      : requestedSpace;
     const connectionFilter = spaceConnectionFilter(activeSpace);
     const txFilter = spaceTransactionFilter(activeSpace);
 
@@ -373,6 +389,11 @@ export async function GET(request: Request) {
       activeSpace: activeSpace
         ? { id: activeSpace.id, name: activeSpace.name, emoji: activeSpace.emoji, is_default: activeSpace.is_default }
         : null,
+      // True when the requested space_id was coerced back to default
+      // because the user's tier doesn't permit multiple Spaces. Lets
+      // the client render a one-shot upgrade nudge instead of silently
+      // showing different totals than the user expected.
+      spaceCoercedToDefault,
       overview: {
         monthlyIncome: parseFloat(authIncome.toFixed(2)),
         monthlyOutgoings: parseFloat(authSpending.toFixed(2)),

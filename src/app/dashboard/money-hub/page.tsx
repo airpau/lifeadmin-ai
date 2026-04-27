@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
  Wallet, Building2, Shield, RefreshCw, X, MessageCircle,
@@ -108,7 +108,7 @@ export default function MoneyHubPage() {
  const [error, setError] = useState<string | null>(null);
  const [syncing, setSyncing] = useState(false);
  const [selectedMonth, setSelectedMonth] = useState('');
- const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean }>>([]);
+ const [spaces, setSpaces] = useState<Array<{ id: string; name: string; emoji: string | null; is_default: boolean; created_at?: string | null }>>([]);
  const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null);
  const [preferredSpaceId, setPreferredSpaceId] = useState<string | null>(null);
  // Separate flag for Space / month switches — initial load uses `loading`.
@@ -734,6 +734,32 @@ export default function MoneyHubPage() {
  const isPaid = (data && data.tier === 'essential') || (data && data.tier === 'pro');
  const isPro = (data && data.tier === 'pro');
 
+ // Tier-aware Space locking. PLAN_LIMITS gives Free + Essential
+ // maxSpaces=1 (just the default "Everything") and Pro unlimited. We
+ // mirror that here client-side so a user who created Spaces while on
+ // Pro and then downgraded sees their extras as locked-with-padlock
+ // rather than letting them switch and reverting (the spin-then-revert
+ // bug Paul reported 2026-04-27). Default Space is always unlocked
+ // since it's the catch-all required for the page to render.
+ const maxSpaces = data.tier === 'pro' ? null : 1;
+ const lockedSpaceIds = useMemo(() => {
+   if (maxSpaces === null) return new Set<string>();
+   const ordered = [...spaces].sort((a, b) => {
+     if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+     const aT = a.created_at ? new Date(a.created_at).getTime() : 0;
+     const bT = b.created_at ? new Date(b.created_at).getTime() : 0;
+     return aT - bT;
+   });
+   const locked = new Set<string>();
+   let unlocked = 0;
+   for (const s of ordered) {
+     if (unlocked < maxSpaces) { unlocked++; continue; }
+     locked.add(s.id);
+   }
+   return locked;
+ }, [spaces, maxSpaces]);
+ const hasLockedSpaces = lockedSpaceIds.size > 0;
+
  const lastSyncedAt = data.accounts.reduce((latest: string | null, acc: any) => {
  if (!acc.last_synced_at) return latest;
  if (!latest) return acc.last_synced_at;
@@ -812,26 +838,48 @@ export default function MoneyHubPage() {
  {/* Space switcher + manage button. Always visible so users can
   discover Spaces even before they\'ve created their first one. */}
  {spaces.length > 1 ? (
+ <div className="relative flex flex-col items-end gap-1">
  <div className="relative">
  <select
  value={activeSpaceId ?? data.activeSpace?.id ?? ''}
  disabled={switching}
  onChange={(e) => {
  const next = e.target.value || null;
+ // Tier gate — if the user clicks a Space their plan no longer
+ // covers (e.g. Pro → Essentials downgrade leaves orphan Spaces),
+ // bounce them to /pricing instead of firing /api/money-hub
+ // and letting the server silently re-route them to the default
+ // (which is what produced the spin-then-revert behaviour).
+ if (next && lockedSpaceIds.has(next)) {
+ if (typeof window !== 'undefined' && confirm('Multiple Spaces are a Pro feature. Upgrade to use this Space?')) {
+ window.location.href = '/pricing';
+ }
+ e.target.value = activeSpaceId ?? data.activeSpace?.id ?? '';
+ return;
+ }
  setActiveSpaceId(next);
  refreshData(undefined, next);
  }}
  className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-sm text-emerald-800 font-medium focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-wait"
- title="Filter by Space"
+ title={hasLockedSpaces ? 'Some Spaces are locked — upgrade to Pro to use them' : 'Filter by Space'}
  >
- {spaces.map((s) => (
+ {spaces.map((s) => {
+ const locked = lockedSpaceIds.has(s.id);
+ return (
  <option key={s.id} value={s.id}>
- {s.emoji ? `${s.emoji} ` : ''}{s.name}
+ {locked ? '🔒 ' : ''}{s.emoji ? `${s.emoji} ` : ''}{s.name}{locked ? ' (Pro)' : ''}
  </option>
- ))}
+ );
+ })}
  </select>
  {switching && (
  <Loader2 className="absolute right-8 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-600 animate-spin pointer-events-none" />
+ )}
+ </div>
+ {hasLockedSpaces && (
+ <Link href="/pricing" className="text-[11px] text-amber-700 hover:text-amber-900 font-medium">
+ {lockedSpaceIds.size} Space{lockedSpaceIds.size === 1 ? '' : 's'} locked · Upgrade →
+ </Link>
  )}
  </div>
  ) : null}
