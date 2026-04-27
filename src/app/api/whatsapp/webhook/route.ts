@@ -23,6 +23,7 @@ import {
 } from '@/lib/whatsapp';
 import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-provider';
 import { canUseWhatsApp } from '@/lib/plan-limits';
+import { handleWhatsAppInbound } from '@/lib/whatsapp/user-bot';
 
 const NON_PRO_UPGRADE_NUDGE =
   "Hi! 👋 The WhatsApp Pocket Agent is part of Paybacker Pro (£9.99/mo).\n\n" +
@@ -154,11 +155,35 @@ export async function POST(req: NextRequest) {
       .update({ last_message_at: new Date().toISOString() })
       .eq('whatsapp_phone', msg.from);
 
-    // PHASE 1: simple ack. The Claude tool-calling bot lives in src/lib/whatsapp/user-bot.ts
-    // and gets wired in once the Telegram port is reviewed.
-    await safeReply(msg.from,
-      `Got it — we'll surface this in your dashboard. The full WhatsApp Pocket Agent goes live during the launch sprint. Reply STOP at any time to opt out.`,
-    );
+    // Handle STOP for compliance — user can opt out at any time per
+    // Meta WhatsApp Business policy + UK GDPR.
+    if (msg.text && /^\s*stop\s*$/i.test(msg.text)) {
+      await sb
+        .from('whatsapp_sessions')
+        .update({
+          is_active: false,
+          opted_out_at: new Date().toISOString(),
+        })
+        .eq('whatsapp_phone', msg.from);
+      await safeReply(msg.from,
+        `You've been opted out. We won't message you on WhatsApp again. To re-enable, link WhatsApp from your Paybacker dashboard.`,
+      );
+      processed += 1;
+      continue;
+    }
+
+    // Hand off to the Pocket Agent. Pro users get the full Claude
+    // tool-calling brain — same intelligence as the Telegram bot,
+    // same dashboard data. user-bot.ts handles rate limits, history,
+    // sending and logging.
+    const agentResult = await handleWhatsAppInbound({
+      phone: msg.from,
+      text: msg.text ?? '',
+      userId,
+    });
+    if (!agentResult.ok) {
+      console.warn('[whatsapp/webhook] agent reported issue', agentResult.reason);
+    }
 
     processed += 1;
   }
