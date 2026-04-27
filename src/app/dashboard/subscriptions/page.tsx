@@ -14,6 +14,7 @@ import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
 import { isCreditProduct } from '@/lib/credit-product-detector';
 import ComparisonCard from '@/components/subscriptions/ComparisonCard';
+import { isDealValid } from '@/lib/savings-utils';
 import { cleanMerchantName } from '@/lib/merchant-utils';
 import { countActiveSubscriptions } from '@/lib/subscriptions/active-count';
 import { SORTED_CATEGORIES, SUBSCRIPTION_FILTER_CATEGORIES, getCategoryLabel, getCategoryColor, getCategoryBgColor, getCategoryIcon } from '@/lib/category-config';
@@ -2350,8 +2351,9 @@ export default function SubscriptionsPage() {
                   </div>
                 )}
 
-                {/* Smart Bill Comparison */}
-                {sub.status === 'active' && subComparisons[sub.id] && subComparisons[sub.id].length > 0 && (
+                {/* Smart Bill Comparison — skip for categories where switching isn't possible */}
+                {sub.status === 'active' && subComparisons[sub.id] && subComparisons[sub.id].length > 0 &&
+                  isDealValid({ category: sub.category, subscriptionName: sub.provider_name }) && (
                   <ComparisonCard
                     subscription={sub}
                     comparisons={subComparisons[sub.id]}
