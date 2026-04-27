@@ -187,10 +187,27 @@ export async function POST(req: NextRequest) {
       }
 
       // Either no code in the message, or the code was invalid/expired.
-      await safeReply(
-        msg.from,
-        `Hi! To use Paybacker via WhatsApp, generate a link code at https://paybacker.co.uk/dashboard/settings/whatsapp and send it back to me here. (Pro plan required.)`,
-      );
+      // We can tell which, so the reply is more useful.
+      const looksLikeCodeAttempt = /\b[A-Z2-9]{6}\b/i.test(msg.text ?? '');
+
+      const reply = looksLikeCodeAttempt
+        ? (
+          `That code didn't match — it might have expired (codes are valid for 10 minutes) or already been used.\n\n` +
+          `Generate a fresh one here: https://paybacker.co.uk/dashboard/settings/whatsapp`
+        )
+        : (
+          `👋 Hi! I'm the Paybacker Pocket Agent — your personal financial assistant on WhatsApp.\n\n` +
+          `I can fight unfair bills, write complaint letters citing UK consumer law, track every subscription, and recover your money — all from this chat.\n\n` +
+          `*To get started:*\n\n` +
+          `1️⃣  Sign in or sign up at paybacker.co.uk/pocket-agent\n` +
+          `2️⃣  Go to Dashboard → Profile → Pocket Agent\n` +
+          `3️⃣  Tap *Set up* on the WhatsApp card to generate a 6-character code\n` +
+          `4️⃣  Send it back to me here (e.g. "LINK ABC123")\n\n` +
+          `WhatsApp Pocket Agent is part of Paybacker Pro (£9.99/mo). Free and Essential users can use the Telegram Pocket Agent instead — same brain, no charge.\n\n` +
+          `Already have an account? Quickest path: paybacker.co.uk/dashboard/settings/whatsapp`
+        );
+
+      await safeReply(msg.from, reply);
       continue;
     }
 
