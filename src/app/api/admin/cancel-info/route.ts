@@ -48,6 +48,13 @@ export async function GET(request: NextRequest) {
 
   if (infoRes.error) return NextResponse.json({ error: infoRes.error.message }, { status: 500 });
 
+  // Codex P2 #300: a failed subscriptions lookup would silently
+  // produce an empty `uncovered` list, which renders as "good news,
+  // every provider is covered" — misleading. Fall through with
+  // uncovered=null + the error message so the UI can distinguish
+  // "actually empty" from "couldn't compute".
+  const subsLookupError = subsRes.error?.message ?? null;
+
   const rows = infoRes.data ?? [];
 
   // Quick freshness buckets for the UI header.
@@ -110,7 +117,12 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => b.user_count - a.user_count)
     .slice(0, 50);
 
-  return NextResponse.json({ rows, stats, uncovered });
+  return NextResponse.json({
+    rows,
+    stats,
+    uncovered: subsLookupError ? null : uncovered,
+    uncovered_error: subsLookupError,
+  });
 }
 
 export async function PATCH(request: NextRequest) {
