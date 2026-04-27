@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import PageLoadingSkeleton from '@/components/PageLoadingSkeleton';
 import {
   Terminal,
   Copy,
@@ -162,9 +163,11 @@ export default function McpSettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[300px]">
-        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
-      </div>
+      <PageLoadingSkeleton
+        title="Paybacker Assistant"
+        subtitle="Generate API tokens for the MCP integration."
+        cards={3}
+      />
     );
   }
 

@@ -8,6 +8,7 @@ import { User, Mail, CreditCard, TrendingUp, Clock, CheckCircle2, AlertCircle, T
 import Link from 'next/link';
 import { formatGBP } from '@/lib/format';
 import FinancialReport from '@/components/reports/FinancialReport';
+import PageLoadingSkeleton from '@/components/PageLoadingSkeleton';
 import type { AnnualReportData, OnDemandReportData } from '@/lib/report-generator';
 
 interface Profile {
@@ -704,9 +705,11 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-amber-500 animate-spin" />
-      </div>
+      <PageLoadingSkeleton
+        title="Profile"
+        subtitle="Account, subscription, connected services and notifications."
+        cards={6}
+      />
     );
   }
 

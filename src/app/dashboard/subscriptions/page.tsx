@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { capture } from '@/lib/posthog';
 import { formatGBP } from '@/lib/format';
 import UpgradeTrigger from '@/components/UpgradeTrigger';
+import PageLoadingSkeleton from '@/components/PageLoadingSkeleton';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import CreditScoreWarning from '@/components/subscriptions/CreditScoreWarning';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
@@ -1189,9 +1190,11 @@ export default function SubscriptionsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
-      </div>
+      <PageLoadingSkeleton
+        title="Subscriptions"
+        subtitle="Every recurring payment in one place."
+        cards={5}
+      />
     );
   }
 
