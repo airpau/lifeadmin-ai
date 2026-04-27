@@ -1,4 +1,5 @@
 import { resend, FROM_EMAIL, REPLY_TO } from '@/lib/resend';
+import { fmtGBP } from '@/lib/spending';
 
 const MONEY_TIPS = [
   'Check your bank statements monthly. The average UK household has 2-3 subscriptions they have forgotten about.',
@@ -40,7 +41,7 @@ export function buildWeeklyDigestEmail(
   const categoryRows = data.topCategories.slice(0, 5).map(cat => `
     <tr>
       <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: #E5E7EB; font-size: 14px;">${cat.category}</td>
-      <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: white; font-weight: 600; font-size: 14px; text-align: right;">£${cat.total.toFixed(2)}</td>
+      <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: white; font-weight: 600; font-size: 14px; text-align: right;">${fmtGBP(cat.total, { fractionDigits: 2 })}</td>
       <td style="padding: 10px 12px; border-bottom: 1px solid #F9FAFB; color: #6B7280; font-size: 13px; text-align: right;">${cat.percentage.toFixed(0)}%</td>
     </tr>
   `).join('');
@@ -49,7 +50,7 @@ export function buildWeeklyDigestEmail(
   const renewalRows = data.upcomingRenewals.slice(0, 5).map(r => `
     <tr>
       <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: #E5E7EB; font-size: 13px;">${r.provider}</td>
-      <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: white; font-size: 13px; text-align: right;">£${r.amount.toFixed(2)}</td>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: white; font-size: 13px; text-align: right;">${fmtGBP(r.amount, { fractionDigits: 2 })}</td>
       <td style="padding: 8px 12px; border-bottom: 1px solid #F9FAFB; color: ${r.daysUntil <= 7 ? '#ef4444' : '#6B7280'}; font-size: 13px; text-align: right;">${r.daysUntil} day${r.daysUntil !== 1 ? 's' : ''}</td>
     </tr>
   `).join('');
@@ -65,7 +66,7 @@ export function buildWeeklyDigestEmail(
           <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
               <span style="color: #E5E7EB; font-size: 13px;">${b.category}</span>
-              <span style="color: #6B7280; font-size: 13px;">£${b.spent.toFixed(0)} / £${b.limit.toFixed(0)}</span>
+              <span style="color: #6B7280; font-size: 13px;">${fmtGBP(b.spent)} / ${fmtGBP(b.limit)}</span>
             </div>
             <div style="background: #FFFFFF; border-radius: 4px; height: 6px; overflow: hidden;">
               <div style="background: ${barColor}; height: 6px; width: ${barWidth}%; border-radius: 4px;"></div>
@@ -77,7 +78,7 @@ export function buildWeeklyDigestEmail(
   ` : '';
 
   const subject = data.weekSpend > 0
-    ? `Your week: £${Math.round(data.weekSpend)} spent ${weekChange !== 0 ? `(${changeLabel} vs last week)` : ''}`
+    ? `Your week: ${fmtGBP(data.weekSpend)} spent ${weekChange !== 0 ? `(${changeLabel} vs last week)` : ''}`
     : 'Your weekly money digest';
 
   const html = `
@@ -97,10 +98,10 @@ export function buildWeeklyDigestEmail(
         <!-- Headline stat -->
         <div style="background: linear-gradient(135deg, #F9FAFB 0%, #F9FAFB 100%); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px; border: 1px solid #F9FAFB;">
           <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px;">This week's spending</p>
-          <p style="color: white; font-size: 36px; font-weight: bold; margin: 0;">£${Math.round(data.weekSpend)}</p>
+          <p style="color: white; font-size: 36px; font-weight: bold; margin: 0;">${fmtGBP(data.weekSpend)}</p>
           ${data.lastWeekSpend > 0 ? `
             <p style="color: ${changeColor}; font-size: 14px; margin: 8px 0 0;">
-              ${changeLabel} vs last week (£${Math.round(data.lastWeekSpend)})
+              ${changeLabel} vs last week (${fmtGBP(data.lastWeekSpend)})
             </p>
           ` : ''}
           <p style="color: #6B7280; font-size: 12px; margin: 8px 0 0;">${data.transactionCount} transactions</p>
