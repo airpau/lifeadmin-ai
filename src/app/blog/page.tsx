@@ -3,6 +3,7 @@ import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { MarkNav, MarkFoot } from './_shared';
+import { blogIconFor } from '@/lib/blog-icons';
 import './styles.css';
 
 /**
@@ -48,14 +49,6 @@ type Post = {
   emoji: string;
 };
 
-const GRADIENTS = [
-  { bg: 'linear-gradient(135deg, #34D399, #059669)', emoji: '✉' },
-  { bg: 'linear-gradient(135deg, #F59E0B, #D97706)', emoji: '📡' },
-  { bg: 'linear-gradient(135deg, #3B82F6, #2563EB)', emoji: '✈' },
-  { bg: 'linear-gradient(135deg, #8B5CF6, #6D28D9)', emoji: '⚖' },
-  { bg: 'linear-gradient(135deg, #F43F5E, #DC2626)', emoji: '💷' },
-];
-
 // Hand-coded SEO posts that already exist as live pages under /blog/*.
 const STATIC_POSTS: ReadonlyArray<Omit<Post, 'gradient' | 'emoji'>> = [
   {
@@ -100,8 +93,8 @@ async function fetchDynamicPosts(): Promise<Post[]> {
       .order('published_at', { ascending: false })
       .limit(20);
     if (!data) return [];
-    return data.map((p, i): Post => {
-      const g = GRADIENTS[i % GRADIENTS.length];
+    return data.map((p): Post => {
+      const icon = blogIconFor(p.category as string | null);
       return {
         title: p.title,
         excerpt: p.excerpt ?? '',
@@ -112,8 +105,8 @@ async function fetchDynamicPosts(): Promise<Post[]> {
           year: 'numeric',
         }),
         cat: (p.category as string | null) ?? 'Essay',
-        gradient: g.bg,
-        emoji: g.emoji,
+        gradient: icon.bg,
+        emoji: icon.emoji,
       };
     });
   } catch {
@@ -123,9 +116,23 @@ async function fetchDynamicPosts(): Promise<Post[]> {
 
 export default async function BlogIndexPage() {
   const dynamicPosts = await fetchDynamicPosts();
-  const staticWithArt: Post[] = STATIC_POSTS.map((p, i) => {
-    const g = GRADIENTS[(dynamicPosts.length + i) % GRADIENTS.length];
-    return { ...p, gradient: g.bg, emoji: g.emoji };
+  // The three static SEO posts all carry cat='Guides' which isn't
+  // category-specific. Look at the title to pick a topical icon —
+  // flight → ✈, energy → ⚡, broadband → 📡 — so the visual matches
+  // the subject like the dynamic posts do.
+  const staticWithArt: Post[] = STATIC_POSTS.map((p) => {
+    const t = p.title.toLowerCase();
+    const inferred =
+      t.includes('flight') || t.includes('airline') ? 'travel' :
+      t.includes('energy') || t.includes('gas') || t.includes('electric') ? 'energy' :
+      t.includes('broadband') || t.includes('wifi') || t.includes('internet') ? 'broadband' :
+      t.includes('mobile') ? 'mobile' :
+      t.includes('insurance') ? 'insurance' :
+      t.includes('council tax') ? 'council_tax' :
+      t.includes('water') ? 'water' :
+      'consumer';
+    const icon = blogIconFor(inferred);
+    return { ...p, gradient: icon.bg, emoji: icon.emoji };
   });
   const allPosts: Post[] = [...dynamicPosts, ...staticWithArt];
   const [featured, ...rest] = allPosts;

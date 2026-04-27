@@ -224,7 +224,7 @@ function Nav() {
     ['Product', '#features'],
     ['Deals', '#deals'],
     ['Pricing', '#pricing'],
-    ['Stories', '#testimonials'],
+    ['Journal', '/blog'],
   ];
 
   return (
@@ -782,6 +782,127 @@ function StickyCTA() {
     <div className={`sticky-cta mobile-hidden${visible ? ' shown' : ''}`} aria-hidden={!visible}>
       <span>Find your overcharges in 30s — no card, no catch.</span>
       <Link href="/auth/signup">Start free →</Link>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Journal — three most-recent published blog posts, surfaced on the
+// homepage so /blog isn't an orphaned section. Pulls live from
+// blog_posts via /api/blog-feed (lightweight server route).
+// Falls back to the three hand-coded SEO posts if the API errors so
+// the section never empty-states the user.
+// ---------------------------------------------------------------------------
+type JournalPost = {
+  title: string;
+  excerpt: string;
+  href: string;
+  date: string;
+  cat: string;
+  emoji: string;
+  bg: string;
+};
+
+const JOURNAL_FALLBACK: JournalPost[] = [
+  {
+    title: 'How to Claim Flight Delay Compensation UK — Up to £520',
+    excerpt: 'Complete guide to claiming under UK261 regulations. Up to £520 per person, claim back 6 years.',
+    href: '/blog/how-to-claim-flight-delay-compensation-uk',
+    date: '25 March 2026',
+    cat: 'Travel',
+    emoji: '✈',
+    bg: 'linear-gradient(135deg, #0EA5E9, #0369A1)',
+  },
+  {
+    title: 'Are You Overpaying on Energy in 2026?',
+    excerpt: 'The energy price cap hits £1,641 from April 2026. Find out if you’re on a standard variable tariff.',
+    href: '/blog/are-you-overpaying-on-energy',
+    date: '23 March 2026',
+    cat: 'Energy',
+    emoji: '⚡',
+    bg: 'linear-gradient(135deg, #F59E0B, #D97706)',
+  },
+  {
+    title: 'Your Broadband Contract Has Ended — You’re Probably Being Overcharged',
+    excerpt: 'Millions of UK households are out of contract on broadband and overpaying. Save up to £300 a year.',
+    href: '/blog/broadband-contract-ended',
+    date: '23 March 2026',
+    cat: 'Broadband',
+    emoji: '📡',
+    bg: 'linear-gradient(135deg, #3B82F6, #1D4ED8)',
+  },
+];
+
+function Journal() {
+  const [posts, setPosts] = useState<JournalPost[]>(JOURNAL_FALLBACK);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/blog-feed?limit=3')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d?.posts || !Array.isArray(d.posts) || d.posts.length === 0) return;
+        setPosts(d.posts as JournalPost[]);
+      })
+      .catch(() => { /* keep fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
+      {posts.map((p) => (
+        <Link key={p.href} href={p.href} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+          <article
+            style={{
+              background: '#fff',
+              border: '1px solid #E2E8F0',
+              borderRadius: 16,
+              overflow: 'hidden',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-4px)';
+              e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            <div
+              style={{
+                height: 140,
+                background: p.bg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 56,
+                color: '#fff',
+              }}
+              aria-hidden
+            >
+              {p.emoji}
+            </div>
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--mint-deep)' }}>
+                {p.cat}
+              </div>
+              <h3 style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.3, margin: 0, color: 'var(--text-1, #0f172a)' }}>
+                {p.title}
+              </h3>
+              <p style={{ fontSize: 14, color: 'var(--text-2, #475569)', lineHeight: 1.5, margin: 0 }}>
+                {p.excerpt}
+              </p>
+              <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--text-3, #94a3b8)' }}>
+                {p.date}
+              </div>
+            </div>
+          </article>
+        </Link>
+      ))}
     </div>
   );
 }
@@ -1517,6 +1638,29 @@ export default function HomepageV3PreviewPage() {
           </h2>
         </Reveal>
         <Testimonials />
+      </section>
+
+      {/* ========== Journal — latest blog posts ========== */}
+      <section className="journal-section section-light" id="journal" style={{ padding: '120px 0' }}>
+        <div className="wrap" style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
+          <Reveal>
+            <span className="eyebrow">From the Paybacker Journal</span>
+            <h2 style={{ fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 800, letterSpacing: '-0.02em', margin: '8px 0 12px' }}>
+              UK consumer rights,
+              <br />
+              decoded for everyday bills.
+            </h2>
+            <p style={{ fontSize: 16, color: 'var(--text-2, #475569)', maxWidth: 640, margin: '0 0 40px' }}>
+              Money-saving guides and statutory explainers from the Paybacker team. One UK overcharge, dissected.
+            </p>
+          </Reveal>
+          <Journal />
+          <div style={{ marginTop: 40, textAlign: 'center' }}>
+            <Link href="/blog" className="cta-ghost" style={{ display: 'inline-block', padding: '12px 28px', borderRadius: 999, border: '1px solid #CBD5E1', color: 'var(--text-1, #0f172a)', textDecoration: 'none', fontWeight: 600 }}>
+              Read all articles →
+            </Link>
+          </div>
+        </div>
       </section>
 
       {/* ========== Developer · MCP ========== */}
