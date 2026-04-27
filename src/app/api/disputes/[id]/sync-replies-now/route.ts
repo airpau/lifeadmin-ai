@@ -49,17 +49,11 @@ export async function POST(
     );
   }
 
-<<<<<<< HEAD
   const debug = (globalThis as any).__lastWatchdogDebug ?? null;
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   return NextResponse.json({
     success: true,
     imported: result.imported,
     disputeId: result.disputeId,
-<<<<<<< HEAD
     debug,
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   });
 }

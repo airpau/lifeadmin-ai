@@ -7,7 +7,6 @@
 
 This project uses a unified system across three Claude interfaces (Code, Desktop, Browser Extension). At the START of every session:
 
-<<<<<<< HEAD
 1. **Call `get_project_briefing` (paybacker MCP)** — one call returns all shared-context files, git status, open PRs, and recent business_log rows. This is the fastest way to pick up where the last session left off.
 2. If the MCP is unavailable, fall back to reading manually: `shared-context/active-sessions.md`, `shared-context/handoff-notes.md`, `shared-context/task-queue.md`, then `gh pr list -R airpau/lifeadmin-ai --state open` and the `business_log` table.
 
@@ -18,23 +17,6 @@ At the END of every session:
 4. Commit and push all changes
 
 The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks. The new `get_project_briefing` tool bundles the read-side of that into a single call so every new chat starts with full context without burning tokens on repeated reads.
-=======
-1. **Call `get_project_briefing`** (paybacker MCP) — one call returns all shared-context files, git status, open PRs, and recent business_log rows. This is the fastest way to pick up where the last session left off.
-2. If the MCP is not connected, fall back to reading the files manually:
-   - `shared-context/active-sessions.md` (what other interfaces have done)
-   - `shared-context/handoff-notes.md` (latest handoff)
-   - `shared-context/task-queue.md` (current priorities)
-   - `gh pr list -R airpau/lifeadmin-ai --state open` (open PRs)
-   - `business_log` table in Supabase (recent agent activity)
-
-At the END of every session:
-1. Call `log_session` and `log_handoff` via the Paybacker MCP — these write to `active-sessions.md` and `handoff-notes.md` in one step.
-2. Update `shared-context/task-queue.md` with any new/completed tasks
-3. Update `business_log` table so AI agents have current context
-4. Commit and push all changes
-
-The MCP server at `/mcp-server/` provides tools for all interfaces to read/write shared context, post to social media, check infrastructure, and manage tasks. Start every chat with `get_project_briefing` — it is the designed entry point.
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
 ---
 

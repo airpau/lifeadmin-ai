@@ -14,7 +14,6 @@ import { createClient } from '@supabase/supabase-js';
  *
  * Patterns lifted from /api/disputes/stats/route.ts (ISR revalidate = 300,
  * service-role client, defensive zeroed-fallback if env missing).
-<<<<<<< HEAD
  *
  * 19 Apr 2026 — Paul flagged two realism issues in the audit:
  *
@@ -30,13 +29,10 @@ import { createClient } from '@supabase/supabase-js';
  *      (250) until genuine sign-ups overtake it. The flag
  *      `foundingMembersFloored` exposes whether the floor was applied
  *      so the UI can still decide how to label it.
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
  */
 
 export const revalidate = 300; // 5 min ISR cache — anonymous visitors won't hammer Supabase
 
-<<<<<<< HEAD
 // Trust floor for the "Founding members" card. See header note.
 const FOUNDING_TRUST_FLOOR = 250;
 
@@ -77,13 +73,6 @@ const ZEROED = {
   foundingMembers: 0,
   foundingMembersReal: 0,
   foundingMembersFloored: false,
-=======
-const ZEROED = {
-  savedThisMonth: 0,
-  avgSavingsPerUser: 0,
-  subscriptionsTracked: 0,
-  foundingMembers: 0,
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   asOf: new Date().toISOString(),
   source: 'fallback' as const,
 };
@@ -95,7 +84,6 @@ function getAdmin() {
   );
 }
 
-<<<<<<< HEAD
 /**
  * Trimmed mean — drops the top and bottom `tail` share of values before
  * averaging. E.g. tail=0.10 on a 50-element array drops the 5 highest
@@ -115,8 +103,6 @@ function trimmedMean(values: number[], tail: number): number {
   return core.reduce((a, b) => a + b, 0) / core.length;
 }
 
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json(ZEROED);
@@ -155,7 +141,6 @@ export async function GET() {
       .eq('founding_member', true),
   ]);
 
-<<<<<<< HEAD
   // Hero ticker — sum this month, then apply the trust floor so the
   // figure never renders as £0 (which undermines the marketing claim).
   // Real savings take over as soon as they exceed SAVED_THIS_MONTH_FLOOR.
@@ -167,14 +152,6 @@ export async function GET() {
     : savedThisMonthReal;
 
   // 90-day per-user savings, winsorised, annualised.
-=======
-  // Hero ticker — sum this month
-  const savedThisMonth =
-    (monthSaved.data ?? []).reduce((sum, r) => sum + Number(r.amount_saved ?? 0), 0);
-
-  // 90-day avg savings annualised.
-  // avg per user over 90 days * (365 / 90) → rough "/yr" figure matching the card label.
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   const ninetyRows = ninetyDaySaved.data ?? [];
   const byUser = new Map<string, number>();
   for (const r of ninetyRows) {
@@ -182,7 +159,6 @@ export async function GET() {
     if (!uid) continue;
     byUser.set(uid, (byUser.get(uid) ?? 0) + Number(r.amount_saved ?? 0));
   }
-<<<<<<< HEAD
   const perUser90 = Array.from(byUser.values());
   const avgPerUser90 = trimmedMean(perUser90, WINSOR_TAIL);
   const annualised = Math.round(avgPerUser90 * (365 / 90));
@@ -217,29 +193,6 @@ export async function GET() {
     foundingMembers,
     foundingMembersReal,
     foundingMembersFloored,
-=======
-  const distinctUsers = byUser.size;
-  const sum90 = Array.from(byUser.values()).reduce((a, b) => a + b, 0);
-  const avgPerUser90 = distinctUsers > 0 ? sum90 / distinctUsers : 0;
-  const avgSavingsPerUser = Math.round(avgPerUser90 * (365 / 90));
-
-  const subscriptionsTracked = subs.count ?? 0;
-  const foundingMembers = founding.count ?? 0;
-
-  // If every metric is zero, flag as 'seed' so the UI can still show the
-  // "Preview data" note until real users start landing.
-  const allZero =
-    savedThisMonth === 0 &&
-    avgSavingsPerUser === 0 &&
-    subscriptionsTracked === 0 &&
-    foundingMembers === 0;
-
-  return NextResponse.json({
-    savedThisMonth: Math.round(savedThisMonth * 100) / 100,
-    avgSavingsPerUser,
-    subscriptionsTracked,
-    foundingMembers,
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     asOf: now.toISOString(),
     source: allZero ? ('seed' as const) : ('live' as const),
   });

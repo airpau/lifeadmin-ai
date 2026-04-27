@@ -16,13 +16,10 @@ import UpgradeModal from '@/components/UpgradeModal';
 import { AI_LETTER_DISCLAIMER_HTML } from '@/lib/legal-disclaimer';
 import ShareWinModal from '@/components/share/ShareWinModal';
 import { shouldShowShareModal, hasSharedThisSession } from '@/lib/share-triggers';
-<<<<<<< HEAD
 import EmailDisputeFinder from '@/components/dispute/EmailDisputeFinder';
 import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
 import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 import WatchdogCard from '@/components/dispute/WatchdogCard';
 
 // ============================================================
@@ -47,11 +44,8 @@ interface Dispute {
   latest_snippet?: string | null;
   unread_reply_count?: number;
   last_reply_received_at?: string | null;
-<<<<<<< HEAD
   user_has_gmail?: boolean;
   user_has_outlook?: boolean;
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   correspondence?: Correspondence[];
   contract_extractions?: ContractExtraction[];
 }
@@ -101,7 +95,6 @@ interface Correspondence {
   escalation_path?: string;
   detected_from_email?: boolean;
   sender_address?: string | null;
-<<<<<<< HEAD
   sender_name?: string | null;
   email_thread_id?: string | null;
   supplier_message_id?: string | null;
@@ -110,9 +103,6 @@ interface Correspondence {
   ai_respond_needed?: boolean | null;
   ai_urgency?: string | null;
   ai_rationale?: string | null;
-=======
-  email_thread_id?: string | null;
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 // ============================================================
@@ -299,17 +289,10 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-<<<<<<< HEAD
       <div className="relative card w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{title}</h2>
-=======
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200/50 flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-xl font-bold text-slate-900 truncate">{title}</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             {(() => {
               const count = rightsPills?.length ?? 0;
               if (count >= 3) return (
@@ -329,11 +312,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
               );
             })()}
           </div>
-<<<<<<< HEAD
           <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-=======
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1 flex-shrink-0"><X className="h-5 w-5" /></button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-white rounded-xl p-6 border border-slate-200/50 mb-4">
@@ -382,7 +361,6 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
           )}
           <p className="text-[10px] text-slate-600 text-center mt-3 leading-relaxed">{AI_LETTER_DISCLAIMER_HTML}</p>
         </div>
-<<<<<<< HEAD
         <div className="flex flex-col gap-3 p-6 border-t border-slate-200/50 flex-shrink-0">
           {sentNote && (
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 flex items-center gap-2 text-sm text-emerald-700">
@@ -420,16 +398,6 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
               I&apos;ve sent it — track the reply
             </button>
           )}
-=======
-        <div className="flex gap-3 p-6 border-t border-slate-200/50 flex-shrink-0">
-          <button onClick={handleCopy} className="flex-1 flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
-            {copied ? <CheckCircle className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            {copied ? 'Copied!' : 'Copy Letter'}
-          </button>
-          <button onClick={handlePDF} className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 py-3 rounded-lg transition-all font-semibold">
-            <Download className="h-4 w-4" /> Download PDF
-          </button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         </div>
       </div>
     </div>
@@ -507,11 +475,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ maxHeight: 'calc(100vh - env(safe-area-inset-top, 20px) - env(safe-area-inset-bottom, 0px))' }}>
         <div className="flex items-center justify-between p-5 border-b border-slate-200/50 flex-shrink-0">
           <h2 className="text-lg font-bold text-slate-900">Add to your dispute</h2>
-<<<<<<< HEAD
           <button type="button" onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-=======
-          <button type="button" onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         </div>
         <div className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0"
           style={{ WebkitOverflowScrolling: 'touch' as any }}>
@@ -621,11 +585,7 @@ function AddCorrespondenceModal({ disputeId, onClose, onAdded }: {
           <button
             type="submit"
             disabled={saving || uploading || !content.trim()}
-<<<<<<< HEAD
             className="w-full cta font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
-=======
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             {uploading ? 'Uploading file...' : saving ? 'Saving...' : 'Add to dispute'}
           </button>
@@ -686,31 +646,19 @@ function ResolveDisputeModal({ disputeId, disputedAmount, onClose, onResolved }:
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-<<<<<<< HEAD
       <div className="relative card w-full max-w-lg shadow-2xl">
-=======
-      <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Resolve Dispute</h2>
             <p className="text-slate-500 text-sm mt-0.5">Record the outcome of your dispute</p>
           </div>
-<<<<<<< HEAD
           <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-=======
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Outcome selector */}
           <div>
             <label className="block text-sm font-medium text-slate-600 mb-2">What was the outcome?</label>
-<<<<<<< HEAD
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-=======
-            <div className="grid grid-cols-2 gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               {outcomeOptions.map((opt) => (
                 <button
                   key={opt.value}
@@ -853,11 +801,7 @@ function DisputeProgressTracker({ dispute, providerInfo }: {
   const fillWidthPct = ((currentStage - 1) / totalSteps) * 100; // 0 to 83.33%
 
   return (
-<<<<<<< HEAD
     <div className="card mb-6">
-=======
-    <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-4">Dispute Progress</p>
       <div className="relative pb-1">
         {/* Background track */}
@@ -940,22 +884,14 @@ function PreviewConfirmModal({ formData, issueLabel, onConfirm, onClose }: {
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-<<<<<<< HEAD
         className="relative card w-full max-w-lg shadow-2xl"
-=======
-        className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-lg shadow-2xl"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       >
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Review your dispute</h2>
             <p className="text-slate-600 text-sm mt-0.5">Check the details before we write your letter</p>
           </div>
-<<<<<<< HEAD
           <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
-=======
-          <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1205,7 +1141,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         />
       )}
 
-<<<<<<< HEAD
       {editingDetails && (
         <EditDisputeDetailsModal
           disputeId={disputeId}
@@ -1291,16 +1226,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       <div className="card mb-6">
         <div className="flex items-start justify-between mb-3">
           <div style={{display:'none'}}>
-=======
-      {/* Back + header */}
-      <button onClick={onBack} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
-        <ChevronLeft className="h-4 w-4" /> Back to all disputes
-      </button>
-
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
-        <div className="flex items-start justify-between mb-3">
-          <div>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
               {dispute.provider_name}
             </h1>
@@ -1393,11 +1318,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
 
       {/* Provider Info Card */}
       {providerInfo && (
-<<<<<<< HEAD
         <div className="card mb-6">
-=======
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-5 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <h3 className="text-sm font-semibold text-slate-900 mb-3">About {providerInfo.display_name}</h3>
           <div className="grid sm:grid-cols-2 gap-3 text-xs">
             {providerInfo.cancellation_method && (
@@ -1458,11 +1379,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
             </button>
             <button
               onClick={generateFollowUp}
-<<<<<<< HEAD
               className="flex items-center gap-2 px-3 py-2 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
-=======
-              className="flex items-center gap-2 px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50 min-w-[200px] justify-center"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             >
               {generating ? (
                 <>
@@ -1480,11 +1397,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
         </div>
 
         {(!dispute.correspondence || dispute.correspondence.length === 0) ? (
-<<<<<<< HEAD
           <div className="card p-12 text-center">
-=======
-          <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <MessageSquare className="h-16 w-16 text-slate-600 mx-auto mb-4" />
             <p className="text-slate-600 mb-2">No correspondence yet</p>
             <p className="text-slate-500 text-sm mb-6">Generate your first letter or add what the company has sent you</p>
@@ -1498,11 +1411,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-<<<<<<< HEAD
                 className="flex items-center gap-2 px-4 py-2.5 cta font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
-=======
-                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg text-sm transition-all disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write your first letter
@@ -1563,7 +1472,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Auto-imported
                         </span>
                       )}
-<<<<<<< HEAD
                       {/* Classifier-driven badge so auto-replies and acks
                           don\'t masquerade as substantive replies that need
                           action. `ai_respond_needed === false` = holding/ack;
@@ -1578,8 +1486,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Action needed
                         </span>
                       )}
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-slate-600 text-xs flex items-center gap-1">
@@ -1704,7 +1610,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                     <p className="text-sm text-slate-600 whitespace-pre-wrap">{entry.content}</p>
                   )}
 
-<<<<<<< HEAD
                   {/* Action row — Draft AI response, open the original
                       in the user's webmail, or start a blank reply via
                       mailto. Broader than isFromCompany so classifier
@@ -1772,22 +1677,6 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                           Open in Outlook
                         </a>
                       )}
-=======
-                  {/* Draft response button — shown on company responses */}
-                  {isFromCompany && !isResolved(dispute.status) && (
-                    <div className="mt-3 pt-3 border-t border-slate-200/30">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          generateFollowUp();
-                        }}
-                        disabled={generating}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-lg text-sm transition-all border border-amber-200 font-medium"
-                      >
-                        {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                        Draft response to this
-                      </button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     </div>
                   )}
                 </div>
@@ -1819,11 +1708,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
               <button
                 onClick={generateFollowUp}
                 disabled={generating}
-<<<<<<< HEAD
                 className="flex items-center justify-center gap-2 px-5 py-3 cta font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
-=======
-                className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 flex-1"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Write next letter
@@ -1847,11 +1732,7 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
       </div>
 
       {/* Contract Upload Section */}
-<<<<<<< HEAD
       <div className="card mb-6">
-=======
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <div className="flex items-center gap-2 mb-3">
           <Shield className="h-5 w-5 text-purple-400" />
           <h2 className="text-lg font-bold text-slate-900">Your contract</h2>
@@ -2205,11 +2086,7 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
   if (generating) {
     return (
       <div className="max-w-2xl mx-auto">
-<<<<<<< HEAD
         <div className="card p-12 text-center">
-=======
-        <div className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <div className="relative mx-auto w-20 h-20 mb-6">
             <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
             <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
@@ -2256,7 +2133,6 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
         />
       )}
 
-<<<<<<< HEAD
       <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-3 text-sm transition-all">
         <ChevronLeft className="h-4 w-4" /> Back to Disputes
       </button>
@@ -2272,15 +2148,6 @@ function NewDisputeForm({ onCreated, onCancel }: { onCreated: (id: string) => vo
       <div className="card">
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Tell us what happened</h2>
         <p className="text-slate-600 text-sm mb-6">Every field helps us draft a sharper letter. Required fields are marked *.</p>
-=======
-      <button onClick={onCancel} className="flex items-center gap-1 text-slate-600 hover:text-slate-900 mb-4 text-sm transition-all">
-        <ChevronLeft className="h-4 w-4" /> Back
-      </button>
-
-      <div className="bg-white border border-slate-200/50 rounded-2xl p-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-1 font-[family-name:var(--font-heading)]">Start a new dispute</h2>
-        <p className="text-slate-600 text-sm mb-6">Tell us what happened and we will write the perfect response</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -2617,11 +2484,7 @@ function GuidedTour({ onComplete }: { onComplete: () => void }) {
             </div>
             <div className="flex gap-2">
               <button onClick={onComplete} className="text-slate-500 hover:text-slate-700 text-xs transition-all">Skip</button>
-<<<<<<< HEAD
               <button onClick={handleNext} className="cta text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
-=======
-              <button onClick={handleNext} className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 {step === TOUR_STEPS.length - 1 ? 'Got it' : 'Next'}
               </button>
             </div>
@@ -2694,7 +2557,6 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
       {/* Variant A header + KPI strip — maps Disputes Centre design to real summary data. */}
       <div className="page-title-row">
         <div>
-<<<<<<< HEAD
           <h1 className="page-title">Disputes Centre</h1>
           <p className="page-sub">
             {summary && (summary.total_open > 0 || summary.total_resolved > 0)
@@ -2715,23 +2577,9 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             <Plus className="h-3.5 w-3.5" /> New dispute
           </button>
         </div>
-=======
-          <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">Disputes</h1>
-          <p className="text-slate-600 mt-1">Manage complaints, generate legal letters, and track your cases.</p>
-        </div>
-        <button
-          id="tour-new-btn"
-          onClick={onNew}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
-        >
-          <Plus className="h-4 w-4" />
-          New dispute
-        </button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       </div>
 
       {summary && (summary.total_open > 0 || summary.total_resolved > 0) && (
-<<<<<<< HEAD
         <div className="kpi-row c4" style={{marginBottom:16}}>
           <div className="kpi-card">
             <div className="k-label"><Scale className="h-3.5 w-3.5" /> Active disputes</div>
@@ -2752,48 +2600,6 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             <div className="k-label"><TrendingUp className="h-3.5 w-3.5" /> Total recovered</div>
             <div className="k-val green">£{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className="k-delta">Lifetime · from resolved disputes</div>
-=======
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <Scale className="h-4 w-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{summary.total_open}</p>
-            <p className="text-slate-500 text-xs mt-0.5">Active Disputes</p>
-          </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <CheckCircle className="h-4 w-4 text-green-400" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{summary.total_resolved}</p>
-            <p className="text-slate-500 text-xs mt-0.5">Resolved</p>
-          </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <PoundSterling className="h-4 w-4 text-amber-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              £{summary.total_disputed_amount.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">Being Disputed</p>
-          </div>
-          <div className="bg-white border border-slate-200/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <TrendingUp className="h-4 w-4 text-green-400" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-green-400">
-              £{summary.total_recovered.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5">Total Recovered</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           </div>
         </div>
       )}
@@ -2813,7 +2619,6 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           <div className="flex items-start gap-3">
             <span className="bg-emerald-500 text-slate-900 text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
             <p className="text-slate-600 text-sm">Add their replies and we write even stronger follow-ups — every response builds your argument</p>
-<<<<<<< HEAD
           </div>
         </div>
       </div>
@@ -2835,8 +2640,6 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
             <Link href="/dashboard/subscriptions" className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:text-emerald-800">
               Go to Subscriptions →
             </Link>
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           </div>
         </div>
       </div>
@@ -2846,7 +2649,6 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
         </div>
       ) : disputes.length === 0 ? (
-<<<<<<< HEAD
         <div id="tour-list" className="card p-12 text-center">
           <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-600 mb-2">No disputes yet</p>
@@ -2859,15 +2661,6 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
           <button
             onClick={onNew}
             className="inline-flex items-center gap-2 px-6 py-3 cta font-semibold rounded-lg transition-all"
-=======
-        <div id="tour-list" className="bg-white border border-slate-200/50 rounded-2xl p-12 text-center">
-          <FileText className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-600 mb-2">No disputes yet</p>
-          <p className="text-slate-500 text-sm mb-6">Start your first dispute and we will write the perfect complaint letter</p>
-          <button
-            onClick={onNew}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-lg transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             <Plus className="h-4 w-4" /> Start a dispute
           </button>
@@ -2881,11 +2674,7 @@ function DisputesList({ onSelect, onNew }: { onSelect: (id: string) => void; onN
                 key={d.id}
                 id={idx === 0 ? 'tour-card' : undefined}
                 onClick={() => onSelect(d.id)}
-<<<<<<< HEAD
                 className="w-full text-left card hover:border-emerald-500/30 transition-all"
-=======
-                className="w-full text-left bg-white border border-slate-200/50 rounded-2xl p-6 hover:border-emerald-500/30 transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">

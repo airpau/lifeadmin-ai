@@ -49,51 +49,6 @@ const VARIABLE_CATEGORIES = new Set([
   'bank_transfer', 'debt_repayment',
 ]);
 
-<<<<<<< HEAD
-// Categories that can legitimately be recurring bills where a hike is
-// surface-worthy. council_tax and business_rates typically step up once
-// a year (April) — the std-dev filter below still works because the
-// previous N monthly payments are flat, and the April jump is flagged.
-const RECURRING_CATEGORIES = new Set([
-  'DIRECT_DEBIT', 'STANDING_ORDER',
-  'energy', 'broadband', 'mobile', 'streaming', 'insurance',
-  'water', 'fitness', 'software', 'bills',
-  'council_tax', 'business_rates', 'tax',
-]);
-
-function looksLikeTransferToSelf(
-  description: string,
-  merchantName: string | null,
-  userNameTokens: string[],
-): boolean {
-  if (userNameTokens.length === 0) return false;
-  const haystack = `${merchantName ?? ''} ${description}`.toLowerCase();
-  // Require at least two user-name tokens to appear — a single common first
-  // name would false-positive on any retailer that happens to share it.
-  const matches = userNameTokens.filter((t) => haystack.includes(t));
-  return matches.length >= 2;
-}
-
-async function loadUserNameTokens(userId: string): Promise<string[]> {
-  const db = getAdmin();
-  try {
-    const { data } = await db
-      .from('profiles')
-      .select('first_name, last_name, full_name')
-      .eq('id', userId)
-      .maybeSingle();
-    if (!data) return [];
-    const raw = [data.first_name, data.last_name, data.full_name]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    const tokens = Array.from(new Set(raw.split(/\s+/).filter((t) => t.length >= 3)));
-    return tokens;
-  } catch {
-    return [];
-  }
-}
-=======
 // Only these transaction categories can be recurring bills with a stable price
 const RECURRING_CATEGORIES = new Set([
   'DIRECT_DEBIT', 'STANDING_ORDER',
@@ -119,7 +74,6 @@ const MAX_PRICE_INCREASE_RATIO = 2.0;
 
 // Require at least this many prior payments to establish a stable baseline.
 const MIN_PREVIOUS_PAYMENTS = 3;
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
 /**
  * Detect price increases in recurring payments for a user.
@@ -211,16 +165,10 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
-<<<<<<< HEAD
-    // Need at least 3 months of data — a single comparison against one
-    // previous month turned out to be too noisy in real user data.
-    if (monthlyPayments.length < 3) continue;
-=======
     // Need at least MIN_PREVIOUS_PAYMENTS months of prior data + 1 latest.
     // A single prior payment gives a variance of zero so any spike passes --
     // that's how manual transfers were sneaking through.
     if (monthlyPayments.length < MIN_PREVIOUS_PAYMENTS + 1) continue;
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
     const latest = monthlyPayments[monthlyPayments.length - 1];
     const previous = monthlyPayments.slice(0, -1);

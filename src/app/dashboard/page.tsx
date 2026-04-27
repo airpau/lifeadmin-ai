@@ -407,32 +407,9 @@ export default function DashboardPage() {
         // potentialSavings will be calculated after all data loads (see below)
 
         const subsList = subs.data || [];
-<<<<<<< HEAD
         // Single source of truth for "active subscriptions" — dedupe +
         // finance-strip handled by shared helper so every page agrees.
         setSubscriptionCount(countActiveSubscriptions(subsList));
-=======
-        // Filter out finance payments and deduplicate — match subscriptions page logic
-        const DEBT_KW = ['mortgage', 'loan', 'finance', 'lendinvest', 'skipton', 'santander loan', 'natwest loan', 'novuna', 'ca auto', 'auto finance', 'funding circle', 'zopa'];
-        const CREDIT_KW = ['barclaycard', 'mbna', 'halifax credit', 'hsbc bank visa', 'virgin money', 'capital one', 'american express', 'amex', 'securepay', 'credit card'];
-        const isFinance = (name: string) => {
-          const l = name.toLowerCase();
-          return DEBT_KW.some(kw => l.includes(kw)) || CREDIT_KW.some(kw => l.includes(kw));
-        };
-        const filteredSubs = subsList.filter(s => !isFinance(s.provider_name));
-        const seenNames = new Map<string, boolean>();
-        const dedupedSubs = filteredSubs.filter(s => {
-          const normName = cleanMerchantName(s.provider_name).toLowerCase();
-          // Include amount band so two separate bills at the same provider but
-          // different amounts (e.g. two council-tax DDs) count as distinct.
-          const band = Math.round(Math.log(Math.max(Math.abs(parseFloat(String(s.amount)) || 0), 0.01)) / Math.log(1.1));
-          const key = `${normName}|${band}`;
-          if (seenNames.has(key)) return false;
-          seenNames.set(key, true);
-          return true;
-        });
-        setSubscriptionCount(dedupedSubs.length);
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         setActiveSubscriptions(subsList);
 
         // Calculate monthly spend via RPC for consistency with subscriptions page
@@ -768,7 +745,6 @@ export default function DashboardPage() {
           }}
         >
           <div>
-<<<<<<< HEAD
             <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
               Your free Pro trial has ended
             </p>
@@ -806,28 +782,6 @@ export default function DashboardPage() {
             </p>
           </div>
           <Link href="/pricing" className="cta-ghost">View plans →</Link>
-=======
-            <p className="text-slate-900 font-semibold text-sm">Your free Pro trial has ended</p>
-            <p className="text-slate-600 text-xs mt-1">Upgrade to keep unlimited letters, daily bank sync, spending intelligence, and all Pro features. All your data is safe.</p>
-          </div>
-          <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all text-sm whitespace-nowrap ml-4">
-            Upgrade Now
-          </Link>
-        </div>
-      )}
-
-      {trialDaysLeft !== null && trialDaysLeft <= 7 && (
-        <div className="mb-6 bg-emerald-500/10 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-emerald-600" />
-            <p className="text-slate-900 text-sm">
-              Pro trial ends in <span className="text-emerald-600 font-semibold">{trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''}</span>. Upgrade to keep all features.
-            </p>
-          </div>
-          <Link href="/pricing" className="text-emerald-600 hover:text-emerald-500 text-sm font-medium whitespace-nowrap ml-4">
-            View Plans
-          </Link>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         </div>
       )}
 
@@ -838,7 +792,6 @@ export default function DashboardPage() {
         tier={userTier}
       />
 
-<<<<<<< HEAD
       {/* ─── Page title row ─────────────────────────────────────────── */}
       <div className="page-title-row">
         <div>
@@ -945,36 +898,6 @@ export default function DashboardPage() {
                   padding: '14px 0',
                   borderTop: i ? '1px solid #D1FAE5' : '0',
                 }}
-=======
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Overview</h1>
-        <p className="text-slate-600">Your financial snapshot and quick actions</p>
-      </div>
-
-      {/* Potential Savings Hero */}
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 mb-8 shadow-[--shadow-card]">
-        <div className="flex items-center gap-2 mb-2">
-          <PiggyBank className="h-5 w-5 text-emerald-400" />
-          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider">Potential Savings Found</h2>
-        </div>
-        <p className="text-4xl md:text-5xl font-bold text-emerald-400 font-[family-name:var(--font-heading)] mb-1">
-          {formatGBP(potentialSavings)}<span className="text-2xl font-normal text-emerald-400/70">/yr</span>
-        </p>
-        <p className="text-slate-600 text-sm mb-6">
-          Based on cheaper subscription alternatives and price increase alerts we&apos;ve detected
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-          {(() => {
-            const alertTotal = priceAlerts
-              .filter(isPriceAlertValid)
-              .reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0);
-            if (alertTotal <= 0) return null;
-            return (
-              <button
-                onClick={() => document.getElementById('price-alerts')?.scrollIntoView({ behavior: 'smooth' })}
-                className="flex items-center gap-3 bg-slate-100 hover:bg-slate-100 border border-slate-200 rounded-xl p-3 text-left transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 <div
                   style={{
@@ -991,7 +914,6 @@ export default function DashboardPage() {
                 >
                   {r.icon}
                 </div>
-<<<<<<< HEAD
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
@@ -1006,11 +928,6 @@ export default function DashboardPage() {
                     <span className={`pill ${r.pillClass}`}>{r.pillText}</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{r.meta}</div>
-=======
-                <div>
-                  <p className="text-slate-900 font-semibold">{formatGBP(alertTotal)}/yr</p>
-                  <p className="text-slate-600 text-xs">Price increase alerts</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 </div>
                 <div style={{ textAlign: 'right', minWidth: 100 }}>
                   <div
@@ -1171,7 +1088,6 @@ export default function DashboardPage() {
             );
           })()}
 
-<<<<<<< HEAD
           {/* Savings Opportunity Widget — existing */}
           {dealsLoading ? (
             <SavingsSkeleton />
@@ -1208,648 +1124,11 @@ export default function DashboardPage() {
                       setPriceAlerts((prev) => prev.filter((a) => a.id !== id));
                     }}
                   />
-=======
-          <Link href="/dashboard/deals" className="flex items-center gap-3 bg-slate-100 hover:bg-slate-100 border border-slate-200 rounded-xl p-3 transition-all">
-            <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-400 h-10 w-10 flex items-center justify-center shrink-0">
-              <Tag className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-slate-900 font-semibold">{formatGBP(comparisonSaving)}/yr</p>
-              <p className="text-slate-600 text-xs">from {comparisonCount} deals</p>
-            </div>
-          </Link>
-
-          <Link href="/dashboard/complaints" className="flex items-center gap-3 bg-slate-100 hover:bg-slate-100 border border-slate-200 rounded-xl p-3 transition-all">
-            <div className="bg-blue-500/10 p-2 rounded-lg text-blue-400 h-10 w-10 flex items-center justify-center shrink-0">
-              <FileText className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-slate-900 font-semibold">{complaintsGenerated} disputes</p>
-              <p className="text-slate-600 text-xs">Filed</p>
-            </div>
-          </Link>
-        </div>
-
-        <div className="flex">
-          <Link href="/dashboard/subscriptions" className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-            Review Your Subscriptions <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </div>
-
-      {/* Savings Opportunity Widget */}
-      {dealsLoading ? <SavingsSkeleton /> : <SavingsOpportunityWidget totalSaving={comparisonSaving} count={comparisonCount} deals={comparisonDeals} />}
-
-      {/* Price Increase Alerts */}
-      {priceAlerts.length > 0 && (
-        <div id="price-alerts" className="mb-8">
-          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            Price Increase Alerts ({priceAlerts.length})
-          </h2>
-          <div className="space-y-3">
-            {priceAlerts.map((alert) => (
-              <PriceIncreaseCard
-                key={alert.id}
-                alert={alert}
-                onDismiss={async (id) => {
-                  await fetch('/api/price-alerts', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, status: 'dismissed' }),
-                  });
-                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
-                }}
-                onAction={async (id) => {
-                  await fetch('/api/price-alerts', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, status: 'actioned' }),
-                  });
-                  setPriceAlerts(prev => prev.filter(a => a.id !== id));
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Link href="/dashboard/subscriptions" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
-          <CreditCard className="h-6 w-6 text-emerald-600 mb-3" />
-          <p className="text-3xl font-bold text-slate-900">{spendBreakdown?.subscriptions_count || subscriptionCount}</p>
-          <p className="text-slate-600 text-sm">Subscriptions & bills</p>
-        </Link>
-        <Link href="/dashboard/subscriptions" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
-          <BarChart3 className="h-6 w-6 text-red-400 mb-3" />
-          <p className="text-3xl font-bold text-slate-900">{formatGBP(monthlySpend)}</p>
-          <p className="text-slate-600 text-sm">Subscriptions & bills</p>
-          {spendBreakdown && (spendBreakdown.mortgages_monthly > 0 || spendBreakdown.loans_monthly > 0 || spendBreakdown.council_tax_monthly > 0) && (
-            <p className="text-slate-500 text-xs mt-1 truncate">
-              + {formatGBP(spendBreakdown.mortgages_monthly + spendBreakdown.loans_monthly + spendBreakdown.council_tax_monthly)} in mortgages, loans & tax
-            </p>
-          )}
-        </Link>
-        <Link href="/dashboard/complaints" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
-          <FileText className="h-6 w-6 text-blue-400 mb-3" />
-          <p className="text-3xl font-bold text-slate-900">{complaintsGenerated}</p>
-          <p className="text-slate-600 text-sm">Disputes</p>
-        </Link>
-        <Link href="/dashboard/subscriptions" className="block bg-white border border-slate-200/50 rounded-2xl p-5 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
-          <Building2 className="h-6 w-6 text-green-400 mb-3" />
-          <p className="text-3xl font-bold text-slate-900">{bankConnected ? (bankAccounts.some(b => b.status === 'active') ? 'Connected' : 'Expired') : 'Not set up'}</p>
-          <p className="text-slate-600 text-sm">Bank account{bankConnected && !bankAccounts.some(b => b.status === 'active') ? ' · needs reconnect' : ''}</p>
-        </Link>
-      </div>
-
-      {/* Getting Started — connection status & CTAs */}
-      {!(bankConnected && emailConnected && complaintsGenerated > 0) && (
-        <div className="bg-white border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="h-5 w-5 text-emerald-600" />
-            <h2 className="text-slate-900 font-semibold text-lg">Get the most from Paybacker</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Bank Account */}
-            {(() => {
-              const hasActive = bankAccounts.some(b => b.status === 'active');
-              const hasExpired = bankConnected && !hasActive;
-              const borderClass = hasActive ? 'border-green-500/30 bg-green-500/5' : hasExpired ? 'border-amber-300 bg-orange-500/5' : 'border-amber-300 bg-orange-500/5';
-              return (
-            <div className={`rounded-xl border p-4 ${borderClass}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <Building2 className="h-5 w-5 text-slate-700" />
-                <span className="text-slate-900 font-medium text-sm">Bank Account</span>
-              </div>
-              <div className="flex items-center gap-1.5 mb-3">
-                {hasActive ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-400" />
-                    <span className="text-green-400 text-sm">Connected</span>
-                  </>
-                ) : hasExpired ? (
-                  <>
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <span className="text-amber-600 text-sm">Needs reconnect</span>
-                  </>
-                ) : (
-                  <span className="text-amber-600 text-sm">Not connected</span>
-                )}
-              </div>
-              {hasActive ? (
-                <button
-                  onClick={async () => {
-                    setBankSyncing(true);
-                    try {
-                      await fetch('/api/bank/sync-now', { method: 'POST' });
-                    } catch {}
-                    setBankSyncing(false);
-                  }}
-                  disabled={bankSyncing}
-                  className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900 font-medium px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${bankSyncing ? 'animate-spin' : ''}`} />
-                  {bankSyncing ? 'Syncing...' : 'Sync Now'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-                  className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center"
-                >
-                  {hasExpired ? 'Reconnect Bank' : 'Connect Bank'}
-                </button>
-              )}
-            </div>
-              );
-            })()}
-
-            {/* Email Inbox */}
-            <div className={`rounded-xl border p-4 ${emailConnected ? 'border-green-500/30 bg-green-500/5' : 'border-amber-300 bg-orange-500/5'}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <Mail className="h-5 w-5 text-slate-700" />
-                <span className="text-slate-900 font-medium text-sm">Email Inbox</span>
-              </div>
-              <div className="flex items-center gap-1.5 mb-3">
-                {emailConnected ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-400" />
-                    <span className="text-green-400 text-sm">Connected</span>
-                  </>
-                ) : (
-                  <span className="text-amber-600 text-sm">Not connected</span>
-                )}
-              </div>
-              {emailConnected ? (
-                <button
-                  onClick={handleEmailScan}
-                  disabled={emailScanning}
-                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900"
-                >
-                  {emailScanning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Scanning...</> : 'Scan Inbox'}
-                </button>
-              ) : (
-                <Link
-                  href="/dashboard/profile?connect_email=true"
-                  className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center bg-emerald-500 hover:bg-emerald-600 text-slate-900"
-                >
-                  Connect Email
-                </Link>
-              )}
-            </div>
-
-            {/* First Letter */}
-            <div className={`rounded-xl border p-4 ${complaintsGenerated > 0 ? 'border-green-500/30 bg-green-500/5' : 'border-amber-300 bg-orange-500/5'}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="h-5 w-5 text-slate-700" />
-                <span className="text-slate-900 font-medium text-sm">First Letter</span>
-              </div>
-              <div className="flex items-center gap-1.5 mb-3">
-                {complaintsGenerated > 0 ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-400" />
-                    <span className="text-green-400 text-sm">{complaintsGenerated} written</span>
-                  </>
-                ) : (
-                  <span className="text-amber-600 text-sm">None yet</span>
-                )}
-              </div>
-              <Link
-                href="/dashboard/complaints"
-                className={`flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all text-sm w-full justify-center ${
-                  complaintsGenerated > 0
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-900 font-medium'
-                    : 'bg-emerald-500 hover:bg-emerald-600 text-slate-900'
-                }`}
-              >
-                Write Letter
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Your Connections — collapsible */}
-      <div className="bg-white border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6 mb-8">
-        <button
-          onClick={() => setConnectionsCollapsed(!connectionsCollapsed)}
-          className="flex items-center justify-between w-full text-left"
-        >
-          <h2 className="text-slate-900 font-semibold text-lg">Your Connections</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-600">
-              {bankAccounts.reduce((c, b) => c + (b.account_display_names?.length || 1), 0)} bank{bankAccounts.reduce((c, b) => c + (b.account_display_names?.length || 1), 0) !== 1 ? 's' : ''}, {emailAccounts.length} email{emailAccounts.length !== 1 ? 's' : ''}
-            </span>
-            {connectionsCollapsed ? <ChevronDown className="h-5 w-5 text-slate-600" /> : <ChevronUp className="h-5 w-5 text-slate-600" />}
-          </div>
-        </button>
-        {!connectionsCollapsed && <div className="space-y-3 mt-4">
-          {/* Bank accounts */}
-          {bankAccounts.length > 0 ? (
-            bankAccounts.map(b => {
-              const isActive = b.status === 'active';
-              const statusLabel = isActive ? 'Active' : 'Expired';
-              const statusClass = isActive ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-amber-600 bg-orange-500/10 border-amber-200';
-              return (
-              (b.account_display_names && b.account_display_names.length > 0)
-                ? b.account_display_names.map((name, i) => (
-                  <div key={`${b.id}-${i}`} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                        <Building2 className="h-4 w-4 text-blue-400" />
-                      </div>
-                      <div>
-                        <p className="text-slate-900 text-sm font-medium">{b.bank_name || 'Bank'} · {name}</p>
-                        <p className="text-slate-500 text-xs">Bank account</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-600 hover:text-amber-300 font-medium">Reconnect</button>}
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
-                      <button onClick={() => disconnectBank(b.id, b.bank_name || 'Bank')} disabled={disconnectingId === b.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1" title="Disconnect this bank">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-                : (
-                  <div key={b.id} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                        <Building2 className="h-4 w-4 text-blue-400" />
-                      </div>
-                      <div>
-                        <p className="text-slate-900 text-sm font-medium">{b.bank_name || 'Bank Account'}</p>
-                        <p className="text-slate-500 text-xs">Bank account</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!isActive && <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="text-xs text-amber-600 hover:text-amber-300 font-medium">Reconnect</button>}
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
-                      <button onClick={() => disconnectBank(b.id, b.bank_name || 'Bank')} disabled={disconnectingId === b.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ml-1" title="Disconnect this bank">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              );
-            })
-          ) : (
-            <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30 border-dashed">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-blue-400" />
-                </div>
-                <p className="text-slate-600 text-sm">No bank account connected</p>
-              </div>
-            </div>
-          )}
-
-          {/* Email accounts */}
-          {emailAccounts.length > 0 ? (
-            emailAccounts.map(e => (
-              <div key={e.id} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                    <Mail className="h-4 w-4 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-slate-900 text-sm font-medium">{e.email_address}</p>
-                    <p className="text-slate-500 text-xs">{e.provider_type || 'Email'} account</p>
-                  </div>
-                </div>
-                <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Active</span>
-              </div>
-            ))
-          ) : (
-            <div className="flex items-center justify-between p-3 bg-slate-50/50 rounded-lg border border-slate-200/30 border-dashed">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                  <Mail className="h-4 w-4 text-purple-400" />
-                </div>
-                <p className="text-slate-600 text-sm">No email connected</p>
-              </div>
-            </div>
-          )}
-
-          {/* Add connection buttons */}
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }}
-              className="flex items-center gap-1.5 text-sm text-emerald-600 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-500/20 transition-all"
-            >
-              <Building2 className="h-3.5 w-3.5" />
-              Add Bank Account
-            </button>
-            <Link
-              href="/dashboard/profile?connect_email=true"
-              className="flex items-center gap-1.5 text-sm text-purple-400 bg-purple-500/10 px-3 py-1.5 rounded-lg border border-purple-500/30 hover:bg-purple-500/20 transition-all"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              Add Email
-            </Link>
-          </div>
-        </div>}
-      </div>
-
-      {/* Alerts */}
-      {expiringContracts > 0 && (
-        <div className="bg-emerald-500/10 border border-emerald-200 rounded-2xl p-5 mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-emerald-600" />
-            <div>
-              <p className="text-slate-900 font-semibold text-sm">{expiringContracts} contract{expiringContracts > 1 ? 's' : ''} expiring within 30 days</p>
-              <p className="text-slate-600 text-xs">Review these before they auto-renew at a higher rate</p>
-            </div>
-          </div>
-          <Link href="/dashboard/contracts" className="text-emerald-600 hover:text-emerald-500 text-sm font-medium flex items-center gap-1">
-            View <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      )}
-
-
-      {/* Email Scan Card */}
-      {emailConnected ? (
-        <div className="mb-6">
-          <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Mail className="h-5 w-5 text-purple-400" />
-              <div>
-                <p className="text-slate-900 font-semibold text-sm">
-                  {emailScanning ? 'Scanning your emails...' : 'Email Scanner'}
-                </p>
-                <p className="text-slate-600 text-xs">
-                  {emailScanResults !== null
-                    ? `Found ${emailScanResults} opportunities`
-                    : emailAddress
-                      ? `Connected: ${emailAddress}${emailLastScanned ? ` \u00b7 Last scanned: ${new Date(emailLastScanned).toLocaleDateString()}` : ''}`
-                      : 'Scan your inbox to find bills, overcharges & savings'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleEmailScan}
-              disabled={emailScanning}
-              className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-slate-900 text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2 transition-all whitespace-nowrap ml-4"
-            >
-              {emailScanning ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Scanning...</>
-              ) : (
-                <><ScanSearch className="h-4 w-4" /> Scan Emails</>
-              )}
-            </button>
-          </div>
-
-          {/* Scan Results */}
-          {emailOpportunities.length > 0 && (
-            <div className="mt-3 space-y-2">
-              <p className="text-slate-900 font-semibold text-sm px-1">{emailOpportunities.length} opportunities found</p>
-              {emailOpportunities.map((opp: any, i: number) => {
-                const actionLabel: Record<string, { text: string; color: string }> = {
-                  track: { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' },
-                  cancel: { text: 'Cancel', color: 'bg-red-600 hover:bg-red-700' },
-                  switch_deal: { text: 'Find Deal', color: 'bg-emerald-600 hover:bg-emerald-700' },
-                  dispute: { text: 'Dispute', color: 'bg-orange-600 hover:bg-orange-700' },
-                  claim_compensation: { text: 'Claim', color: 'bg-green-600 hover:bg-green-700' },
-                  claim_refund: { text: 'Claim Refund', color: 'bg-green-600 hover:bg-green-700' },
-                  monitor: { text: 'Monitor', color: 'bg-slate-200 hover:bg-slate-50' },
-                };
-                const action = actionLabel[opp.suggestedAction] || actionLabel.track;
-                // Determine action based on opportunity type for better routing
-                const effectiveAction = (() => {
-                  if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
-                    return { text: 'Find Deal', color: 'bg-emerald-500 hover:bg-emerald-600 text-slate-900' };
-                  }
-                  if (['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) || opp.suggestedAction === 'dispute') {
-                    return { text: 'Dispute', color: 'bg-red-500 hover:bg-red-600' };
-                  }
-                  if (opp.type === 'flight_delay' || opp.suggestedAction === 'claim_compensation') {
-                    return { text: 'Claim £520', color: 'bg-sky-500 hover:bg-sky-600' };
-                  }
-                  if (opp.type === 'refund_opportunity' || opp.suggestedAction === 'claim_refund') {
-                    return { text: 'Claim Refund', color: 'bg-green-600 hover:bg-green-700' };
-                  }
-                  if (['subscription', 'forgotten_subscription'].includes(opp.type)) {
-                    return { text: 'Track', color: 'bg-blue-600 hover:bg-blue-700' };
-                  }
-                  return action;
-                })();
-                const typeColors: Record<string, string> = {
-                  subscription: 'text-blue-400 bg-blue-500/10',
-                  renewal: 'text-amber-600 bg-orange-500/10',
-                  price_increase: 'text-orange-400 bg-orange-500/10',
-                  overcharge: 'text-red-400 bg-red-500/10',
-                  utility_bill: 'text-cyan-400 bg-cyan-500/10',
-                  bill: 'text-cyan-400 bg-cyan-500/10',
-                  flight_delay: 'text-sky-400 bg-sky-500/10',
-                  forgotten_subscription: 'text-purple-400 bg-purple-500/10',
-                  insurance: 'text-emerald-400 bg-emerald-500/10',
-                  insurance_renewal: 'text-emerald-400 bg-emerald-500/10',
-                  refund_opportunity: 'text-green-400 bg-green-500/10',
-                  loan: 'text-violet-400 bg-violet-500/10',
-                  deal_expiry: 'text-amber-600 bg-orange-500/10',
-                  dd_advance_notice: 'text-blue-400 bg-blue-500/10',
-                  tax_rebate: 'text-purple-400 bg-purple-500/10',
-                  government: 'text-purple-400 bg-purple-500/10',
-                };
-                const typeColor = typeColors[opp.type] || 'text-slate-600 bg-slate-100';
-                return (
-                  <div key={opp.id || i} className="bg-white border border-slate-200/50 rounded-xl p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-slate-900 font-medium text-sm">{opp.title}</p>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${typeColor}`}>
-                            {(opp.type || 'opportunity').replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        <p className="text-slate-500 text-xs">{opp.provider}{opp.category ? ` · ${opp.category}` : ''}{opp.paymentFrequency ? ` · ${opp.paymentFrequency}` : ''}</p>
-                        <p className="text-slate-600 text-xs mt-1 line-clamp-2">{opp.description}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          className={`${effectiveAction.color} text-slate-900 text-xs font-medium px-3 py-1.5 rounded-lg whitespace-nowrap transition-all`}
-                          onClick={() => {
-                            if (opp.suggestedAction === 'switch_deal' || ['utility_bill', 'renewal', 'insurance', 'insurance_renewal', 'deal_expiry', 'bill'].includes(opp.type)) {
-                              const params = new URLSearchParams();
-                              if (opp.category) params.set('category', opp.category);
-                              if (opp.provider) params.set('provider', opp.provider);
-                              window.location.href = `/dashboard/deals?${params}`;
-                            } else if (['overcharge', 'price_increase', 'debt_dispute', 'dd_advance_notice'].includes(opp.type) || opp.suggestedAction === 'dispute' || opp.suggestedAction === 'claim_compensation' || opp.suggestedAction === 'claim_refund') {
-                              const params = new URLSearchParams({
-                                company: opp.provider || '',
-                                issue: opp.description || '',
-                                amount: opp.amount > 0 ? String(opp.amount) : '',
-                                new: '1',
-                              });
-                              window.location.href = `/dashboard/complaints?${params}`;
-                            } else if (opp.type === 'flight_delay') {
-                              const params = new URLSearchParams({
-                                company: opp.provider || '',
-                                issue: opp.description || '',
-                                amount: '520',
-                                type: 'flight_compensation',
-                                new: '1',
-                              });
-                              window.location.href = `/dashboard/complaints?${params}`;
-                            } else {
-                              const params = new URLSearchParams({
-                                new: '1',
-                                provider: opp.provider || '',
-                                amount: opp.paymentAmount || opp.amount || '',
-                                taskId: opp.id || ''
-                              });
-                              window.location.href = `/dashboard/subscriptions?${params}`;
-                            }
-                          }}
-                        >
-                          {effectiveAction.text}
-                        </button>
-                        <button
-                          onClick={async () => {
-                            setEmailOpportunities(prev => prev.filter((o: any) => o.id !== opp.id));
-                            setEmailScanResults(prev => prev !== null ? prev - 1 : null);
-                            try {
-                              await supabase.from('email_scan_findings').update({ status: 'dismissed' }).eq('id', opp.id);
-                              await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
-                            } catch {}
-                          }}
-                          className="text-slate-500 hover:text-slate-700 text-xs transition-all px-1.5 py-1.5"
-                          title="Dismiss"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-5 mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Mail className="h-5 w-5 text-purple-400" />
-            <div>
-              <p className="text-slate-900 font-semibold text-sm">Scan your emails for savings</p>
-              <p className="text-slate-600 text-xs">Connect your email to find hidden bills, overcharges, and money-saving opportunities</p>
-            </div>
-          </div>
-          <Link href="/dashboard/profile?connect_email=true" className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1 whitespace-nowrap ml-4">
-            Connect Email <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      )}
-
-      {/* Upgrade trigger: price increases detected */}
-      <UpgradeTrigger
-        type="price_increase"
-        priceIncreaseCount={priceAlerts.filter(isPriceAlertValid).length}
-        priceIncreaseAnnual={priceAlerts
-          .filter(isPriceAlertValid)
-          .reduce((sum, a) => sum + priceAlertAnnualImpact(a), 0)}
-        userTier={userTier}
-        className="mb-6"
-      />
-
-      {/* Action Items */}
-      {(() => {
-        if (pendingTasks.length === 0) return null;
-
-        const processedTasks = pendingTasks.map((task) => {
-          const parsedDesc = (() => { try { return JSON.parse(task.description || '{}'); } catch { return null; } })();
-          const oppType = parsedDesc?.type || '';
-          const descText = parsedDesc?.description || task.description || '';
-          const descLower = descText.toLowerCase();
-          const rawProvider = task.provider_name || parsedDesc?.provider || '';
-          const provider = cleanMerchantName(rawProvider);
-          const amount = task.disputed_amount || parsedDesc?.amount || parsedDesc?.paymentAmount || '';
-
-          const isSubscription = oppType === 'subscription' || oppType === 'forgotten_subscription' || descLower.includes('subscription') || descLower.includes('direct debit') || descLower.includes('recurring');
-          const isOvercharge = ['overcharge', 'price_increase', 'utility_bill', 'refund_opportunity'].includes(oppType) || descLower.includes('overcharg') || descLower.includes('refund');
-          const isRenewal = oppType === 'renewal' || oppType === 'deal_expiry' || descLower.includes('renewal') || descLower.includes('contract end') || descLower.includes('expir') || descLower.includes('deal end');
-          const isFlightDelay = oppType === 'flight_delay' || descLower.includes('flight') || descLower.includes('delay') || descLower.includes('eu261') || descLower.includes('uk261');
-          const isDebt = descLower.includes('debt') || descLower.includes('collection') || descLower.includes('bailiff');
-          const isAdmin = oppType === 'admin_task' || descLower.includes('confirmation statement') || descLower.includes('companies house') || descLower.includes('hmrc') || descLower.includes('dvla');
-          const isInsurance = oppType === 'insurance' || descLower.includes('insurance') || descLower.includes('claim');
-          const isLoan = oppType === 'loan' || oppType === 'credit_card' || descLower.includes('loan') || descLower.includes('mortgage') || descLower.includes('credit card');
-          const isUpcomingPayment = oppType === 'upcoming_payment';
-          const isPriceIncrease = oppType === 'price_increase';
-
-          // Extracted structured data from new scan format
-          const contractEndDate = parsedDesc?.contractEndDate || null;
-          const nextPaymentDate = parsedDesc?.nextPaymentDate || null;
-          const paymentAmount = parsedDesc?.paymentAmount || null;
-          const previousAmount = parsedDesc?.previousAmount || null;
-          const priceChangeDate = parsedDesc?.priceChangeDate || null;
-          const paymentFrequency = parsedDesc?.paymentFrequency || null;
-          const urgency = parsedDesc?.urgency || null;
-          
-          const needsComplaint = isOvercharge || task.type === 'complaint_letter' || isDebt;
-          const needsDeal = isRenewal || isInsurance;
-          const needsSubscription = isSubscription;
-
-          return { ...task, parsedDesc, oppType, descText, descLower, rawProvider, provider, amount, isSubscription, isOvercharge, isRenewal, isFlightDelay, isDebt, isAdmin, isInsurance, isLoan, isUpcomingPayment, isPriceIncrease, needsComplaint, needsDeal, needsSubscription, contractEndDate, nextPaymentDate, paymentAmount, previousAmount, priceChangeDate, paymentFrequency, urgency };
-        });
-
-        // Deduplicate tasks by provider+type combo (keep the first/highest priority)
-        const seenKeys = new Set<string>();
-        const dedupedTasks = processedTasks.filter((task) => {
-          const key = `${(task.provider || '').toLowerCase()}::${task.oppType || task.type || ''}`;
-          if (key !== '::' && seenKeys.has(key)) return false;
-          if (key !== '::') seenKeys.add(key);
-          return true;
-        });
-
-        let filtered = dedupedTasks.filter((task) => {
-          if (task.needsSubscription && task.provider) {
-             const existing = activeSubscriptions.some(sub =>
-               (sub.provider_name || '').toLowerCase().includes(task.provider.toLowerCase()) ||
-               task.provider.toLowerCase().includes((sub.provider_name || '').toLowerCase())
-             );
-             if (existing) return false;
-          }
-          return true;
-        });
-        if (taskFilter === 'disputes') filtered = filtered.filter(t => t.needsComplaint || t.isFlightDelay || t.isLoan);
-        if (taskFilter === 'deals') filtered = filtered.filter(t => t.needsDeal);
-        if (taskFilter === 'subscriptions') filtered = filtered.filter(t => t.needsSubscription);
-
-        const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
-        const urgencyScore: Record<string, number> = { immediate: 10, soon: 5, routine: 0 };
-        filtered.sort((a, b) => {
-          const aScore = (urgencyScore[a.urgency] || 0) + (priorityScore[a.priority] || 0);
-          const bScore = (urgencyScore[b.urgency] || 0) + (priorityScore[b.priority] || 0);
-          return bScore - aScore;
-        });
-
-        const displayTasks = showAllTasks ? filtered : filtered.slice(0, 5);
-
-        return (
-          <div className="mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-                <Clock className="h-5 w-5 text-emerald-600" />
-                Your Action Items ({filtered.length})
-              </h2>
-              <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-hide">
-                {['all', 'disputes', 'deals', 'subscriptions'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setTaskFilter(f)}
-                    className={`text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap capitalize ${taskFilter === f ? 'bg-emerald-500 text-slate-900 font-semibold' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
-                  >
-                    {f}
-                  </button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 ))}
               </div>
             </div>
           )}
 
-<<<<<<< HEAD
           {/* Email scanner card */}
           {emailConnected ? (
             <div className="card">
@@ -1898,107 +1177,6 @@ export default function DashboardPage() {
                           {opp.provider} · {(opp.type || 'opportunity').replace(/_/g, ' ')}
                         </div>
                       </div>
-=======
-            {displayTasks.length === 0 ? (
-              <div className="bg-slate-50/50 border border-dashed border-slate-200/50 rounded-xl p-6 text-center">
-                <p className="text-slate-500 text-sm">No action items found for this filter.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {displayTasks.map((task) => {
-                  const badge = task.isFlightDelay ? { text: 'Flight Compensation', color: 'bg-sky-500/10 text-sky-400' }
-                    : task.needsComplaint ? { text: 'Dispute', color: 'bg-red-500/10 text-red-400' }
-                    : task.needsDeal ? { text: 'Switch and Save', color: 'bg-emerald-500/10 text-emerald-600' }
-                    : task.needsSubscription ? { text: 'Track Subscription', color: 'bg-blue-500/10 text-blue-400' }
-                    : task.isLoan ? { text: 'Review Terms', color: 'bg-purple-500/10 text-purple-400' }
-                    : task.isAdmin ? { text: 'Admin Task', color: 'bg-slate-200 text-slate-700' }
-                    : { text: 'Review', color: 'bg-slate-200 text-slate-600' };
-
-                  const isHighPriority = task.priority === 'high' || task.urgency === 'immediate';
-                  const isSoon = task.urgency === 'soon';
-
-                  const complaintParams = new URLSearchParams();
-                  if (task.provider) complaintParams.set('company', task.provider);
-                  if (task.descText && task.descText.length < 500) complaintParams.set('issue', task.descText);
-                  if (task.amount) complaintParams.set('amount', String(task.amount));
-                  complaintParams.set('new', '1');
-                  const complaintUrl = `/dashboard/complaints?${complaintParams.toString()}`;
-
-                  return (
-                    <div key={task.id} className={`bg-white border rounded-xl p-4 transition-all ${isHighPriority ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : isSoon ? 'border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.05)]' : 'border-slate-200/50'}`}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        {task.urgency === 'immediate' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold border border-red-500/20 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
-                        {task.urgency === 'soon' && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-600 font-semibold border border-amber-200 uppercase tracking-widest"><Clock className="h-3 w-3" /> Soon</span>}
-                        {!task.urgency && isHighPriority && <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-amber-500 font-semibold border border-amber-200 uppercase tracking-widest"><AlertTriangle className="h-3 w-3" /> Urgent</span>}
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${badge.color}`}>{badge.text}</span>
-                        {task.provider && <span className="text-slate-500 text-xs">{cleanMerchantName(task.provider)}</span>}
-                        {task.amount && Number(task.amount) > 0 && <span className="text-green-400 text-xs font-medium">{formatGBP(parseFloat(String(task.amount)))}</span>}
-                      </div>
-                      <p className="text-slate-900 text-sm font-medium">{task.title}</p>
-                      <p className="text-slate-600 text-xs mt-1 line-clamp-2 first-letter:capitalize">{task.descText}</p>
-                      {/* Extracted financial details from email scan */}
-                      {(task.paymentAmount || task.contractEndDate || task.nextPaymentDate || task.priceChangeDate || task.previousAmount) && (
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {task.paymentAmount != null && Number(task.paymentAmount) > 0 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-900 font-medium">
-                              £{Number(task.paymentAmount).toFixed(2)}{task.paymentFrequency ? `/${task.paymentFrequency === 'monthly' ? 'mo' : task.paymentFrequency === 'yearly' ? 'yr' : task.paymentFrequency === 'quarterly' ? 'qtr' : ''}` : ''}
-                            </span>
-                          )}
-                          {task.previousAmount != null && task.paymentAmount != null && Number(task.previousAmount) > 0 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
-                              £{Number(task.previousAmount).toFixed(2)} → £{Number(task.paymentAmount).toFixed(2)}
-                            </span>
-                          )}
-                          {task.contractEndDate && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/10 text-amber-600">
-                              ends {new Date(task.contractEndDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          )}
-                          {task.nextPaymentDate && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                              due {new Date(task.nextPaymentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          )}
-                          {task.priceChangeDate && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400">
-                              increase from {new Date(task.priceChangeDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/50 flex-wrap">
-                    {/* Context-aware primary action */}
-                    {task.needsComplaint && (
-                      <Link href={complaintUrl} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Start Dispute
-                      </Link>
-                    )}
-                    {task.isFlightDelay && (
-                      <Link href={`/dashboard/complaints?type=flight_compensation${task.provider ? `&company=${encodeURIComponent(task.provider)}` : ''}&new=1`} className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Claim £520 Compensation
-                      </Link>
-                    )}
-                    {task.needsDeal && (
-                      <Link href="/dashboard/deals" className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Find Better Deal
-                      </Link>
-                    )}
-                    {task.needsSubscription && (
-                      <Link href={`/dashboard/subscriptions?new=1&provider=${encodeURIComponent(task.provider)}&amount=${task.amount || ''}&taskId=${task.id}`} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <CreditCard className="h-3 w-3" /> Track Subscription
-                      </Link>
-                    )}
-                    {task.isLoan && (
-                      <Link href="/dashboard/deals" className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <ArrowRight className="h-3 w-3" /> Review Terms
-                      </Link>
-                    )}
-                    {task.isAdmin && !task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && (
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                       <button
                         onClick={async () => {
                           setEmailOpportunities((prev) => prev.filter((o: any) => o.id !== opp.id));
@@ -2008,39 +1186,17 @@ export default function DashboardPage() {
                             await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', opp.id);
                           } catch {}
                         }}
-<<<<<<< HEAD
                         style={{ background: 'transparent', border: 0, color: 'var(--text-3)', cursor: 'pointer', fontSize: 12 }}
                         title="Dismiss"
-=======
-                        className="bg-slate-200 hover:bg-slate-600 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                       >
                         Dismiss
                       </button>
-<<<<<<< HEAD
                     </div>
                   ))}
                   {emailOpportunities.length > 5 && (
                     <Link
                       href="/dashboard/scanner"
                       style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none', paddingTop: 10 }}
-=======
-                    )}
-                    {!task.needsComplaint && !task.needsDeal && !task.needsSubscription && !task.isFlightDelay && !task.isLoan && !task.isAdmin && (
-                      <Link href={complaintUrl} className="bg-slate-200 hover:bg-slate-600 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1">
-                        <FileText className="h-3 w-3" /> Start Dispute
-                      </Link>
-                    )}
-
-                    <div className="flex-1" />
-
-                    <button
-                      onClick={async () => {
-                        await supabase.from('tasks').update({ status: 'dismissed', resolved_at: new Date().toISOString() }).eq('id', task.id);
-                        setPendingTasks(prev => prev.filter(t => t.id !== task.id));
-                      }}
-                      className="text-slate-500 hover:text-slate-600 text-xs transition-all px-3 py-1.5"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     >
                       View all {emailOpportunities.length} opportunities →
                     </Link>
@@ -2350,20 +1506,8 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
-<<<<<<< HEAD
-=======
-            {filtered.length > 5 && (
-              <button
-                onClick={() => setShowAllTasks(prev => !prev)}
-                className="w-full mt-3 py-2 text-sm text-emerald-600 hover:text-slate-900 bg-white/50 hover:bg-slate-100 border border-slate-200/50 rounded-xl transition-all"
-              >
-                {showAllTasks ? `Show less` : `Show all ${filtered.length} items`}
-              </button>
-            )}
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           </div>
 
-<<<<<<< HEAD
           {/* Pocket Agent */}
           <div className="card">
             <h3>Pocket Agent</h3>
@@ -2500,81 +1644,6 @@ export default function DashboardPage() {
           {toast.message}
         </div>
       )}
-=======
-      {/* Quick Actions */}
-      <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2 font-[family-name:var(--font-heading)]">
-        <Sparkles className="h-5 w-5 text-emerald-600" />
-        Quick Actions
-      </h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <Link
-          href="/dashboard/complaints"
-          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
-        >
-          <FileText className="h-8 w-8 text-emerald-600 mb-3" />
-          <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Write a Complaint Letter</h3>
-          <p className="text-slate-600 text-sm">Generate a formal letter citing UK consumer law. Energy bills, broadband, debt, refunds, and more.</p>
-          <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">Get started <ArrowRight className="h-3 w-3" /></span>
-        </Link>
-
-        <Link
-          href="/dashboard/subscriptions"
-          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
-        >
-          <CreditCard className="h-8 w-8 text-green-500 mb-3" />
-          <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Track Subscriptions</h3>
-          <p className="text-slate-600 text-sm">See every subscription in one place. Sync from your bank or add manually. Cancel what you don't need.</p>
-          <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">Manage <ArrowRight className="h-3 w-3" /></span>
-        </Link>
-
-        <Link
-          href="/dashboard/complaints?new=1"
-          className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
-        >
-          <Building2 className="h-8 w-8 text-purple-500 mb-3" />
-          <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Disputes</h3>
-          <p className="text-slate-600 text-sm">Complaints, HMRC tax rebates, council tax challenges, parking appeals, flight delay claims, and more.</p>
-          <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">Start a dispute <ArrowRight className="h-3 w-3" /></span>
-        </Link>
-
-        {userTier !== 'free' && (
-          <Link
-            href="/dashboard/money-hub"
-            className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-500/50 transition-all group"
-          >
-            <BarChart3 className="h-8 w-8 text-sky-500 mb-3" />
-            <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Money Hub</h3>
-            <p className="text-slate-600 text-sm">See where every pound goes. Category breakdown, monthly trends, and smart savings suggestions.</p>
-            <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">View Money Hub <ArrowRight className="h-3 w-3" /></span>
-          </Link>
-        )}
-
-        {userTier === 'free' && (
-          <Link
-            href="/pricing"
-            className="bg-white border border-emerald-200 rounded-2xl p-6 hover:border-emerald-500/50 transition-all group"
-          >
-            <Sparkles className="h-8 w-8 text-emerald-600 mb-3" />
-            <h3 className="text-slate-900 font-semibold mb-1 group-hover:text-emerald-600 transition-all">Upgrade Your Plan</h3>
-            <p className="text-slate-600 text-sm">Get unlimited complaints, daily bank sync, spending insights, cancellation emails, and renewal reminders.</p>
-            <span className="text-emerald-600 text-sm mt-3 flex items-center gap-1">View plans <ArrowRight className="h-3 w-3" /></span>
-          </Link>
-        )}
-      </div>
-
-      {/* Quick links */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/dashboard/deals" className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
-          <h3 className="text-slate-900 font-semibold mb-1">Browse 59 Deals</h3>
-          <p className="text-slate-500 text-xs">Compare energy, broadband, mobile, insurance, and more. Find cheaper alternatives to your current providers.</p>
-        </Link>
-        <Link href="/dashboard/subscriptions" className="bg-white border border-slate-200/50 rounded-2xl p-6 shadow-[--shadow-card] hover:border-emerald-200 transition-all">
-          <h3 className="text-slate-900 font-semibold mb-1">Track Contracts</h3>
-          <p className="text-slate-500 text-xs">Add your subscriptions and contracts with end dates. Get alerts before renewals and find better deals.</p>
-        </Link>
-      </div>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
       <BankPickerModal isOpen={showBankPicker} onClose={() => setShowBankPicker(false)} />
     </div>

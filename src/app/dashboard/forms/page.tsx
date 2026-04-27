@@ -187,17 +187,12 @@ export default function FormsPage() {
       </div>
 
       <div className="mb-8">
-<<<<<<< HEAD
         <div className="page-title-row">
         <div>
           <h1 className="page-title">Forms & Government Letters</h1>
         </div>
       </div>
         <p className="page-sub">Official regulatory forms and government letters. For company complaints, use the{' '}
-=======
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Forms & Government Letters</h1>
-        <p className="text-slate-600">Official regulatory forms and government letters. For company complaints, use the{' '}
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <a href="/dashboard/complaints" className="text-emerald-600 hover:text-emerald-700 underline underline-offset-2 transition-all">Complaints section</a>.
         </p>
       </div>
@@ -206,21 +201,13 @@ export default function FormsPage() {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => { setActiveTab('generate'); setResult(null); }}
-<<<<<<< HEAD
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'generate' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
-=======
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'generate' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         >
           <Sparkles className="h-4 w-4" /> Generate
         </button>
         <button
           onClick={() => { setActiveTab('history'); loadHistory(); setSelectedHistoryTask(null); }}
-<<<<<<< HEAD
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'history' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
-=======
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${activeTab === 'history' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`}
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         >
           <History className="h-4 w-4" /> History ({historyTasks.length})
         </button>
@@ -232,11 +219,7 @@ export default function FormsPage() {
           {loadingHistory ? (
             <div className="text-center py-12"><Loader2 className="h-8 w-8 text-emerald-600 animate-spin mx-auto" /></div>
           ) : selectedHistoryTask ? (
-<<<<<<< HEAD
             <div className="card shadow-sm p-6">
-=======
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <button onClick={() => setSelectedHistoryTask(null)} className="text-slate-500 hover:text-slate-900 text-sm mb-4 flex items-center gap-1">
                 ← Back to history
               </button>
@@ -255,11 +238,7 @@ export default function FormsPage() {
                   >{selectedHistoryTask.letter}</pre>
                   <button
                     onClick={() => { navigator.clipboard.writeText(selectedHistoryTask.letter!); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-<<<<<<< HEAD
                     className="mt-4 flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg text-sm"
-=======
-                    className="mt-4 flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   >
                     {copied ? <><CheckCircle className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
                   </button>
@@ -269,13 +248,8 @@ export default function FormsPage() {
               )}
             </div>
           ) : historyTasks.length === 0 ? (
-<<<<<<< HEAD
             <div className="card shadow-sm p-12 text-center">
               <FileText className="h-12 w-12 text-slate-700 mx-auto mb-3" />
-=======
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-12 text-center">
-              <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <p className="text-slate-600 mb-2">No letters generated yet</p>
               <button onClick={() => setActiveTab('generate')} className="text-emerald-600 text-sm hover:text-emerald-700">Generate your first letter</button>
             </div>
@@ -331,11 +305,7 @@ export default function FormsPage() {
           </div>
 
           {/* Details form */}
-<<<<<<< HEAD
           <div className="card shadow-sm p-6">
-=======
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             {selectedForm ? (
               <div className="space-y-4">
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -394,22 +364,14 @@ export default function FormsPage() {
                 <button
                   onClick={handleGenerate}
                   disabled={generating || !details || !desiredOutcome}
-<<<<<<< HEAD
                   className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-=======
-                  className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 >
                   {generating ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating...</> : <><Sparkles className="h-4 w-4" /> Generate Letter</>}
                 </button>
               </div>
             ) : (
               <div className="text-center py-12">
-<<<<<<< HEAD
                 <FileText className="h-16 w-16 text-slate-700 mx-auto mb-4" />
-=======
-                <FileText className="h-16 w-16 text-slate-300 mx-auto mb-4" />
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 <p className="text-slate-500">Select a letter type from the left to get started</p>
               </div>
             )}
@@ -420,11 +382,7 @@ export default function FormsPage() {
         <div>
           <div className="flex items-center justify-between mb-6">
             <div>
-<<<<<<< HEAD
               <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{result.formType}</h2>
-=======
-              <h2 className="text-xl font-bold text-slate-900">{result.formType}</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <p className="text-green-600 text-sm flex items-center gap-1"><CheckCircle className="h-4 w-4" /> Saved to your history</p>
             </div>
             <button onClick={handleReset} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 text-sm transition-all">
@@ -432,11 +390,7 @@ export default function FormsPage() {
             </button>
           </div>
 
-<<<<<<< HEAD
           <div className="card shadow-sm p-6 mb-6">
-=======
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <pre
               className="text-sm text-slate-800 whitespace-pre-wrap font-mono leading-relaxed"
               onCopy={(e) => {
@@ -449,11 +403,7 @@ export default function FormsPage() {
           </div>
 
           {result.legalReferences?.length > 0 && (
-<<<<<<< HEAD
             <div className="card mb-6">
-=======
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Legal References</h3>
               <ul className="text-xs text-slate-600 space-y-1">
                 {result.legalReferences.map((ref: string, i: number) => (
@@ -464,11 +414,7 @@ export default function FormsPage() {
           )}
 
           {result.nextSteps?.length > 0 && (
-<<<<<<< HEAD
             <div className="card mb-6">
-=======
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Next Steps</h3>
               <ol className="text-sm text-slate-700 space-y-2">
                 {result.nextSteps.map((step: string, i: number) => (
@@ -479,11 +425,7 @@ export default function FormsPage() {
           )}
 
           {result.estimatedSuccess && (
-<<<<<<< HEAD
             <div className="card mb-6">
-=======
-            <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 text-sm">Estimated success rate</span>
                 <span className={`font-bold ${result.estimatedSuccess >= 70 ? 'text-green-600' : result.estimatedSuccess >= 50 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -495,19 +437,11 @@ export default function FormsPage() {
 
           <div className="flex gap-3">
             <button onClick={handleCopy}
-<<<<<<< HEAD
               className="flex-1 flex items-center justify-center gap-2 cta-ghost py-3 rounded-lg transition-all">
               {copied ? <><CheckCircle className="h-4 w-4" /> Copied!</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
             </button>
             <button onClick={handlePDF}
               className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all">
-=======
-              className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 py-3 rounded-lg transition-all">
-              {copied ? <><CheckCircle className="h-4 w-4" /> Copied!</> : <><Copy className="h-4 w-4" /> Copy Letter</>}
-            </button>
-            <button onClick={handlePDF}
-              className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-lg transition-all">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <Download className="h-4 w-4" /> Download PDF
             </button>
           </div>

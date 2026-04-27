@@ -10,10 +10,7 @@
  * Plan ref: docs/DISPUTE_EMAIL_SYNC_PLAN.md §6
  */
 
-<<<<<<< HEAD
 import { createClient } from '@supabase/supabase-js';
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 import { refreshAccessToken as refreshGmailToken } from '../gmail';
 import { refreshMicrosoftToken } from '../outlook';
 import type {
@@ -23,7 +20,6 @@ import type {
 } from './types';
 import { providerFromConnection } from './types';
 
-<<<<<<< HEAD
 function admin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,8 +43,6 @@ export class EmailConnectionAuthError extends Error {
   }
 }
 
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 // Local type mirroring the shape Microsoft Graph /me/messages returns with
 // the $select we request. Kept inline so the outlook.ts public surface
 // doesn't need to change.
@@ -60,11 +54,8 @@ interface GraphMessage {
   bodyPreview?: string;
   from?: { emailAddress?: { address?: string; name?: string } };
   body?: { contentType?: 'text' | 'html'; content?: string };
-<<<<<<< HEAD
   /** Ready-to-use OWA deep-link Graph issues per-message. */
   webLink?: string;
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 // -----------------------------------------------------------------------------
@@ -73,7 +64,6 @@ interface GraphMessage {
 
 function parseFrom(raw: string): { address: string; name: string; domain: string } {
   if (!raw) return { address: '', name: '', domain: '' };
-<<<<<<< HEAD
   // Form 1: `Name <user@domain>` or `"Name" <user@domain>`. We match
   // this case explicitly so the bare-email path can fall through
   // cleanly. The previous combined regex was non-greedy on the name
@@ -93,7 +83,6 @@ function parseFrom(raw: string): { address: string; name: string; domain: string
     address: bare.toLowerCase(),
     name: '',
     domain: bare.split('@')[1]?.toLowerCase() ?? '',
-=======
   const match = raw.match(/^\s*(?:"?([^"<]*?)"?\s*)?<?([^<>\s]+@[^<>\s]+)>?\s*$/);
   if (!match) {
     const bare = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? '';
@@ -108,12 +97,10 @@ function parseFrom(raw: string): { address: string; name: string; domain: string
     address,
     name: (match[1] ?? '').trim(),
     domain: address.split('@')[1] ?? '',
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   };
 }
 
 function stripHtml(input: string): string {
-<<<<<<< HEAD
   // HTML emails don\'t put newlines between block elements, so a naive
   // tag strip (plus collapsing all whitespace) ends up with every
   // sentence on a single line — unreadable. We convert block-level
@@ -133,18 +120,15 @@ function stripHtml(input: string): string {
     // HTML entities that commonly survive in mail bodies
     .replace(/&nbsp;/g, ' ')
     .replace(/&#160;/g, ' ')
-=======
   return input
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-<<<<<<< HEAD
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&#8217;/g, '’')
@@ -156,9 +140,7 @@ function stripHtml(input: string): string {
     .replace(/ *\n */g, '\n')
     // Collapse any run of 3+ newlines down to a paragraph gap
     .replace(/\n{3,}/g, '\n\n')
-=======
     .replace(/\s+/g, ' ')
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     .trim();
 }
 
@@ -166,7 +148,6 @@ function makeSnippet(body: string, n = 150): string {
   return body.length > n ? body.slice(0, n).trim() + '…' : body.trim();
 }
 
-<<<<<<< HEAD
 async function markConnectionNeedsReauth(
   connectionId: string,
   provider: EmailProvider,
@@ -220,15 +201,12 @@ async function persistRefreshedToken(
   }
 }
 
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider): Promise<string> {
   const expiresAt = conn.token_expiry ? new Date(conn.token_expiry).getTime() : 0;
   const now = Date.now();
   if (conn.access_token && expiresAt - now > 60_000) return conn.access_token;
 
   if (!conn.refresh_token) {
-<<<<<<< HEAD
     const msg = `No refresh token on file — user must reconnect ${provider}.`;
     await markConnectionNeedsReauth(conn.id, provider, msg);
     throw new EmailConnectionAuthError(msg, conn.id, provider);
@@ -251,7 +229,6 @@ async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider):
     await markConnectionNeedsReauth(conn.id, provider, message);
     throw new EmailConnectionAuthError(message, conn.id, provider);
   }
-=======
     throw new Error(`No refresh token for connection ${conn.id}; user must reconnect ${provider}.`);
   }
 
@@ -264,7 +241,6 @@ async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider):
     return refreshed.access_token;
   }
   throw new Error(`ensureFreshToken called for non-OAuth provider: ${provider}`);
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 // -----------------------------------------------------------------------------
@@ -358,11 +334,8 @@ async function fetchOutlookConversation(
   url.searchParams.set('$top', '50');
   url.searchParams.set(
     '$select',
-<<<<<<< HEAD
     'id,conversationId,subject,from,receivedDateTime,bodyPreview,body,webLink',
-=======
     'id,conversationId,subject,from,receivedDateTime,bodyPreview,body',
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   );
 
   const res = await fetch(url.toString(), {
@@ -395,10 +368,7 @@ async function fetchOutlookConversation(
       receivedAt: new Date(m.receivedDateTime),
       snippet: makeSnippet(bodyText || m.bodyPreview || ''),
       body: bodyText.slice(0, 8000),
-<<<<<<< HEAD
       webLink: m.webLink,
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     });
   }
   return messages;
@@ -453,7 +423,6 @@ export async function fetchNewMessages(
     .filter((m) => m.fromAddress && m.fromAddress.toLowerCase() !== ownAddr)
     .sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
 }
-<<<<<<< HEAD
 
 /**
  * Fetch recent messages from a sender domain that ARE NOT in the currently-
@@ -574,5 +543,3 @@ export async function fetchDomainMessages(
   // IMAP domain-scan not implemented yet — uncommon on Watchdog right now.
   return [];
 }
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)

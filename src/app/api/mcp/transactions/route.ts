@@ -39,20 +39,7 @@ export async function GET(req: NextRequest) {
 
   if (since) q = q.gte('timestamp', since);
   if (until) q = q.lte('timestamp', until);
-<<<<<<< HEAD
-  if (category) {
-    // PostgREST .or() takes a raw filter string, so strip anything that could
-    // break out of the expression (comma splits the disjunction list, parens
-    // open sub-groups, % / * are ilike wildcards). The outer user_id eq still
-    // constrains results to the caller, but defence in depth is cheap.
-    const safeCategory = category.replace(/[,*%()]/g, '').slice(0, 80);
-    if (safeCategory) {
-      q = q.or(`user_category.eq.${safeCategory},category.eq.${safeCategory}`);
-    }
-  }
-=======
   if (category) q = q.or(`user_category.eq.${category},category.eq.${category}`);
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 
   const { data, error } = await q;
   if (error) {

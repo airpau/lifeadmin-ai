@@ -1209,11 +1209,7 @@ export default function SubscriptionsPage() {
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-<<<<<<< HEAD
           <div className="card w-full max-w-md p-6 relative">
-=======
-          <div className="bg-white border border-slate-200/50 rounded-2xl w-full max-w-md p-6 relative">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Subscription</h3>
             <p className="text-slate-600 text-sm mb-6">Are you sure you want to delete this subscription? This action cannot be undone.</p>
             <div className="flex gap-3 justify-end mt-4">
@@ -1255,11 +1251,7 @@ export default function SubscriptionsPage() {
       {/* Bulk Results Modal */}
       {bulkResults && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-<<<<<<< HEAD
           <div className="card w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 lg:p-8">
-=======
-          <div className="bg-white border border-slate-200/50 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 lg:p-8">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)] flex items-center gap-2">
@@ -1326,11 +1318,7 @@ export default function SubscriptionsPage() {
 
       {/* Bank connections — Compressed */}
       {!bankLoading && (
-<<<<<<< HEAD
         <div className="mb-6 card shadow-[--shadow-card] p-4">
-=======
-        <div className="mb-6 bg-white border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-4">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <button
             onClick={() => setConnectionsCollapsed(!connectionsCollapsed)}
             className="flex items-center justify-between w-full text-left"
@@ -1602,11 +1590,7 @@ export default function SubscriptionsPage() {
                     )}
                   </div>
                 </div>
-<<<<<<< HEAD
                 <button onClick={() => handleDismissAlert(alert.id)} aria-label="Dismiss alert" className="text-slate-500 hover:text-slate-700 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
-=======
-                <button onClick={() => handleDismissAlert(alert.id)} className="text-slate-500 hover:text-slate-700 p-1 shrink-0">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -1634,21 +1618,13 @@ export default function SubscriptionsPage() {
       {billUploadSubId && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setBillUploadSubId(null); setBillFile(null); }} />
-<<<<<<< HEAD
           <div className="relative card w-full max-w-md shadow-2xl">
-=======
-          <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-md shadow-2xl">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Upload className="h-5 w-5 text-emerald-600" />
                 Upload Bill / Contract
               </h2>
-<<<<<<< HEAD
               <button onClick={() => { setBillUploadSubId(null); setBillFile(null); }} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-=======
-              <button onClick={() => { setBillUploadSubId(null); setBillFile(null); }} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             </div>
             <div className="p-6 space-y-4">
               <p className="text-slate-600 text-sm">
@@ -1687,11 +1663,7 @@ export default function SubscriptionsPage() {
               <button
                 onClick={() => billUploadSubId && handleBillUpload(billUploadSubId)}
                 disabled={!billFile || uploadingBill}
-<<<<<<< HEAD
                 className="w-full cta font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-=======
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 {uploadingBill ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Extracting contract details...</>
@@ -1704,7 +1676,6 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-<<<<<<< HEAD
       {/* Variant A header + KPI strip — maps design's top fold to real data.
           Monthly / Yearly totals come from get_subscription_total RPC;
           Flagged = count of detected + review-needed subs;
@@ -1778,22 +1749,11 @@ export default function SubscriptionsPage() {
       {/* Secondary action row — preserved "detect from inbox" CTA for discoverability,
           plus legacy Add button. Kept from the pre-redesign page so nothing is lost. */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-end mb-8 gap-3">
-=======
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Subscriptions</h1>
-          <p className="text-slate-600">Track and cancel subscriptions costing you money</p>
-        </div>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         <div className="flex gap-3">
           <button
             onClick={handleDetectFromInbox}
             disabled={detectingFromInbox}
-<<<<<<< HEAD
             style={{display:'none'}}
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             className="flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-900 font-medium px-4 py-3 rounded-lg transition-all text-sm"
           >
             {detectingFromInbox
@@ -1803,11 +1763,7 @@ export default function SubscriptionsPage() {
           </button>
           <button
             onClick={() => setShowAddForm(true)}
-<<<<<<< HEAD
             className="flex items-center gap-2 cta font-semibold px-4 py-3 rounded-lg transition-all text-sm"
-=======
-            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-3 rounded-lg transition-all text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             <Plus className="h-4 w-4" />
             Add
@@ -1850,11 +1806,7 @@ export default function SubscriptionsPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleAddDetected(s)}
-<<<<<<< HEAD
                     className="cta font-semibold px-4 py-2 rounded-lg text-sm transition-all"
-=======
-                    className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg text-sm transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   >
                     Track
                   </button>
@@ -1925,11 +1877,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Subscriptions & Bills</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.subscriptions_monthly)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-<<<<<<< HEAD
             <p className="text-slate-500 text-xs mt-1">{countActiveSubscriptions(subscriptions)} active</p>
-=======
-            <p className="text-slate-500 text-xs mt-1">{rpcTotals.subscriptions_count} active</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           </div>
 
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
@@ -1947,11 +1895,7 @@ export default function SubscriptionsPage() {
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-5">
             <p className="text-slate-600 text-xs mb-1">Total All Commitments</p>
             <h3 className="text-2xl font-bold text-slate-900">{formatGBP(rpcTotals.monthly_total)}<span className="text-sm text-slate-500 font-normal">/mo</span></h3>
-<<<<<<< HEAD
             <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {countActiveSubscriptions(subscriptions) + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
-=======
-            <p className="text-slate-500 text-xs mt-1">{formatGBP(rpcTotals.monthly_total * 12)}/year · {rpcTotals.subscriptions_count + rpcTotals.mortgages_count + rpcTotals.loans_count + rpcTotals.council_tax_count} tracked</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           </div>
         </div>
       )}
@@ -2034,11 +1978,7 @@ export default function SubscriptionsPage() {
             <button
               onClick={handleBulkCancel}
               disabled={bulkGenerating}
-<<<<<<< HEAD
               className="flex items-center gap-1.5 cta font-semibold px-4 py-2.5 rounded-lg text-sm transition-all disabled:opacity-50"
-=======
-              className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2.5 rounded-lg text-sm transition-all disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             >
               {bulkGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
               Cancel Emails
@@ -2156,11 +2096,7 @@ export default function SubscriptionsPage() {
               <p className="text-slate-600 mb-4">No subscriptions tracked yet</p>
               <button
                 onClick={() => setShowAddForm(true)}
-<<<<<<< HEAD
                 className="cta font-semibold px-6 py-3 rounded-lg transition-all"
-=======
-                className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-lg transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 Add your first subscription
               </button>
@@ -2170,21 +2106,12 @@ export default function SubscriptionsPage() {
               <div
                 key={sub.id}
                 data-needs-review={sub.needs_review ? 'true' : undefined}
-<<<<<<< HEAD
                 className={`bg-white backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer active:bg-slate-50 ${
                   selectedSub?.id === sub.id
                     ? 'border-emerald-500/50'
                     : sub.needs_review
                     ? 'border-amber-500/40 hover:border-amber-500/60 active:border-amber-500/70'
                     : 'border-slate-200/50 hover:border-slate-200/50 active:border-emerald-500/40'
-=======
-                className={`bg-white backdrop-blur-sm border rounded-2xl p-6 transition-all cursor-pointer ${
-                  selectedSub?.id === sub.id
-                    ? 'border-emerald-500/50'
-                    : sub.needs_review
-                    ? 'border-amber-500/40 hover:border-amber-500/60'
-                    : 'border-slate-200/50 hover:border-slate-200/50'
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 }`}
                 onClick={() => {
                   setSelectedSub(sub);
@@ -2247,11 +2174,7 @@ export default function SubscriptionsPage() {
                             <span>{sub.category ? getCategoryLabel(sub.category) : 'Uncategorised'}</span>
                           </button>
                           {inlineRecatSub === sub.id && (
-<<<<<<< HEAD
                             <div className="absolute top-full left-0 mt-1 w-48 max-w-[calc(100vw-2.5rem)] bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-64 overflow-y-auto">
-=======
-                            <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-xl z-20 max-h-64 overflow-y-auto">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                               {SORTED_CATEGORIES.map(cat => (
                                 <button
                                   key={cat.value}
@@ -2326,11 +2249,7 @@ export default function SubscriptionsPage() {
                           e.stopPropagation();
                           openEditModal(sub);
                         }}
-<<<<<<< HEAD
                         className="text-slate-600 hover:text-emerald-600 inline-flex items-center justify-center h-10 w-10 rounded-lg active:bg-slate-100 transition-all"
-=======
-                        className="text-slate-600 hover:text-emerald-600 transition-all p-1"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                         title="Edit"
                         aria-label="Edit"
                       >
@@ -2446,11 +2365,7 @@ export default function SubscriptionsPage() {
 
         {/* Cancellation email panel */}
         <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-6 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
-<<<<<<< HEAD
           <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-          <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <Mail className="h-5 w-5 text-emerald-600" />
             Cancellation Email
           </h2>
@@ -2499,11 +2414,7 @@ export default function SubscriptionsPage() {
                     <button
                       onClick={() => selectedSub && handleCancelRequest(selectedSub, cancelFeedback, cancellationEmail.body)}
                       disabled={!cancelFeedback.trim() || regenerating}
-<<<<<<< HEAD
                       className="flex-1 flex items-center justify-center gap-2 cta font-semibold py-2 rounded-lg transition-all text-sm"
-=======
-                      className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold py-2 rounded-lg transition-all text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     >
                       {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                       {regenerating ? 'Regenerating...' : 'Regenerate'}
@@ -2554,13 +2465,8 @@ export default function SubscriptionsPage() {
                     where we don't have a provider address yet. */}
                 {(cancelInfo?.email || selectedSub?.account_email) && (
                   <a
-<<<<<<< HEAD
                     href={`mailto:${cancelInfo?.email || selectedSub?.account_email}?subject=${encodeURIComponent(cancellationEmail.subject)}&body=${encodeURIComponent(cancellationEmail.body)}`}
                     className="flex-1 flex items-center justify-center gap-2 cta font-semibold py-3 rounded-lg transition-all"
-=======
-                    href={`mailto:${selectedSub.account_email}?subject=${encodeURIComponent(cancellationEmail.subject)}&body=${encodeURIComponent(cancellationEmail.body)}`}
-                    className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-lg transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   >
                     <Mail className="h-4 w-4" />
                     Open in Email
@@ -2684,7 +2590,6 @@ export default function SubscriptionsPage() {
                   {/* Cancellation method info (when available) */}
                   {cancelInfo && (
                     <div className="bg-white rounded-xl p-5 border border-slate-200/50">
-<<<<<<< HEAD
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-semibold text-emerald-600">How to cancel</h4>
                         {cancelInfo.freshness && (
@@ -2694,9 +2599,6 @@ export default function SubscriptionsPage() {
                           <span className="text-[11px] text-amber-600" title="Automatically suggested — verify before acting on it">AI suggested</span>
                         )}
                       </div>
-=======
-                      <h4 className="text-sm font-semibold text-emerald-600 mb-3">How to cancel</h4>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                       <p className="text-sm text-slate-600 mb-3">{cancelInfo.method}</p>
                       {cancelInfo.tips && (
                         <p className="text-xs text-slate-600 mb-3">{cancelInfo.tips}</p>
@@ -2743,11 +2645,7 @@ export default function SubscriptionsPage() {
                   ) : (
                     <button
                       onClick={() => handleCancelRequest(selectedSub)}
-<<<<<<< HEAD
                       className="w-full flex items-center justify-center gap-2 cta font-semibold py-3 rounded-xl transition-all"
-=======
-                      className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-xl transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     >
                       <Sparkles className="h-4 w-4" />
                       Generate Cancellation Email
@@ -2770,11 +2668,7 @@ export default function SubscriptionsPage() {
       {/* "I don't recognise this" modal */}
       {unrecognisedSub && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-<<<<<<< HEAD
           <div className="card w-full max-w-lg">
-=======
-          <div className="bg-white border border-slate-200/50 rounded-2xl p-6 w-full max-w-lg">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             {fraudStep === 'initial' ? (
               <>
                 <div className="flex items-start justify-between mb-5">
@@ -2783,19 +2677,11 @@ export default function SubscriptionsPage() {
                       <AlertTriangle className="h-5 w-5 text-amber-600" />
                     </div>
                     <div>
-<<<<<<< HEAD
                       <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Don&apos;t recognise this?</h2>
                       <p className="text-slate-600 text-sm">{normaliseProviderName(unrecognisedSub.provider_name)} &middot; {formatGBP(unrecognisedSub.amount)}/{unrecognisedSub.billing_cycle}</p>
                     </div>
                   </div>
                   <button onClick={() => setUnrecognisedSub(null)} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
-=======
-                      <h2 className="text-xl font-bold text-slate-900">Don&apos;t recognise this?</h2>
-                      <p className="text-slate-600 text-sm">{normaliseProviderName(unrecognisedSub.provider_name)} &middot; {formatGBP(unrecognisedSub.amount)}/{unrecognisedSub.billing_cycle}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setUnrecognisedSub(null)} className="text-slate-600 hover:text-slate-900 transition-colors p-1">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     <X className="h-5 w-5" />
                   </button>
                 </div>
@@ -2828,11 +2714,7 @@ export default function SubscriptionsPage() {
                 <div className="space-y-2">
                   <button
                     onClick={() => setUnrecognisedSub(null)}
-<<<<<<< HEAD
                     className="w-full cta font-semibold py-3 rounded-xl transition-all text-sm"
-=======
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold py-3 rounded-xl transition-all text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   >
                     Actually, I recognise it now
                   </button>
@@ -2868,19 +2750,11 @@ export default function SubscriptionsPage() {
                       <Shield className="h-5 w-5 text-red-400" />
                     </div>
                     <div>
-<<<<<<< HEAD
                       <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Reporting a fraudulent payment</h2>
                       <p className="text-slate-600 text-sm">{formatGBP(unrecognisedSub.amount)} &middot; {unrecognisedSub.bank_description || unrecognisedSub.provider_name}</p>
                     </div>
                   </div>
                   <button onClick={() => setUnrecognisedSub(null)} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors">
-=======
-                      <h2 className="text-xl font-bold text-slate-900">Reporting a fraudulent payment</h2>
-                      <p className="text-slate-600 text-sm">{formatGBP(unrecognisedSub.amount)} &middot; {unrecognisedSub.bank_description || unrecognisedSub.provider_name}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setUnrecognisedSub(null)} className="text-slate-600 hover:text-slate-900 transition-colors p-1">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     <X className="h-5 w-5" />
                   </button>
                 </div>
@@ -2890,11 +2764,7 @@ export default function SubscriptionsPage() {
                     <p className="text-sm font-semibold text-slate-900 mb-1">1. Contact your bank immediately</p>
                     <p className="text-sm text-slate-600">Call the fraud team using the number on the back of your card or in your banking app. Tell them the payment is unauthorised and ask them to block further transactions from this merchant. They must investigate within 15 business days under the Payment Services Regulations 2017.</p>
                   </div>
-<<<<<<< HEAD
                   <div className="card">
-=======
-                  <div className="bg-white border border-slate-200/50 rounded-xl p-4">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     <p className="text-sm font-semibold text-slate-900 mb-2">2. Report to Action Fraud</p>
                     <div className="flex flex-col gap-1.5">
                       <a href="tel:03001232040" className="flex items-center gap-2 text-sm text-emerald-600 hover:text-emerald-500">
@@ -2907,11 +2777,7 @@ export default function SubscriptionsPage() {
                       </a>
                     </div>
                   </div>
-<<<<<<< HEAD
                   <div className="card">
-=======
-                  <div className="bg-white border border-slate-200/50 rounded-xl p-4">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                     <p className="text-sm font-semibold text-slate-900 mb-1">3. Your rights</p>
                     <div className="space-y-2 text-sm text-slate-600">
                       <p><span className="text-slate-900 font-medium">Credit card:</span> Section 75 of the Consumer Credit Act 1974 gives you the right to claim a refund from your card provider for purchases between £100 and £30,000 where the merchant fails to deliver or commits fraud.</p>
@@ -2943,11 +2809,7 @@ export default function SubscriptionsPage() {
       {/* Edit subscription modal */}
       {editSub && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-<<<<<<< HEAD
           <div className="card p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
-=======
-          <div className="bg-white border border-slate-200/50 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-slate-900">Edit Subscription</h2>
               <button onClick={() => setEditSub(null)} className="text-slate-600 hover:text-slate-900 transition-all">
@@ -3189,11 +3051,7 @@ export default function SubscriptionsPage() {
               <button
                 type="submit"
                 disabled={savingEdit}
-<<<<<<< HEAD
                 className="w-full cta font-semibold py-4 rounded-lg transition-all flex items-center justify-center gap-2"
-=======
-                className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold py-4 rounded-lg transition-all flex items-center justify-center gap-2"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 {savingEdit ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Save Changes'}
               </button>
@@ -3205,11 +3063,7 @@ export default function SubscriptionsPage() {
       {/* Add subscription modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-<<<<<<< HEAD
           <div className="card p-8 w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar">
-=======
-          <div className="bg-white border border-slate-200/50 rounded-2xl p-8 w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-slate-900">Add Subscription</h2>
               <button
@@ -3479,11 +3333,7 @@ export default function SubscriptionsPage() {
               <button
                 type="submit"
                 disabled={addingSubscription}
-<<<<<<< HEAD
                 className="w-full cta font-semibold py-4 rounded-lg transition-all flex items-center justify-center gap-2"
-=======
-                className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-900 font-semibold py-4 rounded-lg transition-all flex items-center justify-center gap-2"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 {addingSubscription ? (
                   <Loader2 className="h-5 w-5 animate-spin" />

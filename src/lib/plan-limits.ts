@@ -5,13 +5,6 @@ export type PlanTier = 'free' | 'essential' | 'pro';
 export interface PlanLimits {
   complaintsPerMonth: number | null; // null = unlimited
   scanRunsPerMonth: number | null;
-<<<<<<< HEAD
-  /** Maximum number of connected bank accounts. null = unlimited. */
-  maxBanks: number | null;
-  /** Maximum number of connected email accounts. null = unlimited. */
-  maxEmails: number | null;
-=======
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   /**
    * Max number of active dispute→email-thread links (Watchdog feature).
    * null = unlimited. A "link" is one row in dispute_watchdog_links with
@@ -20,23 +13,9 @@ export interface PlanLimits {
   disputeThreadLinks: number | null;
   /**
    * Minimum minutes between automatic background syncs of a linked thread.
-<<<<<<< HEAD
-   * Every paying tier and Free now share the same 30-min cadence — Emma and
-   * other competitors don't cap this, and the cost of a Gmail poll is
-   * negligible. Differentiation between tiers is on scope (bank / email
-   * count, unlocked features), not polling frequency.
-   */
-  watchdogSyncIntervalMinutes: number | null;
-  /**
-   * Max Account Spaces (Emma-style groupings). Everyone gets 1 default
-   * "Everything" Space; Pro can create more to split personal/business/joint.
-   */
-  maxSpaces: number | null;
-=======
    * Free tier has no background sync (manual only) — represented by null.
    */
   watchdogSyncIntervalMinutes: number | null;
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   features: string[];
 }
 
@@ -72,79 +51,6 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     complaintsPerMonth: 3,
-<<<<<<< HEAD
-    scanRunsPerMonth: null, // scanning is free; gating is on account counts + features
-    maxBanks: 2,
-    maxEmails: 1,
-    disputeThreadLinks: null, // unlimited email-thread monitoring for disputes
-    watchdogSyncIntervalMinutes: 30,
-    maxSpaces: 1,
-    features: [
-      'complaints',
-      'scanner',
-      'email_scanner',
-      'opportunity_scanner',
-      'subscriptions',
-      'watchdog_auto',
-      'pocket_agent',
-    ],
-  },
-  essential: {
-    complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    maxBanks: 3,
-    maxEmails: 3,
-    disputeThreadLinks: null,
-    watchdogSyncIntervalMinutes: 30,
-    maxSpaces: 1,
-    features: [
-      'complaints',
-      'scanner',
-      'email_scanner',
-      'opportunity_scanner',
-      'subscriptions',
-      'cancellation_emails',
-      'renewal_reminders',
-      'full_spending',
-      'budgets_goals',
-      'price_alert_email',
-      'watchdog_auto',
-      'pocket_agent',
-    ],
-  },
-  pro: {
-    complaintsPerMonth: null,
-    scanRunsPerMonth: null,
-    maxBanks: null,
-    maxEmails: null,
-    disputeThreadLinks: null,
-    watchdogSyncIntervalMinutes: 30,
-    maxSpaces: null,
-    features: [
-      'complaints',
-      'scanner',
-      'email_scanner',
-      'opportunity_scanner',
-      'subscriptions',
-      'cancellation_emails',
-      'renewal_reminders',
-      'full_spending',
-      'budgets_goals',
-      'top_merchants',
-      'open_banking',
-      'unlimited_banks',
-      'unlimited_emails',
-      'transaction_analysis',
-      'priority_support',
-      'pocket_agent',
-      'watchdog_auto',
-      'watchdog_telegram_instant',
-      'price_alert_email',
-      'price_alert_telegram',
-      'export',
-      'mcp',
-    ],
-=======
     scanRunsPerMonth: 1, // one-time bank scan, email scan, opportunity scan
     disputeThreadLinks: 1,
     watchdogSyncIntervalMinutes: null, // manual only
@@ -163,7 +69,6 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     disputeThreadLinks: null,
     watchdogSyncIntervalMinutes: 30,
     features: ['complaints', 'scanner', 'email_scanner', 'opportunity_scanner', 'subscriptions', 'cancellation_emails', 'renewal_reminders', 'full_spending', 'open_banking', 'unlimited_banks', 'transaction_analysis', 'priority_support', 'pocket_agent', 'watchdog_auto', 'watchdog_telegram_instant'],
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
   },
 };
 
@@ -267,30 +172,11 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
   const admin = getAdmin();
   const { data: profile } = await admin
     .from('profiles')
-<<<<<<< HEAD
-    .select('subscription_tier, trial_ends_at, trial_converted_at, trial_expired_at')
-=======
     .select('subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at')
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
     .eq('id', userId)
     .single();
 
   const tier = (profile?.subscription_tier as PlanTier) ?? 'free';
-<<<<<<< HEAD
-
-  // Onboarding trial still grants Pro access while the trial window is open.
-  // Founder / Stripe / founding-member gymnastics removed — the profile row
-  // is now the source of truth. Demotion is webhook-driven only
-  // (customer.subscription.deleted writes 'free' to subscription_tier) so if
-  // the stored tier says 'pro', we trust it.
-  const onboardingTrialActive = !!profile?.trial_ends_at
-    && new Date(profile.trial_ends_at) > new Date()
-    && !profile?.trial_converted_at
-    && !profile?.trial_expired_at;
-  if (onboardingTrialActive) return 'pro';
-
-  return tier;
-=======
   const isPaid = tier !== 'free';
   const hasActiveStripe = profile?.stripe_subscription_id &&
     ['active', 'trialing'].includes(profile?.subscription_status ?? '');
@@ -299,7 +185,6 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
     profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
 
   return (isPaid && !hasActiveStripe && !isFoundingTrial) ? 'free' : tier;
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 }
 
 /**

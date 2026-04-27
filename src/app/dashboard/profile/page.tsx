@@ -183,11 +183,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
 
   return (
     <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-<<<<<<< HEAD
       <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Connected Accounts & Integrations</h2>
-=======
-      <h2 className="text-xl font-bold text-slate-900 mb-6">Connected Accounts & Integrations</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       <div className="space-y-4">
         {/* Email */}
         <div className="p-4 bg-slate-50/50 rounded-lg border border-slate-200/50">
@@ -283,18 +279,11 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
       {/* Connect Email Modal */}
       {showConnectModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}>
-<<<<<<< HEAD
           <div className="card shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
               aria-label="Close"
               className="absolute top-2 right-2 text-slate-500 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"
-=======
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => { setShowConnectModal(false); setConnectError(null); setConnectEmail(''); setConnectPassword(''); setImapMode(false); }}
-              className="absolute top-4 right-4 text-slate-500 hover:text-slate-900 transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             >
               <X className="h-5 w-5" />
             </button>
@@ -313,11 +302,7 @@ function ConnectedAccountsSection({ supabase, searchParams }: { supabase: Return
               {/* Provider selector */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Choose your email provider</label>
-<<<<<<< HEAD
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-=======
-                <div className="grid grid-cols-2 gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   <button
                      onClick={() => { window.location.href = '/api/auth/google?returnPath=/dashboard/profile'; }}
                     className="flex items-center gap-2 bg-slate-50 border border-slate-200 hover:border-emerald-500/50 rounded-lg px-4 py-3 transition-all text-left"
@@ -801,19 +786,12 @@ export default function ProfilePage() {
         </div>
       )}
 
-<<<<<<< HEAD
       {/* Header (batch5 ProfileSettings) */}
       <div className="page-title-row" style={{marginBottom:12}}>
         <div>
           <h1 className="page-title">{profile?.full_name || 'Your profile'}</h1>
           <p className="page-sub">{profile?.email}{profile?.subscription_tier && profile.subscription_tier !== 'free' ? ` · Paybacker ${profile.subscription_tier.charAt(0).toUpperCase()}${profile.subscription_tier.slice(1)}` : ' · Paybacker Free'} · Member since {memberSince}</p>
         </div>
-=======
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Profile</h1>
-        <p className="text-slate-600">Manage your account and view your stats</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       </div>
 
       {/* Section tabs */}
@@ -861,11 +839,7 @@ export default function ProfilePage() {
           {subscriptionBadge()}
         </div>
 
-<<<<<<< HEAD
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 pt-6 border-t border-slate-200/50">
-=======
-        <div className="grid grid-cols-2 gap-6 pt-6 border-t border-slate-200/50">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <div>
             <p className="text-sm text-slate-500 mb-1">Member since</p>
             <p className="text-slate-900 font-semibold">{memberSince}</p>
@@ -880,11 +854,7 @@ export default function ProfilePage() {
       {/* Personal Details */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
         <div className="flex items-center justify-between mb-6">
-<<<<<<< HEAD
           <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
             <MapPin className="h-5 w-5 text-emerald-600" />
             Personal Details
           </h2>
@@ -967,22 +937,14 @@ export default function ProfilePage() {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setEditing(false)}
-<<<<<<< HEAD
                 className="px-5 py-2.5 cta-ghost rounded-xl transition-all text-sm"
-=======
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveProfile}
                 disabled={saving}
-<<<<<<< HEAD
                 className="flex items-center gap-2 px-5 py-2.5 cta font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
-=======
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold rounded-xl transition-all text-sm disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 <Save className="h-4 w-4" />
                 {saving ? 'Saving...' : 'Save Changes'}
@@ -1013,11 +975,7 @@ export default function ProfilePage() {
 
       {/* Security Details */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-<<<<<<< HEAD
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield h-5 w-5 text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2-1 4-2 7-2 2.94 0 5 1 7 2a1 1 0 0 1 1 1v7z"/></svg>
           Security
         </h2>
@@ -1041,11 +999,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={passwordLoading || newPassword.length < 8}
-<<<<<<< HEAD
             className="px-5 py-2.5 cta-ghost rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
-=======
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl transition-all text-sm font-semibold disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             {passwordLoading ? 'Updating...' : 'Update Password'}
           </button>
@@ -1104,11 +1058,7 @@ export default function ProfilePage() {
 
         return (
           <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-<<<<<<< HEAD
             <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               <Sparkles className="h-5 w-5 text-emerald-600" />
               Your Plan
             </h2>
@@ -1133,7 +1083,6 @@ export default function ProfilePage() {
                 </p>
               </div>
               {isTrialUser ? (
-<<<<<<< HEAD
                 <Link href="/pricing" className="cta font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
                   Subscribe to keep Pro
                 </Link>
@@ -1143,17 +1092,6 @@ export default function ProfilePage() {
                 </Link>
               ) : (
                 <button onClick={handleManageBilling} disabled={portalLoading} className="cta-ghost px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-=======
-                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-                  Subscribe to keep Pro
-                </Link>
-              ) : effectiveTier === 'free' ? (
-                <Link href="/pricing" className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
-                  Upgrade Plan
-                </Link>
-              ) : (
-                <button onClick={handleManageBilling} disabled={portalLoading} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-900 px-4 py-2 rounded-lg transition-all text-sm whitespace-nowrap">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                   {portalLoading ? 'Loading...' : 'Manage Billing'}
                 </button>
               )}
@@ -1172,11 +1110,7 @@ export default function ProfilePage() {
       {section === 'subscription' && (<>
       {/* Financial Reports */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8 mb-6">
-<<<<<<< HEAD
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-        <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <FileText className="h-5 w-5 text-emerald-600" />
           Financial Reports
         </h2>
@@ -1195,11 +1129,7 @@ export default function ProfilePage() {
               <button
                 onClick={() => handleGenerateReport('on_demand')}
                 disabled={reportLoading}
-<<<<<<< HEAD
                 className="flex items-center gap-2 cta-ghost font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
-=======
-                className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-5 py-2.5 rounded-xl transition-all disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 Quick Summary
               </button>
@@ -1280,11 +1210,7 @@ export default function ProfilePage() {
       {section === 'subscription' && (<>
       {/* Subscription Management */}
       <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-8">
-<<<<<<< HEAD
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>Subscription</h2>
-=======
-        <h2 className="text-xl font-bold text-slate-900 mb-4">Subscription</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         
         {effectiveTier === 'free' ? (
           <div className="text-center py-8">
@@ -1315,11 +1241,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleManageBilling}
                 disabled={portalLoading}
-<<<<<<< HEAD
                 className="inline-flex items-center gap-2 cta-ghost font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
-=======
-                className="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold px-4 py-2 rounded-lg transition-all text-sm disabled:opacity-50"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 <CreditCard className="h-4 w-4" />
                 {portalLoading ? 'Loading...' : 'Manage Billing'}
@@ -1361,7 +1283,6 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
-<<<<<<< HEAD
       </>)}
 
       {section === 'notifications' && (<>
@@ -1394,29 +1315,6 @@ export default function ProfilePage() {
           <p className="text-slate-600 text-sm mb-4">
             Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
           </p>
-=======
-      {/* Pocket Agent */}
-      <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl p-8 mt-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
-          <Mail className="h-5 w-5 text-amber-500" />
-          Pocket Agent
-        </h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Connect your Paybacker account to Pocket Agent for proactive alerts, spending queries, and complaint letters — all from your phone.
-        </p>
-        {telegramLinked === true ? (
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-            <span className="text-green-400 text-sm font-medium">Pocket Agent Connected</span>
-            <Link
-              href="/dashboard/pocket-agent"
-              className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors border border-slate-200/50"
-            >
-              Manage
-            </Link>
-          </div>
-        ) : (
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <Link
             href="/dashboard/pocket-agent"
             className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-amber-600 rounded-xl text-sm font-medium transition-colors"
@@ -1430,11 +1328,7 @@ export default function ProfilePage() {
       {section === 'privacy' && (<>
       {/* Data Export — GDPR Right to Portability */}
       <div className="bg-white backdrop-blur-sm border border-slate-200 rounded-2xl p-8 mt-6">
-<<<<<<< HEAD
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <Download className="h-5 w-5 text-emerald-600" />
           Download My Data
         </h2>
@@ -1456,11 +1350,7 @@ export default function ProfilePage() {
       {section === 'danger' && (<>
       {/* Danger Zone — Delete Account */}
       <div className="bg-white backdrop-blur-sm border border-red-900/50 rounded-2xl p-8 mt-6">
-<<<<<<< HEAD
         <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>
-=======
-        <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <Trash2 className="h-5 w-5 text-red-400" />
           Delete Account
         </h2>
@@ -1491,11 +1381,7 @@ export default function ProfilePage() {
               </button>
               <button
                 onClick={() => setDeleteConfirm(false)}
-<<<<<<< HEAD
                 className="cta-ghost px-5 py-2.5 rounded-lg transition-all text-sm"
-=======
-                className="bg-slate-100 hover:bg-slate-200 text-slate-900 px-5 py-2.5 rounded-lg transition-all text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 Cancel
               </button>

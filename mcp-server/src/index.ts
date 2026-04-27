@@ -11,14 +11,10 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 // Constants
-<<<<<<< HEAD
-const PROJECT_DIR = process.env.PAYBACKER_PROJECT_DIR || "/Users/paul-ops/lifeadmin-ai";
-=======
 // PROJECT_DIR can be overridden via env var so this MCP works on any machine
 // (previously hard-coded to a stale ~/.openclaw path that no longer exists).
 const PROJECT_DIR =
   process.env.PAYBACKER_PROJECT_DIR || "/Users/paul-ops/lifeadmin-ai";
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
 const CONTEXT_DIR = join(PROJECT_DIR, "shared-context");
 const FACEBOOK_PAGE_ID = "1056645287525328";
 const INSTAGRAM_ID = "17841440175351137";

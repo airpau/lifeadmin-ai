@@ -253,17 +253,10 @@ function ContractDetail({ contract, onBack, onDelete }: {
       </button>
 
       {/* Header */}
-<<<<<<< HEAD
-      <div className="card mb-6">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h1 className="page-title ">
-=======
       <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
         <div className="flex items-start justify-between mb-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               {contract.provider_name ? `Your ${contract.provider_name} contract` : 'Contract details'}
             </h1>
             <div className="flex items-center gap-3 mt-2">
@@ -301,11 +294,7 @@ function ContractDetail({ contract, onBack, onDelete }: {
 
       {/* Key terms */}
       {terms.length > 0 && (
-<<<<<<< HEAD
-        <div className="card mb-6">
-=======
         <div className="bg-white border border-slate-200/50 rounded-2xl p-6 mb-6">
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <h2 className="text-lg font-bold text-slate-900 mb-4">Key terms</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             {terms.map((term) => (
@@ -534,19 +523,11 @@ function UploadModal({ subscriptions, onClose, onUploaded, initialProvider }: {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-<<<<<<< HEAD
-      <div className="relative card w-full max-w-md shadow-2xl my-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
-          <h2 className="text-lg font-bold text-slate-900">Add a contract</h2>
-          <button onClick={onClose} aria-label="Close" className="text-slate-600 hover:text-slate-900 inline-flex items-center justify-center h-11 w-11 shrink-0 rounded-lg hover:bg-slate-100 active:bg-slate-200 transition-colors"><X className="h-5 w-5" /></button>
-=======
       <div className="relative bg-white border border-slate-200/50 rounded-2xl w-full max-w-md shadow-2xl my-4">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200/50">
           <h2 className="text-lg font-bold text-slate-900">Add a contract</h2>
           <button onClick={onClose} className="text-slate-600 hover:text-slate-900 p-1"><X className="h-5 w-5" /></button>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         </div>
 
         {/* Tab switcher */}
@@ -812,15 +793,7 @@ export default function ContractsPage() {
     <div className="max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-<<<<<<< HEAD
-          <div className="page-title-row">
-        <div>
-          <h1 className="page-title">My Contracts</h1>
-        </div>
-      </div>
-=======
           <h1 className="text-4xl font-bold text-slate-900 font-[family-name:var(--font-heading)]">My Contracts</h1>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <p className="text-slate-600 mt-1">Upload your contracts and we find the clauses that matter</p>
         </div>
         <button
@@ -879,11 +852,7 @@ export default function ContractsPage() {
       ) : contracts.length === 0 ? (
         <div className="bg-slate-50/50 border border-dashed border-slate-200/50 rounded-2xl p-12 text-center">
           <FileText className="h-12 w-12 text-slate-600 mx-auto mb-4 opacity-50" />
-<<<<<<< HEAD
-          <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>No contracts uploaded yet</h2>
-=======
           <h2 className="text-xl font-bold text-slate-900 mb-2">No contracts uploaded yet</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           <p className="text-slate-600 text-sm mb-6 max-w-md mx-auto">Upload a contract and we will read the key terms, flag anything unfair, and use it to write stronger complaint letters.</p>
           <button
             onClick={() => setShowUpload(true)}
@@ -900,11 +869,7 @@ export default function ContractsPage() {
               <button
                 key={c.id}
                 onClick={() => setSelectedContract(c)}
-<<<<<<< HEAD
-                className="text-left card hover:border-orange-600/30 transition-all"
-=======
                 className="text-left bg-white border border-slate-200/50 rounded-2xl p-5 hover:border-orange-600/30 transition-all"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               >
                 <div className="flex items-start justify-between mb-2">
                   <Shield className="h-5 w-5 text-purple-400" />

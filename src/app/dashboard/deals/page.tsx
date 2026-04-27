@@ -257,12 +257,7 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
       {onDismiss && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
-<<<<<<< HEAD
-          aria-label="Dismiss deal"
-          className="absolute top-2 right-2 inline-flex items-center justify-center h-10 w-10 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 hover:text-slate-900 rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-=======
           className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           title="Not interested"
         >
           <X className="h-4 w-4" />
@@ -287,11 +282,7 @@ function DealCard({ deal, highlight, onDismiss }: { deal: Deal; highlight?: bool
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleClick}
-<<<<<<< HEAD
-            className="flex items-center gap-1 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
-=======
             className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           >
             View Deal →
           </a>
@@ -403,12 +394,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
       {onDismiss && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDismiss(); }}
-<<<<<<< HEAD
-          aria-label="Dismiss deal"
-          className="absolute top-2 right-2 inline-flex items-center justify-center h-10 w-10 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 hover:text-slate-900 rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10"
-=======
           className="absolute top-3 right-3 p-1.5 bg-slate-100 hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
           title="Not interested"
         >
           <X className="h-4 w-4" />
@@ -460,11 +446,7 @@ function AffiliatePlanCard({ deal, savingsMonthly, savingsYearly, userProvider, 
           target="_blank"
           rel="noopener noreferrer"
           onClick={handleClick}
-<<<<<<< HEAD
-          className="flex items-center gap-1 cta font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
-=======
           className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-3 py-1.5 rounded-lg transition-all text-xs whitespace-nowrap flex-shrink-0 ml-auto"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
         >
           View Deal →
         </a>
@@ -674,73 +656,10 @@ export default function DealsPage() {
 
   return (
     <div className="max-w-7xl">
-<<<<<<< HEAD
-      {/* Variant A header */}
-      <div className="page-title-row">
-        <div>
-          <h1 className="page-title">Find Better Deals</h1>
-          <p className="page-sub">Personalised savings based on your contracts and bills.</p>
-        </div>
-      </div>
-
-      {/* Hero strip (batch7 DealsMarketplace) */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg,#34D399 0%,#059669 100%)',
-          borderRadius: 18,
-          padding: '28px 32px',
-          color: '#fff',
-          marginBottom: 20,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 24,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '.12em',
-              textTransform: 'uppercase',
-              opacity: 0.85,
-            }}
-          >
-            Deals · updated weekly
-          </span>
-          <h2 style={{ fontSize: 'clamp(20px, 5vw, 26px)', fontWeight: 700, letterSpacing: '-.015em', margin: '8px 0 6px', color: '#fff' }}>
-            {dealsCount} verified deals
-            {potentialAnnualSaving > 0 && <>, £{potentialAnnualSaving.toLocaleString()} in potential savings.</>}
-            {potentialAnnualSaving === 0 && ' tailored to your subscriptions.'}
-          </h2>
-          <p style={{ fontSize: 13.5, opacity: 0.9, margin: 0, lineHeight: 1.5, maxWidth: 560 }}>
-            We compare your current bills against every deal a UK household could switch to. No affiliate tricks — if
-            it&apos;s the best deal, we show it.
-          </p>
-        </div>
-        <Link
-          href="/dashboard/subscriptions"
-          style={{
-            padding: '12px 20px',
-            fontSize: 13.5,
-            fontWeight: 700,
-            background: '#fff',
-            color: '#059669',
-            borderRadius: 12,
-            textDecoration: 'none',
-            flexShrink: 0,
-          }}
-        >
-          Match against my bills →
-        </Link>
-=======
       {/* Hero */}
       <div className="mb-8">
         <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2 font-[family-name:var(--font-heading)]">Find Better Deals</h1>
         <p className="text-slate-600">Personalised savings based on your contracts and bills.</p>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
       </div>
 
       {/* Category filter tabs */}
@@ -842,11 +761,7 @@ export default function DealsPage() {
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="h-5 w-5 text-slate-500" />
-<<<<<<< HEAD
-                  <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category}</h2>
-=======
                   <h2 className="text-xl font-bold text-slate-900">{category}</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 </div>
                 <div className="bg-slate-100/30 border border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
                   <Info className="h-5 w-5 text-slate-500 flex-shrink-0" />
@@ -897,11 +812,7 @@ export default function DealsPage() {
               <section key={category}>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="h-5 w-5 text-slate-500" />
-<<<<<<< HEAD
-                  <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category} Deals</h2>
-=======
                   <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                 </div>
                 <div className="bg-slate-100/30 border border-dashed border-slate-200/40 rounded-xl px-4 py-4 flex items-center gap-3">
                   <Info className="h-5 w-5 text-emerald-600 flex-shrink-0" />
@@ -925,11 +836,7 @@ export default function DealsPage() {
             <section key={category}>
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="h-5 w-5 text-emerald-600" />
-<<<<<<< HEAD
-                <h2 style={{fontSize:18,fontWeight:700,letterSpacing:"-.01em",margin:"0 0 10px"}}>{category} Deals</h2>
-=======
                 <h2 className="text-xl font-bold text-slate-900">{category} Deals</h2>
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
               </div>
 
               {matchingSubs.length > 0 && (
@@ -974,11 +881,7 @@ export default function DealsPage() {
                           }).catch(() => {});
                           capture('best_deal_clicked', { provider: bestDeal.deal.provider, plan: bestDeal.deal.plan_name, savings: bestDeal.savingsYearly });
                         }}
-<<<<<<< HEAD
-                        className="inline-flex items-center gap-1.5 cta transition-all text-sm"
-=======
                         className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-4 py-2 rounded-xl transition-all text-sm"
->>>>>>> 6ed4f978 (feat: managed agents with memory + finance-analyst, decommission legacy executives, hardened MCP v2.1.0)
                       >
                         Switch Now →
                       </a>
