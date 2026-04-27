@@ -236,20 +236,11 @@ export async function getEffectiveTier(userId: string): Promise<PlanTier> {
  *   - /api/whatsapp/opt-in       (block link-up for non-Pro)
  *   - /api/whatsapp/webhook      (auto-reply non-Pro inbound with upgrade)
  *   - /api/cron/whatsapp-alerts  (filter outbound recipients)
- */
-export async function canUseWhatsApp(userId: string): Promise<boolean> {
-  const tier = await getEffectiveTier(userId);
-  return PLAN_LIMITS[tier].whatsappPocketAgent === true;
-}
-
-/**
- * Whether this user can use the WhatsApp Pocket Agent right now.
  *
- * Reads `getEffectiveTier` (Stripe + onboarding-trial aware) and returns
- * true when the resulting tier has `whatsappPocketAgent: true`. Used by:
- *   - /api/whatsapp/opt-in       (block link-up for non-Pro)
- *   - /api/whatsapp/webhook      (auto-reply non-Pro inbound with upgrade)
- *   - /api/cron/whatsapp-alerts  (filter outbound recipients)
+ * (Two PRs landed this function back-to-back — once via the prior
+ *  WhatsApp gating commit and again via #340. The duplicate broke the
+ *  Turbopack build with "the name `canUseWhatsApp` is defined multiple
+ *  times". This is the surviving definition.)
  */
 export async function canUseWhatsApp(userId: string): Promise<boolean> {
   const tier = await getEffectiveTier(userId);
