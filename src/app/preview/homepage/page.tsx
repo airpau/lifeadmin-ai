@@ -219,12 +219,17 @@ function Nav() {
     };
   }, [menuOpen]);
 
+  // Tuples: [label, href]. An href starting with `/` is a page route
+  // (rendered as a Next Link); anything else (e.g. `#how`) is an
+  // in-page anchor (rendered as a plain `<a>` so the browser handles
+  // the smooth-scroll). Both desktop nav + mobile drawer iterate this
+  // array so adding a route here surfaces it in both surfaces at once.
   const navLinks: ReadonlyArray<readonly [string, string]> = [
     ['How it works', '#how'],
     ['Product', '#features'],
     ['Deals', '#deals'],
     ['Pricing', '#pricing'],
-    ['Stories', '#testimonials'],
+    ['Blog', '/blog'],
   ];
 
   return (
@@ -236,9 +241,13 @@ function Nav() {
             <span className="backer">backer</span>
           </Link>
           <div className="nav-links">
-            {navLinks.map(([label, href]) => (
-              <a key={href} href={href}>{label}</a>
-            ))}
+            {navLinks.map(([label, href]) =>
+              href.startsWith('/') ? (
+                <Link key={href} href={href}>{label}</Link>
+              ) : (
+                <a key={href} href={href}>{label}</a>
+              )
+            )}
           </div>
           <div className="nav-cta-row">
             <Link className="nav-signin" href="/auth/login">
@@ -286,9 +295,13 @@ function Nav() {
               </button>
             </div>
             <div className="nav-drawer-links">
-              {navLinks.map(([label, href]) => (
-                <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>
-              ))}
+              {navLinks.map(([label, href]) =>
+                href.startsWith('/') ? (
+                  <Link key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</Link>
+                ) : (
+                  <a key={href} href={href} onClick={() => setMenuOpen(false)}>{label}</a>
+                )
+              )}
             </div>
             <div className="nav-drawer-ctas">
               <Link className="btn btn-ghost" href="/auth/login" onClick={() => setMenuOpen(false)}>
@@ -1601,13 +1614,15 @@ export default function HomepageV3PreviewPage() {
               <a href="#features">Money Hub</a>
               <a href="#features">Pocket Agent</a>
               <a href="#deals">Deals</a>
+              <Link href="/templates">Letter templates</Link>
               <Link href="/pricing">Pricing</Link>
             </div>
             <div className="footer-col">
               <h5>Company</h5>
               <Link href="/about">About</Link>
-              <a href="#how">How it works</a>
-              <a href="#testimonials">Stories</a>
+              <Link href="/how-it-works">How it works</Link>
+              <Link href="/blog">Blog</Link>
+              <Link href="/careers">Careers</Link>
               <a href="mailto:hello@paybacker.co.uk">Contact</a>
             </div>
             <div className="footer-col">
@@ -1615,6 +1630,7 @@ export default function HomepageV3PreviewPage() {
               <Link href="/privacy-policy">Privacy</Link>
               <Link href="/terms-of-service">Terms</Link>
               <Link href="/cookie-policy">Cookies</Link>
+              <Link href="/ico-notice">ICO notice</Link>
             </div>
             <div className="footer-col">
               <h5>Connect</h5>
