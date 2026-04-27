@@ -1067,4 +1067,114 @@ export const telegramTools: Tool[] = [
       required: ['provider_name'],
     },
   },
+
+  // ============================================================
+  // NOTIFICATION SCHEDULE TOOLS — user customises Pocket Agent timing
+  // ============================================================
+  // These are "set/disable/enable/list_notification_schedule" + "set_quiet_hours".
+  // The user talks to the agent in plain English ("send me a morning summary
+  // at 9am") and the agent translates that into a structured tool call.
+  //
+  // Tier gates enforced in tool-handlers:
+  //   - Free:      enable/disable only on schedulable events; cannot pick a time
+  //   - Essential: can set cron times + lead-time-days
+  //   - Pro:       can also set custom_prompt
+  //
+  // System-managed events (price_increase, dispute_reply, money_recovered,
+  // etc.) cannot be scheduled — only enabled/disabled, and ONLY if not
+  // marked critical+mandatory.
+  {
+    name: 'set_notification_schedule',
+    description:
+      "Schedule a notification for the user. Use when they say things like 'send me a morning summary at 9am', 'budget alerts only when I'm over 90%', 'remind me 60 days before contracts end'. ONLY usable on schedulable events (morning_summary, evening_summary, payday_summary, weekly_digest, monthly_recap, unused_subscription, deal_alert, targeted_deal — these take a cron expression; renewal_reminder, contract_expiry, dispute_reminder — these take lead_time_days; budget_alert — takes a threshold). For system-managed events (price_increase, dispute_reply, money_recovered, etc.) you must use enable_notification or disable_notification instead. If the user is on Free tier, this returns an upgrade prompt. If Essential, you can set timing/lead-time. Custom prompts (style preferences) require Pro.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event: {
+          type: 'string',
+          enum: [
+            'morning_summary', 'evening_summary', 'payday_summary',
+            'weekly_digest', 'monthly_recap', 'unused_subscription',
+            'deal_alert', 'targeted_deal',
+            'renewal_reminder', 'contract_expiry', 'dispute_reminder',
+            'budget_alert',
+          ],
+          description: 'The event being scheduled.',
+        },
+        cron_expression: {
+          type: 'string',
+          description: 'Standard 5-field cron expression evaluated in the user\'s timezone. Required for cron-kind events. Examples: "0 9 * * *" = 9am daily; "0 8 * * 1" = 8am Mondays; "30 18 * * 1-5" = 6:30pm weekdays. ONLY pass for cron-kind events.',
+        },
+        lead_time_days: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Days-before triggers for lead_time events (renewal_reminder, contract_expiry, dispute_reminder). E.g. [60, 14] for 60d and 14d ahead.',
+        },
+        threshold_percent: {
+          type: 'number',
+          description: 'Threshold percentage for budget_alert (e.g. 90 for "alert when 90% of budget reached"). 0-200.',
+        },
+        custom_prompt: {
+          type: 'string',
+          description: 'Pro-only: a style preference passed to the agent when generating this notification. E.g. "Keep it punchy, focus on what\'s overspending." Up to 500 chars.',
+        },
+      },
+      required: ['event'],
+    },
+  },
+  {
+    name: 'disable_notification',
+    description:
+      "Turn off a specific notification event for this user. Use when they say 'stop sending morning summaries', 'turn off renewal reminders', 'mute deal alerts'. Cannot disable mandatory events (support_reply) — return an explanation. For critical events (price_increase, dispute_reply, money_recovered, savings_milestone, overcharge_detected) warn the user that these protect them, and confirm before disabling.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event: {
+          type: 'string',
+          description: 'The event to disable, e.g. "morning_summary".',
+        },
+      },
+      required: ['event'],
+    },
+  },
+  {
+    name: 'enable_notification',
+    description:
+      "Turn a previously-disabled notification back on. If a custom schedule existed (cron expression, lead-time, threshold, prompt), it is restored. Use when the user says 'turn morning summaries back on', 'resume renewal reminders'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event: {
+          type: 'string',
+          description: 'The event to re-enable, e.g. "morning_summary".',
+        },
+      },
+      required: ['event'],
+    },
+  },
+  {
+    name: 'list_notification_schedules',
+    description:
+      "List all of the user's current notification schedules: enabled/disabled state, cron times, lead-times, custom prompts. Use when they ask 'what notifications are you sending me?', 'show my alert settings', 'what's scheduled?'.",
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'set_quiet_hours',
+    description:
+      "Set the user's quiet hours — Pocket Agent and push notifications are suppressed in this window; email still sends. Use when they say 'no alerts after 10pm', 'quiet from 11pm to 7am', 'don't message me overnight'.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        start: {
+          type: 'string',
+          description: '24h time HH:MM (e.g. "22:00"). Pass empty string to clear.',
+        },
+        end: {
+          type: 'string',
+          description: '24h time HH:MM (e.g. "07:00"). Pass empty string to clear.',
+        },
+      },
+      required: ['start', 'end'],
+    },
+  },
 ];

@@ -12,6 +12,12 @@ import {
   resolveSpaceByName,
   setBotActiveSpace,
 } from '@/lib/telegram/spaces';
+import {
+  EVENT_CATALOG,
+  getEventMeta,
+  type NotificationEventType,
+} from '@/lib/notifications/events';
+import { getEffectiveTier } from '@/lib/plan-limits';
 
 const CATEGORY_LABELS: Record<string, string> = {
   mortgage: 'Mortgage', loans: 'Loans & Finance', credit: 'Credit Cards',
@@ -295,6 +301,19 @@ export async function executeToolCall(
         description: toolInput.description as string,
         category: (toolInput.category as string | undefined) ?? 'general',
         priority: (toolInput.priority as string | undefined) ?? 'medium',
+      });
+    case 'set_notification_schedule':
+      return setNotificationSchedule(supabase, userId, toolInput);
+    case 'disable_notification':
+      return toggleNotification(supabase, userId, toolInput.event as string, false);
+    case 'enable_notification':
+      return toggleNotification(supabase, userId, toolInput.event as string, true);
+    case 'list_notification_schedules':
+      return listNotificationSchedules(supabase, userId);
+    case 'set_quiet_hours':
+      return setQuietHours(supabase, userId, {
+        start: toolInput.start as string,
+        end: toolInput.end as string,
       });
     default:
       return { text: `Unknown tool: ${toolName}` };
@@ -4316,4 +4335,345 @@ async function createSupportTicket(
   text += `_Reply to the confirmation email if you need to add more details._`;
 
   return { text };
+}
+
+// ============================================================
+// NOTIFICATION SCHEDULE HANDLERS
+// ============================================================
+// Implementations for the user-configurable schedule tools. The
+// agent calls these when the user asks things like "send me a morning
+// summary at 9am" or "stop sending renewal reminders". Tier gates +
+// validation enforced here, not at the schema level — that way the
+// agent can return helpful upgrade prompts to the user rather than a
+// blank failure.
+
+/**
+ * Schedule a notification event for the user. Called by the agent
+ * after parsing their natural-language request into structured args.
+ */
+async function setNotificationSchedule(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const event = args.event as NotificationEventType;
+  const meta = getEventMeta(event);
+  if (!meta) {
+    return { text: `Unknown notification event: ${event}.` };
+  }
+
+  // Tier gate
+  const tier = await getEffectiveTier(userId);
+  if (tier === 'free') {
+    return {
+      text:
+        `Custom notification schedules are part of Paybacker Essential and Pro. ` +
+        `Upgrade and you can configure your ${meta.label} timing yourself.\n\n` +
+        `paybacker.co.uk/pricing`,
+    };
+  }
+
+  // Schedule-kind gate — only schedulable events accept this tool. The
+  // agent should pick disable/enable for system events, but defend here
+  // anyway in case it slips.
+  if (
+    meta.scheduleKind !== 'cron' &&
+    meta.scheduleKind !== 'lead_time' &&
+    meta.scheduleKind !== 'threshold'
+  ) {
+    return {
+      text:
+        `${meta.label} can't be rescheduled — it's a real-time alert that fires when something is detected. ` +
+        `You can use disable_notification or enable_notification instead.`,
+    };
+  }
+
+  // Validate matching args
+  const cronExpr = (args.cron_expression as string | undefined) ?? null;
+  const leadTimeDays = (args.lead_time_days as number[] | undefined) ?? null;
+  const thresholdPercent = (args.threshold_percent as number | undefined) ?? null;
+  const customPrompt = (args.custom_prompt as string | undefined) ?? null;
+
+  if (meta.scheduleKind === 'cron') {
+    if (!cronExpr) {
+      return {
+        text: `That event needs a time. Tell me when, e.g. "9am every morning" → I\'ll set it to "0 9 * * *".`,
+      };
+    }
+    if (cronExpr.trim().split(/\s+/).length !== 5) {
+      return { text: `Invalid cron expression: must be 5 fields. Got "${cronExpr}".` };
+    }
+  } else if (meta.scheduleKind === 'lead_time') {
+    if (!leadTimeDays || leadTimeDays.length === 0) {
+      return {
+        text: `${meta.label} needs days-before triggers. E.g. [60, 14] for 60 and 14 days ahead.`,
+      };
+    }
+    if (leadTimeDays.some((d) => d < 0 || d > 365)) {
+      return { text: `Lead-time days must be between 0 and 365.` };
+    }
+  } else if (meta.scheduleKind === 'threshold') {
+    if (thresholdPercent == null) {
+      return { text: `${meta.label} needs a threshold percentage (0-200).` };
+    }
+    if (thresholdPercent < 0 || thresholdPercent > 200) {
+      return { text: `Threshold must be 0-200.` };
+    }
+  }
+
+  // Pro-only: custom_prompt
+  if (customPrompt && tier !== 'pro') {
+    return {
+      text:
+        `Custom prompts are a Pro feature. I can still set the timing for you on Essential — ` +
+        `try again without the style preference.`,
+    };
+  }
+
+  // Upsert via the user_chat unique index — same (user, event, source=user_chat)
+  // overwrites previous, no duplicates.
+  const row = {
+    user_id: userId,
+    event_type: event,
+    schedule_kind: meta.scheduleKind,
+    cron_expression: cronExpr,
+    cron_timezone: 'Europe/London',
+    lead_time_days: leadTimeDays,
+    threshold:
+      thresholdPercent != null
+        ? { value: thresholdPercent, unit: 'percent' }
+        : null,
+    custom_prompt: customPrompt,
+    enabled: true,
+    source: 'user_chat',
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('user_notification_schedules')
+    .upsert(row, { onConflict: 'user_id,event_type' });
+
+  if (error) {
+    return { text: `Couldn't save your schedule: ${error.message}` };
+  }
+
+  // Friendly confirmation per kind
+  if (meta.scheduleKind === 'cron') {
+    return {
+      text: `✓ Saved. ${meta.label} will fire on cron "${cronExpr}" (${row.cron_timezone}).`,
+    };
+  }
+  if (meta.scheduleKind === 'lead_time') {
+    return {
+      text: `✓ Saved. ${meta.label} will fire ${leadTimeDays!.join(', ')} days before each trigger.`,
+    };
+  }
+  return {
+    text: `✓ Saved. ${meta.label} will fire when you reach ${thresholdPercent}% of the limit.`,
+  };
+}
+
+async function toggleNotification(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  event: string,
+  enabled: boolean,
+): Promise<ToolResult> {
+  const meta = getEventMeta(event as NotificationEventType);
+  if (!meta) return { text: `Unknown notification event: ${event}.` };
+
+  if (!enabled && meta.mandatory) {
+    return {
+      text: `${meta.label} can't be disabled — these are required service notifications (e.g. support replies). Without them you wouldn't know when we'd answered you.`,
+    };
+  }
+
+  if (!enabled && meta.critical) {
+    // The agent should already have warned the user, but enforce a soft
+    // confirmation hint in the response. We DO honour the disable — users
+    // are adults — but flag it.
+    // (No interruption here; the user said disable, we disable.)
+  }
+
+  // Upsert: keep existing custom_prompt / cron / etc. if any.
+  const existing = await supabase
+    .from('user_notification_schedules')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('event_type', event)
+    .eq('source', 'user_chat')
+    .maybeSingle();
+
+  if (existing.data) {
+    const { error } = await supabase
+      .from('user_notification_schedules')
+      .update({ enabled, updated_at: new Date().toISOString() })
+      .eq('id', existing.data.id);
+    if (error) return { text: `Couldn't update: ${error.message}` };
+  } else {
+    // No row yet — insert one as 'always_on' kind so the toggle is recorded.
+    const { error } = await supabase.from('user_notification_schedules').insert({
+      user_id: userId,
+      event_type: event,
+      schedule_kind: 'always_on',
+      enabled,
+      source: 'user_chat',
+    });
+    if (error) return { text: `Couldn't update: ${error.message}` };
+  }
+
+  // Also reflect in notification_preferences so the dispatcher honours
+  // it across all channels even if no per-channel pref existed yet.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+  if (profile) {
+    const update = enabled
+      ? {
+          email: meta.defaultEmail,
+          telegram: meta.defaultTelegram,
+          whatsapp: meta.defaultWhatsapp,
+          push: meta.defaultPush,
+        }
+      : { email: false, telegram: false, whatsapp: false, push: false };
+    await supabase
+      .from('notification_preferences')
+      .upsert(
+        {
+          user_id: userId,
+          event_type: event,
+          ...update,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,event_type' },
+      );
+  }
+
+  return {
+    text: enabled
+      ? `✓ ${meta.label} is back on.`
+      : `✓ ${meta.label} is off. Tell me "turn ${meta.label} back on" any time.`,
+  };
+}
+
+async function listNotificationSchedules(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+): Promise<ToolResult> {
+  const tier = await getEffectiveTier(userId);
+
+  const { data: rows } = await supabase
+    .from('user_notification_schedules')
+    .select('event_type, schedule_kind, cron_expression, lead_time_days, threshold, custom_prompt, enabled')
+    .eq('user_id', userId)
+    .eq('source', 'user_chat')
+    .order('event_type');
+
+  interface ScheduleListRow {
+    event_type: string;
+    schedule_kind: string;
+    cron_expression: string | null;
+    lead_time_days: number[] | null;
+    threshold: { value: number; unit: string } | null;
+    custom_prompt: string | null;
+    enabled: boolean;
+  }
+  const customByEvent = new Map<string, ScheduleListRow>();
+  for (const r of (rows ?? []) as ScheduleListRow[]) customByEvent.set(r.event_type, r);
+
+  let text = `*Your notification schedules*\n\n`;
+
+  // Group by category so the user can quickly see what's scheduled, what's
+  // detection-driven, and what's mandatory.
+  const grouped: Record<string, string[]> = {
+    schedulable: [],
+    lead_time: [],
+    threshold: [],
+    system: [],
+  };
+
+  for (const meta of EVENT_CATALOG) {
+    if (meta.scheduleKind === 'none') continue;
+
+    const custom = customByEvent.get(meta.event);
+    const enabled = custom?.enabled ?? true;
+
+    let line = `${enabled ? '🔔' : '🔕'} ${meta.label}`;
+    if (meta.proOnly) line += ` (Pro)`;
+    if (meta.mandatory) line += ` _required_`;
+
+    if (custom && enabled) {
+      if (meta.scheduleKind === 'cron' && custom.cron_expression) {
+        line += ` — _custom: ${custom.cron_expression}_`;
+      } else if (meta.scheduleKind === 'lead_time' && custom.lead_time_days?.length) {
+        line += ` — _${custom.lead_time_days.join(', ')}d ahead_`;
+      } else if (meta.scheduleKind === 'threshold' && custom.threshold) {
+        const t = custom.threshold as { value: number; unit: string };
+        line += ` — _at ${t.value}${t.unit === 'percent' ? '%' : ''}_`;
+      }
+      if (custom.custom_prompt) {
+        line += ` 🎨`;
+      }
+    } else if (meta.scheduleKind === 'cron' && meta.defaultCron) {
+      line += ` — default ${meta.defaultCron}`;
+    } else if (meta.scheduleKind === 'lead_time' && meta.defaultLeadTimeDays) {
+      line += ` — default ${meta.defaultLeadTimeDays.join(', ')}d ahead`;
+    }
+
+    if (meta.scheduleKind === 'cron') grouped.schedulable.push(line);
+    else if (meta.scheduleKind === 'lead_time') grouped.lead_time.push(line);
+    else if (meta.scheduleKind === 'threshold') grouped.threshold.push(line);
+    else grouped.system.push(line);
+  }
+
+  if (grouped.schedulable.length > 0) {
+    text += `*Daily/weekly summaries* (you set the time):\n${grouped.schedulable.join('\n')}\n\n`;
+  }
+  if (grouped.lead_time.length > 0) {
+    text += `*Reminders* (you set days-ahead):\n${grouped.lead_time.join('\n')}\n\n`;
+  }
+  if (grouped.threshold.length > 0) {
+    text += `*Threshold alerts* (you set the trigger):\n${grouped.threshold.join('\n')}\n\n`;
+  }
+  if (grouped.system.length > 0) {
+    text += `*Real-time alerts* (fire when detected):\n${grouped.system.join('\n')}\n\n`;
+  }
+
+  if (tier === 'free') {
+    text += `_Upgrade to Essential or Pro to customise these times yourself._\n`;
+  } else if (tier === 'essential') {
+    text += `_Pro adds custom prompts (style preferences) per schedule._\n`;
+  }
+
+  return { text };
+}
+
+async function setQuietHours(
+  supabase: ReturnType<typeof getAdmin>,
+  userId: string,
+  args: { start: string; end: string },
+): Promise<ToolResult> {
+  const valid = (s: string) => /^$|^([01]\d|2[0-3]):([0-5]\d)$/.test(s);
+  if (!valid(args.start) || !valid(args.end)) {
+    return { text: `Times must be HH:MM (24h) or empty. Got start="${args.start}" end="${args.end}".` };
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      quiet_hours_start: args.start || null,
+      quiet_hours_end: args.end || null,
+    })
+    .eq('id', userId);
+
+  if (error) return { text: `Couldn't save quiet hours: ${error.message}` };
+
+  if (!args.start && !args.end) {
+    return { text: `✓ Quiet hours cleared. You'll receive Pocket Agent and push notifications 24/7.` };
+  }
+  return {
+    text: `✓ Quiet hours: ${args.start} → ${args.end} (Europe/London). I'll hold Pocket Agent and push notifications during that window. Email still lands in your inbox.`,
+  };
 }

@@ -44,6 +44,17 @@ export type NotificationEventType =
 
 export type NotificationChannel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
+/**
+ * How the user can configure this event's schedule.
+ *
+ * - `cron`         user picks an exact time of day / day of week
+ * - `lead_time`    user picks the days-before window (renewals, contracts)
+ * - `threshold`    user picks the threshold value (budget alerts)
+ * - `system`       user can ONLY enable/disable; fires when detected
+ * - `none`         not user-configurable at all (onboarding emails)
+ */
+export type ScheduleKind = 'cron' | 'lead_time' | 'threshold' | 'system' | 'none';
+
 export interface EventMeta {
   event: NotificationEventType;
   label: string;
@@ -65,6 +76,14 @@ export interface EventMeta {
    * immediate notification (refunds, dispute replies, big overcharges).
    */
   critical?: boolean;
+  /** How users can reschedule this event via the Pocket Agent. */
+  scheduleKind: ScheduleKind;
+  /** If true, even disable toggles are ignored (e.g. support_reply). */
+  mandatory?: boolean;
+  /** Default cron expression for `cron`-kind events (Europe/London). */
+  defaultCron?: string;
+  /** Default lead-time-days for `lead_time`-kind events. */
+  defaultLeadTimeDays?: number[];
 }
 
 /**
@@ -86,6 +105,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
     critical: true,
   },
   {
@@ -95,6 +115,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
     critical: true,
   },
   {
@@ -104,6 +125,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'reminders',
+    scheduleKind: 'lead_time',
+    defaultLeadTimeDays: [14, 28, 56],
   },
   {
     event: 'renewal_reminder',
@@ -112,6 +135,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'reminders',
+    scheduleKind: 'lead_time',
+    defaultLeadTimeDays: [30, 14, 7],
   },
   {
     event: 'contract_expiry',
@@ -120,6 +145,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'reminders',
+    scheduleKind: 'lead_time',
+    defaultLeadTimeDays: [30, 14, 7],
   },
   {
     event: 'budget_alert',
@@ -128,6 +155,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'threshold',
   },
   {
     event: 'unused_subscription',
@@ -136,6 +164,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'cron',
+    defaultCron: '0 7 * * 1',
   },
   {
     event: 'savings_milestone',
@@ -144,6 +174,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
     critical: true,
   },
   {
@@ -153,6 +184,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
     critical: true,
   },
   {
@@ -162,6 +194,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
   },
   {
     event: 'money_recovered',
@@ -170,6 +203,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: true, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
     critical: true,
   },
   {
@@ -179,6 +213,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: false, defaultTelegram: true, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'telegram', 'whatsapp', 'push'],
     group: 'alerts',
+    scheduleKind: 'system',
   },
   {
     event: 'support_reply',
@@ -187,6 +222,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: true,
     allowedChannels: ['email', 'push'],
     group: 'service',
+    scheduleKind: 'system',
+    mandatory: true,
   },
   {
     event: 'weekly_digest',
@@ -195,6 +232,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'whatsapp'],
     group: 'summaries',
+    scheduleKind: 'cron',
+    defaultCron: '0 9 * * 1',
   },
   {
     event: 'monthly_recap',
@@ -203,6 +242,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: true, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'whatsapp'],
     group: 'summaries',
+    scheduleKind: 'cron',
+    defaultCron: '0 9 1 * *',
   },
   {
     event: 'morning_summary',
@@ -211,6 +252,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
     allowedChannels: ['telegram', 'whatsapp', 'push'],
     group: 'summaries',
+    scheduleKind: 'cron',
+    defaultCron: '30 7 * * *',
     proOnly: true,
   },
   {
@@ -220,6 +263,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
     allowedChannels: ['telegram', 'whatsapp', 'push'],
     group: 'summaries',
+    scheduleKind: 'cron',
+    defaultCron: '0 17 * * *',
     proOnly: true,
   },
   {
@@ -229,6 +274,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: false, defaultTelegram: true, defaultWhatsapp: true, defaultPush: false,
     allowedChannels: ['telegram', 'whatsapp', 'push'],
     group: 'summaries',
+    scheduleKind: 'cron',
+    defaultCron: '0 9 * * *',
     proOnly: true,
   },
   {
@@ -238,6 +285,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'whatsapp'],
     group: 'marketing',
+    scheduleKind: 'cron',
+    defaultCron: '0 9 * * 1',
   },
   {
     event: 'targeted_deal',
@@ -246,6 +295,8 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email', 'telegram', 'whatsapp'],
     group: 'marketing',
+    scheduleKind: 'cron',
+    defaultCron: '0 9 * * 3',
   },
   {
     event: 'onboarding',
@@ -254,6 +305,7 @@ export const EVENT_CATALOG: EventMeta[] = [
     defaultEmail: true, defaultTelegram: false, defaultWhatsapp: false, defaultPush: false,
     allowedChannels: ['email'],
     group: 'service',
+    scheduleKind: 'none',
   },
 ];
 
