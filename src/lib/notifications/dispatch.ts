@@ -15,7 +15,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { EVENT_CATALOG, type NotificationEventType } from './events';
 
-export type Channel = 'email' | 'telegram' | 'push';
+export type Channel = 'email' | 'telegram' | 'whatsapp' | 'push';
 
 export interface EmailPayload {
   subject: string;
@@ -25,6 +25,25 @@ export interface EmailPayload {
 
 export interface TelegramPayload {
   text: string; // Markdown-friendly — the bot already handles escaping
+}
+
+export interface WhatsAppPayload {
+  /**
+   * Free-form session text — only valid inside the 24h customer-service
+   * window (i.e. the user has messaged us in the last 24h). Cheaper than
+   * a template, no Meta fee.
+   */
+  text?: string;
+  /**
+   * Approved template name (matches `friendly_name` in Twilio Content
+   * + `template_name` in `whatsapp_message_templates`). The provider
+   * resolves this to a Twilio Content SID at send time.
+   * Used outside the 24h window for proactive alerts. See
+   * src/lib/whatsapp/template-registry.ts.
+   */
+  templateName?: string;
+  /** Positional parameters that fill {{1}}, {{2}}, ... in the template. */
+  templateParameters?: string[];
 }
 
 export interface PushPayload {
@@ -39,6 +58,7 @@ export interface DispatchInput {
   event: NotificationEventType;
   email?: EmailPayload;
   telegram?: TelegramPayload;
+  whatsapp?: WhatsAppPayload;
   push?: PushPayload;
   /** Non-transactional events respect email rate limits; default true */
   rateLimited?: boolean;
@@ -58,14 +78,18 @@ interface UserRouting {
   quietEnd: string | null;
   timezone: string;
   telegramChatId: number | null;
-  prefs: Record<string, { email: boolean; telegram: boolean; push: boolean }>;
+  whatsappPhone: string | null;
+  prefs: Record<
+    string,
+    { email: boolean; telegram: boolean; whatsapp: boolean; push: boolean }
+  >;
 }
 
 async function loadUserRouting(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<UserRouting | null> {
-  const [profileRes, telegramRes, prefsRes] = await Promise.all([
+  const [profileRes, telegramRes, whatsappRes, prefsRes] = await Promise.all([
     supabase
       .from('profiles')
       .select('email, subscription_tier, quiet_hours_start, quiet_hours_end, notification_timezone')
@@ -78,8 +102,14 @@ async function loadUserRouting(
       .eq('is_active', true)
       .maybeSingle(),
     supabase
+      .from('whatsapp_sessions')
+      .select('whatsapp_phone, is_active')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle(),
+    supabase
       .from('notification_preferences')
-      .select('event_type, email, telegram, push')
+      .select('event_type, email, telegram, whatsapp, push')
       .eq('user_id', userId),
   ]);
 
@@ -87,7 +117,14 @@ async function loadUserRouting(
 
   const prefs: UserRouting['prefs'] = {};
   for (const row of prefsRes.data ?? []) {
-    prefs[row.event_type] = { email: row.email, telegram: row.telegram, push: row.push };
+    prefs[row.event_type] = {
+      email: row.email,
+      telegram: row.telegram,
+      // Defensive: the column was added 2026-04-27. Older rows may not
+      // have it populated yet — `whatsapp` defaults to false in the DB.
+      whatsapp: (row as { whatsapp?: boolean }).whatsapp ?? false,
+      push: row.push,
+    };
   }
 
   return {
@@ -97,6 +134,7 @@ async function loadUserRouting(
     quietEnd: profileRes.data.quiet_hours_end ?? null,
     timezone: profileRes.data.notification_timezone || 'Europe/London',
     telegramChatId: telegramRes.data?.telegram_chat_id ?? null,
+    whatsappPhone: whatsappRes.data?.whatsapp_phone ?? null,
     prefs,
   };
 }
@@ -148,14 +186,48 @@ function resolveChannels(
 ): Channel[] {
   const meta = EVENT_CATALOG.find((e) => e.event === event);
   const defaults = meta
-    ? { email: meta.defaultEmail, telegram: meta.defaultTelegram, push: meta.defaultPush }
-    : { email: true, telegram: true, push: true };
+    ? {
+        email: meta.defaultEmail,
+        telegram: meta.defaultTelegram,
+        whatsapp: meta.defaultWhatsapp,
+        push: meta.defaultPush,
+      }
+    : { email: true, telegram: true, whatsapp: false, push: true };
   const override = routing.prefs[event];
   const wants = override ?? defaults;
 
+  // Pro-only events (morning/evening/payday summaries) skip Free/Essential
+  // users entirely — even if they've enabled the channels.
+  if (meta?.proOnly && routing.tier !== 'pro') return [];
+
+  // Pocket-agent mutex: a user can have telegram OR whatsapp but never
+  // both active. The DB-level trigger enforces this, but resolving here
+  // means even if both somehow exist (during a switch race) we only
+  // route to one. WhatsApp wins because it's the explicit Pro choice.
+  const pocketAgent: 'telegram' | 'whatsapp' | null = routing.whatsappPhone
+    ? 'whatsapp'
+    : routing.telegramChatId
+      ? 'telegram'
+      : null;
+
   const out: Channel[] = [];
   if (wants.email && hasPayload.email && routing.email) out.push('email');
-  if (wants.telegram && hasPayload.telegram && routing.telegramChatId) out.push('telegram');
+  if (
+    wants.telegram &&
+    hasPayload.telegram &&
+    routing.telegramChatId &&
+    pocketAgent === 'telegram'
+  ) {
+    out.push('telegram');
+  }
+  if (
+    wants.whatsapp &&
+    hasPayload.whatsapp &&
+    routing.whatsappPhone &&
+    pocketAgent === 'whatsapp'
+  ) {
+    out.push('whatsapp');
+  }
   if (wants.push && hasPayload.push) out.push('push');
   return out;
 }
@@ -172,6 +244,44 @@ async function sendEmail(email: string, payload: EmailPayload): Promise<boolean>
     return true;
   } catch (err) {
     console.error('[notifications] email send failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Send a WhatsApp message via the active provider (Twilio or Meta direct).
+ *
+ * Two modes:
+ *   - text-only (free, inside the 24h customer-service window)
+ *   - template (Meta-approved, costs us per send, works any time)
+ *
+ * For proactive alerts initiated by us (no recent inbound), the caller
+ * MUST supply a `templateSid`. If only `text` is given and we're outside
+ * the 24h window, Meta will reject the message — Twilio surfaces this
+ * as a 63016 / 63018 error. The caller logs it; we don't crash.
+ */
+async function sendWhatsApp(
+  phone: string,
+  payload: WhatsAppPayload,
+): Promise<boolean> {
+  try {
+    if (payload.templateName) {
+      const { sendWhatsAppTemplate } = await import('@/lib/whatsapp');
+      await sendWhatsAppTemplate({
+        to: phone,
+        templateName: payload.templateName,
+        parameters: payload.templateParameters ?? [],
+      });
+      return true;
+    }
+    if (payload.text) {
+      const { sendWhatsAppText } = await import('@/lib/whatsapp');
+      await sendWhatsAppText({ to: phone, text: payload.text });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('[notifications] whatsapp send failed:', err);
     return false;
   }
 }
@@ -242,6 +352,7 @@ export async function sendNotification(
   const hasPayload: Record<Channel, boolean> = {
     email: !!input.email,
     telegram: !!input.telegram,
+    whatsapp: !!input.whatsapp,
     push: !!input.push,
   };
 
@@ -251,10 +362,14 @@ export async function sendNotification(
   const delivered: Channel[] = [];
   const skipped: Array<{ channel: Channel; reason: string }> = [];
 
-  // Quiet-hours rule: push + telegram are suppressed; email still sends
-  // (it goes to an inbox, not a buzz, so it's the polite fallback).
+  // Quiet-hours rule: push, telegram and whatsapp are suppressed (they
+  // buzz the user's phone). Email still sends — it lives in an inbox
+  // and is the polite quiet-hours fallback.
   for (const channel of channels) {
-    if (quiet && (channel === 'push' || channel === 'telegram')) {
+    if (
+      quiet &&
+      (channel === 'push' || channel === 'telegram' || channel === 'whatsapp')
+    ) {
       skipped.push({ channel, reason: 'quiet hours' });
       continue;
     }
@@ -265,6 +380,9 @@ export async function sendNotification(
     } else if (channel === 'telegram' && input.telegram && routing.telegramChatId) {
       if (await sendTelegram(routing.telegramChatId, input.telegram)) delivered.push('telegram');
       else skipped.push({ channel: 'telegram', reason: 'send failed' });
+    } else if (channel === 'whatsapp' && input.whatsapp && routing.whatsappPhone) {
+      if (await sendWhatsApp(routing.whatsappPhone, input.whatsapp)) delivered.push('whatsapp');
+      else skipped.push({ channel: 'whatsapp', reason: 'send failed' });
     } else if (channel === 'push' && input.push) {
       if (await sendPush(supabase, input.userId, input.push)) delivered.push('push');
       else skipped.push({ channel: 'push', reason: 'no transport yet' });

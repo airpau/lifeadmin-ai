@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Mutex: deactivate any active Telegram session BEFORE inserting the
+  // WhatsApp row. The DB trigger `tg_enforce_pocket_agent_mutex` would
+  // otherwise reject the insert. Atomic via the Postgres helper added
+  // in 20260427120000_whatsapp_channel_and_mutex.sql.
+  const { error: mutexErr } = await supabase.rpc('set_pocket_agent_channel', {
+    p_user_id: user.id,
+    p_channel: 'whatsapp',
+  });
+  if (mutexErr) {
+    return NextResponse.json({ error: mutexErr.message }, { status: 500 });
+  }
+
   // Upsert: same number can re-opt-in after opting out.
   const { error } = await supabase
     .from('whatsapp_sessions')
