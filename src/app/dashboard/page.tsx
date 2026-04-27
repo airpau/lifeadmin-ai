@@ -64,6 +64,17 @@ export default function DashboardPage() {
   const [connectionsCollapsed, setConnectionsCollapsed] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // PRIMARY ACTION FILTER toggles — historically declared lower in the
+  // component (after all the dealRows/primaryActions derived data) which
+  // caused intermittent React error 310 "Rendered more hooks than during
+  // the previous render". When any of the derived calculations between
+  // line 200 and 700 threw on a particular data shape, the late
+  // useStates didn't run, hook count diverged, React aborted hydration
+  // and surfaced the global-error boundary.
+  // Hooks must be declared at the TOP of the component, unconditionally.
+  const [showAllActions, setShowAllActions] = useState(false);
+  const [showTrackOnly, setShowTrackOnly] = useState(false);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -694,8 +705,11 @@ export default function DashboardPage() {
   const dealsAnnualSaving = dealRows.reduce((s, d) => s + d.impact, 0);
   const disputesAnnualImpact = disputableRows.reduce((s, d) => s + d.impact, 0);
   const trackOnlyAnnualImpact = trackOnlyRows.reduce((s, d) => s + d.impact, 0);
-  const [showAllActions, setShowAllActions] = useState(false);
-  const [showTrackOnly, setShowTrackOnly] = useState(false);
+  // showAllActions / showTrackOnly state moved to the top of the
+  // component (Rule of Hooks). They were declared here historically but
+  // intermittently caused React error 310 when upstream derived
+  // computations threw on a transient data shape — fewer hooks ran on
+  // that render, more on the next, and React aborted hydration.
   const actionRowsTop = showAllActions ? primaryActions : primaryActions.slice(0, 5);
   // Total count includes everything the user can see (primary + track-only +
   // unknown), so the headline pill matches what's actually on screen.
