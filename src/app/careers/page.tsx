@@ -45,6 +45,12 @@ export const metadata: Metadata = {
     siteName: 'Paybacker',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'Careers at Paybacker — work on the consumer\'s side, for once.',
+    description:
+      'Outcomes not hours. Public salary bands. Real equity. Pitch us your role.',
+  },
 };
 
 type CSSVarProperties = CSSProperties & Record<`--${string}`, string | number>;

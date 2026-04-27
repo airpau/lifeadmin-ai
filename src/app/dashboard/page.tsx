@@ -1313,7 +1313,7 @@ export default function DashboardPage() {
                   ))}
                   {emailOpportunities.length > 5 && (
                     <Link
-                      href="/dashboard/scanner"
+                      href="/dashboard/disputes"
                       style={{ fontSize: 12, color: 'var(--mint-deep)', textDecoration: 'none', paddingTop: 10 }}
                     >
                       View all {emailOpportunities.length} opportunities →

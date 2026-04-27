@@ -24,6 +24,12 @@ export const metadata: Metadata = {
     siteName: 'Paybacker',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'About Paybacker \u2014 Fighting for UK consumers',
+    description:
+      'Launched March 2026. Small team, big backlog, 0% success fee on every tier.',
+  },
 };
 
 type CSSVarProperties = CSSProperties & Record<`--${string}`, string | number>;

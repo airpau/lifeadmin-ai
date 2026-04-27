@@ -21,13 +21,19 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const supabase = getClient();
   const { data: post, error } = await supabase
     .from('blog_posts')
-    .select('title, meta_description, slug')
+    .select('title, meta_description, slug, image_url, image_alt')
     .eq('slug', slug)
     .eq('status', 'published')
     .single();
 
   if (error) console.error('[blog] Metadata query error:', error.message, 'slug:', slug);
   if (!post) return { title: 'Blog - Paybacker' };
+
+  // Use the per-post hero image as the social-share image when present —
+  // makes blog links look post-specific in WhatsApp / Slack / X previews.
+  const ogImages = post.image_url
+    ? [{ url: post.image_url as string, alt: (post.image_alt as string) || (post.title as string) }]
+    : undefined;
 
   return {
     title: post.title,
@@ -38,11 +44,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
       url: `https://paybacker.co.uk/blog/${slug}`,
       type: 'article',
       siteName: 'Paybacker',
+      ...(ogImages ? { images: ogImages } : {}),
     },
     twitter: {
-      card: 'summary',
+      card: post.image_url ? 'summary_large_image' : 'summary',
       title: post.title,
       description: post.meta_description || '',
+      ...(post.image_url ? { images: [post.image_url as string] } : {}),
     },
     alternates: {
       canonical: `https://paybacker.co.uk/blog/${slug}`,
@@ -109,6 +117,26 @@ export default async function DynamicBlogPost({ params }: { params: Promise<{ sl
       }}
       jsonLd={jsonLd}
     >
+      {/* Hero image — generated per-post by the publish-blog cron via Imagen.
+          Rendered above the content so it's the first thing the reader sees,
+          and used as the og:image / twitter:image in the metadata above. */}
+      {post.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={post.image_url}
+          alt={post.image_alt || post.title}
+          style={{
+            width: '100%',
+            height: 'auto',
+            aspectRatio: '16 / 9',
+            objectFit: 'cover',
+            borderRadius: 16,
+            marginBottom: 32,
+            background: '#0f172a',
+          }}
+        />
+      ) : null}
+
       {/* Body — content is stored as HTML in Supabase. Post-body CSS in styles.css
           styles the p / h2 / h3 / ul / ol / blockquote / a / strong / table inside. */}
       <div dangerouslySetInnerHTML={{ __html: post.content }} />

@@ -40,6 +40,12 @@ export const metadata: Metadata = {
     siteName: 'Paybacker',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'How Paybacker works',
+    description:
+      'The five tools, side by side. Disputes, subscriptions, Money Hub, Telegram agent, Sheets sync.',
+  },
 };
 
 export default function HowItWorksPage() {

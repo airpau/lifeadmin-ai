@@ -34,6 +34,12 @@ export const metadata: Metadata = {
     siteName: 'Paybacker',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'The Paybacker Journal',
+    description:
+      'Money-saving guides and UK consumer-rights explainers from the Paybacker team.',
+  },
 };
 
 export const revalidate = 3600;
@@ -46,6 +52,8 @@ type Post = {
   cat: string;
   gradient: string;
   emoji: string;
+  imageUrl?: string | null;
+  imageAlt?: string | null;
 };
 
 const GRADIENTS = [
@@ -95,7 +103,7 @@ async function fetchDynamicPosts(): Promise<Post[]> {
     );
     const { data } = await supabase
       .from('blog_posts')
-      .select('slug, title, excerpt, published_at, category')
+      .select('slug, title, excerpt, published_at, category, image_url, image_alt')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
       .limit(20);
@@ -114,6 +122,8 @@ async function fetchDynamicPosts(): Promise<Post[]> {
         cat: (p.category as string | null) ?? 'Essay',
         gradient: g.bg,
         emoji: g.emoji,
+        imageUrl: (p.image_url as string | null) ?? null,
+        imageAlt: (p.image_alt as string | null) ?? null,
       };
     });
   } catch {
@@ -168,11 +178,25 @@ export default async function BlogIndexPage() {
                 style={{
                   height: 400,
                   borderRadius: 'var(--r-input)',
-                  background: featured.gradient,
+                  background: featured.imageUrl ? '#0f172a' : featured.gradient,
                   position: 'relative',
                   overflow: 'hidden',
                 } as CSSProperties}
               >
+                {featured.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={featured.imageUrl}
+                    alt={featured.imageAlt || featured.title}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                    } as CSSProperties}
+                  />
+                ) : null}
                 <div
                   style={{
                     position: 'absolute',
@@ -190,20 +214,22 @@ export default async function BlogIndexPage() {
                 >
                   Featured
                 </div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 160,
-                    opacity: 0.22,
-                  } as CSSProperties}
-                  aria-hidden="true"
-                >
-                  {featured.emoji}
-                </div>
+                {!featured.imageUrl && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 160,
+                      opacity: 0.22,
+                    } as CSSProperties}
+                    aria-hidden="true"
+                  >
+                    {featured.emoji}
+                  </div>
+                )}
               </div>
               <div>
                 <div
@@ -274,12 +300,26 @@ export default async function BlogIndexPage() {
                       style={{
                         height: 240,
                         borderRadius: 'var(--r-card)',
-                        background: p.gradient,
+                        background: p.imageUrl ? '#0f172a' : p.gradient,
                         marginBottom: 20,
                         position: 'relative',
                         overflow: 'hidden',
                       } as CSSProperties}
                     >
+                      {p.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.imageUrl}
+                          alt={p.imageAlt || p.title}
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          } as CSSProperties}
+                        />
+                      ) : null}
                       <div
                         style={{
                           position: 'absolute',
@@ -297,20 +337,22 @@ export default async function BlogIndexPage() {
                       >
                         {p.cat}
                       </div>
-                      <div
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 110,
-                          opacity: 0.2,
-                        } as CSSProperties}
-                        aria-hidden="true"
-                      >
-                        {p.emoji}
-                      </div>
+                      {!p.imageUrl && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 110,
+                            opacity: 0.2,
+                          } as CSSProperties}
+                          aria-hidden="true"
+                        >
+                          {p.emoji}
+                        </div>
+                      )}
                     </div>
                     <h3
                       style={{

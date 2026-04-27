@@ -28,6 +28,12 @@ export const metadata: Metadata = {
     siteName: 'Paybacker',
     type: 'website',
   },
+  twitter: {
+    card: 'summary',
+    title: 'Paybacker pricing — Free forever, paid from £4.99/mo',
+    description:
+      'Three tiers. 0% success fee, ever. £4.99/mo for unlimited dispute letters. £9.99/mo for unlimited.',
+  },
 };
 
 type CSSVarProperties = CSSProperties & Record<`--${string}`, string | number>;
