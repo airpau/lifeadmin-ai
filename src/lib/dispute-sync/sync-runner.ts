@@ -163,16 +163,53 @@ export async function syncLinkedThread(
     return { linkId, disputeId: link.dispute_id, imported: 0, error: 'Sync disabled' };
   }
 
-  const conn = link.email_connections as EmailConnection | null;
+  let conn = link.email_connections as EmailConnection | null;
+
+  // Fallback: legacy watchdog links (created before email_connection_id
+  // started being persisted) have a NULL FK. Rather than bail with
+  // "Email connection missing" — which leaves the user with no recourse
+  // short of recreating the link — try to attach the user's most-recent
+  // active connection on the right provider. If a single match wins we
+  // both run THIS sync against it and persist the FK so we don't keep
+  // taking this fallback path.
+  if (!conn && link.user_id && link.provider) {
+    const providerType = link.provider === 'gmail' ? 'google'
+      : link.provider === 'outlook' ? 'outlook'
+      : null;
+    if (providerType) {
+      const { data: candidates } = await db
+        .from('email_connections')
+        .select('*')
+        .eq('user_id', link.user_id)
+        .eq('status', 'active')
+        .eq('provider_type', providerType)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (candidates && candidates.length === 1) {
+        conn = candidates[0] as EmailConnection;
+        await db
+          .from('dispute_watchdog_links')
+          .update({ email_connection_id: conn.id, updated_at: new Date().toISOString() })
+          .eq('id', linkId);
+        console.log(`[watchdog] backfilled email_connection_id=${conn.id} on link ${linkId} (was NULL)`);
+      }
+    }
+  }
+
   if (!conn) {
-    return { linkId, disputeId: link.dispute_id, imported: 0, error: 'Email connection missing' };
+    return {
+      linkId,
+      disputeId: link.dispute_id,
+      imported: 0,
+      error: 'Email connection missing — reconnect your email in /dashboard/profile to resume reply tracking.',
+    };
   }
   if (conn.status !== 'active') {
     return {
       linkId,
       disputeId: link.dispute_id,
       imported: 0,
-      error: `Connection status is ${conn.status}`,
+      error: `Email connection is ${conn.status} — reconnect to resume reply tracking.`,
     };
   }
 

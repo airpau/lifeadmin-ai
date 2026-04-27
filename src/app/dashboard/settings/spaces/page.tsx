@@ -17,6 +17,7 @@ import {
   ArrowLeft, Loader2, Plus, Trash2, Check, Sparkles, Briefcase,
   Users as UsersIcon, PiggyBank, Home, Globe, CircleDot, X, Star, Info,
 } from 'lucide-react';
+import UpgradeLock from '@/components/UpgradeLock';
 
 interface Connection {
   id: string;
@@ -49,6 +50,12 @@ export default function SpacesSettingsPage() {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tierMessage, setTierMessage] = useState<string | null>(null);
+  // Live tier + cap so the page can render an UpgradeLock when the user
+  // is over their plan's Spaces cap (e.g. they had 3 Spaces on Pro,
+  // downgraded to Essential, now sit over the 1-Space cap until grace
+  // period auto-archives or they upgrade back).
+  const [tier, setTier] = useState<'free' | 'essential' | 'pro' | null>(null);
+  const [maxSpaces, setMaxSpaces] = useState<number | null>(null);
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState<string>('💼');
   const [newConnectionIds, setNewConnectionIds] = useState<Set<string>>(new Set());
@@ -71,6 +78,26 @@ export default function SpacesSettingsPage() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  // Pull the user's plan-status so we can render an over-cap banner with
+  // the correct numbers ("you have 3, X tier allows 1"). Best-effort —
+  // failure just hides the banner, the underlying create flow still
+  // 403s with a tier message at the API level.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/plan-status', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d) return;
+        setTier(d.tier ?? null);
+        setMaxSpaces(d.limits?.maxSpaces ?? null);
+      })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const overCap = !!(maxSpaces !== null && spaces.length > maxSpaces);
+  const isPro = tier === 'pro';
 
   const beginCreate = () => {
     setCreating(true);
@@ -205,6 +232,20 @@ export default function SpacesSettingsPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* Tier-aware over-cap banner. Renders only when the user genuinely
+          has more Spaces than their current plan allows — typical after
+          a Pro→Essential downgrade. Pro users see nothing here because
+          their cap is null (unlimited). */}
+      {overCap && tier && tier !== 'pro' && (
+        <div className="mb-4">
+          <UpgradeLock
+            feature={`You're using ${spaces.length} Spaces — ${tier} allows ${maxSpaces}`}
+            requiredTier="pro"
+            size="panel"
+          />
+        </div>
       )}
 
       {/* List of existing Spaces */}
