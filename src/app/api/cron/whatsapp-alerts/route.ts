@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendWhatsAppTemplate } from '@/lib/whatsapp';
+import { canUseWhatsApp } from '@/lib/plan-limits';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -58,12 +59,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, sent: 0, reason: 'no active sessions' });
   }
 
+  // Tier filter — WhatsApp Pocket Agent is Pro-only. Resolve each user's
+  // effective tier (Stripe + onboarding-trial aware) and drop anyone who's
+  // dropped below Pro since they opted in. They keep the row in
+  // whatsapp_sessions so re-upgrading reconnects instantly, but we never
+  // burn template fees on a non-Pro account.
+  const tierResults = await Promise.all(
+    sessions.map(async (s) => ({ session: s, allowed: await canUseWhatsApp(s.user_id) })),
+  );
+  const eligible = tierResults.filter((r) => r.allowed).map((r) => r.session);
+  const skippedNonPro = sessions.length - eligible.length;
+
   // PHASE 1: skip actual sending until detection is wired in. Just count.
   // This avoids accidentally messaging users with empty alerts during scaffold.
   return NextResponse.json({
     ok: true,
     sent: 0,
-    pending: sessions.length,
+    pending: eligible.length,
+    skippedNonPro,
     note: 'phase 1 stub — detection integration coming in next sprint',
   });
 }

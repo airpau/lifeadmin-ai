@@ -22,6 +22,13 @@ import {
   verifyWhatsAppWebhook,
 } from '@/lib/whatsapp';
 import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-provider';
+import { canUseWhatsApp } from '@/lib/plan-limits';
+
+const NON_PRO_UPGRADE_NUDGE =
+  "Hi! 👋 The WhatsApp Pocket Agent is part of Paybacker Pro (£9.99/mo).\n\n" +
+  "Upgrade in 30 seconds: https://paybacker.co.uk/pricing?from=whatsapp\n\n" +
+  "Prefer free? Our Telegram Pocket Agent works on every plan: " +
+  "https://t.me/paybacker_bot";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,6 +114,37 @@ export async function POST(req: NextRequest) {
       await safeReply(msg.from,
         `Hi! To use Paybacker via WhatsApp, link your account at https://paybacker.co.uk/dashboard/profile (look for "Connect WhatsApp"). Your account stays under your control.`,
       );
+      continue;
+    }
+
+    // Tier gate — WhatsApp Pocket Agent is Pro-only. For Free / Essential
+    // users we send ONE upgrade nudge inside the 24h session window, then
+    // mark `upgrade_nudge_sent_at` so we don't spam them.
+    const proAllowed = await canUseWhatsApp(userId);
+    if (!proAllowed) {
+      const { data: nudgeRow } = await sb
+        .from('whatsapp_sessions')
+        .select('upgrade_nudge_sent_at')
+        .eq('whatsapp_phone', msg.from)
+        .maybeSingle();
+
+      if (!nudgeRow?.upgrade_nudge_sent_at) {
+        await safeReply(msg.from, NON_PRO_UPGRADE_NUDGE);
+        await sb
+          .from('whatsapp_sessions')
+          .update({
+            upgrade_nudge_sent_at: new Date().toISOString(),
+            last_message_at: new Date().toISOString(),
+          })
+          .eq('whatsapp_phone', msg.from);
+      } else {
+        // Already nudged — silent log only.
+        await sb
+          .from('whatsapp_sessions')
+          .update({ last_message_at: new Date().toISOString() })
+          .eq('whatsapp_phone', msg.from);
+      }
+      processed += 1;
       continue;
     }
 

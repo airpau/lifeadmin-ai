@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { canUseWhatsApp } from '@/lib/plan-limits';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,25 @@ export async function POST(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Tier gate — WhatsApp is a Pro-only channel because every outbound
+  // template costs us money on Meta's side. Telegram remains free for all.
+  // Confirmed with Paul 2026-04-27.
+  const allowed = await canUseWhatsApp(user.id);
+  if (!allowed) {
+    return NextResponse.json(
+      {
+        error: 'WhatsApp is part of Paybacker Pro',
+        upgrade: 'whatsapp',
+        upgradeUrl: '/pricing?from=whatsapp',
+        alternative: {
+          channel: 'telegram',
+          message: 'Use the Telegram Pocket Agent free on any plan: https://t.me/paybacker_bot',
+        },
+      },
+      { status: 403 },
+    );
+  }
 
   let body: { phone?: string };
   try {

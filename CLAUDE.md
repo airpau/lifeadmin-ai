@@ -78,14 +78,39 @@ _Updated 2026-04-22 after Emma-matched tier review — see
 - Unlimited bank connections
 - Unlimited email connections
 - Everything in Essential
+- **Pocket Agent on WhatsApp** (Pro-only — Telegram remains across all tiers)
 - Money Hub Top Merchants
-- Price-increase alerts via Telegram (instant)
+- Price-increase alerts via Telegram + WhatsApp (instant)
+- Daily morning brief + weekly recovery digest via WhatsApp
 - Export (CSV / PDF)
 - Paybacker Assistant (MCP integration)
 - Full transaction-level analysis
 - Priority support
 - On-demand bank sync (manual refresh)
 - Automated cancellations (coming soon)
+
+### WhatsApp Pocket Agent — tier policy (2026-04-27)
+
+WhatsApp is Pro-only because every outbound template costs us £0.003-£0.06
+per send via Meta. Telegram is free for us so it stays on every tier as
+the no-cost Pocket Agent. Enforcement points:
+
+1. `canUseWhatsApp(userId)` in `src/lib/plan-limits.ts` is the
+   single source of truth.
+2. `/api/whatsapp/opt-in` returns 403 with `upgradeUrl` for non-Pro.
+3. `/api/whatsapp/webhook` sends ONE upgrade nudge per non-Pro number
+   (tracked via `whatsapp_sessions.upgrade_nudge_sent_at`), then silently
+   logs further inbounds.
+4. `/api/cron/whatsapp-alerts` filters recipients by tier before sending.
+
+Trial Pro users (active onboarding trial via `getEffectiveTier`) inherit
+WhatsApp during the trial window only. Demotion mid-trial is webhook-driven
+(no auto-demote — same rule as bank/email caps).
+
+Template registry lives at `src/lib/whatsapp/template-registry.ts`. 16
+templates submitted to Meta on 2026-04-27: 14 utility, 1 authentication
+(OTP — not Pro-gated), 1 marketing (`paybacker_better_deal_found` — needs
+separate marketing opt-in before send).
 
 ### System rules (tier logic)
 - Paid tiers are **never auto-demoted**. `/api/stripe/sync` promotes
