@@ -55,15 +55,29 @@ export async function GET(request: NextRequest) {
       const increases = await detectPriceIncreases(userId);
       if (increases.length === 0) continue;
 
-      // Get existing active alerts for this user to prevent duplicates
+      // Get existing alerts (active OR dismissed) to prevent duplicates.
+      //
+      // Previously we only checked `status='active'`, so when a user
+      // dismissed a price alert in the dashboard it flipped to 'dismissed'
+      // and the next day's cron re-inserted an identical 'active' row —
+      // user got re-alerted via Telegram for an alert they'd already
+      // explicitly told us they didn't want. Founder confirmed: dismiss
+      // means "don't bother me about this again unless it changes
+      // further".
+      //
+      // Dedup key is (merchant_normalized, new_amount). If the price goes
+      // up again after dismissal, the new_amount changes, dedup misses,
+      // and the user gets a fresh alert — which is correct behaviour.
       const { data: existingAlerts } = await supabase
         .from('price_increase_alerts')
-        .select('merchant_normalized')
+        .select('merchant_normalized, new_amount, status')
         .eq('user_id', userId)
-        .eq('status', 'active');
+        .in('status', ['active', 'dismissed', 'actioned']);
 
-      const existingMerchants = new Set(
-        (existingAlerts || []).map(a => a.merchant_normalized)
+      const existingKeys = new Set(
+        (existingAlerts || []).map((a) =>
+          `${a.merchant_normalized}::${Number(a.new_amount).toFixed(2)}`,
+        ),
       );
 
       // Get user profile for email and tier
@@ -80,8 +94,11 @@ export async function GET(request: NextRequest) {
       const newIncreases: typeof increases = [];
 
       for (const increase of increases) {
-        // Skip if already alerted for this merchant
-        if (existingMerchants.has(increase.merchantNormalized)) continue;
+        // Skip if already alerted at this exact price — covers both
+        // "still active waiting for user action" and "user already
+        // dismissed/actioned this exact figure".
+        const key = `${increase.merchantNormalized}::${Number(increase.newAmount).toFixed(2)}`;
+        if (existingKeys.has(key)) continue;
 
         // Insert alert
         const { error: insertError } = await supabase
