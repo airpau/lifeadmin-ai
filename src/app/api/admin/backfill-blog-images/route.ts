@@ -109,7 +109,19 @@ export async function POST(request: NextRequest) {
   const succeeded: string[] = [];
   const failed: Array<{ slug: string; error: string }> = [];
 
-  for (const post of posts) {
+  // Imagen free tier is 10 req/min. Pace between requests at ~7s so we
+  // average ~8.5/min and never trip the rate limit. The first call has
+  // no preceding delay; every subsequent call waits PACE_MS before
+  // firing. generateSocialImage also retries internally with backoff
+  // if Imagen still returns 429/503 (e.g. shared quota with another
+  // caller burning through the budget at the same time).
+  const PACE_MS = 7_000;
+
+  for (let i = 0; i < posts.length; i++) {
+    const post = posts[i];
+    if (i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, PACE_MS));
+    }
     try {
       const brief = buildVisualBrief({
         title: post.title || '',

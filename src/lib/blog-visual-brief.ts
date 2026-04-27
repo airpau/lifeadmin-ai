@@ -8,14 +8,21 @@
  * no brief — the backfill endpoint synthesises one from category +
  * keyword + title using this module.
  *
- * The mapping is intentionally concrete: every category resolves to a
- * specific symbolic subject that Imagen can render cleanly. We avoid
- * abstract phrases like "a sense of fairness" because Imagen interprets
- * those as generic geometric blobs. We also avoid common-noun subjects
- * Imagen routinely renders with hallucinated text on them — so e.g. for
- * "council tax" we say "a magnifying glass over a stylised property
- * valuation document" rather than "a council tax bill", because the
- * latter triggers Imagen to write fake numbers all over it.
+ * Subject choice rules (learned the hard way 2026-04-27 when Imagen
+ * generated calendar grids with garbled numbers, payslips with fake
+ * Latin, and clocks with backward digits):
+ *
+ *   1. NO subjects with inherent text/numbers — calendars, clocks,
+ *      payslips, charts, blueprints, signage, documents, screens.
+ *      Imagen will hallucinate garbled glyphs on any of these no
+ *      matter how many times the prompt says "no text".
+ *   2. Smooth solid surfaces only — pound coins, keys, locks, vault
+ *      doors, paper airplanes, hourglasses, lightning bolts, chains,
+ *      tools, scales of justice, hands, droplets, sun/moon shapes.
+ *   3. Each subject must be readable at thumbnail size — single bold
+ *      metaphor, not a busy collage. Two objects max.
+ *   4. The metaphor has to land in 0.5 seconds. A user scanning the
+ *      blog index shouldn't have to interpret abstract shapes.
  */
 
 interface VisualBriefInput {
@@ -26,74 +33,75 @@ interface VisualBriefInput {
 
 const CATEGORY_TO_SUBJECT: Record<string, string> = {
   energy:
-    'a stylised lightning bolt and pound coin balanced over a shielded utility meter, mint and amber light flowing between them',
+    'a glowing mint lightning bolt fused with a polished gold pound coin, splitting apart with amber sparks',
   utilities:
-    'a stylised pound coin breaking out of a flowing utility cable, with mint sparks',
+    'a polished gold pound coin breaking out of a coiled mint utility cable, amber glow at the break point',
   fitness:
-    'a sealed contract being unlocked by a stylised mint key over a dumbbell silhouette',
+    'a glowing mint key turning inside an open padlock, with a small dumbbell shape behind it',
   council_tax:
-    'a magnifying glass hovering over an abstract residential property valuation chart, mint highlights on the chart',
+    'a stylised house silhouette balanced precariously on a tilted set of mint scales of justice, amber glow underneath',
   debt:
-    'a stylised broken chain link with a glowing pound coin emerging from the gap',
+    'a heavy iron chain link breaking apart in mid-air, a polished gold pound coin escaping through the gap with amber light',
   parking:
-    'a stylised parking permit ticket being torn diagonally with a mint glow on the tear edge',
+    'a glowing amber traffic cone tilted forward with a mint pound coin balanced on its tip',
   insurance:
-    'an abstract shield made of layered overlapping documents with a mint pound-coin core',
+    'a layered mint shield held aloft by amber light beams, a small gold pound coin embedded in its centre',
   broadband:
-    'a stylised wifi signal turning into a flowing pound coin trail, mint and amber gradient',
+    'a stylised mint wifi signal arc dissolving into a flowing trail of gold pound coins, amber gradient',
   mobile:
-    'a stylised smartphone outline with a broken contract scroll spilling out, mint accent',
+    'a smooth smartphone silhouette with a mint chain link snapping out of its top edge, amber glow',
   credit:
-    'a stylised credit card cracked diagonally with a mint pound coin escaping the crack',
+    'a smooth mint credit card cracked diagonally in mid-air, a gold pound coin escaping through the crack',
   water:
-    'a stylised water droplet with a pound symbol embedded inside, against a navy backdrop',
+    'a single large mint water droplet with a polished gold pound coin floating inside it',
   nhs:
-    'a stylised medical cross overlapping with a complaint scroll, calm clinical lighting',
+    'a stylised mint medical cross hovering over an open hand, amber light radiating outward',
   ppi:
-    'an abstract bank vault door slightly ajar with a mint pound coin rolling out',
+    'a heavy gold vault door slightly ajar, a mint pound coin rolling out toward the viewer',
   transport:
-    'a stylised railway track curving into a clock face, amber dawn light at the horizon',
+    'a glowing mint railway signal lamp against a dark dawn sky with amber light spilling from the lens',
   travel:
-    'an abstract glowing flight path arcing across a stylised calendar grid with one date highlighted in amber',
+    'a stylised paper airplane curving upward through a mint cloud bank toward a glowing amber sun',
   housing:
-    'a stylised house silhouette with a key and a legal scroll crossed in front, mint accent',
+    'a polished mint key crossed over a wooden front door, amber light glowing from the keyhole',
   consumer:
-    'a stylised shopping bag with a tilted scales-of-justice icon emerging from it, amber and mint',
+    'a stylised mint shopping bag tilted forward with a gold pound coin spilling from inside, amber glow',
   banking:
-    'a stylised bank vault door opening with a mint pound coin floating out, dramatic side lighting',
+    'a heavy gold vault door swinging open, a single polished mint pound coin floating in the doorway, dramatic side lighting',
   data:
-    'an abstract digital lock dissolving into mint pixels with an amber key emerging',
+    'a glowing mint padlock dissolving into floating amber pixels, a single key emerging from the cloud',
   tax:
-    'a stylised HMRC envelope with a mint pound coin escaping the seal, amber accent',
+    'a polished gold pound coin breaking through a mint wax seal, amber rays bursting outward',
   finance:
-    'an abstract upward-trending line graph piercing a stylised contract document, mint glow',
+    'a smooth mint piggy bank silhouette cracked diagonally in mid-air, a gold pound coin escaping through the crack with amber glow',
   pension:
-    'a stylised hourglass with mint pound coins flowing through it, amber dawn light behind',
+    'a polished hourglass with mint pound coins flowing through its narrow neck, amber dawn light behind it',
   trades:
-    'a stylised hammer and wrench crossed over a folded blueprint scroll, mint highlights',
+    'a polished mint hammer crossed with a gold wrench in mid-air, amber sparks at the crossing point',
   benefits:
-    'a stylised hand reaching toward a glowing mint document with an amber pound coin, side lighting',
+    'a stylised open hand reaching upward with a glowing mint pound coin floating just above the palm, amber rim light',
   tv:
-    'a stylised vintage TV outline with a mint pound coin spinning on its screen, amber backdrop',
+    'a smooth retro TV silhouette with a glowing mint pound coin hovering over its blank dark screen, amber rim light',
   employment:
-    'a stylised payslip document with a mint pound coin snapping a chain link beside it',
+    'a polished gold pound coin pulled out of a sealed mint envelope by a stylised hand, amber glow at the seal',
   default:
-    'a stylised pound coin breaking through layered legal documents, mint and amber glow, dramatic angle',
+    'a polished gold pound coin breaking through a smooth mint barrier, amber light bursting outward, dramatic angle',
 };
 
 /**
- * Pull a category from the post and resolve it to a concrete subject.
- * Falls back to a generic pound-coin-and-documents image if the
- * category is missing or unknown.
+ * Build a brief that pairs a category-specific subject with a tail
+ * referencing the post title — keeps two posts in the same category
+ * from rendering identical images.
  */
 export function buildVisualBrief({ title, keyword, category }: VisualBriefInput): string {
   const cat = (category || '').toLowerCase().trim();
   const subject = CATEGORY_TO_SUBJECT[cat] || CATEGORY_TO_SUBJECT.default;
 
-  // Add a short topic-specific tail so two posts in the same category
-  // don't end up with literally identical images (e.g. two energy posts
-  // both rendering the same lightning + pound composition).
-  const topicTail = title ? `, hinting at "${title}"` : keyword ? `, hinting at "${keyword}"` : '';
+  // Topic tail intentionally framed as "evoking the feeling of …" not
+  // "labelled with …" so Imagen doesn't try to embed the title as text
+  // on the image. Keep it short.
+  const focus = title || keyword;
+  const topicTail = focus ? `, the composition evokes the feeling of ${focus.toLowerCase()}` : '';
 
   return `${subject}${topicTail}`;
 }
