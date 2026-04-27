@@ -1,3 +1,10 @@
+import { isSwitchable } from './category-taxonomy';
+
+/**
+ * @deprecated Kept for backwards compatibility. New code should call
+ * `isSwitchable(category)` from category-taxonomy.ts — the single source
+ * of truth for "can the user switch to a better deal here?".
+ */
 export const EXCLUDED_SAVINGS_CATEGORIES = new Set([
   'mortgage', 'mortgages', 'loan', 'loans', 'council_tax', 'tax',
   'credit_card', 'credit cards', 'credit-cards', 'car_finance', 'car finance', 'car-finance',
@@ -25,8 +32,8 @@ const ALERT_IMPACT_CAP_RATIO = 0.8;
 export function isDealValid(deal: { category?: string | null; currentPrice?: number; annualSaving?: number; subscriptionName?: string; providerName?: string }): boolean {
   if (!deal.category) return false;
 
-  const catLower = deal.category.toLowerCase();
-  if (EXCLUDED_SAVINGS_CATEGORIES.has(catLower)) return false;
+  // Canonical "can this be switched?" — replaces EXCLUDED_SAVINGS_CATEGORIES.
+  if (!isSwitchable(deal.category)) return false;
 
   const name = (deal.subscriptionName || deal.providerName || '').toLowerCase();
   if (name.includes('chris hillier')) return false;
@@ -46,8 +53,9 @@ export function isPriceAlertValid(alert: {
   old_amount?: number | string | null;
   new_amount?: number | string | null;
 }): boolean {
-  const catLower = (alert.category || '').toLowerCase();
-  if (catLower && EXCLUDED_SAVINGS_CATEGORIES.has(catLower)) return false;
+  // Canonical: only categories with a meaningful price signal can produce
+  // a useful alert. Excludes amortising debt, variable spend, transfers.
+  if (alert.category && !isSwitchable(alert.category)) return false;
 
   const haystack = `${alert.merchant_normalized || ''} ${alert.merchant_name || ''}`;
   if (ALERT_MERCHANT_BLOCKLIST.some(rx => rx.test(haystack))) return false;
