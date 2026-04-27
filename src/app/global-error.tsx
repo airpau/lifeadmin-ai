@@ -96,7 +96,7 @@ export default function GlobalError({
             style={{
               fontSize: 14,
               color: '#475569',
-              margin: '0 0 20px',
+              margin: '0 0 16px',
               lineHeight: 1.55,
             }}
           >
@@ -104,6 +104,64 @@ export default function GlobalError({
               ? "We've just shipped an update. Refreshing now to pick up the new files."
               : 'An unexpected error occurred. You can try again, or reload the page.'}
           </p>
+
+          {/*
+            Surface the underlying error message + digest so users can
+            send it to support (and so we can grep Vercel runtime logs
+            by digest). Hidden when the boundary fires for the chunk
+            case because the auto-reload makes it irrelevant.
+          */}
+          {!isChunkError && (error?.message || error?.digest) && (
+            <details
+              style={{
+                textAlign: 'left',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 8,
+                padding: '10px 12px',
+                margin: '0 0 20px',
+                fontSize: 12,
+                color: '#334155',
+              }}
+            >
+              <summary
+                style={{
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  marginBottom: 4,
+                  outline: 'none',
+                }}
+              >
+                Technical details
+              </summary>
+              {error?.message && (
+                <pre
+                  style={{
+                    margin: '8px 0 0',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                    fontSize: 11.5,
+                    color: '#475569',
+                  }}
+                >
+                  {error.message}
+                </pre>
+              )}
+              {error?.digest && (
+                <p
+                  style={{
+                    margin: '6px 0 0',
+                    fontSize: 11,
+                    color: '#64748b',
+                  }}
+                >
+                  Reference: <code>{error.digest}</code>
+                </p>
+              )}
+            </details>
+          )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
             <button
               type="button"
