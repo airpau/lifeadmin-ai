@@ -227,11 +227,12 @@ export default function SignupPage() {
           localStorage.removeItem('pb_ref');
         }
 
-        // Founding member: first 25 signups get Pro free for 30 days
-        fetch('/api/founding-member', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }).catch(() => {});
+        // Auto-trial removed (CLAUDE.md: "we don't grant trials
+        // automatically on signup" — auto-trial caused silent downgrades
+        // at expiry and meant tier gating was untestable). Users now
+        // start on Free and explicitly upgrade via the pricing page.
+        // The /api/founding-member endpoint still exists for admin-
+        // initiated trial grants but is no longer called from signup.
 
         // Fire Awin S2S lead tracking — must be awaited before navigation
         const awinRes = await fetch('/api/awin/signup', {

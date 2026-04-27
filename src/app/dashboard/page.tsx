@@ -487,51 +487,96 @@ export default function DashboardPage() {
     fetchData();
   }, [supabase]);
 
+  // Provider-aware scan dispatch — Gmail, Outlook and IMAP each have
+  // their own scan endpoint. Scan ALL the user's active connections
+  // in parallel rather than only the first one, then refresh state
+  // from the canonical sources (email_scan_findings + last_scanned_at)
+  // so the UI reflects what actually changed regardless of which
+  // endpoint succeeded or whether new findings were produced.
   const handleEmailScan = async () => {
     setEmailScanning(true);
     try {
-      const res = await fetch('/api/gmail/scan', { method: 'POST' });
-      const data = await res.json();
-      if (data.error) {
-        // Don't clear existing results on error
-        if (emailOpportunities.length === 0) setEmailScanResults(0);
-      } else if (data.opportunities && data.opportunities.length > 0) {
-        // Reload from centralised email_scan_findings table so we stay in sync with scanner page
-        const { data: scanFindings } = await supabase
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      // Pick the right scan endpoint per connection. Gmail = google
+      // OAuth, Outlook = microsoft OAuth, anything else (Yahoo / iCloud
+      // / BT / Sky etc.) goes through the IMAP scanner.
+      const endpointFor = (providerType: string | null) => {
+        const p = (providerType || '').toLowerCase();
+        if (p === 'google' || p === 'gmail') return '/api/gmail/scan';
+        if (p === 'outlook' || p === 'microsoft') return '/api/outlook/scan';
+        return '/api/email/scan';
+      };
+
+      const targets = emailAccounts.length > 0
+        ? emailAccounts.map((a) => ({ id: a.id, endpoint: endpointFor(a.provider_type) }))
+        : [{ id: null, endpoint: '/api/gmail/scan' }]; // legacy gmail_tokens fallback
+
+      // Dedupe — multiple accounts on the same provider don't need to
+      // hit the same endpoint twice (the endpoints loop over all the
+      // user's connections of their type internally).
+      const seen = new Set<string>();
+      const calls = targets
+        .filter(({ endpoint }) => (seen.has(endpoint) ? false : (seen.add(endpoint), true)))
+        .map(({ endpoint }) => fetch(endpoint, { method: 'POST' }).catch(() => null));
+
+      await Promise.all(calls);
+
+      // Always refresh state from the canonical tables, regardless of
+      // per-endpoint success. Fixes the "scan-now button doesn't seem
+      // to update" report — previously a same-result scan left the UI
+      // showing stale opportunity counts.
+      const [{ data: scanFindings }, { data: refreshedConns }] = await Promise.all([
+        supabase
           .from('email_scan_findings')
           .select('*')
-          .eq('user_id', (await supabase.auth.getUser()).data.user!.id)
+          .eq('user_id', authUser.id)
           .in('status', ['new', 'reviewing'])
           .order('created_at', { ascending: false })
-          .limit(30);
+          .limit(30),
+        supabase
+          .from('email_connections')
+          .select('id, email_address, provider_type, last_scanned_at')
+          .eq('user_id', authUser.id)
+          .eq('status', 'active'),
+      ]);
 
-        if (scanFindings && scanFindings.length > 0) {
-          const mapped = scanFindings.map((f: any) => {
-            const meta = f.metadata || {};
-            return {
-              id: f.id,
-              type: f.finding_type || meta.type || 'opportunity',
-              category: meta.category || 'other',
-              title: f.title || meta.title || 'Opportunity',
-              description: f.description || meta.description || '',
-              amount: f.amount || meta.amount || 0,
-              confidence: f.confidence || meta.confidence || 60,
-              provider: f.provider || meta.provider || 'Unknown',
-              suggestedAction: meta.suggestedAction || 'track',
-              paymentFrequency: f.payment_frequency || meta.paymentFrequency || null,
-              contractEndDate: f.contract_end_date || meta.contractEndDate || null,
-              paymentAmount: f.amount || meta.paymentAmount || null,
-              status: f.status,
-            };
-          });
-          setEmailOpportunities(mapped);
-          setEmailScanResults(mapped.length);
-        }
-      } else {
-        if (emailOpportunities.length === 0) setEmailScanResults(0);
+      const mapped = (scanFindings ?? []).map((f: any) => {
+        const meta = f.metadata || {};
+        return {
+          id: f.id,
+          type: f.finding_type || meta.type || 'opportunity',
+          category: meta.category || 'other',
+          title: f.title || meta.title || 'Opportunity',
+          description: f.description || meta.description || '',
+          amount: f.amount || meta.amount || 0,
+          confidence: f.confidence || meta.confidence || 60,
+          provider: f.provider || meta.provider || 'Unknown',
+          suggestedAction: meta.suggestedAction || 'track',
+          paymentFrequency: f.payment_frequency || meta.paymentFrequency || null,
+          contractEndDate: f.contract_end_date || meta.contractEndDate || null,
+          paymentAmount: f.amount || meta.paymentAmount || null,
+          status: f.status,
+        };
+      });
+      setEmailOpportunities(mapped);
+      setEmailScanResults(mapped.length);
+
+      if (refreshedConns && refreshedConns.length > 0) {
+        // Pick the most-recently-scanned timestamp so the UI shows the
+        // freshest signal across all active accounts.
+        const latest = refreshedConns
+          .map((c) => c.last_scanned_at)
+          .filter((s): s is string => !!s)
+          .sort()
+          .at(-1) ?? null;
+        setEmailLastScanned(latest);
       }
     } catch {
-      if (emailOpportunities.length === 0) setEmailScanResults(0);
+      // No state mutation on a hard throw — leave the UI as it was
+      // and let the user retry. Setting results=0 here previously
+      // hid existing opportunities which felt worse than not updating.
     } finally {
       setEmailScanning(false);
     }
