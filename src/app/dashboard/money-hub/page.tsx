@@ -919,15 +919,21 @@ export default function MoneyHubPage() {
  </div>
  )}
 
- {/* Expired bank connection warning — per-bank reconnect */}
- {expiredConnections.length > 0 && !bankPromptDismissed && (
+ {/* Expired / revoked bank connection list — per-bank reconnect or remove.
+      NOT gated on bankPromptDismissed: that flag was meant to hide a
+      separate "connect more banks" CTA, but was suppressing the real
+      expired connection list too — meaning a user who clicked X once
+      couldn't see (or remove) their broken connections for 30 days.
+      The dismiss X is also gone from this card; the only way to clear
+      a row is to act on it (reconnect or remove) which is what the
+      user actually wants. */}
+ {expiredConnections.length > 0 && (
  <div className="bg-orange-500/10 border border-amber-200 rounded-xl p-4">
  <div className="flex items-center justify-between mb-3">
  <div className="flex items-center gap-2">
  <AlertTriangle className="h-5 w-5 text-amber-600" />
- <p className="text-amber-300 font-semibold text-sm">Bank connection{expiredConnections.length > 1 ? 's' : ''} expired</p>
+ <p className="text-amber-700 font-semibold text-sm">Bank connection{expiredConnections.length > 1 ? 's' : ''} need attention</p>
  </div>
- <button onClick={() => { setBankPromptDismissed(true); localStorage.setItem('bank_prompt_dismissed_at', new Date().toISOString()); }} className="text-slate-500 hover:text-slate-900"><X className="h-4 w-4" /></button>
  </div>
  <div className="space-y-2">
  {expiredConnections.flatMap((conn) => {

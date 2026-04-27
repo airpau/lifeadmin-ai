@@ -129,16 +129,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       }
 
+      // Fire Stripe sync in the BACKGROUND — don't block render.
+      // This route hits Stripe's REST API server-side which routinely
+      // takes 2-10 seconds; on Vercel cold starts it can hit 15s.
+      // Awaiting it here was forcing every dashboard navigation to wait
+      // for Stripe before the sidebar even rendered the tier badge.
+      //
+      // The 5-minute sessionStorage cache keeps a successful sync sticky
+      // across navigations within the same tab — only re-call Stripe
+      // when the cached result expires or doesn't exist. profile tier
+      // (set above at line 107) is the source of truth and renders
+      // immediately; this background refresh just upgrades it if Stripe
+      // has newer data.
+      const SYNC_CACHE_KEY = `pb_stripe_sync_${user.id}`;
+      const SYNC_TTL_MS = 5 * 60 * 1000; // 5 minutes
       try {
-        const syncRes = await fetch('/api/stripe/sync', { method: 'POST' });
-        const syncData = await syncRes.json();
-        if (syncData.tier && syncData.tier !== 'free') {
-          setUserTier(syncData.tier);
-        } else if (syncData.tier === 'free' && syncData.synced && !isFoundingTrial) {
-          setUserTier('free');
+        const cached = sessionStorage.getItem(SYNC_CACHE_KEY);
+        const parsed = cached ? JSON.parse(cached) as { at: number; tier: Tier } : null;
+        const fresh = parsed && Date.now() - parsed.at < SYNC_TTL_MS;
+        if (fresh && parsed) {
+          if (parsed.tier !== 'free') setUserTier(parsed.tier);
+          else if (!isFoundingTrial) setUserTier('free');
+          // Skip the network call — cache is fresh.
+        } else {
+          // Background refresh; UI does not await.
+          fetch('/api/stripe/sync', { method: 'POST' })
+            .then((r) => r.ok ? r.json() : null)
+            .then((syncData) => {
+              if (!syncData?.tier) return;
+              if (syncData.tier !== 'free') {
+                setUserTier(syncData.tier);
+              } else if (syncData.synced && !isFoundingTrial) {
+                setUserTier('free');
+              }
+              try {
+                sessionStorage.setItem(
+                  SYNC_CACHE_KEY,
+                  JSON.stringify({ at: Date.now(), tier: syncData.tier as Tier }),
+                );
+              } catch { /* private mode etc. */ }
+            })
+            .catch(() => { /* silent — keep profile tier */ });
         }
       } catch {
-        // Stripe sync failed — keep profile tier
+        /* sessionStorage unavailable — fall through, profile tier renders */
       }
     };
     loadUser();
