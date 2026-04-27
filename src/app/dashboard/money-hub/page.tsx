@@ -512,45 +512,66 @@ export default function MoneyHubPage() {
  // legacy confirm() defaulted to keep_history but didn't make that
  // visible — users couldn't request deletion without contacting support.
 
+ // The disconnect modal now supports per-account scoping. The `accounts`
+ // array is passed verbatim from connection.account_ids/display_names so
+ // a multi-account consent (Yapily/TrueLayer with current + savings, or
+ // Paul's modelo-sandbox with three accounts) renders a scope picker
+ // letting the user disconnect ONE account without dropping the others.
  const [disconnectModal, setDisconnectModal] = useState<{
    connectionId: string;
    bankName: string;
-   multiAccount: boolean;
+   accounts: Array<{ id: string; name: string }>;
  } | null>(null);
 
  const openDisconnectModal = (
    connectionId: string,
    bankName: string,
-   multiAccount: boolean,
+   accounts: Array<{ id: string; name: string }> = [],
  ) => {
-   setDisconnectModal({ connectionId, bankName: bankName || 'this bank', multiAccount });
+   setDisconnectModal({ connectionId, bankName: bankName || 'this bank', accounts });
  };
 
  const handleDisconnectConfirmed = async (
    mode: 'keep_history' | 'delete_transactions' | 'erase_all',
    txAffected: number,
+   accountId: string | null,
  ) => {
    if (!disconnectModal) return;
-   const { connectionId, bankName } = disconnectModal;
-   setActiveConnections(activeConnections.filter(c => c.id !== connectionId));
-   setExpiredConnections(expiredConnections.filter(c => c.id !== connectionId));
+   const { connectionId, bankName, accounts } = disconnectModal;
+   const scopedAccountName = accountId ? (accounts.find((a) => a.id === accountId)?.name ?? 'account') : null;
+   const isAccountScoped = accountId !== null;
+   const remainingAccountsAfter = isAccountScoped ? accounts.length - 1 : 0;
+   const connectionRemoved = !isAccountScoped || remainingAccountsAfter === 0;
+
+   if (connectionRemoved) {
+     // Whole connection went — drop from the on-screen lists.
+     setActiveConnections(activeConnections.filter(c => c.id !== connectionId));
+     setExpiredConnections(expiredConnections.filter(c => c.id !== connectionId));
+   }
+
+   const subject = scopedAccountName ?? bankName;
    const message = mode === 'erase_all'
-     ? `${bankName} erased — ${txAffected} transactions deleted permanently`
+     ? `${subject} erased — ${txAffected} transactions deleted permanently`
      : mode === 'delete_transactions'
-       ? `${bankName} disconnected — ${txAffected} transactions binned (recoverable for 30 days)`
-       : `${bankName} disconnected — transaction history kept`;
+       ? `${subject} disconnected — ${txAffected} transactions binned (recoverable for 30 days)`
+       : `${subject} disconnected — transaction history kept`;
    showToast(message, 'success');
    setDisconnectModal(null);
    await refreshData();
  };
 
  // Compatibility shim — keeps the old call sites working while the modal
- // takes over. Routes everything through the new modal.
+ // takes over. Routes everything through the new modal, building the
+ // per-account list from the connection's account_ids/display_names.
  const disconnectBank = (connectionId: string, bankName: string) => {
    const conn = activeConnections.find(c => c.id === connectionId)
               ?? expiredConnections.find(c => c.id === connectionId);
-   const multiAccount = (conn?.account_display_names?.length ?? 0) > 1;
-   openDisconnectModal(connectionId, bankName, multiAccount);
+   const ids: string[] = Array.isArray((conn as { account_ids?: string[] })?.account_ids)
+     ? ((conn as { account_ids?: string[] }).account_ids as string[])
+     : [];
+   const names: string[] = Array.isArray(conn?.account_display_names) ? conn!.account_display_names : [];
+   const accounts = ids.map((id, i) => ({ id, name: names[i] || `Account ${i + 1}` }));
+   openDisconnectModal(connectionId, bankName, accounts);
  };
 
  // ─── AI Chat ──────────────────────────────────────────────────────────
@@ -1686,7 +1707,7 @@ export default function MoneyHubPage() {
      open={!!disconnectModal}
      bankName={disconnectModal.bankName}
      connectionId={disconnectModal.connectionId}
-     multiAccount={disconnectModal.multiAccount}
+     accounts={disconnectModal.accounts}
      onClose={() => setDisconnectModal(null)}
      onConfirmed={handleDisconnectConfirmed}
    />

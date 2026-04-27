@@ -1,38 +1,64 @@
 'use client';
 
 import { useState } from 'react';
-import { X, AlertTriangle, Archive, Trash2, Eraser } from 'lucide-react';
+import { X, Archive, Trash2, Eraser } from 'lucide-react';
 
 export type DisconnectMode = 'keep_history' | 'delete_transactions' | 'erase_all';
+
+export interface DisconnectModalAccount {
+  /** Provider account_id (matches bank_transactions.account_id). */
+  id: string;
+  /** User-facing display name (e.g. "PREMIER REWARD BLACK"). */
+  name: string;
+}
 
 interface Props {
   open: boolean;
   bankName: string;
   connectionId: string;
-  multiAccount?: boolean;
+  /** Optional: when this consent contains multiple accounts, pass them
+   *  here so the user can pick one to disconnect instead of dropping
+   *  the whole consent. Empty / single-element arrays render the
+   *  classic "all accounts" flow. */
+  accounts?: DisconnectModalAccount[];
   onClose: () => void;
-  onConfirmed: (mode: DisconnectMode, txAffected: number) => void;
+  onConfirmed: (mode: DisconnectMode, txAffected: number, accountId: string | null) => void;
 }
 
 /**
- * Disconnect modal — three deliberate choices.
+ * Disconnect modal — three deliberate choices, with optional per-account scoping.
  *
- * Defaults to `keep_history` because it's the safest option and matches
- * the most common user intent ("I closed the card, but I want to keep
- * the spending data"). Destructive options require an extra click.
+ * Scope picker (top of modal):
+ *   When `accounts.length > 1`, the user picks ONE account or
+ *   "All accounts" before the mode selection. Selecting a single
+ *   account narrows the disconnect: only that account's transactions
+ *   are touched, and only that account is removed from the consent.
+ *   The connection row stays active for the remaining accounts.
  *
- * `erase_all` requires the user to type the bank name to confirm —
- * matches GitHub's "type the repo name" pattern, prevents accidental
- * GDPR right-to-erasure invocations.
+ * Mode picker:
+ *   - keep_history: revoke + keep transactions visible.
+ *   - delete_transactions: revoke + soft-delete (30-day recovery).
+ *   - erase_all: hard-delete, GDPR-style, requires typing the bank name.
+ *
+ * The default is "All accounts" + keep_history because that's the
+ * safest pair. erase_all requires the user to type the bank name to
+ * confirm — matches GitHub's "type the repo name" pattern, prevents
+ * accidental GDPR right-to-erasure invocations.
  */
 export default function DisconnectBankModal({
   open,
   bankName,
   connectionId,
-  multiAccount,
+  accounts,
   onClose,
   onConfirmed,
 }: Props) {
+  const accountList = accounts ?? [];
+  const isMultiAccount = accountList.length > 1;
+
+  // accountScope is either a specific provider account_id, or null
+  // meaning "apply to all accounts on this consent".
+  const [accountScope, setAccountScope] = useState<string | null>(null);
   const [mode, setMode] = useState<DisconnectMode>('keep_history');
   const [confirmText, setConfirmText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +66,8 @@ export default function DisconnectBankModal({
 
   if (!open) return null;
 
+  const scopedAccount = accountScope ? accountList.find((a) => a.id === accountScope) : null;
+  const scopeLabel = scopedAccount ? scopedAccount.name : `${bankName} (all accounts)`;
   const eraseConfirmed = mode !== 'erase_all' || confirmText.trim() === bankName;
 
   const submit = async () => {
@@ -49,14 +77,18 @@ export default function DisconnectBankModal({
       const res = await fetch('/api/bank/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, mode }),
+        body: JSON.stringify({
+          connectionId,
+          mode,
+          accountId: accountScope ?? undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data?.error || 'Disconnect failed');
         return;
       }
-      onConfirmed(mode, data?.transactionsAffected ?? 0);
+      onConfirmed(mode, data?.transactionsAffected ?? 0, accountScope);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
     } finally {
@@ -75,7 +107,7 @@ export default function DisconnectBankModal({
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
           <h2 id="disconnect-title" className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            Disconnecting {bankName}
+            Disconnecting {scopeLabel}
           </h2>
           <button
             onClick={onClose}
@@ -88,17 +120,45 @@ export default function DisconnectBankModal({
         </div>
 
         <div className="px-6 py-4 space-y-3">
-          {multiAccount && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex gap-2">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <div>
-                This consent covers <strong>multiple accounts</strong> on the same bank — they revoke as a pair. To keep one and remove the other, reconnect the bank afterwards and grant access to only the account you want.
+          {isMultiAccount && (
+            <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+              <div className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+                Apply to
               </div>
+              <div className="grid gap-1.5">
+                <label className={`flex items-center gap-2 text-sm px-2 py-1.5 rounded cursor-pointer ${accountScope === null ? 'bg-emerald-50 border border-emerald-200' : 'hover:bg-white border border-transparent'}`}>
+                  <input
+                    type="radio"
+                    name="account-scope"
+                    checked={accountScope === null}
+                    onChange={() => setAccountScope(null)}
+                  />
+                  <span className="font-medium text-slate-900">All accounts</span>
+                  <span className="text-xs text-slate-500">({accountList.length} on this consent)</span>
+                </label>
+                {accountList.map((a) => (
+                  <label
+                    key={a.id}
+                    className={`flex items-center gap-2 text-sm px-2 py-1.5 rounded cursor-pointer ${accountScope === a.id ? 'bg-emerald-50 border border-emerald-200' : 'hover:bg-white border border-transparent'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="account-scope"
+                      checked={accountScope === a.id}
+                      onChange={() => setAccountScope(a.id)}
+                    />
+                    <span className="text-slate-800">{a.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2">
+                Picking one account leaves the others connected and syncing as normal.
+              </p>
             </div>
           )}
 
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            What would you like to do with the transaction history we&apos;ve already synced from this bank?
+            What would you like to do with the transaction history we&apos;ve already synced from {scopedAccount ? <strong>{scopedAccount.name}</strong> : <strong>{bankName}</strong>}?
           </p>
 
           <label
