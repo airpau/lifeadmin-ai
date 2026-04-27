@@ -3,10 +3,17 @@
 // Export destinations page — send Paybacker data to third-party tools.
 // Currently live: Google Sheets sync, CSV + Excel one-shot download.
 // Coming soon: Notion, YNAB, Actual Budget.
+//
+// Pro-only per the tier matrix in src/lib/plan-limits.ts. Free + Essential
+// users see the lock screen; the page surface is otherwise identical so
+// upgrade re-enables instantly without a re-render shuffle.
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import GoogleSheetsConnect from '@/components/GoogleSheetsConnect'
 import DataExportCard from '@/components/DataExportCard'
+import UpgradeLock from '@/components/UpgradeLock'
+import { createClient } from '@/lib/supabase/client'
 
 type ComingSoonDestination = {
   name: string
@@ -52,6 +59,41 @@ const comingSoon: ComingSoonDestination[] = [
 ]
 
 export default function ExportPage() {
+  const [tier, setTier] = useState<'free' | 'essential' | 'pro' | null>(null);
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { setTier('free'); return; }
+      sb.from('profiles').select('subscription_tier').eq('id', user.id).single()
+        .then(({ data }) => setTier((data?.subscription_tier as 'free' | 'essential' | 'pro') ?? 'free'));
+    });
+  }, []);
+
+  // Pro-only feature per CLAUDE.md tier matrix. Until tier loads, show a
+  // lightweight skeleton (no flash of unlocked content for free users).
+  if (tier !== 'pro') {
+    return (
+      <div className="max-w-5xl">
+        <div className="page-title-row" style={{ marginBottom: 14 }}>
+          <div>
+            <h1 className="page-title">Export</h1>
+            <p className="page-sub">
+              Send your Paybacker data to Google Sheets, CSV/Excel, and (soon) Notion / YNAB / Actual Budget.
+            </p>
+          </div>
+        </div>
+        <UpgradeLock
+          feature="Data export"
+          requiredTier="pro"
+          size="panel"
+        />
+        <p className="text-xs text-slate-500 mt-3 text-center">
+          Your data is kept either way. Pro re-enables one-click sync to the tools above.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl">
       {/* Variant A header (batch5 ExportHub) */}
