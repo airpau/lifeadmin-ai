@@ -82,9 +82,10 @@ export default function PricingGrid() {
           </div>
           <ul>
             <li>Unlimited AI dispute letters</li>
-            <li>Bank sync — 2 accounts</li>
-            <li>Email inbox scan</li>
+            <li>Bank sync — 3 accounts</li>
+            <li>Email inbox scan — 3 accounts</li>
             <li>Pocket Agent in Telegram</li>
+            <li>Renewal reminders & price-increase alerts</li>
           </ul>
           <PricingCTA
             plan="essential"
@@ -108,7 +109,8 @@ export default function PricingGrid() {
           <ul>
             <li>Everything in Essential</li>
             <li>Unlimited bank &amp; email connections</li>
-            <li>Deal alerts on bill changes</li>
+            <li><strong>Pocket Agent on WhatsApp</strong> — instant alerts &amp; replies</li>
+            <li>Daily morning brief &amp; weekly recovery digest</li>
             <li>Priority human review on complex disputes</li>
           </ul>
           <PricingCTA
