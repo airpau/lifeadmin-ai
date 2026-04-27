@@ -1736,11 +1736,20 @@ export default function SubscriptionsPage() {
                 <div className={`k-val ${flaggedCount > 0 ? 'amber' : ''}`}>{flaggedCount}</div>
                 <div className="k-delta">Detected &middot; needs review</div>
               </div>
-              <div className="kpi-card">
+              {/* Routes to /dashboard/deals which auto-shows personalised
+                  matches against the user's tracked subscriptions, with
+                  the annual saving against each. The card was previously
+                  a non-clickable label which made the "review savings"
+                  language feel broken. */}
+              <Link
+                href="/dashboard/deals"
+                className="kpi-card"
+                style={{ display: 'block', textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
+              >
                 <div className="k-label">Review savings</div>
-                <div className="k-val green">Review list</div>
-                <div className="k-delta">Scroll to flagged section</div>
-              </div>
+                <div className="k-val green">See matched deals</div>
+                <div className="k-delta">Cheaper alternatives for your bills</div>
+              </Link>
             </div>
           </>
         );
@@ -2093,13 +2102,32 @@ export default function SubscriptionsPage() {
           {displaySubscriptions.length === 0 ? (
             <div className="bg-white backdrop-blur-sm border border-slate-200/50 rounded-2xl shadow-[--shadow-card] p-12 text-center">
               <CreditCard className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-              <p className="text-slate-600 mb-4">No subscriptions tracked yet</p>
-              <button
-                onClick={() => setShowAddForm(true)}
-                className="cta font-semibold px-6 py-3 rounded-lg transition-all"
-              >
-                Add your first subscription
-              </button>
+              {filterCategory !== 'All' ? (
+                <>
+                  <p className="text-slate-900 font-semibold mb-1">
+                    No {SUBSCRIPTION_FILTER_CATEGORIES.find(c => c.value === filterCategory)?.label ?? filterCategory} subscriptions
+                  </p>
+                  <p className="text-slate-600 text-sm mb-4">
+                    {baseSubscriptions.filter(s => s.status === 'active').length} other active subscription{baseSubscriptions.filter(s => s.status === 'active').length === 1 ? '' : 's'} are tracked under different categories.
+                  </p>
+                  <button
+                    onClick={() => setFilterCategory('All')}
+                    className="cta font-semibold px-6 py-3 rounded-lg transition-all"
+                  >
+                    Show all subscriptions
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-slate-600 mb-4">No subscriptions tracked yet</p>
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    className="cta font-semibold px-6 py-3 rounded-lg transition-all"
+                  >
+                    Add your first subscription
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             displaySubscriptions.map((sub) => (

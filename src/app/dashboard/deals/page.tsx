@@ -703,8 +703,22 @@ export default function DealsPage() {
             it&apos;s the best deal, we show it.
           </p>
         </div>
-        <Link
-          href="/dashboard/subscriptions"
+        {/* Used to link to /dashboard/subscriptions which sent users
+            BACK where they came from. Now scrolls to the personalised
+            matches that already exist on this page (the "Contracts
+            Ending Soon" / matched deals sections). If the user has no
+            urgent contract endings, falls back to the deals catalog
+            scroll target so the click still does something useful. */}
+        <button
+          type="button"
+          onClick={() => {
+            const target =
+              document.querySelector('section.mb-10') /* urgent contracts section */
+              ?? document.querySelector('[data-deals-list]');
+            if (target) {
+              target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }}
           style={{
             padding: '12px 20px',
             fontSize: 13.5,
@@ -712,12 +726,13 @@ export default function DealsPage() {
             background: '#fff',
             color: '#059669',
             borderRadius: 12,
-            textDecoration: 'none',
+            border: 'none',
+            cursor: 'pointer',
             flexShrink: 0,
           }}
         >
-          Match against my bills →
-        </Link>
+          See my matches ↓
+        </button>
       </div>
 
       {/* Category filter tabs */}
@@ -809,7 +824,7 @@ export default function DealsPage() {
       )}
 
       {/* Deal categories */}
-      <div className="space-y-10">
+      <div className="space-y-10" data-deals-list>
         {visibleCategories.map((category) => {
           const catLower = category.toLowerCase();
 
