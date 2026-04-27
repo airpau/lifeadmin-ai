@@ -947,11 +947,47 @@ export default function MoneyHubPage() {
  <Building2 className="h-4 w-4 text-amber-600" />
  <span className="text-slate-900 text-sm font-medium">{conn.bank_name || 'Bank'}</span>
  {accName && names.length > 1 && <span className="text-slate-500 text-xs">· {accName}</span>}
- <span className="text-slate-500 text-xs">· expired</span>
+ <span className="text-slate-500 text-xs">· {conn.status === 'revoked' ? 'disconnected' : 'expired'}</span>
  </div>
  <div className="flex items-center gap-2">
  {i === 0 && (
  <>
+ {/* Restore data button — calls /api/bank/restore which un-soft-
+     deletes any transactions deleted within the last 30 days for
+     this connection. The endpoint returns the count restored;
+     0 means there was nothing to recover (either the row was
+     keep_history disconnect, or the 30-day window has expired
+     and the purge cron has already cleaned up). */}
+ <button
+   onClick={async () => {
+     try {
+       const res = await fetch('/api/bank/restore', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ connectionId: conn.id }),
+       });
+       const data = await res.json();
+       if (!res.ok) {
+         showToast(data?.error || 'Restore failed', 'error');
+         return;
+       }
+       const n = data?.transactionsRestored ?? 0;
+       showToast(
+         n > 0
+           ? `Restored ${n} transaction${n === 1 ? '' : 's'} from ${conn.bank_name || 'bank'}`
+           : 'Nothing to restore (transactions weren\'t soft-deleted, or 30-day window has passed)',
+         n > 0 ? 'success' : 'info',
+       );
+       if (n > 0) await refreshData();
+     } catch {
+       showToast('Restore failed', 'error');
+     }
+   }}
+   className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 font-semibold px-3 py-1 rounded-lg text-xs border border-emerald-200"
+   title="Restore transactions deleted in the last 30 days"
+ >
+   Restore data
+ </button>
  <button onClick={() => { if (!connectBankDirect()) setShowBankPicker(true); }} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-3 py-1 rounded-lg text-xs">Reconnect</button>
  <button onClick={() => disconnectBank(conn.id, conn.bank_name)} disabled={disconnectingId === conn.id} className="text-slate-500 hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
  <Trash2 className="h-4 w-4" />
@@ -963,7 +999,9 @@ export default function MoneyHubPage() {
  ));
  })}
  </div>
- <p className="text-slate-500 text-xs mt-2">Reconnect to keep your data up to date</p>
+ <p className="text-slate-500 text-xs mt-2">
+   <strong>Reconnect</strong> resumes new-transaction sync. <strong>Restore data</strong> brings back transactions you previously deleted (within the 30-day recovery window). The trash removes the connection row entirely.
+ </p>
  </div>
  )}
 

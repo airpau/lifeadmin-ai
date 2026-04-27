@@ -279,6 +279,13 @@ export default function AdminPage() {
         >
           <Tag className="h-4 w-4" /> Cancel Info
         </Link>
+        <Link
+          href="/dashboard/admin/restore-bank-data"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:text-slate-900"
+          title="Restore a user's soft-deleted bank transactions (within 30-day window)"
+        >
+          <RefreshCw className="h-4 w-4" /> Restore data
+        </Link>
       </div>
 
       {/* OVERVIEW TAB */}
