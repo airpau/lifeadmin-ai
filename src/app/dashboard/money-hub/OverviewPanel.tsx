@@ -145,22 +145,26 @@ export default function OverviewPanel({ data, refreshData, selectedMonth }: { da
               Hidden gracefully on accounts where the RPC hasn't been built yet
               (the field is undefined). */}
           {spending?.breakdown && (spending.breakdown.fixedCost > 0 || spending.breakdown.variableCost > 0 || spending.breakdown.discretionary > 0) && (
-            <div className="mt-3 pt-3 border-t border-slate-800 space-y-1">
+            // Light-mode-correct colours. Earlier version used text-slate-300
+            // and border-slate-800 (dark-mode tokens) which made the whole
+            // breakdown invisible against the white card background — user
+            // reported "money hub hasn't changed".
+            <div className="mt-3 pt-3 border-t border-slate-200 space-y-1">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-slate-500">Fixed</span>
-                <span className="text-slate-300 font-medium">£{fmtNum(spending.breakdown.fixedCost)}</span>
+                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.fixedCost)}</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-slate-500">Variable</span>
-                <span className="text-slate-300 font-medium">£{fmtNum(spending.breakdown.variableCost)}</span>
+                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.variableCost)}</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-slate-500">Discretionary</span>
-                <span className="text-slate-300 font-medium">£{fmtNum(spending.breakdown.discretionary)}</span>
+                <span className="text-slate-900 font-semibold">£{fmtNum(spending.breakdown.discretionary)}</span>
               </div>
               {spending.breakdown.internalTransfer > 0 && (
-                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/60 mt-1">
-                  <span className="text-slate-600">Transfers (excluded)</span>
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100 mt-1">
+                  <span className="text-slate-400">Transfers (excluded)</span>
                   <span className="text-slate-500">£{fmtNum(spending.breakdown.internalTransfer)}</span>
                 </div>
               )}

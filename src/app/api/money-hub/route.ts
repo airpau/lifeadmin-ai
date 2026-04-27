@@ -136,10 +136,20 @@ export async function GET(request: Request) {
     const connectionFilter = spaceConnectionFilter(activeSpace);
     const txFilter = spaceTransactionFilter(activeSpace);
 
+    // Slim column select: only the fields the JS summariser + merchant
+    // calc actually consume. Was .select('*') which dragged 30+ columns
+    // (including raw_data jsonb on some banks) — Paul reported the page
+    // as "very slow to load". Trimming to ~10 fields cuts the payload
+    // ~70% on a 3-6k row response.
+    //
+    // Also filters soft-deleted rows (the new deleted_at column from
+    // the bank-disconnect modal) so users who delete a connection's
+    // transactions don't see them re-appear in the JS summariser.
     let txnQuery = admin
       .from('bank_transactions')
-      .select('*')
+      .select('id, timestamp, amount, merchant_name, description, category, user_category, income_type, is_recurring, connection_id, account_id, transaction_id')
       .eq('user_id', user.id)
+      .is('deleted_at', null)
       .gte('timestamp', sixMonthsAgo)
       .order('timestamp', { ascending: false })
       .limit(20000);

@@ -440,10 +440,14 @@ export default function MoneyHubPage() {
  const { data: { user } } = await supabase.auth.getUser();
  if (user) {
  setUserId(user.id);
+ // Include 'revoked' so users can see + remove connections they
+ // intentionally disconnected. Without this, revoked Yapily/TrueLayer
+ // rows live forever in the DB but are invisible in the UI — no way
+ // for the user to clean them up.
  const { data: conns } = await supabase.from('bank_connections')
  .select('id, bank_name, status, account_ids, account_display_names')
  .eq('user_id', user.id)
- .in('status', ['expired', 'token_expired', 'expired_legacy', 'expiring_soon']);
+ .in('status', ['expired', 'token_expired', 'expired_legacy', 'expiring_soon', 'revoked']);
  if (conns?.length) setExpiredConnections(conns);
  else setExpiredConnections([]); // Clear if all now active
 

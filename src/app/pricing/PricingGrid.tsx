@@ -109,6 +109,7 @@ export default function PricingGrid() {
           <ul>
             <li>Everything in Essential</li>
             <li>Unlimited bank &amp; email connections</li>
+            <li><strong>Unlimited Spaces</strong> — group personal, business and joint accounts separately in Money Hub</li>
             <li><strong>Pocket Agent on WhatsApp</strong> — instant alerts &amp; replies</li>
             <li>Daily morning brief &amp; weekly recovery digest</li>
             <li>Priority human review on complex disputes</li>
