@@ -225,6 +225,23 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
   const [sending, setSending] = useState(false);
   const [sentNote, setSentNote] = useState<string | null>(null);
 
+  // Working copy of the letter — lets the user manually edit OR refine
+  // via Claude before they Copy / Download / mark Sent. The original
+  // `content` prop stays untouched (so re-opening the modal hands back
+  // the AI's first draft), but every downstream button reads from
+  // `workingContent` instead.
+  const [workingContent, setWorkingContent] = useState(content);
+  const [editing, setEditing] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineInstruction, setRefineInstruction] = useState('');
+  const [refineError, setRefineError] = useState<string | null>(null);
+
+  // If the modal is reused for a different letter (rare — modal is
+  // typically remounted per letter), reset the working copy so we
+  // don't ship a stale edit forward.
+  useEffect(() => { setWorkingContent(content); }, [content]);
+
   // Look up the provider's contact email so the user can copy it and
   // paste into their email client themselves. We no longer offer an
   // "Open in Email" button — see notes below the action row.
@@ -239,25 +256,71 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
   }, [providerName]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content);
+    navigator.clipboard.writeText(workingContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRefine = async () => {
+    const instruction = refineInstruction.trim();
+    if (instruction.length < 3) {
+      setRefineError('Tell us what to change — e.g. "make it more polite" or "add the £85 figure".');
+      return;
+    }
+    setRefining(true);
+    setRefineError(null);
+    try {
+      const res = await fetch('/api/disputes/refine-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ letter: workingContent, instruction, disputeId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRefineError(data?.error || 'Refine failed — try again.');
+        return;
+      }
+      if (typeof data?.letter === 'string' && data.letter.trim().length > 50) {
+        setWorkingContent(data.letter.trim());
+        setRefineOpen(false);
+        setRefineInstruction('');
+      } else {
+        setRefineError('Model returned an empty letter — try a different instruction.');
+      }
+    } catch (e) {
+      setRefineError(e instanceof Error ? e.message : 'Network error');
+    } finally {
+      setRefining(false);
+    }
+  };
+
+  const handleResetToOriginal = () => {
+    if (!confirm('Discard your edits and go back to the original letter?')) return;
+    setWorkingContent(content);
   };
 
   const handleMarkSent = async () => {
     if (!disputeId) return;
     setSending(true);
     try {
+      // Pass the working content (which may differ from the original AI
+      // draft if the user edited or refined). The endpoint stores
+      // exactly what was sent so the next letter / follow-up can
+      // reference what the supplier actually received.
       const res = await fetch(`/api/disputes/${disputeId}/letter-sent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerEmail }),
+        body: JSON.stringify({
+          providerEmail,
+          letter: workingContent,
+          edited: workingContent !== content,
+        }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         setSentNote(
           data?.watchdog_link_created
-            ? "Marked as sent. We'll track the reply in this dispute."
+            ? "Marked as sent. We'll watch your inbox for the reply and ping you on Telegram + dashboard when it lands."
             : 'Marked as sent. Check this dispute for the reply.',
         );
         onSentMarked?.();
@@ -280,7 +343,7 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
       .refs{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:11px;color:#555}
       .disclaimer{margin-top:24px;padding-top:16px;border-top:1px solid #ccc;font-size:10px;color:#555;text-align:center;line-height:1.6}
       @media print{body{margin:20mm 25mm}}</style></head><body>
-      <pre>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+      <pre>${workingContent.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
       ${legalRefs.length > 0 ? `<div class="refs"><strong>Legal references:</strong> ${legalRefs.join(' · ')}</div>` : ''}
       <div class="disclaimer">${AI_LETTER_DISCLAIMER_HTML}</div>
       <script>window.onload=()=>{window.print()}<\/script></body></html>`);
@@ -317,17 +380,90 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-white rounded-xl p-6 border border-slate-200/50 mb-4">
-            <pre
-              className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed"
-              onCopy={(e) => {
-                // Override browser's default rich-text copy (which carries white colour styling).
-                // Force plain text so the letter pastes correctly into Gmail, Outlook, etc.
-                const sel = window.getSelection();
-                if (!sel) return;
-                e.preventDefault();
-                e.clipboardData?.setData('text/plain', sel.toString());
-              }}
-            >{content}</pre>
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+              <span className="text-xs text-slate-500">
+                {workingContent !== content
+                  ? <>Edited — <button onClick={handleResetToOriginal} className="underline hover:text-slate-700">reset to original</button></>
+                  : 'AI-drafted letter'}
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setRefineOpen(v => !v)}
+                  disabled={editing || refining}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {refining ? 'Refining…' : 'Refine with AI'}
+                </button>
+                <button
+                  onClick={() => setEditing(v => !v)}
+                  disabled={refining}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {editing ? 'Done editing' : 'Edit manually'}
+                </button>
+              </div>
+            </div>
+
+            {refineOpen && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+                <label className="block text-xs font-semibold text-purple-900 mb-2">
+                  What would you like changed?
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 rounded-lg border border-purple-300 bg-white text-sm focus:outline-none focus:border-purple-500 mb-2"
+                  rows={2}
+                  placeholder='e.g. "Make it more polite", "Add the £85 figure", "Shorten to 3 paragraphs"'
+                  value={refineInstruction}
+                  onChange={(e) => setRefineInstruction(e.target.value)}
+                  maxLength={500}
+                  disabled={refining}
+                />
+                {refineError && (
+                  <p className="text-xs text-rose-700 mb-2">{refineError}</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleRefine}
+                    disabled={refining || refineInstruction.trim().length < 3}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+                  >
+                    {refining ? <><Loader2 className="h-3 w-3 animate-spin" /> Working…</> : <>Apply</>}
+                  </button>
+                  <button
+                    onClick={() => { setRefineOpen(false); setRefineInstruction(''); setRefineError(null); }}
+                    disabled={refining}
+                    className="text-xs px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <span className="text-[10px] text-purple-700 ml-auto">
+                    Counts as one letter against your monthly cap.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {editing ? (
+              <textarea
+                value={workingContent}
+                onChange={(e) => setWorkingContent(e.target.value)}
+                className="w-full text-sm text-slate-700 font-mono leading-relaxed bg-slate-50 border border-slate-300 rounded-lg p-4 focus:outline-none focus:border-emerald-500 min-h-[400px]"
+              />
+            ) : (
+              <pre
+                className="text-sm text-slate-700 whitespace-pre-wrap font-mono leading-relaxed"
+                onCopy={(e) => {
+                  // Override browser's default rich-text copy (which carries white colour styling).
+                  // Force plain text so the letter pastes correctly into Gmail, Outlook, etc.
+                  const sel = window.getSelection();
+                  if (!sel) return;
+                  e.preventDefault();
+                  e.clipboardData?.setData('text/plain', sel.toString());
+                }}
+              >{workingContent}</pre>
+            )}
           </div>
           {(rightsPills && rightsPills.length > 0 || legalRefs.length > 0) && (
             <div className="bg-white/50 rounded-lg p-4 border border-slate-200/50 mb-3">

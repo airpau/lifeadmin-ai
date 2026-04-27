@@ -17,8 +17,13 @@
  *      the provider's domain so the Watchdog cron auto-imports any
  *      reply into this dispute's correspondence timeline
  *
- * Body: { providerEmail?: string }  — optional override; the endpoint
- * will fall back to a DB lookup if not provided.
+ * Body: { providerEmail?: string; letter?: string; edited?: boolean }
+ *   - providerEmail: optional override; falls back to DB lookup
+ *   - letter: the EXACT text of what the user is sending. May differ
+ *     from the original AI draft if they edited or refined it before
+ *     hitting "I've sent it". Stored as a correspondence row of type
+ *     'letter_sent' so future replies can reference what was sent.
+ *   - edited: true if the user changed the AI draft before sending
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -46,6 +51,8 @@ export async function POST(
   const { id: disputeId } = await params;
   const body = await request.json().catch(() => ({}));
   const overrideEmail = typeof body.providerEmail === 'string' ? body.providerEmail.trim() : null;
+  const letterContent = typeof body.letter === 'string' ? body.letter.trim() : null;
+  const edited = !!body.edited;
 
   const { data: dispute, error: loadErr } = await supabase
     .from('disputes')
@@ -125,11 +132,35 @@ export async function POST(
     }
   }
 
+  // Persist what was actually sent. The future reply-thread sync needs
+  // this so the AI follow-up generator (and the user themselves) can
+  // see "here's exactly what you sent on date X" rather than guessing
+  // from the original AI draft (which may have been edited).
+  if (letterContent && letterContent.length > 50) {
+    const { error: corrErr } = await supabase
+      .from('correspondence')
+      .insert({
+        dispute_id: disputeId,
+        user_id: user.id,
+        entry_type: 'letter_sent',
+        title: edited ? 'Letter sent (edited from AI draft)' : 'Letter sent',
+        content: letterContent.slice(0, 100_000), // text column is generous; cap defensively
+        sender_address: providerEmail,
+        entry_date: new Date().toISOString(),
+        detected_from_email: false,
+      });
+    if (corrErr) {
+      console.error('[disputes.letter-sent] correspondence insert failed:', corrErr.message);
+      // Non-fatal — the dispute is still flipped to awaiting_response.
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     dispute_id: disputeId,
     watchdog_link_created: watchdogLinked,
     sender_domain: senderDomain,
     provider_email: providerEmail,
+    letter_archived: !!(letterContent && letterContent.length > 50),
   });
 }
