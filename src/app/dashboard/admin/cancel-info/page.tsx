@@ -66,6 +66,7 @@ export default function AdminCancelInfoPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [uncovered, setUncovered] = useState<UncoveredRow[]>([]);
+  const [uncoveredError, setUncoveredError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -90,6 +91,7 @@ export default function AdminCancelInfoPage() {
       setRows(data.rows ?? []);
       setStats(data.stats ?? null);
       setUncovered(data.uncovered ?? []);
+      setUncoveredError(data.uncovered_error ?? null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -382,7 +384,12 @@ export default function AdminCancelInfoPage() {
           Monday discovery cron processes up to 5 of these per run, so
           this list is a preview of what it'll pick up next + an
           indication of the highest-impact gaps by user count. */}
-      {uncovered.length > 0 && (
+      {uncoveredError && (
+        <div className="mt-8 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700">
+          Couldn&apos;t compute the uncovered-providers preview — {uncoveredError}. The seeded coverage table above is unaffected.
+        </div>
+      )}
+      {!uncoveredError && uncovered.length > 0 && (
         <div className="mt-8">
           <div className="flex items-baseline justify-between mb-3">
             <h2 className="text-lg font-semibold text-slate-900">Providers seen but not covered</h2>

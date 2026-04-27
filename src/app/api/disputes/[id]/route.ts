@@ -209,24 +209,22 @@ export async function PATCH(
         console.error('Failed to resolve dispute:', error);
         return NextResponse.json({ error: 'Failed to resolve dispute' }, { status: 500 });
       }
-      // Same subscription auto-cancel as the RPC path — see the
-      // comment further down. Duplicated here because this branch
-      // fires when resolve_dispute isn't available; the fix should
-      // still land on the subscription either way.
-      if (body.outcome === 'won' && data?.provider_name) {
-        try {
-          await supabase
-            .from('subscriptions')
-            .update({
-              status: 'cancelled',
-              cancelled_at: new Date().toISOString(),
-              notes: `Auto-cancelled on dispute resolution (${id.slice(0, 8)})`,
-            })
-            .eq('user_id', user.id)
-            .eq('status', 'pending_cancellation')
-            .ilike('provider_name', data.provider_name);
-        } catch (err) {
-          console.error('[disputes.resolve.fallback] subscription auto-cancel failed:', err);
+      // Same subscription auto-cancel as the RPC path — same guards:
+      // outcome='won' AND issue_type='cancellation'. See the longer
+      // comment below for rationale.
+      if (body.outcome === 'won' && data?.provider_name && data?.issue_type === 'cancellation') {
+        const { error: cancelErr } = await supabase
+          .from('subscriptions')
+          .update({
+            status: 'cancelled',
+            cancelled_at: new Date().toISOString(),
+            notes: `Auto-cancelled on dispute resolution (${id.slice(0, 8)})`,
+          })
+          .eq('user_id', user.id)
+          .eq('status', 'pending_cancellation')
+          .ilike('provider_name', data.provider_name);
+        if (cancelErr) {
+          console.error('[disputes.resolve.fallback] subscription auto-cancel failed:', cancelErr.message);
         }
       }
       return NextResponse.json(data);
@@ -240,37 +238,40 @@ export async function PATCH(
       .eq('user_id', user.id)
       .single();
 
-    // Close the cancellation loop. When a dispute started from a
-    // subscription cancellation resolves as "won", the matching
-    // subscription is still sitting at pending_cancellation because
-    // nothing else progresses it. Flip it to cancelled + stamp
+    // Close the cancellation loop. When a dispute that was opened
+    // specifically to cancel a subscription resolves as "won", the
+    // matching subscription is still sitting at pending_cancellation
+    // because nothing else progresses it. Flip it to cancelled + stamp
     // cancelled_at so Money Hub, subscription counts and the
     // Subscriptions UI all catch up without the user having to mark
     // two things manually.
     //
-    // Only fires on outcome='won' — 'partial' could be a reduced-
-    // rate deal the user kept, 'lost' means the cancellation was
-    // refused, 'withdrawn' means the user cancelled the dispute.
-    // Only 'won' = provider confirmed cancellation.
-    if (body.outcome === 'won' && resolved?.provider_name) {
-      try {
-        const { data: matched } = await supabase
-          .from('subscriptions')
-          .update({
-            status: 'cancelled',
-            cancelled_at: new Date().toISOString(),
-            notes: `Auto-cancelled on dispute resolution (${id.slice(0, 8)})`,
-          })
-          .eq('user_id', user.id)
-          .eq('status', 'pending_cancellation')
-          .ilike('provider_name', resolved.provider_name)
-          .select('id, provider_name');
-        if (matched && matched.length > 0) {
-          console.log(`[disputes.resolve] auto-cancelled ${matched.length} subscription(s) for ${resolved.provider_name}`);
-        }
-      } catch (err) {
-        // Non-fatal — dispute is resolved, this is a convenience.
-        console.error('[disputes.resolve] subscription auto-cancel failed:', err);
+    // GUARDS:
+    //  - outcome must be 'won' — 'partial' = reduced-rate deal kept,
+    //    'lost' = cancellation refused, 'withdrawn' = user backed out.
+    //  - dispute issue_type must be 'cancellation' — Codex P1: a 'won'
+    //    energy/refund dispute against the same provider as an active
+    //    subscription must NOT auto-cancel that subscription. Only
+    //    cancellation-flow disputes signal cancel intent.
+    if (body.outcome === 'won' && resolved?.provider_name && resolved?.issue_type === 'cancellation') {
+      const { data: matched, error: cancelErr } = await supabase
+        .from('subscriptions')
+        .update({
+          status: 'cancelled',
+          cancelled_at: new Date().toISOString(),
+          notes: `Auto-cancelled on dispute resolution (${id.slice(0, 8)})`,
+        })
+        .eq('user_id', user.id)
+        .eq('status', 'pending_cancellation')
+        .ilike('provider_name', resolved.provider_name)
+        .select('id, provider_name');
+      if (cancelErr) {
+        // Codex P2 — surface the error rather than just throwing past
+        // it. Still non-fatal so the dispute resolution response
+        // returns OK; admins can see the failure in the logs.
+        console.error('[disputes.resolve] subscription auto-cancel failed:', cancelErr.message);
+      } else if (matched && matched.length > 0) {
+        console.log(`[disputes.resolve] auto-cancelled ${matched.length} subscription(s) for ${resolved.provider_name}`);
       }
     }
 

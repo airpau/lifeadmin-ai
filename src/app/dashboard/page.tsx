@@ -218,8 +218,14 @@ export default function DashboardPage() {
             // Only allow one refresh per 6 hours unless the cache is
             // genuinely empty.
             const REFRESH_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+            // Scope the cooldown key to the current user — Codex P2 #313:
+            // shared devices (family laptop, internet cafe) shouldn't
+            // inherit a previous user's "we just refreshed" timer and
+            // skip the new user's first-load fetch.
+            const { data: { user: userForKey } } = await supabase.auth.getUser();
+            const cooldownKey = `pb_compare_last_refresh_${userForKey?.id ?? 'anon'}`;
             let lastRefreshAt = 0;
-            try { lastRefreshAt = Number(localStorage.getItem('pb_compare_last_refresh') || '0'); } catch { /* private mode */ }
+            try { lastRefreshAt = Number(localStorage.getItem(cooldownKey) || '0'); } catch { /* private mode */ }
             const cooldownActive = Date.now() - lastRefreshAt < REFRESH_COOLDOWN_MS;
             const cacheEmpty = compared === 0 || filteredCount === 0;
             const shouldRefresh = cacheEmpty || (
@@ -238,7 +244,7 @@ export default function DashboardPage() {
               setComparisonDeals(dealsList);
               const r = await fetch('/api/subscriptions/compare', { method: 'POST' });
               if (r.ok) {
-                try { localStorage.setItem('pb_compare_last_refresh', String(Date.now())); } catch { /* ignore */ }
+                try { localStorage.setItem(cooldownKey, String(Date.now())); } catch { /* ignore */ }
                 const freshData = await r.json();
                 const { saving: freshSaving, count: freshCount, deals: freshDeals } = parseComparisonDeals(freshData);
                 setComparisonSaving(freshSaving);
