@@ -21,6 +21,8 @@ import DisputeOverviewCard from '@/components/dispute/DisputeOverviewCard';
 import EditDisputeDetailsModal from '@/components/dispute/EditDisputeDetailsModal';
 import EmailCorrespondenceBody from '@/components/dispute/EmailCorrespondenceBody';
 import WatchdogCard from '@/components/dispute/WatchdogCard';
+import { createClient } from '@/lib/supabase/client';
+import { pickEmailCompose } from '@/lib/email-compose';
 
 // ============================================================
 // Types
@@ -225,6 +227,17 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
   const [sending, setSending] = useState(false);
   const [sentNote, setSentNote] = useState<string | null>(null);
 
+  // Signals for routing the "Open in Email" button to the right client.
+  // We check three things:
+  //   - the user's account email (gmail.com / googlemail.com → Gmail)
+  //   - the user's connected email connections (Google → Gmail, Outlook → Outlook)
+  //   - fallback: mailto: handed to the OS default
+  // Without this, macOS users with Gmail accounts hit Mac Mail because
+  // the OS routes mailto: to whatever's set as default — often Mail.app.
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [hasGoogleConnection, setHasGoogleConnection] = useState(false);
+  const [hasOutlookConnection, setHasOutlookConnection] = useState(false);
+
   // Look up the provider's contact email so the mailto pre-addresses
   // to them rather than forcing the user to find it themselves.
   useEffect(() => {
@@ -236,6 +249,36 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
       .catch(() => { /* non-fatal — just no pre-addressed mailto */ });
     return () => { cancelled = true; };
   }, [providerName]);
+
+  // Pull the user's account email + connected providers so we can route
+  // "Open in Email" correctly. Two requests in parallel; both can fail
+  // silently — the worst case is the mailto fallback.
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    Promise.all([
+      supabase.auth.getUser().then(({ data }) => data?.user?.email ?? null),
+      fetch('/api/email/connections', { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null),
+    ]).then(([email, connections]) => {
+      if (cancelled) return;
+      setUserEmail(email);
+      const conns: Array<{ provider_type?: string; status?: string }> = connections?.connections ?? [];
+      const active = conns.filter(c => c.status === 'active');
+      setHasGoogleConnection(active.some(c => /^google$|^gmail$/i.test(c.provider_type ?? '')));
+      setHasOutlookConnection(active.some(c => /^outlook$|^microsoft$/i.test(c.provider_type ?? '')));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Build the actual "Open in Email" route. Gmail web compose if any of
+  // the Gmail signals fire, Outlook web compose if Outlook signals fire,
+  // mailto: otherwise.
+  const composeRoute = pickEmailCompose(
+    { to: providerEmail, subject: title, body: content },
+    { userEmail, hasGoogleConnection, hasOutlookConnection },
+  );
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -376,16 +419,23 @@ function LetterModal({ content, title, legalRefs, rightsPills, onClose, disputeI
             <button onClick={handlePDF} className="flex-1 min-w-[120px] flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-900 py-3 rounded-lg transition-all font-medium">
               <Download className="h-4 w-4" /> Download PDF
             </button>
-            {/* Always offer Open-in-Email. When we know the provider
-                address the mailto pre-addresses to them; when we don't,
-                the To field opens empty for the user to fill in. Better
-                than forcing them back to copy-paste into a fresh draft. */}
+            {/* Open-in-Email — opens Gmail web compose / Outlook web compose
+                when the user has those connected (or has a matching account
+                email). Falls back to mailto: which uses the OS default mail
+                handler. This avoids the Mac Mail trap where a Gmail user
+                clicks the button and gets a Mail.app draft they don't want. */}
             <a
-              href={`mailto:${providerEmail ?? ''}?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(content)}`}
+              href={composeRoute.url}
+              target={composeRoute.newTab ? '_blank' : undefined}
+              rel={composeRoute.newTab ? 'noopener noreferrer' : undefined}
               className="flex-1 min-w-[160px] flex items-center justify-center gap-2 cta py-3 rounded-lg transition-all font-semibold"
             >
               <Mail className="h-4 w-4" />
-              {providerEmail ? 'Open in Email' : 'Open in Email (add recipient)'}
+              {composeRoute.provider === 'gmail'
+                ? (providerEmail ? 'Open in Gmail' : 'Open in Gmail (add recipient)')
+                : composeRoute.provider === 'outlook'
+                  ? (providerEmail ? 'Open in Outlook' : 'Open in Outlook (add recipient)')
+                  : (providerEmail ? 'Open in Email' : 'Open in Email (add recipient)')}
             </a>
           </div>
           {disputeId && !sentNote && (
@@ -1632,6 +1682,12 @@ function DisputeDetail({ disputeId, onBack }: { disputeId: string; onBack: () =>
                         </button>
                       )}
                       {entry.sender_address && (
+                        // TODO: route through pickEmailCompose() like the
+                        // LetterModal does — this is a secondary surface and
+                        // the userEmail / connection signals aren't in scope
+                        // here yet. For now mailto: still uses the OS default
+                        // mail handler (so Gmail users on macOS still hit
+                        // Mail.app). Tracked as a follow-up.
                         <a
                           href={`mailto:${entry.sender_address}?subject=${encodeURIComponent('Re: ' + (entry.title || dispute.issue_summary || dispute.provider_name || ''))}`}
                           onClick={(e) => e.stopPropagation()}
