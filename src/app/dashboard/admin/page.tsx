@@ -15,7 +15,10 @@ import MeetingRoom from '@/components/admin/MeetingRoom';
 import LeadsList from '@/components/admin/LeadsList';
 import Link from 'next/link';
 
-const ADMIN_EMAIL = 'aireypaul@googlemail.com';
+// Server-side gate now lives in src/app/dashboard/admin/layout.tsx —
+// a non-admin can't reach this component. The client-side check below
+// is a belt-and-braces no-op in production but kept so dev-mode
+// rendering stays sane if cookies are stripped.
 
 interface Metrics {
   overview: Record<string, number>;
@@ -63,7 +66,7 @@ export default function AdminPage() {
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || user.email !== ADMIN_EMAIL) {
+      if (!user) {
         setAuthorized(false);
         setLoading(false);
         return;

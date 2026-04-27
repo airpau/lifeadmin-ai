@@ -207,9 +207,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'aireypaul@googlemail.com')
     .split(',')
-    .map((e) => e.trim())
+    .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
-  const isAdmin = !!userEmail && adminEmails.includes(userEmail);
+  const isAdmin = !!userEmail && adminEmails.includes(userEmail.toLowerCase());
 
   const user: UserSummary = {
     firstName,
