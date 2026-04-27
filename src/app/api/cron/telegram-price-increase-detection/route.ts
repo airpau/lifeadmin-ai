@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendProactiveAlert } from '@/lib/telegram/user-bot';
 import { queueTelegramAlert } from '@/lib/telegram/queue';
+import { isProPocketAgentEligible } from '@/lib/telegram/eligibility';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -122,20 +123,12 @@ export async function GET(request: NextRequest) {
     .select('id, subscription_tier, subscription_status, stripe_subscription_id, trial_ends_at, trial_converted_at, trial_expired_at')
     .in('id', sessions.map((s) => s.user_id));
 
+  // Eligibility helper handles past_due / unpaid / incomplete (Stripe
+  // retry window) so users keep getting alerts during the 7-day grace
+  // before auto-demotion. See lib/telegram/eligibility.ts.
   const proUserIds = new Set(
     (profiles ?? [])
-      .filter((p) => {
-        const hasStripe = !!p.stripe_subscription_id;
-        const isActivePro = p.subscription_tier === 'pro' &&
-          (hasStripe
-            ? ['active', 'trialing'].includes(p.subscription_status ?? '')
-            : p.subscription_status === 'trialing');
-        const isOnboardingTrial = !!p.trial_ends_at &&
-          p.trial_ends_at > new Date().toISOString() &&
-          !p.trial_converted_at &&
-          !p.trial_expired_at;
-        return isActivePro || (!hasStripe && isOnboardingTrial);
-      })
+      .filter((p) => isProPocketAgentEligible(p))
       .map((p) => p.id),
   );
 
