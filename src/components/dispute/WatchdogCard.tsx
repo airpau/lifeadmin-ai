@@ -50,8 +50,6 @@ interface Candidate {
    *  candidate came from free-text search. */
   confidence?: number;
   reason?: string;
-  confidence: number;
-  reason: string;
 }
 
 interface EmailConnectionSummary {
@@ -176,17 +174,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
     setLoadingCandidates(true);
     setCandidatesError(null);
     setSearchErrors([]);
-  const hasStaleEmail =
-    emailConnections !== null &&
-    emailConnections.some((c) => c.status === 'needs_reauth' || c.status === 'expired');
-
-  const openPicker = async () => {
-    setPickerOpen(true);
-    setCandidates(null);
-    setCandidatesError(null);
-    setNeedsEmailConnection(false);
-    setSearchErrors([]);
-    setLoadingCandidates(true);
     try {
       const res = await fetch(`/api/disputes/${disputeId}/suggest-threads`, { cache: 'no-store' });
       const data = await res.json();
@@ -207,14 +194,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
       }
       setCandidates(decorateWithInbox(data.candidates ?? []));
       if (Array.isArray(data.errors) && data.errors.length > 0) setSearchErrors(data.errors);
-        setCandidatesError(data.message ?? 'Connect an email account first.');
-        setCandidates([]);
-        return;
-      }
-      setCandidates(data.candidates ?? []);
-      if (Array.isArray(data.errors) && data.errors.length > 0) {
-        setSearchErrors(data.errors);
-      }
     } catch (e) {
       setCandidatesError(e instanceof Error ? e.message : 'Something went wrong');
       setCandidates([]);
@@ -365,7 +344,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
 
   return (
     <div className="card p-5 mb-6">
-    <div className="bg-navy-900 border border-navy-700/50 rounded-2xl p-5 mb-6">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2">
@@ -373,7 +351,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               <Mail className="h-4 w-4" />
             </div>
             <h3 className="text-sm font-semibold text-slate-900">
-            <h3 className="text-sm font-semibold text-white">
               Watchdog <span className="text-slate-500">— email reply sync</span>
             </h3>
           </div>
@@ -414,7 +391,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
             </div>
           )}
           <div className="bg-white rounded-lg p-3 mb-3">
-          <div className="bg-navy-950 rounded-lg p-3 mb-3">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="text-xs uppercase tracking-wide text-mint-400 font-semibold">
                 Linked thread
@@ -424,7 +400,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               </span>
             </div>
             <p className="text-sm text-slate-900 truncate" title={linked.subject ?? ''}>
-            <p className="text-sm text-white truncate" title={linked.subject ?? ''}>
               {linked.subject || '(no subject)'}
             </p>
             {linked.sender_address && (
@@ -458,7 +433,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               type="button"
               onClick={openPicker}
               className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-100 text-slate-700 rounded-lg text-sm transition-all"
-              className="flex items-center gap-2 px-3 py-2 bg-navy-800 hover:bg-navy-700 text-slate-300 rounded-lg text-sm transition-all"
             >
               <Link2 className="h-4 w-4" /> Relink different thread
             </button>
@@ -477,11 +451,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
             <div className="flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-slate-700">
-        <div className="bg-navy-950 rounded-lg p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-mint-400 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-slate-300">
                 Link an email thread so we can auto-import {providerName}'s replies.
               </p>
             </div>
@@ -550,12 +519,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
               <button
                 onClick={() => setPickerOpen(false)}
                 className="text-slate-500 hover:text-slate-900 p-1"
-          <div className="bg-navy-900 border border-navy-700/60 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[85vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-navy-700/50">
-              <h4 className="text-base font-semibold text-white">Pick the thread to watch</h4>
-              <button
-                onClick={() => setPickerOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
                 aria-label="Close"
               >
                 <X className="h-5 w-5" />
@@ -626,8 +589,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                       <div>
                         <p className="font-semibold text-slate-900 mb-1">Connect an email first</p>
                         <p className="text-slate-500">
-                        <p className="font-semibold text-white mb-1">Connect an email first</p>
-                        <p className="text-slate-400">
                           Watchdog needs to read your inbox to find replies from {providerName}. Connect Gmail or Outlook in your Profile — takes about 30 seconds.
                         </p>
                       </div>
@@ -655,11 +616,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                     {searchMode === 'search'
                       ? 'Try a different keyword — sender name, amount, subject line.'
                       : `We couldn\'t auto-match a thread for ${providerName}. Use the search box above to find any thread across your inboxes.`}
-                  <Mail className="h-10 w-10 text-slate-700 mx-auto mb-3" />
-                  <p className="text-slate-300 font-semibold mb-1">No matching threads found</p>
-                  <p className="text-slate-500 text-sm">
-                    We searched the last 365 days for mail mentioning {providerName}. If the thread
-                    is older, forward the most recent message to yourself first, then try again.
                   </p>
                   {searchErrors.length > 0 && (
                     <div className="mt-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-lg p-3 text-left text-xs">
@@ -721,26 +677,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
                           {c.reason && (
                             <span className="text-[10px] text-slate-500 truncate">· {c.reason}</span>
                           )}
-                        className="w-full text-left bg-navy-950 hover:bg-navy-800 border border-navy-700/50 hover:border-mint-400/40 rounded-xl p-3 transition-all disabled:opacity-50 disabled:cursor-wait"
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <p className="text-sm font-semibold text-white truncate" title={c.subject}>
-                            {c.subject || '(no subject)'}
-                          </p>
-                          <span className="text-[10px] uppercase tracking-wide text-mint-400 font-semibold flex-shrink-0">
-                            {Math.round(c.confidence * 100)}%
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 truncate">from {c.senderAddress}</p>
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.snippet}</p>
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <span className="text-[10px] text-slate-500">
-                            {c.messageCount} message{c.messageCount === 1 ? '' : 's'}
-                          </span>
-                          <span className="text-[10px] text-slate-500">
-                            · {new Date(c.latestDate).toLocaleDateString('en-GB')}
-                          </span>
-                          <span className="text-[10px] text-slate-500 truncate">· {c.reason}</span>
                         </div>
                       </button>
                     </li>
@@ -750,7 +686,6 @@ export default function WatchdogCard({ disputeId, providerName, onChanged }: Pro
             </div>
             {linking && (
               <div className="px-5 py-3 border-t border-slate-200 bg-white">
-              <div className="px-5 py-3 border-t border-navy-700/50 bg-navy-950">
                 <div className="flex items-center gap-2 text-mint-400 text-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Importing history… this can take a few seconds.

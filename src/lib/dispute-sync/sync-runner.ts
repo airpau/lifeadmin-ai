@@ -17,7 +17,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { fetchNewMessages, fetchDomainMessages } from './fetchers';
-import { fetchNewMessages } from './fetchers';
 import type { EmailConnection } from './types';
 import {
   classifyReply,
@@ -269,16 +268,6 @@ export async function syncLinkedThread(
     domainDecisions,
   };
 
-  let messages: Awaited<ReturnType<typeof fetchNewMessages>>;
-  try {
-    messages = await fetchNewMessages(conn, link.thread_id, since);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Fetch failed';
-    console.error(`[watchdog] fetch failed for link ${linkId}:`, message);
-    // Still bump last_synced_at a little so we don't loop fast on persistent errors
-    return { linkId, disputeId: link.dispute_id, imported: 0, error: message };
-  }
-
   const disputeRow = link.disputes as {
     provider_name?: string;
     provider_type?: string;
@@ -367,11 +356,6 @@ export async function syncLinkedThread(
         .eq('id', link.dispute_id)
         .lt('last_reply_received_at', m.receivedAt.toISOString());
     }
-    // Bump dispute counters atomically
-    await db.rpc('record_dispute_reply', {
-      p_dispute_id: link.dispute_id,
-      p_received_at: m.receivedAt.toISOString(),
-    });
 
     // --- Intelligence layer -----------------------------------------------
     // Classify the reply so the notification can tell the user whether they
@@ -420,7 +404,6 @@ export async function syncLinkedThread(
     const isNewSinceLink = m.receivedAt.getTime() >= linkCreatedAt;
 
     if (options.sendNotifications !== false && isNewSinceLink) {
-    if (options.sendNotifications !== false) {
       const notifCopy = buildNotificationCopy({
         providerName,
         snippet: m.snippet,
@@ -482,18 +465,6 @@ export async function syncLinkedThread(
         }
         // Swallow — a failed Telegram alert must never abort the sync loop.
       }
-      // Telegram alert — fire-and-forget. Import lazily so the module graph stays light.
-      sendTelegramSafely({
-        userId: link.user_id,
-        disputeId: link.dispute_id,
-        providerName,
-        subject: m.subject,
-        snippet: m.snippet,
-        linkUrl,
-        classification,
-      }).catch((err) =>
-        console.warn('[watchdog] telegram send failed:', err instanceof Error ? err.message : err),
-      );
     }
   }
 
@@ -586,11 +557,6 @@ async function sendTelegramSafely(args: {
   const safePreview = escapeMarkdown(rawPreview);
   const safeProvider = escapeMarkdown(args.providerName);
 
-  const { sendProactiveAlert } = await import('../telegram/user-bot');
-  const preview = args.snippet.length > 200
-    ? args.snippet.slice(0, 200) + '…'
-    : args.snippet;
-
   const c = args.classification;
   const emoji = c ? categoryEmoji(c.category, c.urgency) : '🔔';
   const label = c ? categoryLabel(c.category) : 'New reply';
@@ -604,15 +570,6 @@ async function sendTelegramSafely(args: {
 
   const aiLine = c?.rationale
     ? `\n\n🧠 *Paybacker read:* ${escapeMarkdown(c.rationale)}`
-    ? '\n\n⚠️ *Action needed* — reply *draft* below to generate your response.'
-    : c?.category === 'holding_reply'
-      ? '\n\n_No action needed — they\'re still looking into it._'
-      : c?.category === 'resolution'
-        ? '\n\n_Looks resolved — confirm with a 👍 if you\'re happy._'
-        : '';
-
-  const aiLine = c?.rationale
-    ? `\n\n🧠 *Paybacker read:* ${c.rationale}`
     : '';
 
   await sendProactiveAlert({
@@ -622,8 +579,6 @@ async function sendTelegramSafely(args: {
       correspondenceId: args.correspondenceId,
       title: `${emoji} ${safeProvider} — ${label}`,
       detail: `*Subject:* ${safeSubject}\n\n_${safePreview}_${aiLine}${actionLine}`,
-      title: `${emoji} ${args.providerName} — ${label}`,
-      detail: `*Subject:* ${args.subject}\n\n_${preview}_${aiLine}${actionLine}`,
       issue_type: c?.respondNeeded ? 'dispute_reply_action' : 'dispute_reply',
     },
     showFollowUpButtons: false,

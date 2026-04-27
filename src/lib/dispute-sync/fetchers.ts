@@ -83,20 +83,6 @@ function parseFrom(raw: string): { address: string; name: string; domain: string
     address: bare.toLowerCase(),
     name: '',
     domain: bare.split('@')[1]?.toLowerCase() ?? '',
-  const match = raw.match(/^\s*(?:"?([^"<]*?)"?\s*)?<?([^<>\s]+@[^<>\s]+)>?\s*$/);
-  if (!match) {
-    const bare = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? '';
-    return {
-      address: bare,
-      name: '',
-      domain: bare.split('@')[1]?.toLowerCase() ?? '',
-    };
-  }
-  const address = match[2].toLowerCase();
-  return {
-    address,
-    name: (match[1] ?? '').trim(),
-    domain: address.split('@')[1] ?? '',
   };
 }
 
@@ -120,11 +106,6 @@ function stripHtml(input: string): string {
     // HTML entities that commonly survive in mail bodies
     .replace(/&nbsp;/g, ' ')
     .replace(/&#160;/g, ' ')
-  return input
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -140,7 +121,6 @@ function stripHtml(input: string): string {
     .replace(/ *\n */g, '\n')
     // Collapse any run of 3+ newlines down to a paragraph gap
     .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -229,18 +209,6 @@ async function ensureFreshToken(conn: EmailConnection, provider: EmailProvider):
     await markConnectionNeedsReauth(conn.id, provider, message);
     throw new EmailConnectionAuthError(message, conn.id, provider);
   }
-    throw new Error(`No refresh token for connection ${conn.id}; user must reconnect ${provider}.`);
-  }
-
-  if (provider === 'gmail') {
-    const refreshed = await refreshGmailToken(conn.refresh_token);
-    return refreshed.access_token;
-  }
-  if (provider === 'outlook') {
-    const refreshed = await refreshMicrosoftToken(conn.refresh_token);
-    return refreshed.access_token;
-  }
-  throw new Error(`ensureFreshToken called for non-OAuth provider: ${provider}`);
 }
 
 // -----------------------------------------------------------------------------
@@ -335,7 +303,6 @@ async function fetchOutlookConversation(
   url.searchParams.set(
     '$select',
     'id,conversationId,subject,from,receivedDateTime,bodyPreview,body,webLink',
-    'id,conversationId,subject,from,receivedDateTime,bodyPreview,body',
   );
 
   const res = await fetch(url.toString(), {
