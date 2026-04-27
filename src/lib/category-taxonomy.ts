@@ -218,3 +218,111 @@ export function hasMeaningfulPriceSignal(rawCategory: string | null | undefined)
 export const ALL_CANONICAL_CATEGORIES: readonly string[] = Object.freeze(
   Object.keys(CATEGORY_BUCKET).sort(),
 );
+
+// ─── Dispute classification ──────────────────────────────────────────────
+//
+// For the Action Centre redesign: not every price rise is "winnable" via a
+// dispute. Council tax rises annually by law; HMRC payments follow your
+// notice; mortgage rates change within terms; loans amortise. Telling the
+// user to "Start dispute" on these sets them up for failure.
+//
+// A category is `disputable` when there's a UK consumer-rights or regulator
+// hook the user can credibly invoke (Consumer Rights Act, Ofcom General
+// Conditions, Ofgem standard licence conditions, FCA conduct rules, etc.):
+//
+//   - Mid-contract or out-of-contract telecoms / broadband price rise
+//     → Ofcom CGA 2.4 (right to exit penalty-free with material change)
+//   - Energy supplier rate change without proper notice
+//     → Ofgem SLC 23 (advance notice + right to switch)
+//   - Insurance auto-renewal at higher rate without competitive quote
+//     → FCA Pricing Practices (general insurance auto-renewal rules)
+//   - Subscription auto-renewal price hike with insufficient notice
+//     → Consumer Contracts Regulations 2013
+//   - Gym/membership mid-contract rises
+//     → CMA undertaking on gym contracts
+//
+// `track_only` covers: statutory bills (council tax, HMRC), debt
+// instruments (mortgage, loan, credit_card, car_finance) where rate
+// changes follow contractual terms, fees/parking, and rent (which has
+// its own narrow dispute regime via housing law, not handled here).
+//
+// `unknown` is the fallback when we can't classify confidently —
+// shown to the user as "Worth a look" with no winnability promise.
+
+export type DisputeClassification = 'disputable' | 'track_only' | 'unknown';
+
+const DISPUTABLE_CATEGORIES: ReadonlySet<string> = new Set([
+  'energy', 'water', 'broadband', 'mobile', 'utility',
+  'insurance',
+  'streaming', 'software', 'fitness',
+  'gaming', 'music', 'storage',
+  'pets',         // pet insurance auto-renewal hikes are disputable
+  'security',     // alarm subscriptions, identity-protect, etc.
+  'credit_monitoring',
+]);
+
+const TRACK_ONLY_CATEGORIES: ReadonlySet<string> = new Set([
+  'mortgage', 'loan', 'credit_card', 'car_finance', 'debt_repayment',
+  'council_tax', 'tax', 'fee', 'parking',
+  'rent',  // narrow dispute regime via housing law — not auto-actionable
+]);
+
+export function classifyDispute(
+  rawCategory: string | null | undefined,
+): DisputeClassification {
+  if (!rawCategory) return 'unknown';
+  const lower = String(rawCategory).toLowerCase().trim();
+  const canonical = CATEGORY_ALIASES[lower] ?? lower;
+
+  // Internal transfers and income are never disputable — and shouldn't
+  // be flagged as price rises in the first place.
+  const bucket = CATEGORY_BUCKET[canonical];
+  if (bucket === 'internal_transfer' || bucket === 'income') return 'track_only';
+  if (bucket === 'variable_cost') return 'unknown';
+
+  if (DISPUTABLE_CATEGORIES.has(canonical)) return 'disputable';
+  if (TRACK_ONLY_CATEGORIES.has(canonical)) return 'track_only';
+  return 'unknown';
+}
+
+/**
+ * One-line "why this is winnable" microcopy for the Action Centre. Keyed
+ * on canonical category. Used for the disputable cards. Returned `null`
+ * for non-disputable categories (no copy needed there).
+ *
+ * The copy is intentionally short and references the specific UK
+ * regulatory hook so the user trusts the advice. Letter content gets
+ * the full citation; the Action Centre teaser only needs the headline.
+ */
+export function disputeWinnabilityHook(
+  rawCategory: string | null | undefined,
+): string | null {
+  if (classifyDispute(rawCategory) !== 'disputable') return null;
+  const lower = String(rawCategory ?? '').toLowerCase().trim();
+  const canonical = CATEGORY_ALIASES[lower] ?? lower;
+  switch (canonical) {
+    case 'broadband':
+    case 'mobile':
+      return 'Ofcom CGA 2.4 — mid-contract price rise lets you exit penalty-free.';
+    case 'energy':
+    case 'water':
+    case 'utility':
+      return 'Ofgem SLC 23 — supplier owes you advance notice + a switch window.';
+    case 'insurance':
+      return 'FCA Pricing Practices — auto-renewal can\'t be priced higher than a new-customer quote.';
+    case 'streaming':
+    case 'software':
+    case 'gaming':
+    case 'music':
+    case 'storage':
+    case 'security':
+    case 'credit_monitoring':
+      return 'Consumer Contracts Regs 2013 — subscription price hikes need clear advance notice.';
+    case 'fitness':
+      return 'CMA undertaking on gym contracts — mid-contract rises are challengeable.';
+    case 'pets':
+      return 'FCA Pricing Practices — pet insurance renewals follow the same fairness rules.';
+    default:
+      return 'Consumer Rights Act 2015 — material price changes can be challenged.';
+  }
+}

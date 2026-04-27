@@ -18,6 +18,8 @@ import {
   isSpendingBucket,
   isSwitchable,
   hasMeaningfulPriceSignal,
+  classifyDispute,
+  disputeWinnabilityHook,
   CATEGORY_BUCKET,
   type CategoryBucket,
 } from './category-taxonomy.ts';
@@ -154,6 +156,71 @@ describe('category-taxonomy: hasMeaningfulPriceSignal', () => {
                        'streaming', 'software', 'fitness']) {
       assert.equal(hasMeaningfulPriceSignal(cat), true, `${cat} has a meaningful price signal`);
     }
+  });
+});
+
+describe('category-taxonomy: classifyDispute', () => {
+  it('classifies disputable categories (UK consumer-rights / regulator hook)', () => {
+    for (const cat of ['energy', 'water', 'broadband', 'mobile', 'insurance',
+                       'streaming', 'software', 'fitness', 'gaming', 'music',
+                       'storage', 'pets', 'security', 'credit_monitoring']) {
+      assert.equal(classifyDispute(cat), 'disputable', `${cat} should be disputable`);
+    }
+  });
+
+  it('classifies track_only categories (statutory / contractual)', () => {
+    for (const cat of ['mortgage', 'loan', 'credit_card', 'car_finance',
+                       'debt_repayment', 'council_tax', 'tax', 'fee',
+                       'parking', 'rent']) {
+      assert.equal(classifyDispute(cat), 'track_only', `${cat} should be track_only`);
+    }
+  });
+
+  it('refuses to classify transfers / income as disputable', () => {
+    assert.equal(classifyDispute('transfers'), 'track_only');
+    assert.equal(classifyDispute('internal_transfer'), 'track_only');
+    assert.equal(classifyDispute('salary'), 'track_only');
+    assert.equal(classifyDispute('rental'), 'track_only');
+  });
+
+  it('returns unknown for variable spend (groceries) — naturally moves', () => {
+    assert.equal(classifyDispute('groceries'), 'unknown');
+    assert.equal(classifyDispute('fuel'), 'unknown');
+    assert.equal(classifyDispute('shopping'), 'unknown');
+  });
+
+  it('returns unknown for null / unknown categories', () => {
+    assert.equal(classifyDispute(null), 'unknown');
+    assert.equal(classifyDispute(''), 'unknown');
+    assert.equal(classifyDispute('totally_made_up'), 'unknown');
+  });
+
+  it('handles aliases (mortgages → mortgage, loans → loan, etc.)', () => {
+    assert.equal(classifyDispute('mortgages'), 'track_only');
+    assert.equal(classifyDispute('loans'), 'track_only');
+    assert.equal(classifyDispute('utilities'), 'disputable');
+    assert.equal(classifyDispute('credit cards'), 'track_only');
+  });
+});
+
+describe('category-taxonomy: disputeWinnabilityHook', () => {
+  it('returns category-specific copy for disputable categories', () => {
+    assert.match(disputeWinnabilityHook('broadband') ?? '', /Ofcom CGA/);
+    assert.match(disputeWinnabilityHook('mobile') ?? '', /Ofcom CGA/);
+    assert.match(disputeWinnabilityHook('energy') ?? '', /Ofgem/);
+    assert.match(disputeWinnabilityHook('insurance') ?? '', /FCA Pricing/);
+    assert.match(disputeWinnabilityHook('streaming') ?? '', /Consumer Contracts/);
+    assert.match(disputeWinnabilityHook('fitness') ?? '', /CMA/);
+    assert.match(disputeWinnabilityHook('pets') ?? '', /FCA/);
+  });
+
+  it('returns null for non-disputable categories', () => {
+    assert.equal(disputeWinnabilityHook('mortgage'), null);
+    assert.equal(disputeWinnabilityHook('council_tax'), null);
+    assert.equal(disputeWinnabilityHook('transfers'), null);
+    assert.equal(disputeWinnabilityHook('groceries'), null);
+    assert.equal(disputeWinnabilityHook(null), null);
+    assert.equal(disputeWinnabilityHook(''), null);
   });
 });
 
