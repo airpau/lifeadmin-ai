@@ -1,20 +1,46 @@
 import { createClient } from '@supabase/supabase-js';
 import { normaliseMerchantName } from '@/lib/merchant-normalise';
 
-// Categories where amounts follow an amortisation schedule (loan balance
-// shrinks, interest changes, credit-card balances vary) so a "price
-// increase" is meaningless. These are a narrower set than the
-// EXCLUDED_SAVINGS_CATEGORIES used by the deals widget — council_tax
-// and business_rates are specifically NOT here, because annual hikes on
-// those bills are exactly what we want to flag.
+// Categories where amounts follow an amortisation / discretionary
+// schedule so a "price increase" is meaningless. Loan balances shrink,
+// credit-card balances vary, savings/pension top-ups go up because the
+// user *chose* to save more — none of those are real price hikes worth
+// surfacing.
+//
+// council_tax and business_rates are deliberately NOT here — annual
+// hikes on those bills are exactly what we want to flag.
+//
+// Mirrors the user_category half of lib/spending.ts so the detector
+// stays consistent with the rest of the system.
 const EXCLUDED_FROM_PRICE_DETECTION = new Set([
   'mortgage', 'mortgages',
   'loan', 'loans',
-  'credit_card', 'credit cards', 'credit-cards', 'credit',
+  'credit_card', 'credit_card_payment', 'credit cards', 'credit-cards', 'credit',
   'car_finance', 'car finance', 'car-finance',
   'fee', 'fees',
   'parking',
+  // New 27 Apr 2026: savings, pension and investment top-ups were
+  // surfacing as price increases when users incremented their
+  // contribution (Loqbox £31.96 → £34.95 is the user opting to save
+  // more, not Loqbox raising prices).
+  'savings', 'investment', 'investments', 'pension',
+  'transfer', 'transfers', 'internal_transfer', 'self_transfer',
 ]);
+
+// Description-level exclusion for merchants that shouldn't ever
+// produce a price-increase alert regardless of category. Useful for
+// platforms whose business model is "user-chosen recurring amounts"
+// — Loqbox, Plum, Chip, Moneybox, etc.
+const EXCLUDED_DESCRIPTION_PATTERNS: RegExp[] = [
+  /\bloqbox\b/i,
+  /\bplum\b.*\bsavings?\b/i,
+  /\bchip\b.*\bsavings?\b/i,
+  /\bmoneybox\b/i,
+  /\bnest pension\b/i,
+  /\bvanguard\b.*\binvest/i,
+  /\bto a\/c\b/i,           // self-transfer ("To A/C 80945686 …")
+  /\bvia mobile xfer\b/i,   // self-transfer
+];
 
 function getAdmin() {
   return createClient(
@@ -137,6 +163,12 @@ export async function detectPriceIncreases(userId: string): Promise<PriceIncreas
     // Transfers to self (e.g. "PAUL AIREY … HALIFAX VIA MOBILE — PYMT") can
     // otherwise look like huge price rises when amounts vary. Skip them.
     if (looksLikeTransferToSelf(tx.description || '', tx.merchant_name, userNameTokens)) continue;
+
+    // Description-level exclusion catches savings platforms / self-
+    // transfers / pension contributions that may not have a clean
+    // user_category yet (e.g. "Loqbox Grow Bristol GB").
+    const haystack = `${tx.merchant_name ?? ''} ${tx.description ?? ''}`;
+    if (EXCLUDED_DESCRIPTION_PATTERNS.some((re) => re.test(haystack))) continue;
 
     const normalised = normaliseMerchantName(tx.description || tx.merchant_name || '');
     if (normalised === 'Unknown') continue;
