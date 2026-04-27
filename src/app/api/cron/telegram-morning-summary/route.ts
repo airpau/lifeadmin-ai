@@ -205,7 +205,16 @@ export async function GET(request: NextRequest) {
       sections.push('*Good morning! Here\'s your daily money briefing:*');
 
       // ------ 1. Yesterday's spending ------
-      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      // Mirror lib/spending.ts exclusions so the morning summary matches
+      // Money Hub + the weekly digest. Previous list was just
+      // ('transfers','income') which double-counted credit-card bill
+      // repayments + investments + pension contributions.
+      const EXCLUDE_CATS = new Set([
+        'transfer', 'transfers', 'internal_transfer', 'self_transfer',
+        'credit_card_payment', 'credit_card',
+        'investment', 'investments', 'savings', 'pension',
+        'income', 'fee_refund',
+      ]);
       const { data: yesterdayTxRaw } = await supabase
         .from('bank_transactions')
         .select('user_category, amount')

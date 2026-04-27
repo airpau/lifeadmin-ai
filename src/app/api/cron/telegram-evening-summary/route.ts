@@ -308,7 +308,15 @@ export async function GET(request: NextRequest) {
         .order('amount', { ascending: true }) // most negative first = biggest spend
         .limit(8);
 
-      const EXCLUDE_CATS = new Set(['transfers', 'income']);
+      // Mirror lib/spending.ts exclusions so notable transactions
+      // don't surface CC bill payments / pension top-ups / Loqbox
+      // moves as "spending" the user should care about.
+      const EXCLUDE_CATS = new Set([
+        'transfer', 'transfers', 'internal_transfer', 'self_transfer',
+        'credit_card_payment', 'credit_card',
+        'investment', 'investments', 'savings', 'pension',
+        'income', 'fee_refund',
+      ]);
       const notableTx = (recentTxData ?? []).filter(
         tx => !EXCLUDE_CATS.has(tx.user_category ?? '') && Math.abs(Number(tx.amount)) >= 10,
       ).slice(0, 5);
