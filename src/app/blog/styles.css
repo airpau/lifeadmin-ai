@@ -528,6 +528,22 @@
 }
 .m-blog-root .footer-socials a:hover { background: rgba(255,255,255,0.06); }
 
+/* Blog index grids — featured card + post grid. Default desktop uses
+   side-by-side / two-column; the @media rules below collapse to a
+   single column on tablet/phone so the hero image actually has room
+   to breathe instead of being squashed at 170px wide. */
+.m-blog-root .m-blog-featured-card {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  align-items: center;
+}
+.m-blog-root .m-blog-post-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px;
+}
+
 /* Responsive --------------------------------------------------------- */
 @media (max-width: 980px) {
   .m-blog-root .footer-grid { grid-template-columns: 1fr 1fr; }
@@ -538,7 +554,10 @@
   .m-blog-root .post-body-grid { grid-template-columns: 1fr; gap: 40px; }
   .m-blog-root .post-toc,
   .m-blog-root .post-aside { position: static; }
+  .m-blog-root .m-blog-featured-card { grid-template-columns: 1fr; gap: 24px; padding: 20px; }
+  .m-blog-root .m-blog-post-grid { grid-template-columns: 1fr; gap: 28px; }
 }
 @media (max-width: 480px) {
   .m-blog-root .wrap { padding: 0 20px; }
+  .m-blog-root .m-blog-featured-card { padding: 16px; }
 }

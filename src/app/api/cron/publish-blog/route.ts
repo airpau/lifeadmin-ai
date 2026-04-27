@@ -290,9 +290,17 @@ Make it genuinely useful for someone searching "${topic.keyword}" on Google. Inc
   let imageAlt: string | null = null;
   if (process.env.GEMINI_API_KEY) {
     try {
-      const visualBrief = parsed.imagePrompt || `An abstract editorial illustration representing ${topic.keyword}`;
+      // Two-tier visual brief: prefer the per-post brief Claude wrote
+      // alongside the content, but fall back to the deterministic
+      // category-keyword helper if Claude omitted it. The helper
+      // guarantees a topic-specific subject so we never end up with
+      // a plane illustration on a builder-dispute post.
+      const { buildVisualBrief } = await import('@/lib/blog-visual-brief');
+      const visualBrief = (parsed.imagePrompt && typeof parsed.imagePrompt === 'string' && parsed.imagePrompt.trim().length > 20)
+        ? parsed.imagePrompt
+        : buildVisualBrief({ title: parsed.title, keyword: topic.keyword, category: topic.category });
       const fullPrompt = buildBrandedPrompt(visualBrief);
-      const { imageBase64, mimeType } = await generateSocialImage(fullPrompt);
+      const { imageBase64, mimeType } = await generateSocialImage(fullPrompt, { aspectRatio: '16:9' });
       imageUrl = await uploadImageToStorage(imageBase64, mimeType, `blog/${topic.slug}.png`);
       imageAlt = `Editorial illustration for ${parsed.title}`;
       console.log(`[blog] Hero image: ${imageUrl}`);

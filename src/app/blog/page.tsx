@@ -163,24 +163,22 @@ export default async function BlogIndexPage() {
 
           {featured && (
             <div
+              className="m-blog-featured-card"
               style={{
                 background: '#fff',
                 border: '1px solid var(--divider)',
                 borderRadius: 'var(--r-card)',
                 padding: 32,
-                display: 'grid',
-                gridTemplateColumns: '1.2fr 1fr',
-                gap: 40,
-                alignItems: 'center',
               } as CSSProperties}
             >
               <div
+                className="m-blog-featured-art"
                 style={{
-                  height: 400,
                   borderRadius: 'var(--r-input)',
                   background: featured.imageUrl ? '#0f172a' : featured.gradient,
                   position: 'relative',
                   overflow: 'hidden',
+                  aspectRatio: '16 / 9',
                 } as CSSProperties}
               >
                 {featured.imageUrl ? (
@@ -282,13 +280,7 @@ export default async function BlogIndexPage() {
       {rest.length > 0 && (
         <section style={{ padding: '40px 0 80px' } as CSSProperties}>
           <div className="wrap">
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 32,
-              } as CSSProperties}
-            >
+            <div className="m-blog-post-grid">
               {rest.map((p) => (
                 <Link
                   key={p.href}
@@ -297,13 +289,14 @@ export default async function BlogIndexPage() {
                 >
                   <article>
                     <div
+                      className="m-blog-card-art"
                       style={{
-                        height: 240,
                         borderRadius: 'var(--r-card)',
                         background: p.imageUrl ? '#0f172a' : p.gradient,
                         marginBottom: 20,
                         position: 'relative',
                         overflow: 'hidden',
+                        aspectRatio: '16 / 9',
                       } as CSSProperties}
                     >
                       {p.imageUrl ? (
