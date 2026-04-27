@@ -212,15 +212,29 @@ export async function GET(request: Request) {
     // JS-based computation (used for trends, merchant analysis, and as fallback)
     const currentSummary = summariseTransactionsForMonth(allTxns, overrides, selectedMonth, internalTransfers);
 
-    // Authoritative income/spending via JS computation (to support AI rule mapping and local recategorisation)
-    const authSpending = currentSummary.monthlyOutgoings;
-    const authIncome = currentSummary.monthlyIncome;
+    // Authoritative income/spending from RPCs (exclude transfers correctly) with JS fallback
+    const authSpending = rpcSpendingTotal != null ? parseFloat(String(rpcSpendingTotal)) : currentSummary.monthlyOutgoings;
+    const authIncome = rpcIncomeTotal != null ? parseFloat(String(rpcIncomeTotal)) : currentSummary.monthlyIncome;
 
-    // Build authoritative category breakdown via JS learning rules
-    const authCategoryBreakdown = currentSummary.categoryBreakdown;
+    // Build authoritative category breakdown from RPC; fall back to JS if RPC returned nothing
+    // Normalize category keys so they match the keys used in budget matching
+    const rpcCategoryBreakdown = (rpcSpendingCategories || []).map((c: any) => ({
+      category: normalizeSpendingCategoryKey(c.category as string),
+      total: parseFloat(String(c.category_total ?? 0)),
+      transactions: [] as any[],
+    }));
+    const authCategoryBreakdown = rpcCategoryBreakdown.length > 0
+      ? rpcCategoryBreakdown
+      : currentSummary.categoryBreakdown;
 
-    // Build authoritative income breakdown
-    const authIncomeBreakdown: Record<string, number> = { ...currentSummary.incomeRows };
+    // Build authoritative income breakdown from RPC; fall back to JS if RPC returned nothing
+    const rpcIncomeBD: Record<string, number> = {};
+    for (const row of (rpcIncomeCategories || [])) {
+      rpcIncomeBD[row.source || 'other'] = parseFloat(String(row.source_total ?? 0));
+    }
+    const authIncomeBreakdown: Record<string, number> = Object.keys(rpcIncomeBD).length > 0
+      ? rpcIncomeBD
+      : { ...currentSummary.incomeRows };
 
     // Build authoritative category totals map (for budget matching)
     const authCategoryTotals: Record<string, number> = {};
