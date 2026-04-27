@@ -4,20 +4,26 @@
  * Why: every surface that summarises spending (weekly digest, money
  * hub, budgets, telegram morning/evening summary, monthly recap) has
  * historically done its own `SUM(ABS(amount)) WHERE amount < 0` and
- * therefore lumped together:
- *   - real outgoings (groceries, energy, mobile, eating out)
- *   - self-transfers between the user's own accounts
+ * therefore lumped together real outgoings with internal money moves:
+ *   - real outgoings (groceries, energy, mobile, water, loan/mortgage
+ *     payments, council tax) → COUNT (these are switchable bills)
+ *   - self-transfers between the user's own accounts → exclude
  *   - credit-card bill repayments (already counted as the underlying
- *     CC purchases, double-counts if added)
- *   - loan & mortgage principal repayments (treated as "saving" by
- *     most personal-finance products)
- *   - investments / Loqbox / pension top-ups
+ *     CC purchases) → exclude (otherwise double-counts)
+ *   - investments / Loqbox / pension top-ups → exclude (asset shift,
+ *     not consumption)
+ *
+ * Note on loans + mortgages: the founder's spec is that loan and
+ * mortgage payments DO count as spending — users can refinance,
+ * consolidate, or switch mortgage provider, so we want to track them
+ * as recurring costs that can be reduced. Same logic for water —
+ * residential users can request a meter, apply for WaterSure, or
+ * challenge bills.
  *
  * The 27 Apr 2026 digest reported £20,733 of spending in 7 days, of
- * which ~£10k was self-transfers and £8k was a single business
- * payment (SOURCED NETWORK / AIRPROP LTD). Without exclusions the
- * digest is misinformation — exactly what this helper exists to
- * stop.
+ * which ~£10k was self-transfers + a duplicate row + a business
+ * banking move (SOURCED NETWORK / AIRPROP LTD). Real outgoings were
+ * ~£3.5k. The exclusions here strip those out.
  *
  * Source of truth: callers should use either:
  *   - isRealSpend(tx) — boolean predicate for filtering arrays
@@ -25,9 +31,9 @@
  *   - groupRealSpend(rows) — { [category]: total } breakdown
  *
  * Excluded user_category values (case-insensitive):
- *   transfers, transfer, internal_transfer, credit_card_payment,
- *   loan_repayment, loan_principal, mortgage_payment, investment,
- *   savings, pension, fee_refund (positive amount edge case)
+ *   transfers, transfer, internal_transfer, self_transfer,
+ *   credit_card_payment, credit_card,
+ *   investment, investments, savings, pension, fee_refund
  *
  * Excluded description keywords (regex, case-insensitive). These
  * catch txns that arrive uncategorised — Open Banking categories
@@ -35,7 +41,8 @@
  *
  * The helper is conservative: false positives (excluding real spend)
  * are worse than false negatives — we'd rather under-report by 5%
- * than tell users they spent 2x reality.
+ * than tell users they spent 2x reality. But loans + water + council
+ * tax are firmly counted because they're switchable.
  */
 
 export interface SpendingTxn {
@@ -47,25 +54,34 @@ export interface SpendingTxn {
 }
 
 const EXCLUDED_CATEGORIES = new Set([
+  // Self-money-moves — not consumption.
   'transfer',
   'transfers',
   'internal_transfer',
   'self_transfer',
+  // Already counted as the underlying CC purchases.
   'credit_card_payment',
   'credit_card',
-  'loan_repayment',
-  'loan_principal',
-  'mortgage_payment',
+  // Asset shift, not spend.
   'investment',
   'investments',
   'savings',
   'pension',
+  // Edge case: fee refund posts as a positive amount → ignored anyway
+  // by the amount<0 filter, listed for clarity.
   'fee_refund',
+  // Note: loans, mortgages, water, council tax are intentionally NOT
+  // excluded — they're switchable recurring bills the user wants
+  // surfaced so we can find better deals.
 ]);
 
 // Description-level fallback for txns that haven't been categorised
-// yet. Each entry must match a real outgoing pattern unambiguously
-// — we'd rather miss a transfer than misclassify a legitimate spend.
+// yet. Each entry must match an internal-move pattern unambiguously
+// — we'd rather miss a transfer than misclassify a real spend.
+//
+// Loans, mortgages, water, council tax do NOT appear here — those
+// are real outgoings that we want to surface to the user (so they
+// can refinance / switch / challenge).
 const EXCLUDED_DESCRIPTION_PATTERNS: RegExp[] = [
   /\bto a\/c\b/i,
   /\bvia mobile xfer\b/i,
